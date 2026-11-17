@@ -26,3 +26,23 @@ jobs:
         env:
           NETWEATHER_E2E: "1"
         run: go run ./internal/devtool e2e
+
+  # Firefox and WebKit run here, weekly, rather than on every pull request
+  # (QUALITY.md 5.8). Chromium stays the per-PR gate; this job answers "does the
+  # UI work outside the engine the CI runs most often" without tripling it.
+  browsers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: install the three engines
+        run: go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6401.0 install --with-deps chromium firefox webkit
+
+      - name: browser suite on every engine
+        run: go run ./internal/devtool ui-all

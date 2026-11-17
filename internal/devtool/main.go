@@ -4,7 +4,7 @@
 //
 //	go run ./internal/devtool <task>
 //
-// Tasks: fmt, vet, test, cover, ui, compose, mutate, build, snapshot, verify
+// Tasks: fmt, vet, test, cover, ui, ui-all, compose, mutate, build, snapshot, verify
 package main
 
 import (
@@ -55,6 +55,10 @@ func main() {
 		err = taskCover()
 	case "ui":
 		err = runGo("test", "-tags=uitest", "-count=1", "./internal/web/uitest")
+	case "ui-all":
+		// One run per browser, so a WebKit failure names WebKit. The per-PR job
+		// stays chromium-only; the weekly job runs all three (QUALITY.md §5.8).
+		err = taskUIBrowsers()
 	case "e2e":
 		err = runGo("test", "-tags=e2e", "-count=1", "./internal/e2e")
 	case "compose":
@@ -99,6 +103,7 @@ func usage() {
   go run ./internal/devtool test           race (when available) + shuffle + count=1
   go run ./internal/devtool cover          coverage profile + per-package gates
   go run ./internal/devtool ui             Playwright suite (needs a browser)
+  go run ./internal/devtool ui-all         Playwright suite on chromium, firefox, and webkit
   go run ./internal/devtool e2e            real-endpoint E2E (needs NETWEATHER_E2E=1)
   go run ./internal/devtool compose        container network-plane suite (needs Docker)
   go run ./internal/devtool mutate         mutation testing on internal/classify (advisory, slow)
@@ -435,6 +440,25 @@ type target struct{ goos, goarch string }
 // taskRepro builds the same source twice and compares the digests. If this fails,
 // a release binary cannot be verified by rebuilding it, which is the whole point
 // of publishing checksums.
+// taskUIBrowsers runs the browser suite once per engine. The harness picks the
+// engine from NETWEATHER_UI_BROWSER, so a failure names the browser instead of
+// leaving the operator to guess which one broke.
+func taskUIBrowsers() error {
+	goBin, err := goBinary()
+	if err != nil {
+		return err
+	}
+	for _, name := range []string{"chromium", "firefox", "webkit"} {
+		fmt.Printf("==> ui %s\n", name)
+		cmd := command(goBin, "test", "-tags=uitest", "-count=1", "./internal/web/uitest")
+		cmd.Env = append(os.Environ(), "NETWEATHER_UI_BROWSER="+name)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("ui %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
 func taskRepro() error {
 	version, commit, date := buildMetadata()
 

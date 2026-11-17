@@ -429,7 +429,7 @@ Renaming a test id is a deliberate act; changing a class is not. That asymmetry 
 
 **Not tested here.** Classification, formatting, boundary logic, API envelopes, and anything that does not need a DOM. Those belong in §5.1–§5.3. Browser tests are slow and brittle by nature; putting logic in them is how a suite becomes a 20-minute gate people skip.
 
-**Cross-browser.** Chromium is required. Firefox and WebKit run in the weekly job only, because the UI uses no exotic APIs and a per-PR matrix would triple the gate for near-zero signal. If a browser-specific bug appears, it earns a permanent matrix entry.
+**Cross-browser.** Chromium is the per-PR gate. **Implemented:** `NETWEATHER_UI_BROWSER` selects the engine (chromium, firefox, or webkit; an unknown value fails loudly), `go run ./internal/devtool ui-all` runs the suite once per engine, and the weekly `browsers` job in `.github/workflows/e2e.yml` installs all three and runs it. A per-PR matrix would triple the gate for near-zero signal on a UI that uses no exotic APIs; a browser-specific bug earns a permanent matrix entry.
 
 **Accessibility.** The suite already asserts accessible names and glyph presence; the plan is `axe-core` via `page.AddScriptTag` for a rules pass on board, login, and detail. Not in the first cut: axe findings need a triage policy, and an un-triaged accessibility gate gets muted.
 

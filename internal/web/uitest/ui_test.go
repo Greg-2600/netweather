@@ -42,11 +42,32 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	browser, err = pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+	// Chromium runs on every pull request; the weekly job sets this to firefox
+	// and webkit as well (QUALITY.md §5.8). One browser per run keeps the gate
+	// honest: a WebKit failure must name WebKit.
+	name := strings.ToLower(strings.TrimSpace(os.Getenv("NETWEATHER_UI_BROWSER")))
+	if name == "" {
+		name = "chromium"
+	}
+	var browserType playwright.BrowserType
+	switch name {
+	case "chromium":
+		browserType = pw.Chromium
+	case "firefox":
+		browserType = pw.Firefox
+	case "webkit":
+		browserType = pw.WebKit
+	default:
+		fmt.Fprintf(os.Stderr, "unknown NETWEATHER_UI_BROWSER %q (want chromium, firefox, or webkit)\n", name)
+		_ = pw.Stop()
+		os.Exit(1)
+	}
+
+	browser, err = browserType.Launch(playwright.BrowserTypeLaunchOptions{
 		Headless: playwright.Bool(true),
 	})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "chromium launch failed:", err)
+		fmt.Fprintf(os.Stderr, "%s launch failed: %v\n", name, err)
 		_ = pw.Stop()
 		os.Exit(1)
 	}
