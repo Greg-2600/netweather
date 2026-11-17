@@ -570,6 +570,8 @@ The absolute floors matter as much as the ratio. A scope of 10 targets at `cover
 
 A collapse in coverage is itself an event: if `coverage` for a scope falls below `median - 3σ` of its own baseline, emit `COVERAGE_DROP` as an **advisory**, never `INCIDENT`. A mass bot-wall rollout and a mass outage look identical in the health number, and only the coverage line tells them apart.
 
+**Implemented:** `internal/anomaly` runs a second detector over the coverage series with its own detectors, day-widening, and cooldown, so a visibility drop and a health drop cannot suppress each other. It runs **before** the health floors, because the case that matters — a scope that has become mostly unmeasurable — is exactly where health detection must stay silent. The row is `anomaly.kind = 'coverage_drop'` with the observed coverage and its baseline, it never opens an incident, `/api/v1/anomalies` lists it, and the board shows the newest one inside six hours as an advisory banner that says the loss is visibility rather than an outage. `store.ScopeCoverageHistory` reads the `coverage` column from the same hour-of-week `scope_sample` window as the health history.
+
 Baseline: same **hour-of-week**, rolling 4 weeks (28 samples), robust statistics.
 
 ```

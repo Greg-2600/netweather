@@ -3974,3 +3974,96 @@ func TestBoardWithoutAVerdictShowsNoBadge(t *testing.T) {
 		t.Fatal("a verdict badge rendered without a source")
 	}
 }
+
+type fakeAnomalies struct {
+	rows []store.Anomaly
+	err  error
+}
+
+func (f *fakeAnomalies) Anomalies(context.Context, int) ([]store.Anomaly, error) {
+	return f.rows, f.err
+}
+
+func newServerWithAnomalies(t *testing.T, token string, m *board.Memory, anomalies web.AnomalyReader) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		Anomalies: anomalies,
+		Token:     token,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestBoardShowsTheCoverageAdvisory(t *testing.T) {
+	t.Parallel()
+
+	at := time.Now().UTC().Add(-30 * time.Minute)
+	ts := newServerWithAnomalies(t, testToken, fixture(), &fakeAnomalies{rows: []store.Anomaly{
+		{
+			TS: at, Scope: "sector", ScopeValue: "airline", Kind: "coverage_drop",
+			Observed: 0.42, Baseline: 0.95, Buckets: 2,
+		},
+	}})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="coverage-advisory"`) {
+		t.Fatalf("coverage advisory missing:\n%s", page)
+	}
+	for _, want := range []string{"sector airline", "42%", "95%", "visibility loss, not an outage"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("coverage advisory missing %q", want)
+		}
+	}
+}
+
+func TestBoardOmitsStaleAndNonCoverageAdvisories(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	cases := []struct {
+		name string
+		rows []store.Anomaly
+	}{
+		{"a health drop is not a coverage advisory", []store.Anomaly{
+			{TS: now.Add(-10 * time.Minute), Scope: "global", Kind: "health_drop", Observed: 0.5, Baseline: 0.9},
+		}},
+		{"an old coverage drop is history", []store.Anomaly{
+			{TS: now.Add(-12 * time.Hour), Scope: "global", Kind: "coverage_drop", Observed: 0.1, Baseline: 0.9},
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ts := newServerWithAnomalies(t, testToken, fixture(), &fakeAnomalies{rows: tc.rows})
+			client, _ := newClient(t)
+			login(t, ts, client, testToken)
+
+			resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(body(t, resp), `data-testid="coverage-advisory"`) {
+				t.Error("an advisory rendered where it should not")
+			}
+		})
+	}
+}

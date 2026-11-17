@@ -55,6 +55,9 @@ type Deps struct {
 	// Verdict computes the one global verdict for the top bar. Nil omits the
 	// badge rather than inventing an OK.
 	Verdict VerdictSource
+	// Anomalies supplies detector advisories for the board. Nil omits the
+	// coverage advisory rather than implying coverage is steady.
+	Anomalies AnomalyReader
 	// DNSObservations supplies the board's collapsed DNS divergence strip.
 	DNSObservations DNSObservations
 	// Logs supplies the ring and logging setup for the diagnostics page and
@@ -179,6 +182,13 @@ type HealthIndex interface {
 // the top-bar badge rather than inventing a calm OK.
 type VerdictSource interface {
 	Build(ctx context.Context) verdict.Result
+}
+
+// AnomalyReader supplies detector output for the board's advisories. A coverage
+// collapse is an advisory, never an incident (DESIGN.md §7.2), so the board has
+// to be able to say it without turning a tile red.
+type AnomalyReader interface {
+	Anomalies(ctx context.Context, limit int) ([]store.Anomaly, error)
 }
 
 // DNSObservations supplies the board's collapsed DNS divergence strip. Nil

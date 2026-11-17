@@ -13,13 +13,15 @@ import (
 )
 
 type fakeSource struct {
-	scopes     []store.ScopeRef
-	counts     map[string]map[state.State]int
-	judgeable  map[string]int
-	history    map[string][]float64
-	err        error
-	statesErr  error
-	historyErr error
+	scopes      []store.ScopeRef
+	counts      map[string]map[state.State]int
+	judgeable   map[string]int
+	history     map[string][]float64
+	coverage    map[string][]float64
+	err         error
+	statesErr   error
+	historyErr  error
+	coverageErr error
 }
 
 func (f *fakeSource) Scopes(context.Context) ([]store.ScopeRef, error) {
@@ -39,6 +41,13 @@ func (f *fakeSource) ScopeHistory(_ context.Context, scope, value string, _ time
 		return nil, f.historyErr
 	}
 	return f.history[scope+"|"+value], nil
+}
+
+func (f *fakeSource) ScopeCoverageHistory(_ context.Context, scope, value string, _ time.Time) ([]float64, error) {
+	if f.coverageErr != nil {
+		return nil, f.coverageErr
+	}
+	return f.coverage[scope+"|"+value], nil
 }
 
 type fakeSink struct {
@@ -75,7 +84,17 @@ func newSource(counts map[state.State]int) *fakeSource {
 		},
 		judgeable: map[string]int{"global|": 50},
 		history:   map[string][]float64{"global|": normalHistory()},
+		coverage:  map[string][]float64{"global|": normalCoverage()},
 	}
+}
+
+// normalCoverage is a quiet, fully measurable history: 95% of the scope.
+func normalCoverage() []float64 {
+	h := make([]float64, 28)
+	for i := range h {
+		h[i] = 0.95
+	}
+	return h
 }
 
 func TestEvaluateTriggersAfterTwoBuckets(t *testing.T) {
@@ -122,20 +141,28 @@ func TestEvaluateStaysSilentWhileLearning(t *testing.T) {
 	}
 }
 
-func TestEvaluateSkipsScopesBelowTheCoverageFloors(t *testing.T) {
+func TestEvaluateSkipsHealthDetectionBelowTheCoverageFloors(t *testing.T) {
 	t.Parallel()
 
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
 	src := newSource(map[state.State]int{state.Up: 5, state.Unknown: 95}) // measured 5 < 8
 	src.judgeable["global|"] = 100
 	sink := &fakeSink{}
 
 	ev := anomaly.New(src, sink, "local")
-	ev.Now = func() time.Time { return time.Now() }
+	ev.Now = func() time.Time { return now }
 
-	for i := 0; i < 3; i++ {
-		if n, _ := ev.Evaluate(context.Background()); n != 0 {
-			t.Fatalf("an unknown-coverage scope emitted %d anomalies", n)
-		}
+	// The health detector must stay silent: no numerator, no denominator, no
+	// claim. The coverage advisory is the one that may speak, and it does.
+	if n, _ := ev.Evaluate(context.Background()); n != 0 {
+		t.Fatalf("the first pass emitted %d anomalies", n)
+	}
+	now = now.Add(5 * time.Minute)
+	if n, _ := ev.Evaluate(context.Background()); n != 1 {
+		t.Fatalf("the second pass emitted %d anomalies, want the coverage advisory", n)
+	}
+	if len(sink.anomalies) != 1 || sink.anomalies[0].Kind != "coverage_drop" {
+		t.Fatalf("anomalies = %+v, want one coverage_drop", sink.anomalies)
 	}
 }
 
@@ -261,5 +288,63 @@ func TestLoopStopsOnCancel(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("Loop did not stop after cancel")
+	}
+}
+
+func TestEvaluateEmitsCoverageDropWhileTheHealthDetectorIsSilent(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	// 5% measurable: below the health floors, so only the coverage advisory may
+	// speak. This is the bot-wall rollout shape (DESIGN.md §7.2).
+	src := newSource(map[state.State]int{state.Up: 5, state.Unknown: 95})
+	src.judgeable["global|"] = 100
+	sink := &fakeSink{}
+
+	ev := anomaly.New(src, sink, "local")
+	ev.Now = func() time.Time { return now }
+
+	if n, err := ev.Evaluate(context.Background()); err != nil || n != 0 {
+		t.Fatalf("first evaluation = (%d, %v)", n, err)
+	}
+
+	now = now.Add(5 * time.Minute)
+	n, err := ev.Evaluate(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 || len(sink.anomalies) != 1 {
+		t.Fatalf("second evaluation = (%d, %d anomalies)", n, len(sink.anomalies))
+	}
+
+	got := sink.anomalies[0]
+	if got.Kind != "coverage_drop" || got.Buckets != 2 {
+		t.Fatalf("anomaly = %+v, want coverage_drop after two buckets", got)
+	}
+	if got.Observed > 0.1 || got.Baseline < 0.9 {
+		t.Fatalf("coverage anomaly = %+v", got)
+	}
+	for _, a := range sink.anomalies {
+		if a.Kind == "health_drop" {
+			t.Fatal("a visibility drop was reported as a health drop")
+		}
+	}
+}
+
+func TestEvaluateStaysSilentOnCoverageWhileLearning(t *testing.T) {
+	t.Parallel()
+
+	src := newSource(map[state.State]int{state.Up: 5, state.Unknown: 95})
+	src.judgeable["global|"] = 100
+	src.coverage["global|"] = normalCoverage()[:10]
+	sink := &fakeSink{}
+
+	ev := anomaly.New(src, sink, "local")
+	ev.Now = func() time.Time { return time.Now() }
+
+	for i := 0; i < 3; i++ {
+		if n, _ := ev.Evaluate(context.Background()); n != 0 {
+			t.Fatalf("a short coverage history emitted %d anomalies", n)
+		}
 	}
 }

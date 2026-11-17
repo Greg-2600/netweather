@@ -3204,3 +3204,54 @@ func TestCrossVantageDisagreement(t *testing.T) {
 		t.Fatal("agreeing vantages were reported as a disagreement")
 	}
 }
+
+func TestScopeCoverageHistory(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	if err := s.Record(ctx, []store.Probe{probeAt(base, state.Up)}); err != nil {
+		t.Fatal(err)
+	}
+	// A second target with no confirmed state lowers the measurable share:
+	// one of two is measurable, so coverage is 0.5 while health is 1.0.
+	if err := s.UpsertTarget(ctx, store.Target{
+		ID: "t2", Host: "united.com", Port: 443, Probe: "http",
+		Name: "United", Class: "service", Tier: 2, IntervalS: 300,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SampleScopes(ctx, "local", base); err != nil {
+		t.Fatal(err)
+	}
+
+	health, err := s.ScopeHistory(ctx, "global", "", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coverage, err := s.ScopeCoverageHistory(ctx, "global", "", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(health) != 1 || len(coverage) != 1 {
+		t.Fatalf("health = %v coverage = %v, want one sample each", health, coverage)
+	}
+	if health[0] != 1.0 {
+		t.Fatalf("health = %v, want 1.0 (the one measurable target is up)", health[0])
+	}
+	if coverage[0] != 0.5 {
+		t.Fatalf("coverage = %v, want 0.5 (one of two targets measured)", coverage[0])
+	}
+
+	// A scope with no samples is an empty history, not an error.
+	empty, err := s.ScopeCoverageHistory(ctx, "country", "IR", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("empty coverage history = %v", empty)
+	}
+}

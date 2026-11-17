@@ -285,6 +285,10 @@ type boardView struct {
 	// Verdict is the one global verdict from DESIGN.md §3.3 and its sentence.
 	// An empty Verdict means the source is not wired, and the badge is omitted.
 	Verdict verdict.Result
+	// CoverageNote is set when the detector reports a coverage collapse. It is
+	// an advisory, not a tile colour: a mass bot-wall rollout must not read as
+	// a mass outage (DESIGN.md §7.2).
+	CoverageNote string
 }
 
 // healthView is the index as a page renders it. Weights are percentages and
@@ -879,6 +883,30 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 			humanBytes(s.deps.Budget.Used()), humanBytes(s.deps.Budget.Allowance()))
 	}
 
+	// A coverage collapse is an advisory, not a tile colour: a mass bot-wall
+	// rollout must not read as a mass outage (DESIGN.md §7.2). The newest one
+	// inside six hours gets a line; older advisories stay in the API.
+	if s.deps.Anomalies != nil {
+		anomalies, err := s.deps.Anomalies.Anomalies(r.Context(), 20)
+		if err != nil {
+			s.deps.Logger.Warn("anomalies failed",
+				"event", "anomalies_failed", "component", "http", "error", err)
+		}
+		now := s.now()
+		for _, a := range anomalies {
+			if a.Kind != "coverage_drop" {
+				continue
+			}
+			if now.Sub(a.TS) > 6*time.Hour {
+				break
+			}
+			view.CoverageNote = fmt.Sprintf(
+				"Coverage for %s fell to %.0f%% from a %.0f%% baseline at %s. That is a visibility loss, not an outage; the tiles keep their confirmed states.",
+				scopeLabel(a), a.Observed*100, a.Baseline*100, formatTimestamp(a.TS))
+			break
+		}
+	}
+
 	// The DNS divergence strip is collapsed by design: an advisory is not a
 	// board colour, and a failure here must not hide the board.
 	if s.deps.DNSObservations != nil {
@@ -970,6 +998,15 @@ func formatTimestamp(t time.Time) string {
 		return ""
 	}
 	return t.UTC().Format("2006-01-02 15:04")
+}
+
+// scopeLabel names one anomaly's scope in a sentence. Global has no value, so
+// it says "the fleet" rather than an empty string.
+func scopeLabel(a store.Anomaly) string {
+	if a.ScopeValue == "" {
+		return "the fleet"
+	}
+	return a.Scope + " " + a.ScopeValue
 }
 
 // pinLabel says whether an issuer baseline exists. "Learned" is not "safe": the

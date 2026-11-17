@@ -210,3 +210,43 @@ func (s *Store) ScopeHistory(ctx context.Context, scope, value string, at time.T
 	}
 	return samples, nil
 }
+
+// ScopeCoverageHistory returns the last 28 hourly coverage samples whose
+// hour-of-week matches at. It is the same window as ScopeHistory, kept separate
+// so a health drop and a visibility drop are two advisories rather than one
+// ambiguous number (DESIGN.md §7.2).
+func (s *Store) ScopeCoverageHistory(ctx context.Context, scope, value string, at time.Time) ([]float64, error) {
+	from := at.UTC().AddDate(0, 0, -baseline.Window).Truncate(time.Hour).UnixMilli() / 3600000
+
+	rows, err := s.reader.QueryContext(ctx, `
+		SELECT bucket, coverage FROM scope_sample
+		WHERE scope = ? AND scope_value = ? AND bucket >= ?
+		ORDER BY bucket`, scope, value, from)
+	if err != nil {
+		return nil, fmt.Errorf("store: scope coverage history: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	want := baseline.Key(at)
+	samples := make([]float64, 0, baseline.Window)
+	for rows.Next() {
+		var (
+			bucket   int64
+			coverage float64
+		)
+		if err := rows.Scan(&bucket, &coverage); err != nil {
+			return nil, fmt.Errorf("store: scan scope coverage history: %w", err)
+		}
+		if baseline.Key(time.UnixMilli(bucket*3600000)) != want {
+			continue
+		}
+		samples = append(samples, coverage)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: scope coverage history: %w", err)
+	}
+	if len(samples) > baseline.Window {
+		samples = samples[len(samples)-baseline.Window:]
+	}
+	return samples, nil
+}

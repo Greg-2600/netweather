@@ -19,6 +19,9 @@ type Source interface {
 	Scopes(ctx context.Context) ([]store.ScopeRef, error)
 	ScopeStatesFresh(ctx context.Context, vantageID, scope, value string, now time.Time) (map[state.State]int, int, error)
 	ScopeHistory(ctx context.Context, scope, value string, at time.Time) ([]float64, error)
+	// ScopeCoverageHistory is the same window for the measurable share. A
+	// coverage drop is its own advisory (DESIGN.md §7.2).
+	ScopeCoverageHistory(ctx context.Context, scope, value string, at time.Time) ([]float64, error)
 }
 
 // Sink records detections.
@@ -37,6 +40,13 @@ type Evaluator struct {
 	detectors map[string]*baseline.Detector
 	wideners  map[string]*baseline.DayWidener
 	last      map[string]time.Time
+
+	// Coverage has its own detectors, widening, and cooldown: a health drop and
+	// a visibility drop are different advisories and must not suppress each
+	// other (DESIGN.md §7.2).
+	coverageDetectors map[string]*baseline.Detector
+	coverageWideners  map[string]*baseline.DayWidener
+	coverageLast      map[string]time.Time
 }
 
 // New builds an evaluator with the documented cooldown.
@@ -50,6 +60,10 @@ func New(src Source, sink Sink, vantage string) *Evaluator {
 		detectors: make(map[string]*baseline.Detector),
 		wideners:  make(map[string]*baseline.DayWidener),
 		last:      make(map[string]time.Time),
+
+		coverageDetectors: make(map[string]*baseline.Detector),
+		coverageWideners:  make(map[string]*baseline.DayWidener),
+		coverageLast:      make(map[string]time.Time),
 	}
 }
 
@@ -77,6 +91,19 @@ func (e *Evaluator) Evaluate(ctx context.Context) (int, error) {
 		measurable := counts[state.Up] + counts[state.UpReachability] +
 			counts[state.Degraded] + counts[state.Down]
 		coverage := float64(measurable) / float64(judgeable)
+
+		// A collapse in coverage is the advisory that separates a mass bot-wall
+		// rollout from a mass outage, so it is checked before the health floors:
+		// the case that matters is exactly the one where the health detector
+		// must stay silent (DESIGN.md §7.2).
+		fired, err := e.evaluateCoverage(ctx, ref, key, coverage, now)
+		if err != nil {
+			return triggered, err
+		}
+		if fired {
+			triggered++
+		}
+
 		// Below these floors the scope is UNKNOWN, not unhealthy. Running the
 		// detector on it would turn a visibility failure into an incident.
 		if measurable < 8 || coverage < 0.5 {
@@ -99,7 +126,7 @@ func (e *Evaluator) Evaluate(ctx context.Context) (int, error) {
 		band, _ := widener.Observe(now, health, stats)
 
 		detector := e.detector(key)
-		fired, _ := detector.Push(health, band)
+		fired, _ = detector.Push(health, band)
 		if !fired {
 			continue
 		}
@@ -159,6 +186,69 @@ func (e *Evaluator) widener(key string) *baseline.DayWidener {
 		e.wideners[key] = w
 	}
 	return w
+}
+
+func (e *Evaluator) coverageDetector(key string) *baseline.Detector {
+	d, ok := e.coverageDetectors[key]
+	if !ok {
+		d = baseline.NewDetector()
+		e.coverageDetectors[key] = d
+	}
+	return d
+}
+
+func (e *Evaluator) coverageWidener(key string) *baseline.DayWidener {
+	w, ok := e.coverageWideners[key]
+	if !ok {
+		w = &baseline.DayWidener{}
+		e.coverageWideners[key] = w
+	}
+	return w
+}
+
+// evaluateCoverage reports a coverage collapse against the scope's own
+// hour-of-week history. It is an advisory, never an incident: a mass bot-wall
+// rollout and a mass outage look identical in the health number, and only the
+// coverage line tells them apart (DESIGN.md §7.2).
+func (e *Evaluator) evaluateCoverage(ctx context.Context, ref store.ScopeRef, key string, coverage float64, now time.Time) (bool, error) {
+	history, err := e.Source.ScopeCoverageHistory(ctx, ref.Scope, ref.Value, now)
+	if err != nil {
+		return false, err
+	}
+	stats := baseline.Compute(history)
+	if !stats.Usable() {
+		return false, nil
+	}
+
+	ckey := "coverage|" + key
+	band, _ := e.coverageWidener(ckey).Observe(now, coverage, stats)
+
+	detector := e.coverageDetector(ckey)
+	fired, _ := detector.Push(coverage, band)
+	if !fired {
+		return false, nil
+	}
+	detector.Reset()
+
+	if last, ok := e.coverageLast[ckey]; ok && now.Sub(last) < e.cooldown() {
+		return false, nil
+	}
+	e.coverageLast[ckey] = now
+
+	if err := e.Sink.RecordAnomaly(ctx, store.Anomaly{
+		TS:         now,
+		Scope:      ref.Scope,
+		ScopeValue: ref.Value,
+		Kind:       "coverage_drop",
+		Observed:   coverage,
+		Baseline:   band.Median,
+		MAD:        band.MAD,
+		Sigma:      band.Sigma(),
+		Buckets:    2,
+	}); err != nil {
+		return false, fmt.Errorf("anomaly: record coverage: %w", err)
+	}
+	return true, nil
 }
 
 // Loop evaluates every interval until ctx is done.
