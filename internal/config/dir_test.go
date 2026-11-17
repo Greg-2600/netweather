@@ -313,3 +313,40 @@ func TestLoadDirectoryIgnoresNonYAMLOverrides(t *testing.T) {
 		t.Fatalf("targets = %+v", f.Targets)
 	}
 }
+
+func TestLoadDirectoryDoHOverride(t *testing.T) {
+	t.Parallel()
+
+	root := writeDir(t, map[string]string{
+		"sites/reference/names.txt": "cloudflare-dns.com\n",
+		"overrides/doh.yaml": `target: cloudflare-dns.com
+probe: doh
+qname: example.com
+url: https://cloudflare-dns.com/dns-query
+interval: 600s
+`,
+	})
+	f, err := config.Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	got := f.Targets[0]
+	if got.Probe != "doh" {
+		t.Fatalf("probe = %q, want doh", got.Probe)
+	}
+	if got.QName != "example.com" || got.URL != "https://cloudflare-dns.com/dns-query" {
+		t.Fatalf("doh override = %+v", got)
+	}
+	if got.IntervalS != 600 {
+		t.Fatalf("interval = %d", got.IntervalS)
+	}
+
+	// A doh override without qname cannot ask a question; validation names it.
+	bad := writeDir(t, map[string]string{
+		"sites/reference/names.txt": "cloudflare-dns.com\n",
+		"overrides/doh.yaml":        "target: cloudflare-dns.com\nprobe: doh\n",
+	})
+	if _, err := config.Load(bad); err == nil || !strings.Contains(err.Error(), "qname") {
+		t.Fatalf("error = %v, want a qname refusal", err)
+	}
+}

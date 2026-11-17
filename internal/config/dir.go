@@ -158,6 +158,8 @@ type override struct {
 	Name      string  `yaml:"name"`
 	Sector    string  `yaml:"sector"`
 	Probe     string  `yaml:"probe"`
+	QName     string  `yaml:"qname"`
+	URL       string  `yaml:"url"`
 	Interval  string  `yaml:"interval"`
 	StatusURL string  `yaml:"status_url"`
 	Expect    *Expect `yaml:"expect"`
@@ -217,6 +219,15 @@ func applyOverrides(dir string, targets []Target) error {
 		}
 		if o.Probe != "" {
 			t.Probe = o.Probe
+		}
+		// qname and url belong to a doh override. An override is where a
+		// target gets a real check instead of a reachability guess (DESIGN.md
+		// §13.2), and DoH needs both to ask its question.
+		if o.QName != "" {
+			t.QName = o.QName
+		}
+		if o.URL != "" {
+			t.URL = o.URL
 		}
 		if o.StatusURL != "" {
 			t.StatusURL = o.StatusURL

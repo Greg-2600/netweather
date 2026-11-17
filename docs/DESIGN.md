@@ -1095,7 +1095,7 @@ expect:
   max_redirects: 3          # 0-20; zero uses the instrument's default of 5
 ```
 
-An override is a **change to a target that already exists**, not a way to add one: an unmatched `target` is a startup error, so a file that silently edits nothing cannot ship. The supported keys are the ones above plus `expect`; unknown keys, including a `tags` list the schema does not have, are rejected rather than ignored. `status_min`/`status_max` and a `status` list may coexist; a status admitted by either is accepted.
+An override is a **change to a target that already exists**, not a way to add one: an unmatched `target` is a startup error, so a file that silently edits nothing cannot ship. The supported keys are the ones above plus `qname` and `url` for a `doh` override (the question and the HTTPS endpoint, which providers locate differently), plus `expect`; unknown keys, including a `tags` list the schema does not have, are rejected rather than ignored. `status_min`/`status_max` and a `status` list may coexist; a status admitted by either is accepted.
 
 ### 13.3 Hot reload
 
