@@ -855,6 +855,17 @@ func buildFeedPollers(st *store.Store, lg *logging.Logger) []*feeds.Poller {
 				Sink:   st,
 				Every:  5 * time.Minute,
 			})
+		case "gcp-status":
+			gcp := feeds.NewGCPStatus(client)
+			if endpoint := strings.TrimSpace(os.Getenv("NETWEATHER_GCP_STATUS_URL")); endpoint != "" {
+				gcp.URL = endpoint
+			}
+			out = append(out, &feeds.Poller{
+				Feed:   "gcp-status",
+				Source: gcp,
+				Sink:   st,
+				Every:  5 * time.Minute,
+			})
 		}
 	}
 	return out
