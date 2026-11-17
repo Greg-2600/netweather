@@ -480,13 +480,16 @@ The floor is applied **after** jitter, as a final clamp.
 
 ```
 targets: 750 (service 400, country 250, network 100, reference 10)
-effective rate: 4.1 probes/s   peak concurrency: 64
-projected egress: ~9.4 GB/month
+effective rate: 4.1 probes/s
 blocked share: 11.2%   unmeasurable: 38
 asn coverage: 341   countries: 96   top-ASN share: 14.3% (Cloudflare)
 ```
 
 This exists because at 750 targets, **interval choice is the whole ballgame**, and users will get it wrong.
+
+**Implemented:** `netweather doctor` opens the database read-only (no migration, no write pool) and prints a three-line fleet block: target count by class, scheduled probes per second (sum of 1/interval), blocked share, unmeasurable count, distinct ASN and country coverage, and the most common ASN with its share. A host with no database yet says so instead of failing. `/metrics` exports the same numbers as `netweather_targets_class{class=...}`, `netweather_probe_rate_per_second`, `netweather_blocked_share`, `netweather_unmeasurable_targets`, `netweather_asn_coverage`, `netweather_countries`, `netweather_top_asn_share`, and a single `netweather_top_asn{asn,name}` series.
+
+The sketch's `peak concurrency` is deliberately absent: the shipped probe loop is one step at a time, so the number would always be 1. `projected egress` is absent from doctor and metrics because a stopped process has no byte counter; the running service reports the day's usage on the board banner and as `egress` in `/api/v1/meta`, and a monthly projection is that measured number times 30.
 
 ### 6.5 Cold start
 

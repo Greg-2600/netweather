@@ -8,12 +8,14 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/doctor"
 	"github.com/Greg-2600/netweather/internal/netx"
 	"github.com/Greg-2600/netweather/internal/probe"
+	"github.com/Greg-2600/netweather/internal/store"
 )
 
 // doctorCommand reports which instruments work on this host.
@@ -118,7 +120,76 @@ func doctorCommand(args []string, out io.Writer) error {
 		// the command's output, not a log record.
 		_, _ = fmt.Fprintf(out, "\n%d optional capability(ies) unavailable; probes continue with reduced fidelity\n", warnings)
 	}
+
+	// DESIGN.md §6.4: the fleet view exists to judge an interval choice. A
+	// fresh host has no database yet, which is stated rather than printed as an
+	// error.
+	if !*asJSON {
+		_, _ = fmt.Fprint(out, "\n"+fleetReport(dataDir))
+	}
 	return nil
+}
+
+// fleetReport reads the aggregate view without migrating or writing the
+// database, so a diagnostic never changes the file it inspects.
+func fleetReport(dataDir string) string {
+	path := filepath.Join(dataDir, "netweather.db")
+	if _, err := os.Stat(path); err != nil { // #nosec G703 -- operator-supplied data directory.
+		return "fleet: no database yet; start the service once to populate it\n"
+	}
+	ctx := context.Background()
+	st, err := store.OpenReadOnly(ctx, path)
+	if err != nil {
+		return fmt.Sprintf("fleet: unavailable: %v\n", err)
+	}
+	defer func() { _ = st.Close() }()
+
+	stats, err := st.FleetStats(ctx, "local")
+	if err != nil {
+		return fmt.Sprintf("fleet: unavailable: %v\n", err)
+	}
+	return formatFleet(stats)
+}
+
+// formatFleet renders the block from DESIGN.md §6.4.
+func formatFleet(s store.FleetStats) string {
+	classes := make([]string, 0, len(s.ByClass))
+	for class := range s.ByClass {
+		classes = append(classes, class)
+	}
+	sort.Strings(classes)
+	parts := make([]string, 0, len(classes))
+	for _, class := range classes {
+		name := class
+		if name == "" {
+			name = "unclassified"
+		}
+		parts = append(parts, fmt.Sprintf("%s %d", name, s.ByClass[class]))
+	}
+
+	blockedShare := 0.0
+	if s.Total > 0 {
+		blockedShare = 100 * float64(s.Blocked) / float64(s.Total)
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "fleet: %d target(s)", s.Total)
+	if len(parts) > 0 {
+		fmt.Fprintf(&b, " (%s)", strings.Join(parts, ", "))
+	}
+	b.WriteByte('\n')
+	fmt.Fprintf(&b, "       effective rate %.1f probes/s, blocked %.1f%%, unmeasurable %d\n",
+		s.EffectivePerSecond, blockedShare, s.Unmeasurable)
+	fmt.Fprintf(&b, "       ASN coverage %d, countries %d", s.ASNCount, s.CountryCount)
+	if s.TopASN > 0 {
+		fmt.Fprintf(&b, ", top ASN AS%d", s.TopASN)
+		if s.TopASNName != "" {
+			fmt.Fprintf(&b, " (%s)", s.TopASNName)
+		}
+		fmt.Fprintf(&b, " %.1f%%", 100*s.TopASNShare)
+	}
+	b.WriteByte('\n')
+	return b.String()
 }
 
 func countFailed(results []doctor.Result) int {

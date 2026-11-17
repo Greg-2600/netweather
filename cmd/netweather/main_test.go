@@ -1067,3 +1067,41 @@ func TestTorSocksCheck(t *testing.T) {
 		t.Fatal("a closed proxy was accepted")
 	}
 }
+
+func TestFormatFleet(t *testing.T) {
+	t.Parallel()
+
+	got := formatFleet(store.FleetStats{
+		ByClass:            map[string]int{"service": 6, "country": 2},
+		Total:              8,
+		EffectivePerSecond: 0.5,
+		Blocked:            2,
+		Unmeasurable:       1,
+		ASNCount:           3,
+		CountryCount:       4,
+		TopASN:             13335,
+		TopASNName:         "Cloudflare, Inc.",
+		TopASNCount:        4,
+		TopASNShare:        0.5,
+	})
+	for _, want := range []string{
+		"fleet: 8 target(s)",
+		"(country 2, service 6)",
+		"effective rate 0.5 probes/s, blocked 25.0%, unmeasurable 1",
+		"ASN coverage 3, countries 4",
+		"top ASN AS13335 (Cloudflare, Inc.) 50.0%",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("fleet block missing %q:\n%s", want, got)
+		}
+	}
+
+	// An empty fleet is a zero answer, not a missing top ASN line.
+	empty := formatFleet(store.FleetStats{})
+	if !strings.Contains(empty, "fleet: 0 target(s)") {
+		t.Fatalf("empty fleet = %q", empty)
+	}
+	if strings.Contains(empty, "top ASN") {
+		t.Fatalf("empty fleet invented a top ASN: %q", empty)
+	}
+}

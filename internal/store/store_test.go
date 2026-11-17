@@ -2702,3 +2702,97 @@ func TestColdStartAt(t *testing.T) {
 		t.Fatalf("cold start = %v, in the future", start)
 	}
 }
+
+func TestFleetStats(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	// A second class with a faster interval, so the rate sum is observable.
+	if err := s.UpsertTarget(ctx, store.Target{
+		ID: "t2", Host: "anchor.example", Port: 443, Probe: "http",
+		Name: "Anchor", Class: "country", Country: "IR", Tier: 3, IntervalS: 120,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateEnrichment(ctx, "t1", store.Enrichment{
+		ASN: 13335, ASName: "Cloudflare, Inc.", ASCountry: "US",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateEnrichment(ctx, "t2", store.Enrichment{
+		ASN: 64500, ASName: "Example Net", ASCountry: "IR",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	if err := s.Record(ctx, []store.Probe{
+		probeAt(base, state.Down),
+		{TargetID: "t2", VantageID: "local", TS: base, State: state.Blocked, Stage: "http"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.FleetStats(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Total != 2 || got.ByClass["service"] != 1 || got.ByClass["country"] != 1 {
+		t.Fatalf("classes = %+v total=%d", got.ByClass, got.Total)
+	}
+	wantRate := 1.0/300 + 1.0/120
+	if got.EffectivePerSecond < wantRate-1e-9 || got.EffectivePerSecond > wantRate+1e-9 {
+		t.Fatalf("rate = %v, want %v", got.EffectivePerSecond, wantRate)
+	}
+	if got.Blocked != 1 || got.Unmeasurable != 0 {
+		t.Fatalf("states = blocked %d unmeasurable %d", got.Blocked, got.Unmeasurable)
+	}
+	// Only t2 declares a country; the seed target does not.
+	if got.ASNCount != 2 || got.CountryCount != 1 {
+		t.Fatalf("coverage = %d ASNs, %d countries", got.ASNCount, got.CountryCount)
+	}
+	// A tie goes to the lower ASN, so the answer is stable.
+	if got.TopASN != 13335 || got.TopASNName != "Cloudflare, Inc." || got.TopASNCount != 1 {
+		t.Fatalf("top ASN = %+v", got)
+	}
+	if got.TopASNShare != 0.5 {
+		t.Fatalf("top share = %v, want 0.5", got.TopASNShare)
+	}
+
+	// An empty fleet is a zero answer, not an error.
+	empty, _ := openTest(t)
+	none, err := empty.FleetStats(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if none.Total != 0 || none.TopASN != 0 || none.TopASNShare != 0 {
+		t.Fatalf("empty fleet = %+v", none)
+	}
+}
+
+func TestOpenReadOnlyDoesNotMigrate(t *testing.T) {
+	t.Parallel()
+
+	s, path := openTest(t)
+	seed(t, s)
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	readOnly, err := store.OpenReadOnly(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = readOnly.Close() }()
+
+	stats, err := readOnly.FleetStats(context.Background(), "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Total != 1 {
+		t.Fatalf("read-only fleet total = %d, want 1", stats.Total)
+	}
+}

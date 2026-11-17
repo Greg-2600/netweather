@@ -10,13 +10,16 @@ import (
 
 	"github.com/Greg-2600/netweather/internal/metrics"
 	"github.com/Greg-2600/netweather/internal/state"
+	"github.com/Greg-2600/netweather/internal/store"
 )
 
 type fakeSource struct {
 	counts    map[state.State]int
 	open      int
+	fleet     store.FleetStats
 	countsErr error
 	openErr   error
+	fleetErr  error
 }
 
 func (f *fakeSource) StateCounts(context.Context, string) (map[state.State]int, error) {
@@ -25,6 +28,10 @@ func (f *fakeSource) StateCounts(context.Context, string) (map[state.State]int, 
 
 func (f *fakeSource) OpenIncidentCount(context.Context) (int, error) {
 	return f.open, f.openErr
+}
+
+func (f *fakeSource) FleetStats(context.Context, string) (store.FleetStats, error) {
+	return f.fleet, f.fleetErr
 }
 
 func scrape(t *testing.T, src metrics.Source) *httptest.ResponseRecorder {
@@ -43,6 +50,19 @@ func TestExposition(t *testing.T) {
 			state.Down: 3, state.Up: 7, state.Blocked: 2, state.Degraded: 1,
 		},
 		open: 2,
+		fleet: store.FleetStats{
+			ByClass:            map[string]int{"service": 6, "country": 2},
+			Total:              8,
+			EffectivePerSecond: 0.25,
+			Blocked:            2,
+			Unmeasurable:       1,
+			ASNCount:           3,
+			CountryCount:       4,
+			TopASN:             13335,
+			TopASNName:         "Cloudflare, Inc.",
+			TopASNCount:        4,
+			TopASNShare:        0.5,
+		},
 	}
 	rec := scrape(t, src)
 
