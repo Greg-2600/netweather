@@ -1105,3 +1105,48 @@ func TestFormatFleet(t *testing.T) {
 		t.Fatalf("empty fleet invented a top ASN: %q", empty)
 	}
 }
+
+func TestConfigStampSeesANestedConfigEdit(t *testing.T) {
+	dir := t.TempDir()
+	nested := filepath.Join(dir, "sites", "financial")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	targets := filepath.Join(nested, "banking.txt")
+	if err := os.WriteFile(targets, []byte("chase.com\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := configStamp(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Editing a file under the tree must move the stamp even though the root
+	// directory's own mtime does not change. The explicit timestamp keeps the
+	// test independent of filesystem mtime resolution.
+	if err := os.WriteFile(targets, []byte("chase.com\nunited.com\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(targets, future, future); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := configStamp(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("a nested config edit did not change the stamp")
+	}
+
+	// A file path stamps its own mtime and size.
+	fileStamp, err := configStamp(targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileStamp == "" || fileStamp == first {
+		t.Fatalf("file stamp = %q", fileStamp)
+	}
+}

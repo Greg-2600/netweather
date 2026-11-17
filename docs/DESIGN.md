@@ -1021,9 +1021,11 @@ Base image, hardening, capabilities, and supply chain: see [`IMAGE.md`](IMAGE.md
 
 ### 13.2 Config layout
 
+`NETWEATHER_CONFIG` may point at a single YAML file or at a directory. The directory form is for a large list: the sector is the path, so adding a sector means adding a file, not repeating a tag on every line.
+
 ```
 config/
-  netweather.yaml          # global: intervals, limits, feeds, listen
+  netweather.yaml          # optional: version, extra targets, corridors
   sites/
     financial/banking.txt      # one domain per line
     financial/payments.txt
@@ -1036,27 +1038,29 @@ config/
   corridors.yaml
 ```
 
-The directory path **is** the sector/sub-sector. Adding a sector means adding a folder — no tagging to maintain.
+The path under `sites/`, without the extension, **is** the sector/sub-sector: `financial/banking.txt` produces sector `financial/banking`.
 
-`sites/*.txt` defaults: `https://<domain>/`, `http` probe, `interval: 300s`, `expect.status: [200..399]`, `confidence: reachability`.
+`sites/*.txt` defaults: `http` probe on 443, `interval: 300s`, any 2xx/3xx status (`expect.status_min: 200`, `expect.status_max: 399`), or reachability only (no content assertion). Blank lines and `#` comments are ignored. The single-file `targets.yaml` form in the README stays the default; the directory form is loaded by the same `config.Load`, so the existing file schema keeps working.
+
+`netweather.yaml` may carry `targets:` and `corridors:` that do not belong to a sector file. It does **not** carry the listen address, auth, log settings, or feed tokens: those stay environment variables, because a second source of truth for them is how two configs drift.
 
 ```yaml
 # overrides/chase.yaml
-target: www.chase.com
+target: chase.com          # must match a host from sites/ or netweather.yaml
 name: Chase
 sector: financial/banking
-probe: tls               # reachability only; HTTP is bot-walled
+probe: tls                 # reachability only; HTTP is bot-walled
 interval: 600s
+status_url: https://www.chasestatus.com/
 expect:
   status: [200, 301, 302]
-  max_redirects: 3
-status_url: null
-tags: [hard-target]
 ```
+
+An override is a **change to a target that already exists**, not a way to add one: an unmatched `target` is a startup error, so a file that silently edits nothing cannot ship. The supported keys are the ones above plus `expect`; unknown keys, including a `tags` list the schema does not have, are rejected rather than ignored. `status_min`/`status_max` and a `status` list may coexist; a status admitted by either is accepted.
 
 ### 13.3 Hot reload
 
-Config files are watched; a valid change applies without restart. Invalid changes are rejected, logged, and the previous config stays live. A config error must never take the monitor down.
+Config changes apply without a restart. The path is polled every 30 seconds rather than watched, because config edits are rare, the check is one walk, and inotify does not follow into every bind mount. For a directory the stamp is the newest mtime, total size, and file count across the tree, so editing `sites/financial/banking.txt` is seen even though the directory's own mtime did not move. Invalid changes are rejected, logged, and the previous config stays live. A config error must never take the monitor down.
 
 ---
 

@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/agent"
@@ -42,23 +44,58 @@ func reloadTargets(ctx context.Context, st *store.Store, ag *agent.Agent, lg *sl
 	return nil
 }
 
-// configLoop polls the target file and reloads on change. Polling rather than a
-// filesystem watcher because config edits are rare, the check is one stat, and
-// inotify does not follow into every bind mount.
+// configStamp is the change signal for a config path. A file's mtime and size
+// are enough. A directory needs a walk: editing sites/financial/banking.txt does
+// not change the directory's own mtime, so a stat on the root would miss the
+// edit that matters.
+func configStamp(path string) (string, error) {
+	info, err := os.Stat(path) // #nosec G703 -- operator-supplied NETWEATHER_CONFIG.
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return fmt.Sprintf("%d|%d", info.ModTime().UnixNano(), info.Size()), nil
+	}
+
+	var (
+		newest int64
+		total  int64
+		count  int
+	)
+	err = filepath.WalkDir(path, func(p string, entry os.DirEntry, err error) error { // #nosec G703 -- operator-supplied NETWEATHER_CONFIG.
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		fi, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if mt := fi.ModTime().UnixNano(); mt > newest {
+			newest = mt
+		}
+		total += fi.Size()
+		count++
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%d|%d|%d", newest, total, count), nil
+}
+
+// configLoop polls the target file or directory and reloads on change. Polling
+// rather than a filesystem watcher because config edits are rare, the check is
+// one walk, and inotify does not follow into every bind mount.
 func configLoop(ctx context.Context, st *store.Store, ag *agent.Agent, lg *slog.Logger) {
 	path := os.Getenv("NETWEATHER_CONFIG")
 	if path == "" {
 		return
 	}
 
-	var (
-		lastMod  time.Time
-		lastSize int64
-	)
-	// #nosec G703 -- path is the operator-supplied NETWEATHER_CONFIG.
-	if info, err := os.Stat(path); err == nil {
-		lastMod, lastSize = info.ModTime(), info.Size()
-	}
+	last, _ := configStamp(path)
 
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -68,15 +105,14 @@ func configLoop(ctx context.Context, st *store.Store, ag *agent.Agent, lg *slog.
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// #nosec G703 -- path is the operator-supplied NETWEATHER_CONFIG.
-			info, err := os.Stat(path)
+			stamp, err := configStamp(path)
 			if err != nil {
 				continue
 			}
-			if info.ModTime().Equal(lastMod) && info.Size() == lastSize {
+			if stamp == last {
 				continue
 			}
-			lastMod, lastSize = info.ModTime(), info.Size()
+			last = stamp
 
 			if err := reloadTargets(ctx, st, ag, lg); err != nil {
 				// The old target set stays live: a typo must not stop monitoring.

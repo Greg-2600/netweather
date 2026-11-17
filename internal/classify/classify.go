@@ -52,6 +52,12 @@ type Response struct {
 // reachability only".
 type Expected struct {
 	Status []int // defaults to 200,203,204,301,302
+	// StatusMin and StatusMax express a range ("any 2xx/3xx") without listing
+	// two hundred integers. A valid range is checked before the list, so a
+	// directory-loaded target can accept 200-399 while a specific target still
+	// names three codes.
+	StatusMin int
+	StatusMax int
 
 	BodyContains    string
 	BodyNotContains string
@@ -90,8 +96,12 @@ func (e Expected) HasSemantic() bool {
 
 // StatusAllowed reports whether status is in the expected set (or the default).
 func (e Expected) StatusAllowed(status int) bool {
+	if e.StatusMin > 0 && e.StatusMax >= e.StatusMin &&
+		status >= e.StatusMin && status <= e.StatusMax {
+		return true
+	}
 	allowed := e.Status
-	if len(allowed) == 0 {
+	if len(allowed) == 0 && e.StatusMin == 0 && e.StatusMax == 0 {
 		allowed = defaultStatuses
 	}
 	for _, s := range allowed {

@@ -516,3 +516,30 @@ func TestLowMTUGateMakesATimeoutUnmeasurable(t *testing.T) {
 		t.Fatalf("tcp_refused under a low MTU = %s, want down", got.State)
 	}
 }
+
+func TestStatusRange(t *testing.T) {
+	t.Parallel()
+
+	expect := classify.Expected{StatusMin: 200, StatusMax: 399}
+	for _, code := range []int{200, 204, 301, 399} {
+		if !expect.StatusAllowed(code) {
+			t.Errorf("%d was rejected by a 200-399 range", code)
+		}
+	}
+	for _, code := range []int{404, 500, 199} {
+		if expect.StatusAllowed(code) {
+			t.Errorf("%d was accepted by a 200-399 range", code)
+		}
+	}
+
+	// A range and an explicit list can coexist: either admits the code.
+	both := classify.Expected{Status: []int{503}, StatusMin: 200, StatusMax: 299}
+	if !both.StatusAllowed(503) || !both.StatusAllowed(201) || both.StatusAllowed(302) {
+		t.Fatalf("range plus list = %+v", both)
+	}
+
+	// With no range and no list the defaults still apply.
+	if !(classify.Expected{}).StatusAllowed(200) || (classify.Expected{}).StatusAllowed(404) {
+		t.Fatal("the default status set changed")
+	}
+}

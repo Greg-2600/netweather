@@ -78,7 +78,12 @@ type Target struct {
 
 // Expect is the semantic contract, mirroring classify.Expected.
 type Expect struct {
-	Status          []int  `yaml:"status"`
+	Status []int `yaml:"status"`
+	// StatusMin and StatusMax accept a range without listing every code. The
+	// directory loader uses 200-399 for a sector list, where "any success or
+	// redirect" is the honest default.
+	StatusMin       int    `yaml:"status_min"`
+	StatusMax       int    `yaml:"status_max"`
 	BodyContains    string `yaml:"body_contains"`
 	BodyNotContains string `yaml:"body_not_contains"`
 	BodyRegex       string `yaml:"body_regex"`
@@ -103,6 +108,8 @@ func (t Target) Interval() time.Duration {
 func (e Expect) Classify() (classify.Expected, error) {
 	out := classify.Expected{
 		Status:          e.Status,
+		StatusMin:       e.StatusMin,
+		StatusMax:       e.StatusMax,
 		BodyContains:    e.BodyContains,
 		BodyNotContains: e.BodyNotContains,
 		TitleContains:   e.TitleContains,
@@ -123,11 +130,14 @@ func (e Expect) Classify() (classify.Expected, error) {
 	return out, nil
 }
 
-// Load reads, parses, and validates a target file.
+// Load reads a target file, or a documented config directory (DESIGN.md §13.2).
 func Load(path string) (*File, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("config: %w", err)
+	}
+	if info.IsDir() {
+		return loadDir(path)
 	}
 	if info.Size() > MaxFileBytes {
 		return nil, fmt.Errorf("config: %s is %d bytes; limit is %d", path, info.Size(), MaxFileBytes)
@@ -352,6 +362,14 @@ func validateTarget(t *Target) error {
 	for _, status := range t.Expect.Status {
 		if status < 100 || status > 599 {
 			return fmt.Errorf("expect.status %d is not a valid HTTP status", status)
+		}
+	}
+	if t.Expect.StatusMin != 0 || t.Expect.StatusMax != 0 {
+		if t.Expect.StatusMin < 100 || t.Expect.StatusMin > 599 {
+			return fmt.Errorf("expect.status_min %d is not a valid HTTP status", t.Expect.StatusMin)
+		}
+		if t.Expect.StatusMax < t.Expect.StatusMin || t.Expect.StatusMax > 599 {
+			return fmt.Errorf("expect.status_max %d must be between status_min and 599", t.Expect.StatusMax)
 		}
 	}
 	if t.Expect.HeaderValue != "" && t.Expect.HeaderName == "" {

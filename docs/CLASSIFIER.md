@@ -234,6 +234,16 @@ expect:
   status: [200, 203, 204, 301, 302]   # 3xx only if redirects exhausted
 ```
 
+A target may also name a range instead of listing every code:
+
+```yaml
+expect:
+  status_min: 200
+  status_max: 399
+```
+
+A status admitted by the range **or** the list is accepted; with neither, the default set above applies. The directory loader (`DESIGN.md` §13.2) gives its `sites/*.txt` targets the 200-399 range, because a sector list is a "does it answer" list rather than a per-site contract. `status_min` must be a valid HTTP status and `status_max` must be between it and 599; anything else is a startup error.
+
 ### 5.2 Status table
 
 | Status | Classification | Rationale |
