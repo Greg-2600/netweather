@@ -2986,6 +2986,28 @@ type stateEvent struct {
 	Since  string `json:"since,omitempty"`
 }
 
+// stateEventFor is the one wire shape for a tile's state, used by both the
+// connect snapshot and every delta so the client has a single parser.
+func stateEventFor(t board.Target) stateEvent {
+	since := ""
+	if !t.Since.IsZero() {
+		since = t.Since.UTC().Format("15:04 MST")
+	}
+	return stateEvent{
+		Target: t.Host, Name: t.Name, State: string(t.State),
+		Text: t.State.Text(), Glyph: t.State.Glyph(),
+		Class: t.State.CSSClass(), Since: since,
+	}
+}
+
+// snapshotEvent is the one full state a connection receives, immediately after
+// the preamble. Deltas follow it; a change is never amplified into a whole
+// grid, but the grid is sent once because the page was rendered before this
+// stream existed.
+type snapshotEvent struct {
+	Targets []stateEvent `json:"targets"`
+}
+
 // logEvent is one WARN-or-above line on the UI stream. The full ring stays in
 // the diagnostics page; this is the "something to notice right now" feed.
 type logEvent struct {
@@ -2994,8 +3016,11 @@ type logEvent struct {
 	Message string `json:"message"`
 }
 
-// handleEvents streams state deltas only. The page renders the full board; the
-// stream never resends it, so a slow client cannot amplify one change into a
+// handleEvents streams one state snapshot per connection and then deltas only.
+// The page renders the full board, but that render and this connection are not
+// atomic: a change in the gap would otherwise be inside the baseline and never
+// shown, leaving the page stale until the next change. The snapshot is bounded
+// by connections, not by changes, so one event still cannot amplify into a
 // whole grid.
 func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -3074,6 +3099,27 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// One snapshot per connection, then deltas only. The page HTML was
+	// rendered before this stream existed, so a change in that gap would
+	// otherwise be inside the baseline and never shown; the page would stay
+	// stale until the next change. This is bounded by connections, never by
+	// changes, so a diff still cannot amplify one event into a whole grid.
+	ids := make([]string, 0, len(last))
+	for id := range last {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	events := make([]stateEvent, 0, len(ids))
+	for _, id := range ids {
+		events = append(events, stateEventFor(last[id]))
+	}
+	if data, err := json.Marshal(snapshotEvent{Targets: events}); err == nil {
+		if _, err := fmt.Fprintf(w, "event: snapshot\ndata: %s\n\n", data); err != nil {
+			return
+		}
+		flusher.Flush()
+	}
+
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
@@ -3134,15 +3180,7 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 				if prev, seen := last[id]; seen && prev.State == t.State {
 					continue
 				}
-				since := ""
-				if !t.Since.IsZero() {
-					since = t.Since.UTC().Format("15:04 MST")
-				}
-				data, err := json.Marshal(stateEvent{
-					Target: t.Host, Name: t.Name, State: string(t.State),
-					Text: t.State.Text(), Glyph: t.State.Glyph(),
-					Class: t.State.CSSClass(), Since: since,
-				})
+				data, err := json.Marshal(stateEventFor(t))
 				if err != nil {
 					continue
 				}

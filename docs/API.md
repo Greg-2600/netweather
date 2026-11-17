@@ -29,7 +29,7 @@ Honesty first, because a spec that implies more than the binary does is worse th
 | `GET /api/v1/corridors` | **implemented** - configured path pairs with their newest sample and open step change |
 | `GET /api/v1/ihi` | **implemented** - the Internet Health Index with its components and what was dropped (`DESIGN.md` §11) |
 | `GET /metrics` | **implemented** - aggregate Prometheus text; off unless `NETWEATHER_METRICS=true`; bearer auth when a token is set |
-| `GET /events` | **implemented** - the UI's SSE stream; session cookie auth, not bearer. The API-facing counterpart is `GET /api/v1/events` (§6.17) |
+| `GET /events` | **implemented** - the UI's SSE stream; session cookie auth, not bearer. One `snapshot` on connect, then `state` deltas. The API-facing counterpart is `GET /api/v1/events` (§6.17) |
 | Everything else in §7 | **implemented** — the section is kept as the action/index surface, not a backlog |
 
 `GET /api/v1/meta` returns the list of implemented capabilities, so a client can discover the truth at runtime instead of trusting this table.

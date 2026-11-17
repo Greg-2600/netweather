@@ -70,6 +70,21 @@
     if (applyState(d)) recount();
   });
 
+  // One full state per connection, sent before any delta. The page HTML was
+  // rendered before the stream connected, so a change in that gap would
+  // otherwise never reach the browser.
+  es.addEventListener("snapshot", (ev) => {
+    let d;
+    try {
+      d = JSON.parse(ev.data);
+    } catch {
+      return;
+    }
+    if (!d || !Array.isArray(d.targets)) return;
+    for (const t of d.targets) applyState(t);
+    recount();
+  });
+
   // The incident pages are small and attribution is stored at open time, so a
   // reload is safer than patching rows and risking a stale reason.
   es.addEventListener("incident", () => {

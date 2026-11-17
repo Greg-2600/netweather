@@ -4972,3 +4972,55 @@ func TestBoardSaysWhenTheEgressMoved(t *testing.T) {
 		})
 	}
 }
+
+func TestSSESnapshotCoversAPreConnectChange(t *testing.T) {
+	t.Parallel()
+
+	m := fixture()
+	ts := newServer(t, testToken, m)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	// The page has rendered; the change lands before the stream connects.
+	// Without a snapshot it would be inside the baseline and never sent.
+	m.Set("2", board.StateUp)
+
+	streamClient := &http.Client{Jar: client.Jar} // no timeout: the stream stays open
+	resp, err := streamClient.Get(ts.URL + "/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	lines := make(chan string, 64)
+	go func() {
+		defer close(lines)
+		sc := bufio.NewScanner(resp.Body)
+		for sc.Scan() {
+			lines <- sc.Text()
+		}
+	}()
+
+	waitForLine(t, lines, "retry:", 5*time.Second)
+	waitForLine(t, lines, "event: snapshot", 5*time.Second)
+
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case line, ok := <-lines:
+			if !ok {
+				t.Fatal("stream closed before the snapshot data")
+			}
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			if !strings.Contains(line, `"target":"united.com"`) ||
+				!strings.Contains(line, `"state":"up"`) {
+				t.Fatalf("snapshot did not carry the pre-connect state: %s", line)
+			}
+			return
+		case <-deadline:
+			t.Fatal("timed out waiting for the snapshot data")
+		}
+	}
+}
