@@ -160,6 +160,7 @@ Every environment variable the binary reads, including the ones that exist for a
 | `NETWEATHER_DATA` | `./data` | SQLite database and rotated log file |
 | `NETWEATHER_UI_LISTEN` | `0.0.0.0:2600` | HTTP bind address |
 | `NETWEATHER_TRUSTED_PROXIES` | none | comma-separated CIDRs or addresses whose `X-Forwarded-For` is believed for per-client limits and log lines; empty trusts nobody, and a malformed entry refuses startup (`docs/NETWORKING.md` §7.3) |
+| `NETWEATHER_REDACT_EGRESS` | `false` | hides the literal egress address on `/api/v1/selfcheck` while keeping its ASN and country; the stored tuple stays exact for `VANTAGE_CHANGED` (`docs/THREAT_MODEL.md` T65) |
 | `NETWEATHER_UI_TOKEN` / `NETWEATHER_UI_TOKEN_FILE` | none | session and bearer token, minimum 16 characters; `_FILE` is preferred so the token is not in the environment |
 | `NETWEATHER_UI_SECURE_COOKIES` | `false` | `true` marks the session cookie `Secure`; set it behind TLS |
 | `NETWEATHER_CONTACT` | none | contact address in the probe `User-Agent`; unset logs `contact_missing` at startup and sends a visible `<contact>` placeholder, because an unattributed monitor is indistinguishable from a scanner |

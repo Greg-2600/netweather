@@ -21,6 +21,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/ihi"
 	"github.com/Greg-2600/netweather/internal/logging"
+	"github.com/Greg-2600/netweather/internal/selfcheck"
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/streamlimit"
@@ -230,6 +231,10 @@ type Deps struct {
 	CoverageHistory CoverageHistoryReader
 	// SelfChecks reads the latest self-health results. Nil disables the route.
 	SelfChecks SelfCheckReader
+	// RedactEgress hides the literal egress address in self-check values while
+	// keeping the ASN and country (THREAT_MODEL.md T65). The stored value stays
+	// exact so VANTAGE_CHANGED can compare it.
+	RedactEgress bool
 	// Exporter streams observations. Nil disables the route.
 	Exporter Exporter
 	// Feeds reads external corroboration. Nil disables the route.
@@ -1634,8 +1639,14 @@ func (s *server) handleSelfCheck(w http.ResponseWriter, r *http.Request) {
 
 	out := make([]selfCheckItem, 0, len(rows))
 	for _, c := range rows {
+		value := c.Value
+		if s.deps.RedactEgress && c.Check == "egress-ip" {
+			// Keep the ASN and country: the point of the display is still
+			// "which network am I on", not the literal address.
+			value = selfcheck.RedactEgressValue(value)
+		}
 		out = append(out, selfCheckItem{
-			Check: c.Check, OK: c.OK, Value: c.Value, Detail: c.Detail,
+			Check: c.Check, OK: c.OK, Value: value, Detail: c.Detail,
 			TS: c.TS.UTC().Format(time.RFC3339),
 		})
 	}

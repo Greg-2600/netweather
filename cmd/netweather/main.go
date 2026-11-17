@@ -440,6 +440,7 @@ func serve(lg *logging.Logger) error {
 		Coverage:        st,
 		CoverageHistory: st,
 		SelfChecks:      st,
+		RedactEgress:    strings.EqualFold(strings.TrimSpace(os.Getenv("NETWEATHER_REDACT_EGRESS")), "true"),
 		Exporter:        st,
 		Feeds:           st,
 		Debug:           scopes,

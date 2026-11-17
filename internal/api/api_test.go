@@ -4322,3 +4322,58 @@ func TestAPICarriesMeasurability(t *testing.T) {
 		t.Fatalf("detail = %+v", detailEnv.Data)
 	}
 }
+
+func TestSelfCheckRedactsEgressWhenAsked(t *testing.T) {
+	t.Parallel()
+
+	rows := []store.SelfCheck{
+		{Check: "egress-ip", OK: true, Value: "203.0.113.9,AS7922,US"},
+		{Check: "clock", OK: true, Value: "2026-11-17T12:00:00Z"},
+	}
+
+	build := func(t *testing.T, redact bool, rows []store.SelfCheck) http.Handler {
+		t.Helper()
+
+		h, err := api.New(
+			api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+			api.Deps{
+				Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+				SelfChecks:   &fakeSelfChecks{rows: rows},
+				RedactEgress: redact,
+			},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return h
+	}
+
+	rec := do(build(t, true, rows), http.MethodGet, "/api/v1/selfcheck", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	var env struct {
+		Data []struct {
+			Check string `json:"check"`
+			Value string `json:"value"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if len(env.Data) != 2 {
+		t.Fatalf("data = %+v", env.Data)
+	}
+	if env.Data[0].Value != "[redacted],AS7922,US" {
+		t.Fatalf("egress value = %q, want the address hidden and the ASN kept", env.Data[0].Value)
+	}
+	if env.Data[1].Value != "2026-11-17T12:00:00Z" {
+		t.Fatalf("a non-egress check was redacted: %q", env.Data[1].Value)
+	}
+
+	// Without the flag the exact tuple is exposed, which is the default.
+	rec = do(build(t, false, rows), http.MethodGet, "/api/v1/selfcheck", testToken)
+	if !strings.Contains(rec.Body.String(), "203.0.113.9,AS7922,US") {
+		t.Fatalf("an unredacted read lost the address: %s", rec.Body)
+	}
+}

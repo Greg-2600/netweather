@@ -689,3 +689,21 @@ func TestValueChangeUsesTheCheckName(t *testing.T) {
 		t.Fatal("a failed observation was reported as a change")
 	}
 }
+
+func TestRedactEgressValue(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct{ in, want string }{
+		{"203.0.113.9,AS7922,US", "[redacted],AS7922,US"},
+		{"2001:db8::1,AS64500,DE", "[redacted],AS64500,DE"},
+		{"203.0.113.9", "[redacted]"},
+		{"", ""},
+		{"not-an-address", "not-an-address"},
+		{"unavailable: dial tcp: timeout", "unavailable: dial tcp: timeout"},
+	}
+	for _, tc := range cases {
+		if got := selfcheck.RedactEgressValue(tc.in); got != tc.want {
+			t.Errorf("RedactEgressValue(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}

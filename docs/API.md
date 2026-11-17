@@ -624,6 +624,8 @@ Auth: bearer. The blind-spot panel. It reports **measurement**, not health: a do
 
 Auth: bearer. The newest result for each self-health check. This answers "can the monitor see at all?", which is a different question from "is the internet up?".
 
+When `NETWEATHER_REDACT_EGRESS=true`, the `egress-ip` value's literal address is replaced with `[redacted]` and the ASN and country are kept. The stored value is unchanged, so `VANTAGE_CHANGED` still compares the real tuple.
+
 ```json
 {
   "data": [

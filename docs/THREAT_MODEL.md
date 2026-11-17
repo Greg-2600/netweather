@@ -244,7 +244,7 @@ Residual: encryption at rest is the host's responsibility. The document says so 
 
 | ID | Threat | Mitigation | Status |
 |---|---|---|---|
-| T65 | Dashboard reveals egress ASN/IP | Deliberate: the tool's honesty depends on showing its vantage. An optional "redact egress" display mode hides the literal IP, not the ASN | Policy |
+| T65 | Dashboard reveals egress ASN/IP | Deliberate: the tool's honesty depends on showing its vantage. `NETWEATHER_REDACT_EGRESS=true` hides the literal address on `/api/v1/selfcheck` while keeping the ASN and country; the stored tuple stays exact, because `VANTAGE_CHANGED` must compare it. Display-only: logs keep the address for debugging. | Enforced (opt-in display) |
 | T66 | Target list reveals the operator's interests | Auth-gated; not in any public endpoint; no telemetry | Enforced |
 | T67 | Telemetry or analytics | None. No outbound request that is not a probe, a feed poll, or a self-check | Enforced |
 | T68 | Logs contain tokens or full URLs with credentials | Structured logs redact `Authorization`, cookies, query strings on `/login`, and feed tokens | Enforced |
