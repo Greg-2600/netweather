@@ -221,7 +221,7 @@ Preferred: run Tailscale as a sidecar and let it proxy to the app, without shari
 
 Rejected alternative: `network_mode: "service:tailscale"`. It is simpler, but it puts netweather in Tailscale's network namespace, which means **if that Tailscale node has an exit node configured, every probe egresses through the exit node** — your primary vantage silently becomes someone else's network. The app would detect it (`VANTAGE_CHANGED`) but the user would have no idea why. Do not couple the measurement plane to the access plane.
 
-If you do use namespace sharing, `netweather doctor` must refuse to start when `TS_EXIT_NODE`-style routing is detected. Better to not allow it.
+If you do use namespace sharing, be aware that the app cannot detect it from inside: the exit node is configured on the Tailscale side, and nothing in the netweather container can see that. What it can see is the consequence — the egress IP and ASN change, and maintenance logs `event=vantage_changed` with the previous and new tuple (`DESIGN.md` §7.5). That is a detection of the symptom, not a refusal to start, and the docs say so rather than promising a guardrail the container cannot implement. The default compose file does not use namespace sharing.
 
 ### 7.3 Reverse proxy details
 

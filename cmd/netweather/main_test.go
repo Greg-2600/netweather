@@ -1559,3 +1559,34 @@ func TestTrustedProxiesFromEnv(t *testing.T) {
 		t.Fatalf("trailing comma = (%v, %v)", got, err)
 	}
 }
+
+func TestNextDropReport(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name                    string
+		prevDropped, prevErrors uint64
+		dropped, writeErrors    uint64
+		report                  bool
+		droppedDelta            uint64
+		writeDelta              uint64
+	}{
+		{"quiet", 0, 0, 0, 0, false, 0, 0},
+		{"unchanged after a report", 5, 2, 5, 2, false, 0, 0},
+		{"new drops", 5, 2, 9, 2, true, 4, 0},
+		{"new write errors", 5, 2, 5, 3, true, 0, 1},
+		{"both", 0, 0, 1, 1, true, 1, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			report, droppedDelta, writeDelta := nextDropReport(
+				tc.prevDropped, tc.prevErrors, tc.dropped, tc.writeErrors)
+			if report != tc.report || droppedDelta != tc.droppedDelta || writeDelta != tc.writeDelta {
+				t.Fatalf("nextDropReport = (%v, %d, %d), want (%v, %d, %d)",
+					report, droppedDelta, writeDelta, tc.report, tc.droppedDelta, tc.writeDelta)
+			}
+		})
+	}
+}

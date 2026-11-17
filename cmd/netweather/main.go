@@ -1962,6 +1962,25 @@ func splitList(raw string) []string {
 	return out
 }
 
+// nextDropReport decides whether a maintenance tick should report lost log
+// lines. The counters are cumulative, so a tick reports the deltas and the
+// running totals, and a quiet tick reports nothing. LOGGING.md §8 asks for one
+// line per interval rather than one per lost record, because a failing sink
+// would otherwise multiply the problem it is reporting.
+func nextDropReport(prevDropped, prevWriteErrors, dropped, writeErrors uint64) (bool, uint64, uint64) {
+	if dropped <= prevDropped && writeErrors <= prevWriteErrors {
+		return false, 0, 0
+	}
+	var droppedDelta, writeDelta uint64
+	if dropped > prevDropped {
+		droppedDelta = dropped - prevDropped
+	}
+	if writeErrors > prevWriteErrors {
+		writeDelta = writeErrors - prevWriteErrors
+	}
+	return true, droppedDelta, writeDelta
+}
+
 // maintenanceLoop folds closed rollups, applies retention, and runs the
 // self-checks. It runs once at startup so a long downtime self-heals, then every
 // ten minutes.
@@ -2052,9 +2071,25 @@ func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger, s
 	}
 
 	lastCoverageDay := ""
+	// LOGGING.md §8: dropped lines and write errors are counted, and the count
+	// is reported once per maintenance interval rather than once per lost
+	// line. The counters are cumulative, so the event carries the delta since
+	// the previous tick plus the running totals.
+	var lastDropped, lastWriteErrors uint64
 	run := func() {
 		runSelfChecks()
 		runDebugPrune()
+
+		dropped, writeErrors := lg.Dropped(), lg.WriteErrors()
+		if report, droppedDelta, writeDelta := nextDropReport(lastDropped, lastWriteErrors, dropped, writeErrors); report {
+			lg.Warn("log sink dropped lines",
+				"event", "log_dropped", "component", "logging",
+				"dropped", droppedDelta,
+				"write_errors", writeDelta,
+				"dropped_total", dropped,
+				"write_errors_total", writeErrors)
+		}
+		lastDropped, lastWriteErrors = dropped, writeErrors
 
 		now := time.Now()
 		if day := now.UTC().Format("2006-01-02"); day != lastCoverageDay {

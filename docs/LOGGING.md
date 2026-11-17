@@ -178,7 +178,7 @@ Configuration:
 Log writes go through a 4,096-line asynchronous buffer.
 
 - **Writes never block.** If the buffer is full, the line is dropped and counted. A slow stdout — a paused `docker logs`, a full disk, a remote logging driver — must not stall the scheduler, because a stalled scheduler produces missed probes, which the rest of the system correctly reports as an outage. Logging must not be able to cause a fake incident.
-- **Drops are visible.** `Dropped()` and `WriteErrors()` surface through self-health as `log_dropped`, emitted once per interval with a count, never once per dropped line.
+- **Drops are visible.** `Dropped()` and `WriteErrors()` are cumulative counters on the logger. Every maintenance tick compares them with the previous tick and emits one `event=log_dropped` with the deltas and the running totals, never one line per dropped record: a failing sink must not multiply the problem it is reporting. The same counters appear on `/diagnostics`.
 - **Shutdown flushes.** `Close()` drains the buffer before closing the file, in that order.
 
 This is the one place where losing data is the right answer.
