@@ -18,8 +18,13 @@ import (
 const (
 	sessionCookieName = "nw_session"
 	csrfCookieName    = "nw_csrf"
-	sessionTTL        = 12 * time.Hour
-	csrfTTL           = 10 * time.Minute
+	// A session expires after 12h without use and never outlives 7d from login,
+	// however active it is (THREAT_MODEL.md T7). The idle window slides on use;
+	// the absolute cap does not.
+	sessionIdleTTL      = 12 * time.Hour
+	sessionAbsoluteTTL  = 7 * 24 * time.Hour
+	sessionRefreshAfter = 5 * time.Minute
+	csrfTTL             = 10 * time.Minute
 )
 
 // authenticator issues stateless, HMAC-signed session cookies. The key is
@@ -52,21 +57,52 @@ func newAuthenticator(token string, secure bool) *authenticator {
 
 func (a *authenticator) disabled() bool { return a.token == "" }
 
-func (a *authenticator) issueSession(now time.Time) string {
-	exp := strconv.FormatInt(now.Add(sessionTTL).Unix(), 10)
-	return sign(a.key, exp)
+// session is the verified payload of a session cookie: when the operator
+// logged in and when the idle window closes. The issue time is what makes the
+// absolute cap independent of activity.
+type session struct {
+	issued  time.Time
+	expires time.Time
 }
 
-func (a *authenticator) validSession(v string, now time.Time) bool {
-	payload, ok := verify(a.key, v)
+// issueSession signs a session that expires after the idle window. issued is the
+// original login time and is preserved across refreshes, so reissuing cannot
+// extend a session past sessionAbsoluteTTL.
+func (a *authenticator) issueSession(now, issued time.Time) string {
+	payload := strconv.FormatInt(issued.Unix(), 10) + "." +
+		strconv.FormatInt(now.Add(sessionIdleTTL).Unix(), 10)
+	return sign(a.key, payload)
+}
+
+// sessionClaims verifies a cookie and checks both lifetimes. The order matters:
+// the signature first, then the idle deadline, then the absolute cap.
+func (a *authenticator) sessionClaims(value string, now time.Time) (session, bool) {
+	payload, ok := verify(a.key, value)
 	if !ok {
-		return false
+		return session{}, false
 	}
-	exp, err := strconv.ParseInt(payload, 10, 64)
+	parts := strings.Split(payload, ".")
+	if len(parts) != 2 {
+		return session{}, false
+	}
+	issuedUnix, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
-		return false
+		return session{}, false
 	}
-	return now.Unix() < exp
+	expUnix, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return session{}, false
+	}
+
+	issued := time.Unix(issuedUnix, 0)
+	expires := time.Unix(expUnix, 0)
+	if !now.Before(expires) {
+		return session{}, false
+	}
+	if now.Sub(issued) > sessionAbsoluteTTL {
+		return session{}, false
+	}
+	return session{issued: issued, expires: expires}, true
 }
 
 func (a *authenticator) checkToken(candidate string) bool {
@@ -122,7 +158,7 @@ func (a *authenticator) setSessionCookie(w http.ResponseWriter, value string, no
 		HttpOnly: true,
 		Secure:   a.secure,
 		SameSite: http.SameSiteLaxMode,
-		Expires:  now.Add(sessionTTL),
+		Expires:  now.Add(sessionIdleTTL),
 	})
 }
 
@@ -152,15 +188,16 @@ func (a *authenticator) setCSRFCookie(w http.ResponseWriter, value string, now t
 	})
 }
 
-func (a *authenticator) sessionFrom(r *http.Request) (string, bool) {
+func (a *authenticator) sessionFrom(r *http.Request) (string, session, bool) {
 	c, err := r.Cookie(sessionCookieName)
 	if err != nil {
-		return "", false
+		return "", session{}, false
 	}
-	if !a.validSession(c.Value, time.Now()) {
-		return "", false
+	claims, ok := a.sessionClaims(c.Value, time.Now())
+	if !ok {
+		return "", session{}, false
 	}
-	return c.Value, true
+	return c.Value, claims, true
 }
 
 func (a *authenticator) csrfFrom(r *http.Request) (string, bool) {
@@ -181,15 +218,23 @@ func (a *authenticator) csrfMatches(r *http.Request, formValue string) bool {
 
 // requireSession protects the board and the event stream. It redirects to the
 // login page rather than returning 401, because this is a browser surface.
+// When the request is authenticated more than sessionRefreshAfter past the last
+// refresh, the cookie is reissued with a fresh idle deadline and the original
+// issue time, so activity extends the idle window but never the 7-day cap.
 func (s *server) requireSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.auth.disabled() {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if _, ok := s.auth.sessionFrom(r); !ok {
+		_, claims, ok := s.auth.sessionFrom(r)
+		if !ok {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
+		}
+		now := s.now()
+		if now.Sub(claims.expires.Add(-sessionIdleTTL)) >= sessionRefreshAfter {
+			s.auth.setSessionCookie(w, s.auth.issueSession(now, claims.issued), now)
 		}
 		next.ServeHTTP(w, r)
 	})

@@ -104,7 +104,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet, http.MethodHead:
-		if _, ok := s.auth.sessionFrom(r); ok {
+		if _, _, ok := s.auth.sessionFrom(r); ok {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
@@ -141,7 +141,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		s.auth.setSessionCookie(w, s.auth.issueSession(now), now)
+		s.auth.setSessionCookie(w, s.auth.issueSession(now, now), now)
 		s.deps.Logger.Info("login ok", "event", "login_ok", "component", "http", "client", s.clientIP(r))
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 
