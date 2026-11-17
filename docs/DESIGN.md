@@ -568,6 +568,8 @@ So:
 
 The absolute floors matter as much as the ratio. A scope of 10 targets at `coverage = 1.0` has a perfect ratio and almost no information; `measurable < 8` is not a healthy scope, it is a scope that cannot support a verdict.
 
+**Implemented, the low-coverage band:** when `measurable < 20` or `coverage < 0.80`, the health detector's band is widened 1.5x before the trigger is evaluated, exactly as the middle row says. The widening is applied after the atypical-day widener and before `Detector.Push`, so a small or partly measurable scope needs a larger drop before it can alarm; the floors below still stop detection entirely.
+
 A collapse in coverage is itself an event: if `coverage` for a scope falls below `median - 3σ` of its own baseline, emit `COVERAGE_DROP` as an **advisory**, never `INCIDENT`. A mass bot-wall rollout and a mass outage look identical in the health number, and only the coverage line tells them apart.
 
 **Implemented:** `internal/anomaly` runs a second detector over the coverage series with its own detectors, day-widening, and cooldown, so a visibility drop and a health drop cannot suppress each other. It runs **before** the health floors, because the case that matters — a scope that has become mostly unmeasurable — is exactly where health detection must stay silent. The row is `anomaly.kind = 'coverage_drop'` with the observed coverage and its baseline, it never opens an incident, `/api/v1/anomalies` lists it, and the board shows the newest one inside six hours as an advisory banner that says the loss is visibility rather than an outage. `store.ScopeCoverageHistory` reads the `coverage` column from the same hour-of-week `scope_sample` window as the health history.

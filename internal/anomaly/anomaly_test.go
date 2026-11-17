@@ -348,3 +348,98 @@ func TestEvaluateStaysSilentOnCoverageWhileLearning(t *testing.T) {
 		}
 	}
 }
+
+// varyingHistory gives the detector a real spread, so widening the band has an
+// observable effect. All-equal history has zero MAD and widens nothing.
+func varyingHistory() []float64 {
+	h := make([]float64, 28)
+	for i := range h {
+		if i%2 == 0 {
+			h[i] = 0.85
+		} else {
+			h[i] = 0.95
+		}
+	}
+	return h
+}
+
+func TestLowCoverageWidensTheBand(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+
+	// Coverage 0.6 (30 of 50) and health 0.633: below the normal 3-sigma band,
+	// inside the widened 4.5-sigma one. The documented rule says do not fire.
+	src := newSource(map[state.State]int{state.Up: 19, state.Down: 11})
+	src.judgeable["global|"] = 50
+	src.history["global|"] = varyingHistory()
+	sink := &fakeSink{}
+
+	ev := anomaly.New(src, sink, "local")
+	ev.Now = func() time.Time { return now }
+	for i := 0; i < 2; i++ {
+		_, _ = ev.Evaluate(context.Background())
+		now = now.Add(5 * time.Minute)
+	}
+	for _, a := range sink.anomalies {
+		if a.Kind == "health_drop" {
+			t.Fatalf("a low-coverage scope fired a health anomaly: %+v", a)
+		}
+	}
+}
+
+func TestFullCoverageUsesTheNormalBand(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+
+	// Coverage 0.8 and health 0.625: the same shape without the widening, so
+	// it crosses the normal lower bound and fires.
+	src := newSource(map[state.State]int{state.Up: 25, state.Down: 15})
+	src.judgeable["global|"] = 50
+	src.history["global|"] = varyingHistory()
+	sink := &fakeSink{}
+
+	ev := anomaly.New(src, sink, "local")
+	ev.Now = func() time.Time { return now }
+	for i := 0; i < 2; i++ {
+		_, _ = ev.Evaluate(context.Background())
+		now = now.Add(5 * time.Minute)
+	}
+
+	fired := false
+	for _, a := range sink.anomalies {
+		if a.Kind == "health_drop" {
+			fired = true
+		}
+	}
+	if !fired {
+		t.Fatalf("a full-coverage drop did not fire: %+v", sink.anomalies)
+	}
+}
+
+func TestSmallScopeWidensTheBandEvenAtFullCoverage(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+
+	// Ten measurable targets is below the absolute floor, so the ratio is
+	// perfect and the information is not. Health 0.6 is below the normal band
+	// but inside the widened one.
+	src := newSource(map[state.State]int{state.Up: 6, state.Down: 4})
+	src.judgeable["global|"] = 10
+	src.history["global|"] = varyingHistory()
+	sink := &fakeSink{}
+
+	ev := anomaly.New(src, sink, "local")
+	ev.Now = func() time.Time { return now }
+	for i := 0; i < 2; i++ {
+		_, _ = ev.Evaluate(context.Background())
+		now = now.Add(5 * time.Minute)
+	}
+	for _, a := range sink.anomalies {
+		if a.Kind == "health_drop" {
+			t.Fatalf("a ten-target scope fired a health anomaly: %+v", a)
+		}
+	}
+}

@@ -125,6 +125,14 @@ func (e *Evaluator) Evaluate(ctx context.Context) (int, error) {
 		widener := e.widener(key)
 		band, _ := widener.Observe(now, health, stats)
 
+		// A small or partially measurable denominator is noisy, so the band
+		// widens 1.5x (DESIGN.md §7.2). The floors below stop detection
+		// entirely; this keeps a scope of 15 at full coverage from producing a
+		// confident alarm on a three-point wobble.
+		if measurable < 20 || coverage < 0.80 {
+			band.MAD *= 1.5
+		}
+
 		detector := e.detector(key)
 		fired, _ = detector.Push(health, band)
 		if !fired {
