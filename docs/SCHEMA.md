@@ -824,7 +824,7 @@ The row counts follow from `DESIGN.md` §6.1: tier 0 at 30s, tiers 1 and 3 at 12
 |---|---|---|
 | Probe | per tier, 30s–600s | scheduler |
 | Scope health evaluation | fixed 5 min, UTC-aligned | `target_state` + freshness filter |
-| Baseline sample | 1 per hour-of-week slot | median of that hour's 12 evaluations |
+| Baseline sample | 1 per hour-of-week slot | latest evaluation inside the hour (upsert); the 28-sample median/MAD is the robust layer |
 | Detection | 2 consecutive 5-min evaluations | `DESIGN.md` §7.2 trigger |
 
 Scope health is `SELECT … FROM target_state WHERE last_probe_at >= now - freshness`, where `freshness = min(2 × interval + 30s, 15 min)`. It is **not** `SUM` over `rollup_5m` rows for the bucket. A 600s target therefore contributes a constant one observation per evaluation instead of flickering between one and zero, which is the entire source of the sawtooth.

@@ -600,7 +600,7 @@ So:
 |---|---|---|
 | Probe | per tier, 30s–600s | scheduler (§6.1) |
 | Scope health | fixed 5 min, UTC-aligned | `target_state`, freshness-weighted |
-| Baseline sample | 1 per hour-of-week slot | median of that hour's 12 evaluations |
+| Baseline sample | 1 per hour-of-week slot | latest evaluation inside the hour (upsert); the 28-sample median/MAD is the robust layer |
 | Detection | 2 consecutive 5-min evaluations | the trigger above |
 
 **Scope health reads last-known state, not bucket counts.** A target counts as an observation when `now - last_probe_at <= freshness`, where `freshness = min(2 × interval + 30s, 15 min)`. A target probed once per 10 minutes is a low-resolution sensor, not a missing one; its state persists between probes.
@@ -980,7 +980,7 @@ Every probe and rollup row carries `vantage_id`, and rollups are keyed `(target_
 | Daily rollups | 1y | ~16 MB |
 | Incidents, anomalies, external events | forever / 90d | small |
 
-Steady state ≈ **340 MB** for 750 targets at ~430k probes/day, with a hard ceiling well under 1 GB. Nightly prune job, batched deletes of ≤5000 rows, and **one write transaction per dispatcher tick** — never one fsync per probe.
+Steady state ≈ **340 MB** for 750 targets at ~430k probes/day, with a hard ceiling well under 1 GB. The maintenance tick (ten minutes) folds and prunes in batches of ≤5000 rows, and **one write transaction per dispatcher tick** — never one fsync per probe.
 
 **Implemented, the prune:** `store.Prune` deletes raw probes in 5,000-row batches, then the archive at one year, then the three rollup tiers at 7/30/365 days, then `anomaly` and `external_event` at 90 days. Feed events are aged on `observed_at`, so an event a feed is still reporting keeps refreshing and a long outage is not deleted while it is current; an anomaly is aged on its own timestamp. Incidents are never pruned.
 
@@ -1095,7 +1095,7 @@ Config changes apply without a restart. The path is polled every 30 seconds rath
 | Allowed ports (outbound) | 80, 443, 53 (DNS), 123 (NTP, fixed allowlist), 853 (DoT, phase 3). **22 and everything else excluded.** |
 | Inbound port | `2600` only; no other listener. Non-loopback bind requires auth (`NETWORKING.md` §7.1) |
 | API rate limit | 60 req/min per token, burst 20, `429` with `Retry-After` (`API.md` §8) |
-| Allowed methods | GET, HEAD |
+| Allowed probe methods | GET, HEAD. The API's POST actions (pause, resume, annotate, trace, disable) are not outbound probes |
 | ICMP | Echo request only, never to private ranges, never the sole up/down signal |
 | Traceroute | On-demand or anomaly-triggered only; ≤10 runs/hour; never to private ranges |
 | NTP | Fixed allowlist of clock sources only - never an arbitrary host. **Implemented:** config refuses an `ntp` target outside `pool.ntp.org` (including numbered members), `time.cloudflare.com`, `time.google.com`, `time.apple.com`, and `time.windows.com` |
@@ -1104,7 +1104,7 @@ Config changes apply without a restart. The path is polled every 30 seconds rath
 | Tor volume | Off by default; ≤25 targets per vantage; ≥2s spacing; daily MB budget with hard stop |
 | Private ranges | RFC1918, loopback, link-local, CGNAT `100.64.0.0/10`, `169.254.169.254`, IPv6 ULA - **blocked after DNS resolution and after every redirect**. In Docker this includes `172.17.0.1` (the host) and `host.docker.internal` — see `NETWORKING.md` §6 |
 | Max targets | 2000 |
-| Max redirects | 5 |
+| Max redirects | per target, 0-20, default 5 (`expect.max_redirects`); exhaustion returns the last 3xx rather than an error |
 | Max body read | 32 KB |
 | Daily egress budget | 2 GB default, hard stop with a banner - the backstop for every rate above. **Implemented:** `NETWEATHER_DAILY_MB` wraps the direct dialer's connections, suspends the agent at the limit until UTC midnight, and shows the banner |
 | Default bind | `0.0.0.0:2600`. Non-loopback listen requires auth; `ui.auth: none` + non-loopback refuses to start unless `ui.allow_public: true` is also set (`NETWORKING.md` §7.1) |
