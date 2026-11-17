@@ -876,8 +876,8 @@ Rules:
 
 ## 10. OpenAPI and contract tests
 
-- `docs/openapi.yaml` will be **generated from the handlers**, not hand-written, when the endpoint set stabilises around phase 1. A hand-written spec for unimplemented endpoints rots immediately.
-- Until then this document is the contract, and the implemented slice is covered by `internal/api/api_test.go`:
+- **Deliberately not shipped: `docs/openapi.yaml`.** The earlier plan was to generate it from the handlers, but Go's `net/http` mux has no handler introspection, and two of these routes are subtree handlers (`/api/v1/targets/`, `/api/v1/incidents/`) whose real paths live inside the handler. A source-parsing generator would therefore emit a partial spec, and a partial spec is worse than none: a client would trust the absence of a path. Shipping a hand-written file instead is exactly the rot this document warns about. The contract is this document plus `GET /api/v1/meta` for runtime feature detection, and the shapes below are pinned by tests rather than by a generated file.
+- This document is the contract, and the implemented slice is covered by `internal/api/api_test.go`:
   - envelope shape on success and failure
   - `code` values and status mapping
   - auth required on `/api/*`, absent on `/healthz`
