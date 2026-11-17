@@ -21,6 +21,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/ihi"
 	"github.com/Greg-2600/netweather/internal/logging"
+	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/streamlimit"
 	"github.com/Greg-2600/netweather/internal/verdict"
@@ -1220,6 +1221,23 @@ type targetView struct {
 	// of that answer.
 	Why     []diagnosticsRecord
 	WhyNote string
+	// Vantages is every vantage's confirmed state for this target. A
+	// disagreement is what makes REGIONAL distinct from a service outage
+	// (DESIGN.md §7.1); RegionalNote names it in words.
+	Vantages     []vantageStateView
+	RegionalNote string
+}
+
+// vantageStateView is one vantage's row in the drawer.
+type vantageStateView struct {
+	ID      string
+	Kind    string
+	Role    string
+	State   string
+	Text    string
+	Glyph   string
+	Since   string
+	Primary bool
 }
 
 // targetCorroborationView is one feed event near the target's scope.
@@ -1323,6 +1341,43 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 		vantage := s.deps.Vantage
 		if vantage == "" {
 			vantage = "local"
+		}
+
+		// Every vantage's answer, so a disagreement is shown rather than called
+		// global (DESIGN.md §7.1). A failed read is a missing panel, not a
+		// missing target.
+		if s.deps.Vantages == nil {
+			view.RegionalNote = "Vantage comparison is not configured on this instance."
+		} else {
+			rows, err := s.deps.Vantages.TargetVantages(r.Context(), t.ID)
+			switch {
+			case err != nil:
+				s.deps.Logger.Warn("vantage comparison failed",
+					"event", "vantage_comparison_failed", "component", "http",
+					"target", t.Host, "error", err)
+				view.RegionalNote = "Vantage comparison is temporarily unavailable."
+			case len(rows) == 0:
+				view.RegionalNote = "No vantage has probed this target yet."
+			default:
+				primaryDown, otherUp := false, false
+				for _, row := range rows {
+					st := state.State(row.State)
+					view.Vantages = append(view.Vantages, vantageStateView{
+						ID: row.ID, Kind: row.Kind, Role: row.Role,
+						State: row.State, Text: st.Text(), Glyph: st.Glyph(),
+						Since: formatTimestamp(row.Since), Primary: row.Role == "primary",
+					})
+					if row.Role == "primary" && st == state.Down {
+						primaryDown = true
+					}
+					if row.Role != "primary" && (st == state.Up || st == state.UpReachability) {
+						otherUp = true
+					}
+				}
+				if primaryDown && otherUp {
+					view.RegionalNote = "The primary vantage cannot reach this target but another vantage can: this is a regional path problem, not a service outage."
+				}
+			}
 		}
 
 		if s.deps.Series == nil {

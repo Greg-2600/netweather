@@ -3307,3 +3307,46 @@ func TestFailureSpread(t *testing.T) {
 		t.Fatalf("empty spread = %d/%d", empty, emptyASN)
 	}
 }
+
+func TestTargetVantagesReportsBothPaths(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	if err := s.EnsureVantage(ctx, "tor-1", "socks5", "corroboration"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Record(ctx, []store.Probe{
+		probeAt(base, state.Down),
+		{TargetID: "t1", VantageID: "tor-1", TS: base, State: state.Up, Stage: "http", Confidence: "high"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.TargetVantages(ctx, "t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("vantages = %+v, want two", got)
+	}
+	// Primary first, so the reader sees the board's own answer before the
+	// corroborating one.
+	if got[0].ID != "local" || got[0].Role != "primary" || got[0].State != string(state.Down) {
+		t.Fatalf("primary = %+v", got[0])
+	}
+	if got[1].ID != "tor-1" || got[1].State != string(state.Up) {
+		t.Fatalf("corroboration = %+v", got[1])
+	}
+	if got[0].Since.IsZero() || got[0].LastProbe.IsZero() {
+		t.Fatalf("times missing: %+v", got[0])
+	}
+
+	// A target no vantage has probed is an empty list, not an error.
+	if empty, err := s.TargetVantages(ctx, "missing"); err != nil || len(empty) != 0 {
+		t.Fatalf("missing target = (%+v, %v)", empty, err)
+	}
+}

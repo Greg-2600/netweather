@@ -4144,3 +4144,107 @@ func TestCoveragePanelMarksTheLowCoverageBand(t *testing.T) {
 		t.Error("the badge does not say low")
 	}
 }
+
+type fakeVantageStates struct {
+	rows []store.VantageState
+	err  error
+}
+
+func (f *fakeVantageStates) TargetVantages(context.Context, string) ([]store.VantageState, error) {
+	return f.rows, f.err
+}
+
+func newServerWithVantages(t *testing.T, token string, m *board.Memory, v web.VantageStates) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		Vantages:  v,
+		Token:     token,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestTargetDrawerShowsRegionalDisagreement(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	states := &fakeVantageStates{rows: []store.VantageState{
+		{ID: "local", Kind: "direct", Role: "primary", State: "down", Since: at},
+		{ID: "tor-1", Kind: "socks5", Role: "corroboration", State: "up", Since: at},
+	}}
+	ts := newServerWithVantages(t, testToken, fixture(), states)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="target-vantages"`) {
+		t.Fatalf("vantages panel missing:\n%s", page)
+	}
+	for _, want := range []string{"local", "tor-1", "corroboration"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("vantages panel missing %q", want)
+		}
+	}
+	if !strings.Contains(page, `data-testid="regional-note"`) ||
+		!strings.Contains(page, "regional path problem") {
+		t.Fatalf("a down/up split was not called regional:\n%s", page)
+	}
+}
+
+func TestTargetDrawerWithoutVantageComparison(t *testing.T) {
+	t.Parallel()
+
+	// No reader: the panel states that comparison is not configured instead of
+	// rendering an empty table.
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	if !strings.Contains(page, `data-testid="regional-note"`) ||
+		!strings.Contains(page, "not configured") {
+		t.Fatalf("an unwired comparison was silent:\n%s", page)
+	}
+}
+
+func TestTargetDrawerShowsAgreeingVantagesQuietly(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	states := &fakeVantageStates{rows: []store.VantageState{
+		{ID: "local", Role: "primary", State: "down", Since: at},
+		{ID: "tor-1", Role: "corroboration", State: "down", Since: at},
+	}}
+	ts := newServerWithVantages(t, testToken, fixture(), states)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	if strings.Contains(page, "regional path problem") {
+		t.Fatal("agreeing vantages were called regional")
+	}
+}

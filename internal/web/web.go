@@ -58,6 +58,9 @@ type Deps struct {
 	// Anomalies supplies detector advisories for the board. Nil omits the
 	// coverage advisory rather than implying coverage is steady.
 	Anomalies AnomalyReader
+	// Vantages supplies every vantage's state for a target, so the drawer can
+	// show a regional disagreement rather than calling it global.
+	Vantages VantageStates
 	// DNSObservations supplies the board's collapsed DNS divergence strip.
 	DNSObservations DNSObservations
 	// Logs supplies the ring and logging setup for the diagnostics page and
@@ -189,6 +192,13 @@ type VerdictSource interface {
 // to be able to say it without turning a tile red.
 type AnomalyReader interface {
 	Anomalies(ctx context.Context, limit int) ([]store.Anomaly, error)
+}
+
+// VantageStates supplies every vantage's confirmed state for a target. It is
+// how a REGIONAL disagreement is shown rather than called global (DESIGN.md
+// §7.1). Nil omits the panel rather than implying one path.
+type VantageStates interface {
+	TargetVantages(ctx context.Context, targetID string) ([]store.VantageState, error)
 }
 
 // DNSObservations supplies the board's collapsed DNS divergence strip. Nil

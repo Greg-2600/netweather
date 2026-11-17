@@ -554,7 +554,13 @@ Auth: bearer. One target with its current state and metadata.
     "dns_detail": "one resolver disagrees with its own baseline (1.1.1.1:53: NXDOMAIN where this resolver answered before)",
     "dns_at": "2026-11-17T12:00:00Z",
     "ix_names": "AMS-IX, DE-CIX Frankfurt",
-    "status_url": "https://status.chase.com/"
+    "status_url": "https://status.chase.com/",
+    "vantages": [
+      {"id": "local", "kind": "direct", "role": "primary", "state": "down",
+       "since": "2026-11-17T12:00:00Z", "last_probe": "2026-11-17T12:04:00Z"},
+      {"id": "tor-1", "kind": "socks5", "role": "corroboration", "state": "up",
+       "since": "2026-11-17T11:58:00Z", "last_probe": "2026-11-17T12:03:00Z"}
+    ]
   },
   "meta": {"request_id": "…"}
 }
@@ -562,6 +568,7 @@ Auth: bearer. One target with its current state and metadata.
 
 - `404` for an unknown or disabled target.
 - `since` is absent for a target that has never been probed; the state is then `unknown`.
+- `vantages` is every vantage's confirmed state for this target, primary first. It is how a client sees a regional split: one vantage `down` and another `up` means the path, not the service (`DESIGN.md` §7.1). The block is absent when no vantage reader is configured.
 - Certificate fields come from the last TLS observation and are absent when the last probe was not TLS. They describe the leaf certificate.
 - `cert_chain_len` and `cert_intermediate_spki` are the *learned* chain shape from the pin baseline (migration `0015`), not the last observation. A chain-shape change is informational and never changes `state`.
 - `cert_leaf_fingerprint` is the learned leaf fingerprint (migration `0016`). It is absent until a TLS probe has been seen; a rotation is informational.

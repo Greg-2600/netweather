@@ -131,6 +131,26 @@
       <p class="muted" data-testid="no-history">Probe history is not configured on this instance.</p>
       {{end}}
 
+      <h2 class="section-title">Vantages</h2>
+      {{if .Vantages}}
+      <table class="probes" data-testid="target-vantages">
+        <thead><tr><th>Vantage</th><th>Role</th><th>State</th><th>Since</th></tr></thead>
+        <tbody>
+          {{range .Vantages}}
+          <tr data-testid="target-vantage-row" data-vantage="{{.ID}}" data-state="{{.State}}">
+            <td class="mono">{{.ID}}</td>
+            <td>{{.Role}}</td>
+            <td><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Text}}</td>
+            <td class="mono">{{.Since}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{end}}
+      {{if .RegionalNote}}
+      <p class="muted" data-testid="regional-note">{{.RegionalNote}}</p>
+      {{end}}
+
       <h2 class="section-title">Why?</h2>
       {{if .Why}}
       <table class="probes log-table" data-testid="target-why">

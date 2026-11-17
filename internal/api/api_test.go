@@ -4137,3 +4137,78 @@ func TestTargetDisable(t *testing.T) {
 		t.Fatalf("unauthenticated status = %d", rec.Code)
 	}
 }
+
+type fakeVantageStates struct {
+	rows []store.VantageState
+	err  error
+}
+
+func (f *fakeVantageStates) TargetVantages(context.Context, string) ([]store.VantageState, error) {
+	return f.rows, f.err
+}
+
+func TestTargetDetailCarriesEveryVantage(t *testing.T) {
+	t.Parallel()
+
+	since := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	targets := &fakeTargets{rows: map[string]store.TargetRow{
+		"t1": {
+			Target: store.Target{
+				ID: "t1", Host: "chase.com", Port: 443, Probe: "http",
+				Name: "Chase", Class: "service", Tier: 2, IntervalS: 300,
+			},
+			State: state.Down, Since: since,
+		},
+	}}
+	vantages := &fakeVantageStates{rows: []store.VantageState{
+		{ID: "local", Kind: "direct", Role: "primary", State: "down", Since: since, LastProbe: since},
+		{ID: "tor-1", Kind: "socks5", Role: "corroboration", State: "up", Since: since, LastProbe: since},
+	}}
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Targets:   targets,
+			Vantages:  vantages,
+			Vantage:   "local",
+			Version:   "test",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+
+	rec := do(h, http.MethodGet, "/api/v1/targets/t1", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+	}
+	var env struct {
+		Data struct {
+			Vantages []struct {
+				ID    string `json:"id"`
+				Role  string `json:"role"`
+				State string `json:"state"`
+			} `json:"vantages"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if len(env.Data.Vantages) != 2 {
+		t.Fatalf("vantages = %+v, want two", env.Data.Vantages)
+	}
+	if env.Data.Vantages[0].ID != "local" || env.Data.Vantages[0].State != "down" {
+		t.Fatalf("primary = %+v", env.Data.Vantages[0])
+	}
+	if env.Data.Vantages[1].ID != "tor-1" || env.Data.Vantages[1].State != "up" {
+		t.Fatalf("corroboration = %+v", env.Data.Vantages[1])
+	}
+
+	// Without a reader the block is absent, not an empty list.
+	rec = do(newTargetDetailHandler(t, targets, nil), http.MethodGet, "/api/v1/targets/t1", testToken)
+	if strings.Contains(rec.Body.String(), `"vantages"`) {
+		t.Fatalf("an unconfigured comparison was reported: %s", rec.Body)
+	}
+}

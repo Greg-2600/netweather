@@ -102,6 +102,13 @@ type VerdictSource interface {
 	Build(ctx context.Context) verdict.Result
 }
 
+// VantageStates supplies every vantage's confirmed state for a target. It is
+// how a REGIONAL disagreement is exposed rather than called global
+// (DESIGN.md §7.1). Nil omits the block.
+type VantageStates interface {
+	TargetVantages(ctx context.Context, targetID string) ([]store.VantageState, error)
+}
+
 // IncidentAnnotator records the operator's ground truth for an incident. It is
 // the hook that turns a stored incident into a labelled example.
 type IncidentAnnotator interface {
@@ -213,6 +220,9 @@ type Deps struct {
 	Anomalies AnomalyReader
 	// Targets reads one target with its current state. Nil disables the route.
 	Targets TargetReader
+	// Vantages supplies every vantage's state for a target detail. Nil omits
+	// the vantages block rather than implying one path.
+	Vantages VantageStates
 	// Coverage builds the blind-spot panel. Nil disables the route.
 	Coverage CoverageReader
 	// CoverageHistory reads daily coverage snapshots. Nil disables the route.
@@ -484,6 +494,20 @@ type targetItem struct {
 	// StatusURL is the operator's declared status page for this target. It is
 	// config data, not an observation.
 	StatusURL string `json:"status_url,omitempty"`
+	// Vantages is every vantage's confirmed state for this target, primary
+	// first. A disagreement is how a client sees REGIONAL rather than a
+	// service outage (DESIGN.md §7.1).
+	Vantages []vantageItem `json:"vantages,omitempty"`
+}
+
+// vantageItem is one vantage's confirmed state for a target.
+type vantageItem struct {
+	ID        string `json:"id"`
+	Kind      string `json:"kind,omitempty"`
+	Role      string `json:"role,omitempty"`
+	State     string `json:"state"`
+	Since     string `json:"since,omitempty"`
+	LastProbe string `json:"last_probe,omitempty"`
 }
 
 // handleTargets is the filtered list. Unknown class/sector/country values are
@@ -739,6 +763,30 @@ func (s *server) serveTarget(w http.ResponseWriter, r *http.Request, id string) 
 	}
 	if !row.Since.IsZero() {
 		item.Since = row.Since.UTC().Format(time.RFC3339)
+	}
+
+	// Every vantage's answer, so a client can see REGIONAL rather than calling
+	// it global (DESIGN.md §7.1). A failed read is a missing block, not a
+	// missing target.
+	if s.deps.Vantages != nil {
+		states, err := s.deps.Vantages.TargetVantages(r.Context(), row.ID)
+		if err != nil {
+			s.deps.Logger.Warn("vantage comparison failed",
+				"event", "vantage_comparison_failed", "component", "http",
+				"target", row.Host, "error", err)
+		}
+		for _, state := range states {
+			v := vantageItem{
+				ID: state.ID, Kind: state.Kind, Role: state.Role, State: state.State,
+			}
+			if !state.Since.IsZero() {
+				v.Since = state.Since.UTC().Format(time.RFC3339)
+			}
+			if !state.LastProbe.IsZero() {
+				v.LastProbe = state.LastProbe.UTC().Format(time.RFC3339)
+			}
+			item.Vantages = append(item.Vantages, v)
+		}
 	}
 
 	writeData(w, r, item, nil)

@@ -313,6 +313,7 @@ func serve(lg *logging.Logger) error {
 		Health:              health,
 		Verdict:             globalVerdict,
 		Anomalies:           st,
+		Vantages:            st,
 		// The ring and the measured logging setup back the diagnostics page
 		// and the drawer's Why panel (LOGGING.md §9).
 		Logs:            lg,
@@ -382,6 +383,7 @@ func serve(lg *logging.Logger) error {
 		Verdict:         globalVerdict,
 		Scopes:          st,
 		Anomalies:       st,
+		Vantages:        st,
 		Targets:         st,
 		Coverage:        st,
 		CoverageHistory: st,

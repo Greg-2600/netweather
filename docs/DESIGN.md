@@ -542,7 +542,9 @@ if failures in one 30s bucket span >= 5 sectors AND >= 10 ASNs  ->  LOCAL_SUSPEC
 
 **Implemented:** the primary rule uses the reference class (`ReferenceStates`): two of three or more failing reports `LOCAL`. The secondary heuristic counts the distinct sectors and origin ASNs among confirmed `DOWN` targets (`store.FailureSpread`); five sectors and ten networks at once reports `LOCAL` with the detail "failures span N sectors and M ASNs; possibly your connection", and the tile mute applies. It is a confirmed-state count rather than a literal 30-second bucket, because that is the durable signal the rest of the pipeline reads; the wording stays qualified because a genuine mass outage produces the same pattern.
 
-Third signal — the one that makes this precise: **vantage comparison.** If the primary vantage says `DOWN` but a corroborating vantage reaches the same target, the path is the problem, not the service. That is `REGIONAL`, and it is the only evidence that distinguishes *your ISP* from *your country* from *the service*.
+Third signal - the one that makes this precise: **vantage comparison.** If the primary vantage says `DOWN` but a corroborating vantage reaches the same target, the path is the problem, not the service. That is `REGIONAL`, and it is the only evidence that distinguishes *your ISP* from *your country* from *the service*.
+
+**Implemented:** `store.TargetVantages` reads every vantage's confirmed state for one target, primary first. The target drawer shows the rows with each vantage's state and since time, and when the primary is `DOWN` while any corroborating vantage is `UP`/`UP_REACHABILITY` it says in words that this is a regional path problem rather than a service outage; agreeing vantages leave the note empty. `GET /api/v1/targets/{id}` carries the same rows in `vantages`, omitted when no reader is configured. A failed read is a missing panel, never a missing target.
 
 ### 7.2 Anomaly detection (the actual mass-outage detector)
 
