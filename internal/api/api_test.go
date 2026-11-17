@@ -735,10 +735,10 @@ func TestTargetProbesUnknownTarget(t *testing.T) {
 	}
 }
 
-func TestTargetProbesRequiresTheProbesSuffix(t *testing.T) {
+func TestTargetSubtreeRejectsUnknownSuffix(t *testing.T) {
 	t.Parallel()
 
-	rec := do(newProbesHandler(t, probeFixture()), http.MethodGet, "/api/v1/targets/t1", testToken)
+	rec := do(newProbesHandler(t, probeFixture()), http.MethodGet, "/api/v1/targets/t1/bogus", testToken)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
@@ -1566,6 +1566,195 @@ func TestAnomaliesRejectBadLimitAndSurfaceErrors(t *testing.T) {
 		http.MethodGet, "/api/v1/anomalies", testToken)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+}
+
+type fakeTargets struct {
+	rows map[string]store.TargetRow
+	err  error
+}
+
+func (f *fakeTargets) TargetByID(_ context.Context, _, id string) (store.TargetRow, error) {
+	if f.err != nil {
+		return store.TargetRow{}, f.err
+	}
+	row, ok := f.rows[id]
+	if !ok {
+		return store.TargetRow{}, sql.ErrNoRows
+	}
+	return row, nil
+}
+
+type fakeCoverage struct {
+	cov store.Coverage
+	err error
+}
+
+func (f *fakeCoverage) Coverage(context.Context, string, time.Time) (store.Coverage, error) {
+	return f.cov, f.err
+}
+
+func newTargetDetailHandler(t *testing.T, targets api.TargetReader, cov api.CoverageReader) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Targets:   targets,
+			Coverage:  cov,
+			Vantage:   "local",
+			Version:   "test",
+			Commit:    "deadbeef",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func TestTargetDetail(t *testing.T) {
+	t.Parallel()
+
+	since := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	targets := &fakeTargets{rows: map[string]store.TargetRow{
+		"t1": {
+			Target: store.Target{
+				ID: "t1", Host: "chase.com", Port: 443, Probe: "http",
+				Name: "Chase", Class: "service", Sector: "financial/banking",
+				Country: "US", Tier: 2, IntervalS: 300,
+			},
+			State: state.Down,
+			Since: since,
+		},
+	}}
+
+	rec := do(newTargetDetailHandler(t, targets, nil), http.MethodGet, "/api/v1/targets/t1", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var item struct {
+		ID     string `json:"id"`
+		Host   string `json:"host"`
+		Class  string `json:"class"`
+		Sector string `json:"sector"`
+		State  string `json:"state"`
+		Since  string `json:"since"`
+	}
+	if err := json.Unmarshal(env.Data, &item); err != nil {
+		t.Fatal(err)
+	}
+	if item.ID != "t1" || item.Host != "chase.com" || item.Class != "service" {
+		t.Fatalf("item = %+v", item)
+	}
+	if item.State != "down" || item.Since != "2026-11-17T12:00:00Z" {
+		t.Fatalf("state/since = %+v", item)
+	}
+}
+
+func TestTargetDetailMissingAndUnavailable(t *testing.T) {
+	t.Parallel()
+
+	targets := &fakeTargets{rows: map[string]store.TargetRow{}}
+	rec := do(newTargetDetailHandler(t, targets, nil), http.MethodGet, "/api/v1/targets/nope", testToken)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+
+	rec = do(newProbesHandler(t, probeFixture()), http.MethodGet, "/api/v1/targets/t1", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 without a target reader", rec.Code)
+	}
+
+	targets.err = errors.New("db down")
+	rec = do(newTargetDetailHandler(t, targets, nil), http.MethodGet, "/api/v1/targets/t1", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 on a read failure", rec.Code)
+	}
+}
+
+func TestCoveragePanel(t *testing.T) {
+	t.Parallel()
+
+	cov := &fakeCoverage{cov: store.Coverage{
+		Totals: store.CoverageTotals{Total: 100, Measurable: 80, Unmeasurable: 10},
+		Classes: []store.CoverageBucket{
+			{Kind: "class", Value: "service", Total: 90, Measurable: 80},
+		},
+		BlindSpots: []store.CoverageBucket{
+			{Kind: "country", Value: "NL", Total: 10, Measurable: 2, Unmeasurable: 8},
+		},
+		Stale: []store.StaleTarget{
+			{ID: "t1", Host: "chase.com", State: string(state.Unknown), IntervalS: 300},
+			{
+				ID: "t2", Host: "united.com", State: string(state.Up), IntervalS: 300,
+				LastProbe: time.Now().UTC().Add(-2 * time.Hour),
+			},
+		},
+	}}
+
+	rec := do(newTargetDetailHandler(t, nil, cov), http.MethodGet, "/api/v1/coverage", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Total      int              `json:"total"`
+		Measurable int              `json:"measurable"`
+		Coverage   float64          `json:"coverage"`
+		BlindSpots []map[string]any `json:"blind_spots"`
+		Stale      []map[string]any `json:"stale"`
+	}
+	if err := json.Unmarshal(env.Data, &got); err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Total != 100 || got.Measurable != 80 || got.Coverage != 0.8 {
+		t.Fatalf("totals = %+v", got)
+	}
+	if len(got.BlindSpots) != 1 || got.BlindSpots[0]["value"] != "NL" {
+		t.Fatalf("blind spots = %+v", got.BlindSpots)
+	}
+	if len(got.Stale) != 2 {
+		t.Fatalf("stale = %+v", got.Stale)
+	}
+	// A never-probed target has no last_probe; a stale one carries an age.
+	if _, ok := got.Stale[0]["last_probe"]; ok {
+		t.Fatalf("never-probed target carried last_probe: %+v", got.Stale[0])
+	}
+	if age, ok := got.Stale[1]["age_seconds"].(float64); !ok || age <= 0 {
+		t.Fatalf("stale target age = %+v", got.Stale[1])
+	}
+}
+
+func TestCoverageUnavailableAndAuth(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/api/v1/coverage", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+
+	rec = do(newTargetDetailHandler(t, nil, &fakeCoverage{err: errors.New("db down")}),
+		http.MethodGet, "/api/v1/coverage", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 on a read failure", rec.Code)
+	}
+
+	rec = do(newTargetDetailHandler(t, nil, &fakeCoverage{}), http.MethodGet, "/api/v1/coverage", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
 	}
 }
 

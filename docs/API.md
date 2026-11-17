@@ -17,8 +17,11 @@ Honesty first, because a spec that implies more than the binary does is worse th
 | `GET /api/v1/logs` | **implemented** - reads the in-memory ring (`LOGGING.md` §9) |
 | `GET /api/v1/board` | **implemented** - the grid's data from the store |
 | `GET /api/v1/targets` | **implemented** - the target list with class/sector/country/state filters |
+| `GET /api/v1/targets/{id}` | **implemented** - one target with its current state |
 | `GET /api/v1/targets/{id}/series` | **implemented** - rollup buckets at 5m/1h/1d |
 | `GET /api/v1/scopes/{scope}` | **implemented** - health, coverage, and the UNKNOWN floors |
+| `GET /api/v1/coverage` | **implemented** - the blind-spot panel |
+| `GET /api/v1/anomalies` | **implemented** - baseline-relative detector output |
 | `GET /api/v1/control`, `POST /api/v1/pause`, `POST /api/v1/resume` | **implemented** - the probe kill switch |
 | `GET /api/v1/targets/{id}/probes` | **implemented** - recent raw observations for one target |
 | `GET /api/v1/incidents`, `GET /api/v1/incidents/{id}` | **implemented** - the incident log and ranked attribution |
@@ -197,7 +200,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
-    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies"],
+    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -474,6 +477,63 @@ Auth: bearer. Detector output, newest first. An anomaly is an observation relati
 - The detector only evaluates scopes that clear the coverage floors, because running it on an `UNKNOWN` scope would turn a visibility failure into a false incident.
 - Repeated detections for the same scope are suppressed for 30 minutes after one fires.
 
+### 6.13 `GET /api/v1/targets/{id}` — stable
+
+Auth: bearer. One target with its current state and metadata.
+
+```json
+{
+  "data": {
+    "id": "svc-chase",
+    "name": "Chase",
+    "host": "www.chase.com",
+    "class": "service",
+    "sector": "financial/banking",
+    "country": "US",
+    "state": "down",
+    "since": "2026-11-17T12:00:00Z"
+  },
+  "meta": {"request_id": "…"}
+}
+```
+
+- `404` for an unknown or disabled target.
+- `since` is absent for a target that has never been probed; the state is then `unknown`.
+- This is the target's identity and state, not its history: use `/probes` or `/series` for that.
+
+### 6.14 `GET /api/v1/coverage` — stable
+
+Auth: bearer. The blind-spot panel. It reports **measurement**, not health: a down target is still measured, and this endpoint exists to catch the targets that are not.
+
+```json
+{
+  "data": {
+    "total": 120,
+    "measurable": 96,
+    "coverage": 0.8,
+    "classes": [
+      {"kind": "class", "value": "service", "total": 90, "measurable": 84, "unmeasurable": 2, "coverage": 0.933}
+    ],
+    "sectors": [
+      {"kind": "sector", "value": "airline", "total": 12, "measurable": 11, "unmeasurable": 0, "coverage": 0.917}
+    ],
+    "blind_spots": [
+      {"kind": "country", "value": "NL", "total": 10, "measurable": 2, "unmeasurable": 8, "coverage": 0.2}
+    ],
+    "stale": [
+      {"id": "svc-delta", "host": "www.delta.com", "state": "unknown",
+       "interval_s": 300, "age_seconds": 5400, "last_probe": "2026-11-17T07:30:00Z"}
+    ]
+  },
+  "meta": {"request_id": "…"}
+}
+```
+
+- `measurable` counts states that carry a usable signal: `up`, `up_reachability`, `degraded`, `down`. Everything else is a blind spot.
+- `blind_spots` is every ASN or country with at least five targets and less than 50% measurable, biggest first. `kind` is `country` or `asn`, because both are in the same list and "NL" and "1103" would otherwise be indistinguishable.
+- `stale` lists enabled targets the scheduler has not reached within three of their own intervals (minimum 15 minutes), including targets that have never been probed. A never-probed target has no `last_probe` and no `age_seconds`.
+- The panel is per-vantage: it says "this vantage cannot see these", not "these are broken".
+
 ---
 
 ## 7. Specified, not implemented
@@ -484,8 +544,6 @@ Each of these is a promise about shape, not a claim that it works. `GET /api/v1/
 
 | Endpoint | Tier | Purpose |
 |---|---|---|
-| `GET /api/v1/targets/{id}` | stable | One target with its current state and measurement metadata |
-| `GET /api/v1/coverage` | stable | The blind-spot panel: ASN/country spread, measurable share, stale anchors |
 | `GET /api/v1/feeds` | stable | Feed state: last success, staleness, consecutive failures |
 | `GET /api/v1/selfcheck` | internal | Self-health results (clock, egress, MTU, port 53, disk) |
 | `GET /api/v1/export` | stable | Streaming CSV/JSON over a time range; never loads the set into memory |

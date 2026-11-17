@@ -3,6 +3,8 @@ package store_test
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1095,5 +1097,105 @@ func TestRecordAnomalyAndList(t *testing.T) {
 	}
 	if len(none) != 0 {
 		t.Fatalf("fresh database returned %d anomalies", len(none))
+	}
+}
+
+func TestTargetByID(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	if err := s.Record(ctx, []store.Probe{probeAt(now, state.Down)}); err != nil {
+		t.Fatal(err)
+	}
+
+	row, err := s.TargetByID(ctx, "local", "t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Name != "Chase" || row.State != state.Down || row.Port != 443 {
+		t.Fatalf("row = %+v", row)
+	}
+	if row.Since.IsZero() {
+		t.Fatal("since was not populated")
+	}
+
+	if _, err := s.TargetByID(ctx, "local", "nope"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("unknown target error = %v, want sql.ErrNoRows", err)
+	}
+}
+
+func TestCoverageFindsBlindSpotsAndStaleTargets(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	// A country with five targets, only one measured: a blind spot. A sector
+	// with five targets is reported separately, and three-member slices fall
+	// under the reporting floor.
+	for i := 0; i < 5; i++ {
+		if err := s.UpsertTarget(ctx, store.Target{
+			ID:        fmt.Sprintf("nl-%d", i),
+			Host:      fmt.Sprintf("nl%d.example", i),
+			Port:      443,
+			Probe:     "http",
+			Name:      fmt.Sprintf("NL %d", i),
+			Class:     "country",
+			Country:   "NL",
+			Sector:    "small",
+			Tier:      3,
+			IntervalS: 120,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	// One NL target is current; the rest were never probed.
+	if err := s.Record(ctx, []store.Probe{{
+		TargetID: "nl-0", VantageID: "local", TS: now,
+		State: state.Up, Stage: "http", Confidence: "high",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	cov, err := s.Coverage(ctx, "local", now.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cov.Totals.Total != 6 {
+		t.Fatalf("totals = %+v, want 6 targets", cov.Totals)
+	}
+	if cov.Totals.Measurable != 1 { // only nl-0 has been probed
+		t.Fatalf("measurable = %d, want 1", cov.Totals.Measurable)
+	}
+
+	var nl *store.CoverageBucket
+	for i := range cov.BlindSpots {
+		if cov.BlindSpots[i].Kind == "country" && cov.BlindSpots[i].Value == "NL" {
+			nl = &cov.BlindSpots[i]
+		}
+	}
+	if nl == nil {
+		t.Fatalf("NL blind spot missing: %+v", cov.BlindSpots)
+	}
+	if nl.Total != 5 || nl.Measurable != 1 {
+		t.Fatalf("NL bucket = %+v", nl)
+	}
+	for _, b := range cov.BlindSpots {
+		if b.Value == "small" {
+			t.Fatalf("a three-member sector should be below the floor: %+v", b)
+		}
+	}
+
+	// Everything is stale: t1 never ran, and nl-1..4 never ran.
+	if len(cov.Stale) != 5 {
+		t.Fatalf("stale = %+v, want the five unprobed targets", cov.Stale)
 	}
 }

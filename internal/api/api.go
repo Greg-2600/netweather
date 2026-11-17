@@ -50,6 +50,16 @@ type AnomalyReader interface {
 	Anomalies(ctx context.Context, limit int) ([]store.Anomaly, error)
 }
 
+// TargetReader is the single-target detail read.
+type TargetReader interface {
+	TargetByID(ctx context.Context, vantageID, id string) (store.TargetRow, error)
+}
+
+// CoverageReader builds the blind-spot panel.
+type CoverageReader interface {
+	Coverage(ctx context.Context, vantageID string, now time.Time) (store.Coverage, error)
+}
+
 // Deps is everything the HTTP layer needs. It is deliberately small: the API
 // reads state, it does not own it.
 type Deps struct {
@@ -71,6 +81,10 @@ type Deps struct {
 	Scopes ScopeReader
 	// Anomalies reads detector output. Nil disables the route.
 	Anomalies AnomalyReader
+	// Targets reads one target with its current state. Nil disables the route.
+	Targets TargetReader
+	// Coverage builds the blind-spot panel. Nil disables the route.
+	Coverage CoverageReader
 	// Metrics is the Prometheus handler. Nil keeps /metrics unmounted, which is
 	// the default: exposing it is an operator decision.
 	Metrics http.Handler
@@ -112,6 +126,7 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	apiMux.HandleFunc("/api/v1/targets/", onlyGET(s.handleTargetProbes))
 	apiMux.HandleFunc("/api/v1/scopes/", onlyGET(s.handleScope))
 	apiMux.HandleFunc("/api/v1/anomalies", onlyGET(s.handleAnomalies))
+	apiMux.HandleFunc("/api/v1/coverage", onlyGET(s.handleCoverage))
 	apiMux.HandleFunc("/api/v1/incidents", onlyGET(s.handleIncidents))
 	apiMux.HandleFunc("/api/v1/incidents/", onlyGET(s.handleIncidentByID))
 	apiMux.HandleFunc("/", s.handleNotFound)
@@ -208,7 +223,7 @@ type metaResponse struct {
 
 // capabilities is the runtime truth. A client should feature-detect here rather
 // than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies"}
+var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage"}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}
@@ -365,22 +380,67 @@ type probeItem struct {
 // handleTargetProbes serves /api/v1/targets/{id}/probes: the newest observations
 // for one target, newest first. It is the drawer's data.
 func (s *server) handleTargetProbes(w http.ResponseWriter, r *http.Request) {
-	if s.deps.Probes == nil {
-		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "probe history is not configured")
+	rest := strings.TrimPrefix(r.URL.Path, "/api/v1/targets/")
+	id, suffix, ok := strings.Cut(rest, "/")
+	if id == "" {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such target")
 		return
 	}
 
-	rest := strings.TrimPrefix(r.URL.Path, "/api/v1/targets/")
-	id, suffix, ok := strings.Cut(rest, "/")
-	if ok && suffix == "series" {
+	if !ok {
+		s.serveTarget(w, r, id)
+		return
+	}
+
+	switch suffix {
+	case "probes":
+		if s.deps.Probes == nil {
+			writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "probe history is not configured")
+			return
+		}
+		s.serveProbes(w, r, id)
+	case "series":
+		if s.deps.Probes == nil {
+			writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "probe history is not configured")
+			return
+		}
 		s.serveSeries(w, r, id)
-		return
-	}
-	if !ok || id == "" || suffix != "probes" {
+	default:
 		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such endpoint")
+	}
+}
+
+func (s *server) serveTarget(w http.ResponseWriter, r *http.Request, id string) {
+	if s.deps.Targets == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "target detail is not configured")
 		return
 	}
-	s.serveProbes(w, r, id)
+
+	vantage := s.deps.Vantage
+	if vantage == "" {
+		vantage = "local"
+	}
+
+	row, err := s.deps.Targets.TargetByID(r.Context(), vantage, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such target")
+		return
+	}
+	if err != nil {
+		s.deps.Logger.Error("target detail failed", "event", "target_detail_failed", "component", "http", "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "target unavailable")
+		return
+	}
+
+	item := targetItem{
+		ID: row.ID, Name: row.Name, Host: row.Host, Class: row.Class,
+		Sector: row.Sector, Country: row.Country, State: string(row.State),
+	}
+	if !row.Since.IsZero() {
+		item.Since = row.Since.UTC().Format(time.RFC3339)
+	}
+
+	writeData(w, r, item, nil)
 }
 
 func (s *server) serveProbes(w http.ResponseWriter, r *http.Request, id string) {
@@ -819,6 +879,97 @@ func (s *server) handleAnomalies(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, r, out, &Meta{Count: len(out), Limit: limit})
+}
+
+type coverageBucketItem struct {
+	Kind         string  `json:"kind,omitempty"`
+	Value        string  `json:"value"`
+	Total        int     `json:"total"`
+	Measurable   int     `json:"measurable"`
+	Unmeasurable int     `json:"unmeasurable"`
+	Coverage     float64 `json:"coverage"`
+}
+
+type staleTargetItem struct {
+	ID         string `json:"id"`
+	Host       string `json:"host"`
+	State      string `json:"state"`
+	LastProbe  string `json:"last_probe,omitempty"`
+	IntervalS  int    `json:"interval_s"`
+	AgeSeconds int64  `json:"age_seconds,omitempty"`
+}
+
+type coverageResponse struct {
+	Total      int                  `json:"total"`
+	Measurable int                  `json:"measurable"`
+	Coverage   float64              `json:"coverage"`
+	Classes    []coverageBucketItem `json:"classes"`
+	Sectors    []coverageBucketItem `json:"sectors"`
+	BlindSpots []coverageBucketItem `json:"blind_spots"`
+	Stale      []staleTargetItem    `json:"stale"`
+}
+
+func toCoverageBuckets(buckets []store.CoverageBucket) []coverageBucketItem {
+	out := make([]coverageBucketItem, 0, len(buckets))
+	for _, b := range buckets {
+		share := 0.0
+		if b.Total > 0 {
+			share = float64(b.Measurable) / float64(b.Total)
+		}
+		out = append(out, coverageBucketItem{
+			Kind:  b.Kind,
+			Value: b.Value, Total: b.Total, Measurable: b.Measurable,
+			Unmeasurable: b.Unmeasurable, Coverage: share,
+		})
+	}
+	return out
+}
+
+// handleCoverage answers "where are we blind?". It reports measurement, not
+// health: a down target is still measured, and the panel exists to catch the
+// targets that are not.
+func (s *server) handleCoverage(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Coverage == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "coverage is not configured")
+		return
+	}
+
+	vantage := s.deps.Vantage
+	if vantage == "" {
+		vantage = "local"
+	}
+
+	now := time.Now().UTC()
+	cov, err := s.deps.Coverage.Coverage(r.Context(), vantage, now)
+	if err != nil {
+		s.deps.Logger.Error("coverage read failed", "event", "coverage_failed", "component", "http", "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "coverage unavailable")
+		return
+	}
+
+	out := coverageResponse{
+		Total:      cov.Totals.Total,
+		Measurable: cov.Totals.Measurable,
+		Classes:    toCoverageBuckets(cov.Classes),
+		Sectors:    toCoverageBuckets(cov.Sectors),
+		BlindSpots: toCoverageBuckets(cov.BlindSpots),
+		Stale:      make([]staleTargetItem, 0, len(cov.Stale)),
+	}
+	if cov.Totals.Total > 0 {
+		out.Coverage = float64(cov.Totals.Measurable) / float64(cov.Totals.Total)
+	}
+	for _, st := range cov.Stale {
+		item := staleTargetItem{
+			ID: st.ID, Host: st.Host, State: st.State, IntervalS: st.IntervalS,
+		}
+		if !st.LastProbe.IsZero() {
+			item.LastProbe = st.LastProbe.UTC().Format(time.RFC3339)
+			item.AgeSeconds = int64(now.Sub(st.LastProbe).Seconds())
+		}
+		out.Stale = append(out.Stale, item)
+	}
+
+	writeData(w, r, out, nil)
 }
 
 type controlState struct {

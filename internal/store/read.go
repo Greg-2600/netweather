@@ -246,6 +246,32 @@ func (s *Store) DisableTarget(ctx context.Context, id string) error {
 	return nil
 }
 
+// TargetByID returns one enabled target with its latest state.
+func (s *Store) TargetByID(ctx context.Context, vantageID, id string) (TargetRow, error) {
+	var (
+		row   TargetRow
+		since int64
+	)
+	err := s.reader.QueryRowContext(ctx, `
+		SELECT t.id, t.host, t.port, t.probe, t.name, t.class,
+		       COALESCE(t.sector, ''), COALESCE(t.country, ''), t.tier, t.interval_s,
+		       COALESCE(ts.state, 'unknown'), COALESCE(ts.since, 0)
+		FROM target t
+		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
+		WHERE t.id = ? AND t.enabled = 1`, vantageID, id).Scan(
+		&row.ID, &row.Host, &row.Port, &row.Probe, &row.Name, &row.Class,
+		&row.Sector, &row.Country, &row.Tier, &row.IntervalS,
+		&row.State, &since,
+	)
+	if err != nil {
+		return TargetRow{}, err
+	}
+	if since > 0 {
+		row.Since = time.UnixMilli(since).UTC()
+	}
+	return row, nil
+}
+
 // Rollup is one bucket at the requested resolution.
 type Rollup struct {
 	Bucket   time.Time
