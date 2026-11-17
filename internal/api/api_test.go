@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/api"
+	"github.com/Greg-2600/netweather/internal/baseline"
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/state"
@@ -1236,13 +1237,19 @@ func TestTargetSeriesRequiresAuth(t *testing.T) {
 }
 
 type fakeScopes struct {
-	counts    map[state.State]int
-	judgeable int
-	err       error
+	counts     map[state.State]int
+	judgeable  int
+	history    []float64
+	err        error
+	historyErr error
 }
 
 func (f *fakeScopes) ScopeStates(context.Context, string, string, string) (map[state.State]int, int, error) {
 	return f.counts, f.judgeable, f.err
+}
+
+func (f *fakeScopes) ScopeHistory(context.Context, string, string, time.Time) ([]float64, error) {
+	return f.history, f.historyErr
 }
 
 func newScopesHandler(t *testing.T, reader api.ScopeReader) http.Handler {
@@ -1273,6 +1280,12 @@ func decodeScope(t *testing.T, body []byte) struct {
 	Measurable int            `json:"measurable"`
 	Judgeable  int            `json:"judgeable"`
 	States     map[string]int `json:"states"`
+	Baseline   struct {
+		N      int     `json:"n"`
+		Median float64 `json:"median"`
+		Sigma  float64 `json:"sigma"`
+		Usable bool    `json:"usable"`
+	} `json:"baseline"`
 } {
 	t.Helper()
 
@@ -1289,6 +1302,12 @@ func decodeScope(t *testing.T, body []byte) struct {
 		Measurable int            `json:"measurable"`
 		Judgeable  int            `json:"judgeable"`
 		States     map[string]int `json:"states"`
+		Baseline   struct {
+			N      int     `json:"n"`
+			Median float64 `json:"median"`
+			Sigma  float64 `json:"sigma"`
+			Usable bool    `json:"usable"`
+		} `json:"baseline"`
 	}
 	if err := json.Unmarshal(env.Data, &out); err != nil {
 		t.Fatal(err)
@@ -1360,6 +1379,53 @@ func TestScopeHealthAndCoverage(t *testing.T) {
 				t.Fatalf("states = %v", got.States)
 			}
 		})
+	}
+}
+
+func TestScopeBaselineBecomesUsable(t *testing.T) {
+	t.Parallel()
+
+	history := make([]float64, baseline.Window)
+	for i := range history {
+		history[i] = 0.9
+	}
+
+	rec := do(newScopesHandler(t, &fakeScopes{
+		counts:    map[state.State]int{state.Up: 45, state.Down: 5},
+		judgeable: 50,
+		history:   history,
+	}), http.MethodGet, "/api/v1/scopes/global", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+
+	got := decodeScope(t, rec.Body.Bytes())
+	if got.Mode != "normal" {
+		t.Fatalf("mode = %q, want normal", got.Mode)
+	}
+	if !got.Baseline.Usable || got.Baseline.N != baseline.Window {
+		t.Fatalf("baseline = %+v", got.Baseline)
+	}
+	if got.Baseline.Median != 0.9 {
+		t.Fatalf("median = %v", got.Baseline.Median)
+	}
+}
+
+func TestScopeBaselineLearning(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newScopesHandler(t, &fakeScopes{
+		counts:    map[state.State]int{state.Up: 9},
+		judgeable: 10,
+		history:   []float64{0.9, 0.9},
+	}), http.MethodGet, "/api/v1/scopes/global", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+
+	got := decodeScope(t, rec.Body.Bytes())
+	if got.Mode != "learning" || got.Baseline.Usable {
+		t.Fatalf("mode = %q, baseline = %+v", got.Mode, got.Baseline)
 	}
 }
 

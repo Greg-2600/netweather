@@ -486,6 +486,25 @@ CREATE TABLE coverage_snapshot (
 
 One row per scope per day. This is what makes "coverage is decaying over three weeks" visible; a point-in-time panel cannot show a trend.
 
+### 10.1 Hourly scope samples
+
+```sql
+CREATE TABLE scope_sample (
+    scope        TEXT NOT NULL,               -- 'global','sector','country','asn'
+    scope_value  TEXT NOT NULL,
+    bucket       INTEGER NOT NULL,            -- unix hour
+    health       REAL NOT NULL,
+    coverage     REAL NOT NULL,
+    measurable   INTEGER NOT NULL,
+    judgeable    INTEGER NOT NULL,
+    PRIMARY KEY (scope, scope_value, bucket)
+) WITHOUT ROWID;
+```
+
+One snapshot per scope per hour, written by maintenance. Sampling the same hour twice replaces the snapshot rather than accumulating, so a restart cannot double-count.
+
+The baseline reads the last 28 samples whose **hour-of-week** matches the evaluation instant (`internal/baseline`). That is why this table stores the raw hourly value rather than a pre-aggregated median: the window and the bucket key are detection policy, and policy changes should not require re-sampling history.
+
 ---
 
 ## 11. Retention

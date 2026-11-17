@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Greg-2600/netweather/internal/baseline"
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/state"
@@ -41,6 +42,7 @@ type IncidentReader interface {
 // ScopeReader is the read side for scope health and coverage.
 type ScopeReader interface {
 	ScopeStates(ctx context.Context, vantageID, scope, value string) (map[state.State]int, int, error)
+	ScopeHistory(ctx context.Context, scope, value string, at time.Time) ([]float64, error)
 }
 
 // Deps is everything the HTTP layer needs. It is deliberately small: the API
@@ -630,6 +632,14 @@ func (s *server) serveSeries(w http.ResponseWriter, r *http.Request, id string) 
 	writeData(w, r, out, &Meta{Count: len(out)})
 }
 
+type baselineView struct {
+	N      int     `json:"n"`
+	Median float64 `json:"median"`
+	MAD    float64 `json:"mad"`
+	Sigma  float64 `json:"sigma"`
+	Usable bool    `json:"usable"`
+}
+
 type scopeResponse struct {
 	Scope      string         `json:"scope"`
 	Value      string         `json:"value,omitempty"`
@@ -640,6 +650,7 @@ type scopeResponse struct {
 	Measurable int            `json:"measurable"`
 	Judgeable  int            `json:"judgeable"`
 	States     map[string]int `json:"states"`
+	Baseline   *baselineView  `json:"baseline,omitempty"`
 }
 
 // handleScope reports health and coverage for global, sector, country, or ASN.
@@ -717,16 +728,33 @@ func (s *server) handleScope(w http.ResponseWriter, r *http.Request) {
 		states[string(st)] = counts[st]
 	}
 
+	now := time.Now().UTC()
+	samples, err := s.deps.Scopes.ScopeHistory(r.Context(), scope, value, now)
+	if err != nil {
+		s.deps.Logger.Error("scope history failed", "event", "scope_history_failed", "component", "http", "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "scope unavailable")
+		return
+	}
+	stats := baseline.Compute(samples)
+	mode := "learning"
+	if stats.Usable() {
+		mode = "normal"
+	}
+
 	writeData(w, r, scopeResponse{
 		Scope:      scope,
 		Value:      value,
 		Status:     status,
-		Mode:       "learning",
+		Mode:       mode,
 		Health:     health,
 		Coverage:   coverage,
 		Measurable: measurable,
 		Judgeable:  judgeable,
 		States:     states,
+		Baseline: &baselineView{
+			N: stats.N, Median: stats.Median, MAD: stats.MAD,
+			Sigma: stats.Sigma(), Usable: stats.Usable(),
+		},
 	}, nil)
 }
 

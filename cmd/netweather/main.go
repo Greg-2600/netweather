@@ -456,6 +456,11 @@ func newAgent(targets []agent.Target, st *store.Store, lg *logging.Logger) *agen
 // startup so a long downtime self-heals, then every ten minutes.
 func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger) {
 	run := func() {
+		if err := st.SampleScopes(ctx, "local", time.Now()); err != nil {
+			lg.Warn("scope sampling failed",
+				"event", "scope_sampling_failed", "component", "maintenance", "error", err)
+		}
+
 		folded, err := st.Fold(ctx, time.Now())
 		if err != nil {
 			lg.Warn("rollup fold failed",

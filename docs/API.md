@@ -428,7 +428,8 @@ Auth: bearer. `scope` is `global`, `sector`, `country`, or `asn`; `value` select
     "measurable": 44,
     "judgeable": 50,
     "states": {"up": 40, "degraded": 1, "down": 3, "blocked": 6, "unknown": 0,
-               "up_reachability": 0, "config_error": 0, "unmeasurable": 0}
+               "up_reachability": 0, "config_error": 0, "unmeasurable": 0},
+    "baseline": {"n": 24, "median": 0.94, "mad": 0.01, "sigma": 0.0148, "usable": true}
   },
   "meta": {"request_id": "…"}
 }
@@ -437,7 +438,7 @@ Auth: bearer. `scope` is `global`, `sector`, `country`, or `asn`; `value` select
 - `status` is `ok`, `low_coverage`, or `unknown`. The floors: `coverage >= 0.80` and `measurable >= 20` for `ok`; `coverage >= 0.50` and `measurable >= 8` to compute health at all.
 - `health` is `null` when the scope is `unknown`. A client must not render null as zero.
 - `judgeable` excludes targets marked permanently unmeasurable. Unprobed targets still count toward it, so a stalled scheduler lowers coverage instead of looking healthy.
-- `mode` is `learning` until 28 days of hour-of-week baseline exist; detection is not claimed before then. `baseline` is absent while learning.
+- `mode` is `learning` until 21 of 28 hour-of-week samples exist; `baseline.usable` is false until then. The baseline always reports `n`, `median`, `mad`, and `sigma`, so a client can show how far along learning is.
 
 ---
 

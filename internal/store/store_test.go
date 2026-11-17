@@ -65,8 +65,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 3 {
-		t.Errorf("schema version = %d, want 3", stats.SchemaVersion)
+	if stats.SchemaVersion != 4 {
+		t.Errorf("schema version = %d, want 4", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -94,7 +94,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 3 {
+	if err != nil || version != 4 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -834,6 +834,60 @@ func TestScopeStates(t *testing.T) {
 	}
 	if _, _, err := s.ScopeStates(ctx, "local", "planet", ""); err == nil {
 		t.Fatal("unknown scope should be an error")
+	}
+}
+
+func TestSampleScopesAndHistory(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	now := time.Date(2026, 11, 17, 12, 30, 0, 0, time.UTC)
+	if err := s.Record(ctx, []store.Probe{probeAt(now, state.Up)}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.SampleScopes(ctx, "local", now); err != nil {
+		t.Fatal(err)
+	}
+
+	history, err := s.ScopeHistory(ctx, "global", "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 1 || history[0] != 1 {
+		t.Fatalf("history = %v", history)
+	}
+
+	// Sampling twice in the same hour replaces the snapshot.
+	if err := s.SampleScopes(ctx, "local", now.Add(10*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	history, err = s.ScopeHistory(ctx, "global", "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 1 {
+		t.Fatalf("same-hour sampling duplicated the bucket: %v", history)
+	}
+
+	// A different weekday/hour-of-week does not match.
+	other, err := s.ScopeHistory(ctx, "global", "", now.AddDate(0, 0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(other) != 0 {
+		t.Fatalf("wrong hour-of-week returned %v", other)
+	}
+
+	refs, err := s.Scopes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) == 0 || refs[0].Scope != "global" {
+		t.Fatalf("scopes = %+v", refs)
 	}
 }
 
