@@ -32,6 +32,7 @@ type Target struct {
 	ID      string
 	Name    string
 	Host    string
+	Class   string
 	Sector  string
 	Country string
 	State   State

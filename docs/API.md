@@ -16,6 +16,7 @@ Honesty first, because a spec that implies more than the binary does is worse th
 | `GET /api/v1/meta` | **implemented** — build, uptime, auth mode, capabilities |
 | `GET /api/v1/logs` | **implemented** - reads the in-memory ring (`LOGGING.md` §9) |
 | `GET /api/v1/board` | **implemented** - the grid's data from the store |
+| `GET /api/v1/targets` | **implemented** - the target list with class/sector/country/state filters |
 | `GET /api/v1/control`, `POST /api/v1/pause`, `POST /api/v1/resume` | **implemented** - the probe kill switch |
 | `GET /api/v1/targets/{id}/probes` | **implemented** - recent raw observations for one target |
 | `GET /api/v1/incidents`, `GET /api/v1/incidents/{id}` | **implemented** - the incident log and ranked attribution |
@@ -194,7 +195,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
-    "capabilities": ["health", "meta", "logs", "board", "control", "probes", "incidents"],
+    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "incidents"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -359,6 +360,31 @@ The incident plus every ranked attribution candidate, not only the winner — wh
 
 `404` for an unknown id. Attribution is stored at open time and is not recomputed on read, so the incident keeps the evidence that produced it.
 
+### 6.9 `GET /api/v1/targets` — stable
+
+Auth: bearer. The same rows as the board, with filters. All filters combine with AND.
+
+| Parameter | Notes |
+|---|---|
+| `class` | `service`, `country`, `network`, `reference` |
+| `sector` | exact match, e.g. `financial/banking` |
+| `country` | ISO-3166-1 alpha-2, e.g. `US` |
+| `state` | one of the eight states |
+
+```json
+{
+  "data": [
+    {"id": "svc-delta", "name": "Delta", "host": "www.delta.com", "class": "service",
+     "sector": "airline", "country": "US", "state": "down", "since": "2026-11-17T12:01:00Z"}
+  ],
+  "meta": {"request_id": "…", "count": 1}
+}
+```
+
+- An unknown `state` is `400 invalid_argument`: it is an enum.
+- Unknown `class`, `sector`, or `country` values are data and simply match nothing.
+- No pagination in v1. The list is capped at 2000 targets and returned whole; the board has the same bound.
+
 ---
 
 ## 7. Specified, not implemented
@@ -369,7 +395,6 @@ Each of these is a promise about shape, not a claim that it works. `GET /api/v1/
 
 | Endpoint | Tier | Purpose |
 |---|---|---|
-| `GET /api/v1/targets` | stable | Target list with filters: `class`, `sector`, `country`, `state`, `enabled` |
 | `GET /api/v1/targets/{id}` | stable | One target with its current state and measurement metadata |
 | `GET /api/v1/targets/{id}/series` | stable | Rollups; `step=5m\|1h\|1d` |
 | `GET /api/v1/scopes/{scope}` | stable | Health, coverage, and baseline for `global`, `sector`, `country`, `asn`; `?value=` selects |

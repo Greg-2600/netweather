@@ -13,6 +13,7 @@ import (
 
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/logging"
+	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
 )
 
@@ -85,6 +86,7 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("/api/v1/board", onlyGET(s.handleBoard))
+	apiMux.HandleFunc("/api/v1/targets", onlyGET(s.handleTargets))
 	apiMux.HandleFunc("/api/v1/control", onlyGET(s.handleControl))
 	apiMux.HandleFunc("/api/v1/pause", onlyPOST(s.handlePause))
 	apiMux.HandleFunc("/api/v1/resume", onlyPOST(s.handleResume))
@@ -187,7 +189,7 @@ type metaResponse struct {
 
 // capabilities is the runtime truth. A client should feature-detect here rather
 // than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs", "board", "control", "probes", "incidents"}
+var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "incidents"}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}
@@ -207,6 +209,81 @@ func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		Capabilities: capabilities,
 		Ring:         info,
 	}, nil)
+}
+
+type targetItem struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Host    string `json:"host"`
+	Class   string `json:"class,omitempty"`
+	Sector  string `json:"sector,omitempty"`
+	Country string `json:"country,omitempty"`
+	State   string `json:"state"`
+	Since   string `json:"since,omitempty"`
+}
+
+// handleTargets is the filtered list. Unknown class/sector/country values are
+// data and simply match nothing; an unknown state is a client error.
+func (s *server) handleTargets(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Source == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "targets are not configured")
+		return
+	}
+
+	q := r.URL.Query()
+	stateFilter := strings.ToLower(strings.TrimSpace(q.Get("state")))
+	if stateFilter != "" && !validState(stateFilter) {
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument,
+			"state must be one of the eight target states")
+		return
+	}
+	classFilter := strings.TrimSpace(q.Get("class"))
+	sectorFilter := strings.TrimSpace(q.Get("sector"))
+	countryFilter := strings.TrimSpace(q.Get("country"))
+
+	targets, err := s.deps.Source.Snapshot(r.Context())
+	if err != nil {
+		s.deps.Logger.Error("target list failed", "event", "target_list_failed", "component", "http", "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "targets unavailable")
+		return
+	}
+
+	out := make([]targetItem, 0, len(targets))
+	for _, t := range targets {
+		if classFilter != "" && !strings.EqualFold(t.Class, classFilter) {
+			continue
+		}
+		if sectorFilter != "" && !strings.EqualFold(t.Sector, sectorFilter) {
+			continue
+		}
+		if countryFilter != "" && !strings.EqualFold(t.Country, countryFilter) {
+			continue
+		}
+		if stateFilter != "" && string(t.State) != stateFilter {
+			continue
+		}
+
+		item := targetItem{
+			ID: t.ID, Name: t.Name, Host: t.Host, Class: t.Class,
+			Sector: t.Sector, Country: t.Country, State: string(t.State),
+		}
+		if !t.Since.IsZero() {
+			item.Since = t.Since.UTC().Format(time.RFC3339)
+		}
+		out = append(out, item)
+	}
+
+	writeData(w, r, out, &Meta{Count: len(out)})
+}
+
+func validState(s string) bool {
+	switch state.State(s) {
+	case state.Up, state.UpReachability, state.Degraded, state.Down,
+		state.Blocked, state.Unknown, state.ConfigError, state.Unmeasurable:
+		return true
+	default:
+		return false
+	}
 }
 
 type boardItem struct {

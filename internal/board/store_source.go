@@ -27,6 +27,7 @@ func (s *StoreSource) Snapshot(ctx context.Context) ([]Target, error) {
 			ID:      r.ID,
 			Name:    r.Name,
 			Host:    r.Host,
+			Class:   r.Class,
 			Sector:  r.Sector,
 			Country: r.Country,
 			State:   r.State,

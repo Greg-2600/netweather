@@ -1038,6 +1038,113 @@ func TestMetricsMountsOnlyWhenConfigured(t *testing.T) {
 	}
 }
 
+func targetsFixture(t *testing.T) http.Handler {
+	m := board.NewMemory(
+		board.Target{ID: "1", Name: "Chase", Host: "chase.com", Class: "service", Sector: "financial/banking", Country: "US", State: board.StateUp},
+		board.Target{ID: "2", Name: "Delta", Host: "delta.com", Class: "service", Sector: "airline", Country: "US", State: board.StateDown},
+		board.Target{ID: "3", Name: "Root", Host: "198.41.0.4", Class: "network", Sector: "dns", Country: "NL", State: board.StateUnknown},
+	)
+	return newBoardHandler(t, m)
+}
+
+func decodeTargets(t *testing.T, body []byte) []struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Class   string `json:"class"`
+	Sector  string `json:"sector"`
+	Country string `json:"country"`
+	State   string `json:"state"`
+} {
+	t.Helper()
+
+	var env dataEnvelope
+	if err := json.Unmarshal(body, &env); err != nil {
+		t.Fatal(err)
+	}
+	var items []struct {
+		ID      string `json:"id"`
+		Name    string `json:"name"`
+		Class   string `json:"class"`
+		Sector  string `json:"sector"`
+		Country string `json:"country"`
+		State   string `json:"state"`
+	}
+	if err := json.Unmarshal(env.Data, &items); err != nil {
+		t.Fatal(err)
+	}
+	return items
+}
+
+func TestTargetsFilters(t *testing.T) {
+	t.Parallel()
+
+	h := targetsFixture(t)
+
+	all := decodeTargets(t, do(h, http.MethodGet, "/api/v1/targets", testToken).Body.Bytes())
+	if len(all) != 3 {
+		t.Fatalf("all = %d, want 3", len(all))
+	}
+
+	services := decodeTargets(t, do(h, http.MethodGet, "/api/v1/targets?class=service", testToken).Body.Bytes())
+	if len(services) != 2 {
+		t.Fatalf("class filter = %d, want 2", len(services))
+	}
+
+	airline := decodeTargets(t, do(h, http.MethodGet, "/api/v1/targets?sector=airline", testToken).Body.Bytes())
+	if len(airline) != 1 || airline[0].ID != "2" {
+		t.Fatalf("sector filter = %+v", airline)
+	}
+
+	down := decodeTargets(t, do(h, http.MethodGet, "/api/v1/targets?state=down", testToken).Body.Bytes())
+	if len(down) != 1 || down[0].ID != "2" {
+		t.Fatalf("state filter = %+v", down)
+	}
+
+	nl := decodeTargets(t, do(h, http.MethodGet, "/api/v1/targets?country=NL", testToken).Body.Bytes())
+	if len(nl) != 1 || nl[0].ID != "3" {
+		t.Fatalf("country filter = %+v", nl)
+	}
+
+	none := decodeTargets(t, do(h, http.MethodGet, "/api/v1/targets?class=service&state=unknown", testToken).Body.Bytes())
+	if len(none) != 0 {
+		t.Fatalf("combined filter = %+v", none)
+	}
+}
+
+func TestTargetsRejectsUnknownState(t *testing.T) {
+	t.Parallel()
+
+	rec := do(targetsFixture(t), http.MethodGet, "/api/v1/targets?state=melted", testToken)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	var e errorEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &e); err != nil {
+		t.Fatal(err)
+	}
+	if e.Error.Code != api.CodeInvalidArgument {
+		t.Fatalf("code = %q", e.Error.Code)
+	}
+}
+
+func TestTargetsUnavailableWithoutSource(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/api/v1/targets", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+}
+
+func TestTargetsRequireAuth(t *testing.T) {
+	t.Parallel()
+
+	rec := do(targetsFixture(t), http.MethodGet, "/api/v1/targets", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
 func TestSecurityHeaders(t *testing.T) {
 	t.Parallel()
 
