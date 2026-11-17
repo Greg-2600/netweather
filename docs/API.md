@@ -19,6 +19,7 @@ Honesty first, because a spec that implies more than the binary does is worse th
 | `GET /api/v1/control`, `POST /api/v1/pause`, `POST /api/v1/resume` | **implemented** - the probe kill switch |
 | `GET /api/v1/targets/{id}/probes` | **implemented** - recent raw observations for one target |
 | `GET /api/v1/incidents`, `GET /api/v1/incidents/{id}` | **implemented** - the incident log and ranked attribution |
+| `GET /metrics` | **implemented** - aggregate Prometheus text; off unless `NETWEATHER_METRICS=true`; bearer auth when a token is set |
 | `GET /events` | **implemented** - the UI's SSE stream; session cookie auth, not bearer. The API-facing counterpart is specified in §7.2 |
 | Everything else in §7 | **specified, not implemented** |
 | `/metrics` (`DESIGN.md` §6.4) | **specified, not implemented** — see §7.4 for why it is separate from `/api/v1` |
@@ -419,13 +420,13 @@ Actions require `Content-Type: application/json` and an `Idempotency-Key` header
 
 ### 7.4 `/metrics`
 
-Prometheus text exposition lives at `/metrics`, **not** under `/api/v1`:
+**Implemented.** Prometheus text exposition lives at `/metrics`, **not** under `/api/v1`:
 
 - It is a different contract with its own versioning conventions.
 - It is scraped by machines that do not speak JSON.
-- It must never carry per-target labels for 750 targets; only aggregates (`netweather_targets_total{class="service"}`), or cardinality explodes.
+- It carries aggregates only — `netweather_targets{state="down"}` and `netweather_incidents_open` — never per-target labels, or cardinality explodes at 750 targets.
 
-`/metrics` is off by default and enabled with `NETWEATHER_METRICS=true`, because exposing it is a disclosure decision, not a default.
+Off by default: set `NETWEATHER_METRICS=true` to mount it. When a UI token is configured the route requires the same bearer token, because the aggregates still describe the operator's fleet.
 
 ---
 

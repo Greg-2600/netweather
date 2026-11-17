@@ -24,6 +24,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/config"
 	"github.com/Greg-2600/netweather/internal/incidents"
 	"github.com/Greg-2600/netweather/internal/logging"
+	"github.com/Greg-2600/netweather/internal/metrics"
 	"github.com/Greg-2600/netweather/internal/netx"
 	"github.com/Greg-2600/netweather/internal/probe"
 	"github.com/Greg-2600/netweather/internal/schedule"
@@ -139,6 +140,11 @@ func serve(lg *logging.Logger) error {
 
 	ag := newAgent(targets, st, lg)
 
+	var metricsHandler http.Handler
+	if os.Getenv("NETWEATHER_METRICS") == "true" {
+		metricsHandler = metrics.Handler(st, "local")
+	}
+
 	ui, err := web.New(web.Deps{
 		Logger:        lg.Logger,
 		Source:        source,
@@ -165,6 +171,7 @@ func serve(lg *logging.Logger) error {
 		Control:   ag,
 		Probes:    st,
 		Incidents: st,
+		Metrics:   metricsHandler,
 		Vantage:   "local",
 		Fallback:  ui,
 	})

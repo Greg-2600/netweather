@@ -999,6 +999,45 @@ func TestTargetProbesReaderErrorsAreUnavailable(t *testing.T) {
 	}
 }
 
+func TestMetricsMountsOnlyWhenConfigured(t *testing.T) {
+	t.Parallel()
+
+	// Without a handler the route does not exist.
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/metrics", testToken)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 when metrics are not mounted", rec.Code)
+	}
+
+	body := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("netweather_targets{state=\"down\"} 1\n"))
+	})
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Metrics:   body,
+			Version:   "test",
+			Commit:    "deadbeef",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if rec := do(h, http.MethodGet, "/metrics", ""); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated metrics status = %d, want 401", rec.Code)
+	}
+	rec = do(h, http.MethodGet, "/metrics", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "netweather_targets") {
+		t.Fatalf("body = %q", rec.Body.String())
+	}
+}
+
 func TestSecurityHeaders(t *testing.T) {
 	t.Parallel()
 

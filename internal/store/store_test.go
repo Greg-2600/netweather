@@ -584,6 +584,63 @@ func TestIncidentByIDMissing(t *testing.T) {
 	}
 }
 
+func TestStateCountsAndOpenIncidentCount(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	if err := s.UpsertTarget(ctx, store.Target{
+		ID: "t2", Host: "united.com", Port: 443, Probe: "http",
+		Name: "United", Class: "service", Tier: 2, IntervalS: 300,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	down := probeAt(now, state.Down)
+	up := probeAt(now, state.Up)
+	up.TargetID = "t2"
+	if err := s.Record(ctx, []store.Probe{down, up}); err != nil {
+		t.Fatal(err)
+	}
+
+	counts, err := s.StateCounts(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts[state.Down] != 1 || counts[state.Up] != 1 {
+		t.Fatalf("counts = %v", counts)
+	}
+
+	open, err := s.OpenIncidentCount(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if open != 0 {
+		t.Fatalf("open incidents = %d", open)
+	}
+
+	inc := store.Incident{
+		ID: "inc-count", OpenedAt: now, Verdict: "INCIDENT",
+		Scope: "sector", ScopeValue: "airline", Headline: "x", Confidence: "high",
+	}
+	if err := s.OpenIncident(ctx, inc, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if open, _ := s.OpenIncidentCount(ctx); open != 1 {
+		t.Fatalf("open incidents = %d after opening", open)
+	}
+
+	if err := s.CloseIncident(ctx, "inc-count", "cluster cleared", now); err != nil {
+		t.Fatal(err)
+	}
+	if open, _ := s.OpenIncidentCount(ctx); open != 0 {
+		t.Fatalf("open incidents = %d after closing", open)
+	}
+}
+
 func TestCloseIncident(t *testing.T) {
 	t.Parallel()
 

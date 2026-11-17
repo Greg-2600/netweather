@@ -53,6 +53,9 @@ type Deps struct {
 	Probes ProbeReader
 	// Incidents reads the incident log. Nil disables the routes.
 	Incidents IncidentReader
+	// Metrics is the Prometheus handler. Nil keeps /metrics unmounted, which is
+	// the default: exposing it is an operator decision.
+	Metrics http.Handler
 	// Vantage is the vantage the read endpoints report on.
 	Vantage string
 	// Fallback serves everything that is not /healthz or /api/. It is the UI.
@@ -98,6 +101,11 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	root := http.NewServeMux()
 	root.HandleFunc("/healthz", onlyGET(s.handleHealthz))
 	root.Handle("/api/", withRateLimit(limiter, withBearerAuth(cfg.Token, apiMux)))
+	if deps.Metrics != nil {
+		// Aggregate metrics still describe the operator's fleet, so they get the
+		// same credential as the API.
+		root.Handle("/metrics", withBearerAuth(cfg.Token, deps.Metrics))
+	}
 	if deps.Fallback != nil {
 		root.Handle("/", deps.Fallback)
 	} else {
