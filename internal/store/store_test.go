@@ -3421,3 +3421,58 @@ func TestFlappingTargetsGetLowConfidenceProbes(t *testing.T) {
 		t.Fatalf("quiet target confidence = %+v, want high", quiet)
 	}
 }
+
+func TestPruneDropsOldAdvisoriesAndFeedEvents(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	for _, at := range []time.Time{base.Add(-91 * 24 * time.Hour), base.Add(-time.Hour)} {
+		if err := s.RecordAnomaly(ctx, store.Anomaly{
+			TS: at, Scope: "global", Kind: "health_drop",
+			Observed: 0.5, Baseline: 0.9, MAD: 0.01, Sigma: 0.015, Buckets: 2,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.UpsertExternalEvents(ctx, []store.ExternalEvent{
+		{
+			Feed: "ioda", ExternalID: "old", Kind: "outage", Severity: 0.5,
+			StartedAt:  base.Add(-100 * 24 * time.Hour),
+			ObservedAt: base.Add(-91 * 24 * time.Hour),
+		},
+		{
+			Feed: "ioda", ExternalID: "fresh", Kind: "outage", Severity: 0.5,
+			StartedAt:  base.Add(-time.Hour),
+			ObservedAt: base.Add(-time.Hour),
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	stats, err := s.Prune(ctx, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Anomalies != 1 || stats.ExternalEvents != 1 {
+		t.Fatalf("prune = %+v, want one anomaly and one event", stats)
+	}
+
+	anomalies, err := s.Anomalies(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(anomalies) != 1 || !anomalies[0].TS.Equal(base.Add(-time.Hour)) {
+		t.Fatalf("anomalies = %+v, want the fresh one", anomalies)
+	}
+
+	events, err := s.ExternalEvents(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].ExternalID != "fresh" {
+		t.Fatalf("events = %+v, want the recently observed one", events)
+	}
+}

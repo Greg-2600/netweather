@@ -105,11 +105,13 @@ func (s *Store) foldDay(ctx context.Context, day time.Time) (int64, error) {
 
 // PruneStats reports deleted rows per table.
 type PruneStats struct {
-	Probes   int64
-	Archive  int64
-	Rollup5m int64
-	Rollup1h int64
-	Rollup1d int64
+	Probes         int64
+	Archive        int64
+	Rollup5m       int64
+	Rollup1h       int64
+	Rollup1d       int64
+	Anomalies      int64
+	ExternalEvents int64
 }
 
 // Prune applies the retention policy from SCHEMA.md §11. Raw probes are deleted
@@ -156,6 +158,21 @@ func (s *Store) Prune(ctx context.Context, now time.Time) (PruneStats, error) {
 	}
 	stats.Rollup1d, err = s.deleteOlderThan(ctx, `DELETE FROM rollup_1d WHERE bucket < ?`,
 		now.Add(-365*24*time.Hour).UnixMilli()/86400000)
+	if err != nil {
+		return stats, err
+	}
+
+	// Advisories and feed events are a 90-day window (DESIGN.md §12): they are
+	// evidence around an incident, not the permanent record the incident row
+	// is. An event still being reported keeps refreshing observed_at, so a
+	// long outage is not deleted while it is current.
+	retention90 := now.Add(-90 * 24 * time.Hour).UnixMilli()
+	stats.Anomalies, err = s.deleteOlderThan(ctx, `DELETE FROM anomaly WHERE ts < ?`, retention90)
+	if err != nil {
+		return stats, err
+	}
+	stats.ExternalEvents, err = s.deleteOlderThan(ctx,
+		`DELETE FROM external_event WHERE observed_at < ?`, retention90)
 	if err != nil {
 		return stats, err
 	}
