@@ -767,7 +767,9 @@ A probe sidecar is a second host relationship: RIPE sees the operator's IP and u
 
 ### 8.7 Degradation contract
 
-Every feed plugin returns `(data, observed_at, err)`. The UI shows `Radar: 4m ago` or `Radar: stale (2h)` — never a silent blank. If a feed is stale, it is dropped from the composite index and the remaining weights renormalise.
+Every feed plugin returns `(data, observed_at, err)`. The UI shows `Radar: 4m ago` or `Radar: stale (2h)` - never a silent blank. If a feed is stale, it is dropped from the composite index and the remaining weights renormalise.
+
+**Implemented:** `feed_state` records the last success, the last error, and consecutive failures per feed, and the board's strip derives `ok`, `stale`, `never`, or `failing` from those columns on every render. The index reads the same states: `External outage severity` requires a healthy `ioda` feed and `BGP stability` requires a healthy `radar` feed. A feed that has never succeeded, is older than 30 minutes, or is failing drops its component with the reason attached, rather than being scored as "nothing happened". A feed that is not configured at all is a different statement and drops the component with `feed is not enabled`.
 
 ---
 
@@ -948,8 +950,8 @@ Rules:
 **Implemented:** `internal/ihi` computes the index per request, so it cannot go stale between ticks. The board carries an `IHI nn` chip linking to `/ihi`, which lists every scored component with its score, effective weight, and evidence time, then every dropped component with the reason it was dropped; `GET /api/v1/ihi` serves the same shape.
 
 - **Own health** is the share of judgeable targets that are up (`up` and `up_reachability` count 1, `degraded` counts 0.5, `down` counts 0; `blocked`, `unknown`, `config_error`, and `unmeasurable` are not evidence) times the measurable share of the fleet. It is a live health share, not a stored baseline comparison; the baseline detector remains `anomaly` (7.2) and this component deliberately does not duplicate it.
-- **External outage severity** is the highest severity among feed events in the last 24 hours, scored `100 x (1 - severity)`; no event is a current 100, because the feeds answered and had nothing to report.
-- **BGP stability** is the same computation restricted to events whose kind names a hijack or a leak.
+- **External outage severity** is the highest severity among feed events in the last 24 hours, scored `100 x (1 - severity)`; no event is a current 100 only when the IODA feed is healthy, because a running feed that reports nothing is a current answer. A feed that has never succeeded, is stale beyond 30 minutes, or is failing drops the component with that reason instead.
+- **BGP stability** is the same computation restricted to events whose kind names a hijack or a leak, gated on the Radar feed's health. The two components are gated separately so a dead IODA feed does not silence routing evidence.
 - **Corridor stability** is the share of configured corridors with no open step change. A deployment with no corridors drops the component rather than scoring 100.
 - **Tamper signals** starts at 100 and loses 20 per DNS divergence verdict (`TAMPER` or `DNS_ANOMALY`) in the last 24 hours, floored at 0.
 - The component timestamp is when its evidence was read, except the corridor component, which carries the newest sample so a dead sampler drops it as stale. The TTL is one hour.

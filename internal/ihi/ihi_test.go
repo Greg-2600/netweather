@@ -137,6 +137,7 @@ type fakeStore struct {
 	events      []store.ExternalEvent
 	corridors   []store.CorridorStatus
 	divergences []store.DNSDivergenceRecord
+	feeds       []store.FeedState
 	err         error
 }
 
@@ -160,6 +161,19 @@ func (f *fakeStore) RecentDNSDivergences(context.Context, int) ([]store.DNSDiver
 	return f.divergences, f.err
 }
 
+func (f *fakeStore) FeedStates(context.Context) ([]store.FeedState, error) {
+	return f.feeds, f.err
+}
+
+// healthyFeeds is the state of a deployment whose IODA and Radar pollers are
+// answering. The index's external components require it.
+func healthyFeeds(now time.Time) []store.FeedState {
+	return []store.FeedState{
+		{Feed: "ioda", LastOKAt: now.Add(-2 * time.Minute)},
+		{Feed: "radar", LastOKAt: now.Add(-2 * time.Minute)},
+	}
+}
+
 func TestBuildFromLiveState(t *testing.T) {
 	t.Parallel()
 
@@ -181,6 +195,7 @@ func TestBuildFromLiveState(t *testing.T) {
 		divergences: []store.DNSDivergenceRecord{
 			{TS: now.Add(-time.Hour), Verdict: "TAMPER"},
 		},
+		feeds: healthyFeeds(now),
 	}
 
 	index := (&ihi.Builder{Store: src, Vantage: "local", Now: func() time.Time { return now }}).Build(context.Background())
@@ -236,6 +251,12 @@ func TestBuildDropsWhatItCannotSee(t *testing.T) {
 	if reasons["Own health"] != "coverage below 50%" {
 		t.Errorf("own health drop = %q", reasons["Own health"])
 	}
+	// No feed states: the external evidence is absent, not quiet.
+	for _, name := range []string{"External outage severity", "BGP stability"} {
+		if reasons[name] != "feed is not enabled" {
+			t.Errorf("%s drop = %q, want the missing feed named", name, reasons[name])
+		}
+	}
 
 	// A read error drops the component with its reason and leaves the rest.
 	src.err = errors.New("disk gone")
@@ -281,6 +302,7 @@ func TestBuildCoversWindowAndFilterBranches(t *testing.T) {
 			{TS: now.Add(-time.Hour), Verdict: "CONSISTENT"},
 			{TS: now.Add(-time.Hour), Verdict: "DNS_ANOMALY"},
 		},
+		feeds: healthyFeeds(now),
 	}
 
 	index := (&ihi.Builder{Store: src, Vantage: "local", Now: func() time.Time { return now }}).Build(context.Background())
@@ -318,7 +340,7 @@ func TestBuildDropsComponentsOnReadErrors(t *testing.T) {
 	t.Parallel()
 
 	now := at(0)
-	src := &readErrorStore{err: errors.New("read failed")}
+	src := &readErrorStore{fakeStore: fakeStore{feeds: healthyFeeds(now)}, err: errors.New("read failed")}
 	index := (&ihi.Builder{Store: src, Vantage: "local", Now: func() time.Time { return now }}).Build(context.Background())
 
 	reasons := map[string]string{}
@@ -354,4 +376,95 @@ func (r *readErrorStore) CorridorStatus(context.Context) ([]store.CorridorStatus
 
 func (r *readErrorStore) RecentDNSDivergences(context.Context, int) ([]store.DNSDivergenceRecord, error) {
 	return nil, r.err
+}
+
+func TestExternalComponentsRequireAHealthyFeed(t *testing.T) {
+	t.Parallel()
+
+	now := at(0)
+	cases := []struct {
+		name      string
+		feeds     []store.FeedState
+		want      map[string]string
+		scored    []string
+		wantScore float64
+	}{
+		{
+			name: "a stale IODA feed drops the external component",
+			feeds: []store.FeedState{
+				{Feed: "ioda", LastOKAt: now.Add(-2 * time.Hour)},
+				{Feed: "radar", LastOKAt: now.Add(-2 * time.Minute)},
+			},
+			want:      map[string]string{"External outage severity": "feed is stale"},
+			scored:    []string{"BGP stability"},
+			wantScore: 100,
+		},
+		{
+			name: "a feed that never succeeded is not quiet",
+			feeds: []store.FeedState{
+				{Feed: "ioda"},
+				{Feed: "radar", LastOKAt: now.Add(-2 * time.Minute)},
+			},
+			want:      map[string]string{"External outage severity": "feed has never succeeded"},
+			scored:    []string{"BGP stability"},
+			wantScore: 100,
+		},
+		{
+			name: "a failing feed drops its component even when recent",
+			feeds: []store.FeedState{
+				{Feed: "ioda", LastOKAt: now.Add(-time.Minute), ConsecutiveFailures: 3},
+				{Feed: "radar", LastOKAt: now.Add(-2 * time.Minute)},
+			},
+			want:      map[string]string{"External outage severity": "feed is failing"},
+			scored:    []string{"BGP stability"},
+			wantScore: 100,
+		},
+		{
+			name: "Radar's health gates BGP, not IODA's",
+			feeds: []store.FeedState{
+				{Feed: "ioda", LastOKAt: now.Add(-2 * time.Minute)},
+				{Feed: "radar", LastOKAt: now.Add(-3 * time.Hour)},
+			},
+			want:      map[string]string{"BGP stability": "feed is stale"},
+			scored:    []string{"External outage severity"},
+			wantScore: 100,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			src := &fakeStore{
+				coverage: store.Coverage{Totals: store.CoverageTotals{Total: 10, Measurable: 10}},
+				counts:   map[state.State]int{state.Up: 10},
+				feeds:    tc.feeds,
+			}
+			index := (&ihi.Builder{
+				Store: src, Vantage: "local", Now: func() time.Time { return now },
+			}).Build(context.Background())
+
+			reasons := map[string]string{}
+			for _, d := range index.Dropped {
+				reasons[d.Name] = d.Reason
+			}
+			for name, reason := range tc.want {
+				if reasons[name] != reason {
+					t.Errorf("%s drop = %q, want %q", name, reasons[name], reason)
+				}
+			}
+			scores := map[string]float64{}
+			for _, part := range index.Parts {
+				scores[part.Name] = part.Score
+			}
+			for _, name := range tc.scored {
+				if got, ok := scores[name]; !ok || got != tc.wantScore {
+					t.Errorf("%s = %v (present %v), want %v", name, got, ok, tc.wantScore)
+				}
+			}
+			if _, dropped := reasons[tc.scored[0]]; dropped {
+				t.Errorf("%s was dropped despite a healthy feed", tc.scored[0])
+			}
+		})
+	}
 }

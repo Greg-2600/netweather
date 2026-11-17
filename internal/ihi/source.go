@@ -38,6 +38,10 @@ type Store interface {
 	ExternalEvents(ctx context.Context, limit int) ([]store.ExternalEvent, error)
 	CorridorStatus(ctx context.Context) ([]store.CorridorStatus, error)
 	RecentDNSDivergences(ctx context.Context, limit int) ([]store.DNSDivergenceRecord, error)
+	// FeedStates is how the index knows whether the external evidence is
+	// current. A dead feed must be dropped rather than scored as quiet
+	// (DESIGN.md §8.7).
+	FeedStates(ctx context.Context) ([]store.FeedState, error)
 }
 
 // Builder assembles the components from live state and computes the index.
@@ -62,14 +66,58 @@ func (b *Builder) Build(ctx context.Context) Index {
 		window = DefaultWindow
 	}
 
+	// Feed health gates the external components: a poller that has stopped
+	// answering is not evidence that nothing is happening (DESIGN.md §8.7).
+	feeds := b.feedStates(ctx, at)
+
 	components := []Component{
 		b.ownHealth(ctx, at),
-		b.external(ctx, at, window),
-		b.bgp(ctx, at, window),
+		b.external(ctx, at, window, feeds),
+		b.bgp(ctx, at, window, feeds),
 		b.corridors(ctx, at),
 		b.tamper(ctx, at, window),
 	}
 	return Compute(components, Options{Now: at})
+}
+
+// feedStaleAfter is the board's staleness threshold, reused so the index and the
+// feed strip never disagree about a dead source.
+const feedStaleAfter = 30 * time.Minute
+
+// feedStates returns the health of each feed keyed by name. A failed read is an
+// empty map, which drops the external components with a stated reason.
+func (b *Builder) feedStates(ctx context.Context, at time.Time) map[string]string {
+	states, err := b.Store.FeedStates(ctx)
+	if err != nil {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(states))
+	for _, f := range states {
+		// A known, healthy feed is present with an empty reason. Absence from
+		// the map means the feed is not configured, which is a different
+		// statement: silence from a running feed is evidence, silence from a
+		// feed that is not running is not.
+		out[f.Feed] = ""
+		switch {
+		case f.LastOKAt.IsZero():
+			out[f.Feed] = "feed has never succeeded"
+		case at.Sub(f.LastOKAt) > feedStaleAfter:
+			out[f.Feed] = "feed is stale"
+		case f.ConsecutiveFailures > 0:
+			out[f.Feed] = "feed is failing"
+		}
+	}
+	return out
+}
+
+// feedReason names why a feed cannot support a component, or "" when it can.
+// A feed that is not configured at all is also a reason: the core works with
+// zero feeds, but the index must not call the missing evidence healthy.
+func feedReason(feeds map[string]string, feed string) string {
+	if reason, ok := feeds[feed]; ok {
+		return reason
+	}
+	return "feed is not enabled"
 }
 
 func dropped(name string, weight float64, at time.Time, coverage float64, reason string) Component {
@@ -115,25 +163,35 @@ func (b *Builder) ownHealth(ctx context.Context, at time.Time) Component {
 
 // external is the highest-severity corroborated outage in the window. No event
 // is a healthy 100, because this component answers "is something large
-// happening", and silence from the feeds is the answer "not that we know of".
-func (b *Builder) external(ctx context.Context, at time.Time, window time.Duration) Component {
-	return b.eventComponent(ctx, at, window, "External outage severity", WeightExternal,
-		func(store.ExternalEvent) bool { return true })
+// happening", and silence from a healthy IODA feed is the answer "not that we
+// know of". A missing or dead feed is not silence: the component is dropped.
+func (b *Builder) external(ctx context.Context, at time.Time, window time.Duration, feeds map[string]string) Component {
+	return b.eventComponent(ctx, at, window, "External outage severity", WeightExternal, "ioda",
+		func(store.ExternalEvent) bool { return true }, feeds)
 }
 
 // bgp is the same shape restricted to routing events: a hijack or a leak is a
-// different failure from an outage, and DESIGN.md weights it separately.
-func (b *Builder) bgp(ctx context.Context, at time.Time, window time.Duration) Component {
-	return b.eventComponent(ctx, at, window, "BGP stability", WeightBGP,
+// different failure from an outage, and DESIGN.md weights it separately. Its
+// evidence comes from Radar, so its gate is Radar's health.
+func (b *Builder) bgp(ctx context.Context, at time.Time, window time.Duration, feeds map[string]string) Component {
+	return b.eventComponent(ctx, at, window, "BGP stability", WeightBGP, "radar",
 		func(e store.ExternalEvent) bool {
 			kind := strings.ToLower(e.Kind)
 			return strings.Contains(kind, "hijack") || strings.Contains(kind, "leak")
-		})
+		}, feeds)
 }
 
 func (b *Builder) eventComponent(ctx context.Context, at time.Time, window time.Duration,
-	name string, weight float64, keep func(store.ExternalEvent) bool,
+	name string, weight float64, feed string,
+	keep func(store.ExternalEvent) bool, feeds map[string]string,
 ) Component {
+	// A feed that has never answered, has gone stale, or is failing cannot
+	// support a score. Dropping it is the difference between "nothing is
+	// happening" and "we do not know whether anything is happening".
+	if reason := feedReason(feeds, feed); reason != "" {
+		return dropped(name, weight, at, 1, reason)
+	}
+
 	events, err := b.Store.ExternalEvents(ctx, 500)
 	if err != nil {
 		return dropped(name, weight, at, 1, "unavailable: "+err.Error())
