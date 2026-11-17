@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -52,6 +53,24 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if err := s.migrate(ctx); err != nil {
 		_ = s.Close()
 		return nil, err
+	}
+
+	// SQLite creates the database with the process umask, which is usually
+	// 0644. The documented posture is 0600 with a 0700 directory
+	// (THREAT_MODEL.md T45). WAL and shared-memory siblings inherit the
+	// database's mode, so tightening the database is what keeps later ones
+	// private; the loop also fixes siblings that already exist. Windows has no
+	// POSIX modes, and the release platform is Linux.
+	if runtime.GOOS != "windows" {
+		for _, p := range []string{path, path + "-wal", path + "-shm"} {
+			if _, err := os.Stat(p); err != nil {
+				continue
+			}
+			if err := os.Chmod(p, 0o600); err != nil {
+				_ = s.Close()
+				return nil, fmt.Errorf("store: database permissions: %w", err)
+			}
+		}
 	}
 	return s, nil
 }
