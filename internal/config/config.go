@@ -235,7 +235,7 @@ func (f *File) Validate() error {
 }
 
 func validateTarget(t *Target) error {
-	t.Host = strings.ToLower(strings.TrimSpace(t.Host))
+	t.Host = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(t.Host), "."))
 	t.Name = strings.TrimSpace(t.Name)
 	if t.Name == "" {
 		return errors.New("name is required")
@@ -273,6 +273,14 @@ func validateTarget(t *Target) error {
 
 	if t.Tier < 0 || t.Tier > 3 {
 		return fmt.Errorf("tier %d must be 0-3", t.Tier)
+	}
+
+	// NTP is self-health, not a target monitor (DESIGN.md §14): a fixed clock
+	// source keep the tool from becoming a UDP/123 scanner and from a typo
+	// pointing the clock check at a stranger's host.
+	if t.Probe == "ntp" && !ntpHostAllowed(t.Host) {
+		return fmt.Errorf("ntp host %q is not in the fixed allowlist (%s)",
+			t.Host, strings.Join(ntpAllowlistNames(), ", "))
 	}
 
 	// qname is the name a DNS anchor asks its server about. It is required for
@@ -426,6 +434,37 @@ func validHostname(host string) bool {
 		}
 	}
 	return true
+}
+
+// ntpHosts is the fixed clock-source allowlist from DESIGN.md §14. NTP answers
+// "is my clock right?", so the destination is a constant, not a monitored
+// target: an arbitrary host would turn the monitor into a UDP/123 scanner.
+var ntpHosts = []string{
+	"pool.ntp.org",
+	"time.cloudflare.com",
+	"time.google.com",
+	"time.apple.com",
+	"time.windows.com",
+}
+
+// ntpHostAllowed accepts a listed clock source or a numbered pool member such
+// as 0.pool.ntp.org. The numbered form is what the pool documents and what an
+// operator is likely to paste, so it is accepted rather than second-guessed.
+func ntpHostAllowed(host string) bool {
+	h := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
+	for _, allowed := range ntpHosts {
+		if h == allowed {
+			return true
+		}
+	}
+	if strings.HasSuffix(h, ".pool.ntp.org") {
+		return validHostname(h)
+	}
+	return false
+}
+
+func ntpAllowlistNames() []string {
+	return ntpHosts
 }
 
 func deriveID(host, probe string) string {

@@ -1065,8 +1065,8 @@ Config files are watched; a valid change applies without restart. Invalid change
 | Allowed methods | GET, HEAD |
 | ICMP | Echo request only, never to private ranges, never the sole up/down signal |
 | Traceroute | On-demand or anomaly-triggered only; ≤10 runs/hour; never to private ranges |
-| NTP | Fixed allowlist of pool servers only — never an arbitrary host |
-| Tor | Never an exit relay: `ClientOnly 1` + `ExitPolicy reject *:*`, verified at startup |
+| NTP | Fixed allowlist of clock sources only - never an arbitrary host. **Implemented:** config refuses an `ntp` target outside `pool.ntp.org` (including numbered members), `time.cloudflare.com`, `time.google.com`, `time.apple.com`, and `time.windows.com` |
+| Tor | Never an exit relay: `ClientOnly 1` + `ExitPolicy reject *:*` are baked into the shipped `torrc` and pinned by a test. `doctor` checks that the SOCKS endpoint answers, not the peer's config, which it cannot read |
 | Proxy sources | User-supplied SOCKS5 endpoints only — no scraped or discovered proxy pools |
 | Tor volume | Off by default; ≤25 targets per vantage; ≥2s spacing; daily MB budget with hard stop |
 | Private ranges | RFC1918, loopback, link-local, CGNAT `100.64.0.0/10`, `169.254.169.254`, IPv6 ULA - **blocked after DNS resolution and after every redirect**. In Docker this includes `172.17.0.1` (the host) and `host.docker.internal` — see `NETWORKING.md` §6 |

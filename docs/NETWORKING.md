@@ -270,10 +270,10 @@ NewCircuitPeriod 3600
 Safety properties this preserves:
 
 - `0.0.0.0` inside the sidecar's namespace is reachable **only** from the `egress` network. No published port, so not from the host, not from the LAN.
-- `ClientOnly 1` + `ExitPolicy reject *:*` means the bind cannot be turned into a relay. `netweather doctor` verifies the effective policy at startup regardless.
+- `ClientOnly 1` + `ExitPolicy reject *:*` means the bind cannot be turned into a relay. They are baked into the image's `torrc` (not a mount an operator can forget) and pinned by a test. `netweather doctor` proves the SOCKS endpoint answers; it cannot read the sidecar's effective config, so it does not claim to audit the policy.
 - `IsolateSOCKSAuth` works over TCP and does not require the control port. Distinct SOCKS username/password per vantage = distinct circuit, no `SIGNAL NEWNYM`.
 
-And one thing to verify, not assume: **DNS must resolve at the exit.** `socks5h://` (remote DNS) is required; `socks5://` resolves locally and defeats the entire vantage. Config validation rejects `socks5://` for a vantage — only `socks5h://` is accepted. `netweather doctor` then confirms no query for a test hostname reached the local resolver during a Tor probe.
+And one thing to verify, not assume: **DNS must resolve at the exit.** `socks5h://` (remote DNS) is required; `socks5://` resolves locally and defeats the entire vantage. Config validation rejects `socks5://` for a vantage - only `socks5h://` is accepted. The `socks5h` dialer is what guarantees the name is sent to the proxy rather than resolved here; `netweather doctor` does not separately observe the local resolver, because that assertion would need a resolver the doctor controls, and the dialer's form is the enforceable part.
 
 Bootstrap is a poll, not a sleep (`DESIGN.md` §5.7): connect to `tor:9050`, send a SOCKS greeting, retry with backoff, expose `BOOTSTRAPPING`, time out at 180s with a clear message. `depends_on` is not a readiness check.
 

@@ -531,3 +531,54 @@ targets:
 		})
 	}
 }
+
+func TestNTPTargetsAreLimitedToTheClockAllowlist(t *testing.T) {
+	t.Parallel()
+
+	for _, host := range []string{
+		"time.cloudflare.com",
+		"pool.ntp.org",
+		"0.pool.ntp.org",
+		"time.google.com",
+		"TIME.APPLE.COM.",
+	} {
+		path := write(t, `version: 1
+targets:
+  - name: Clock
+    host: `+host+`
+    port: 123
+    probe: ntp
+    class: reference
+    tier: 0
+`)
+		if _, err := config.Load(path); err != nil {
+			t.Errorf("%q was rejected: %v", host, err)
+		}
+	}
+
+	// NTP is self-health, not a target monitor: an arbitrary UDP/123 host
+	// would make the tool a clock-port scanner (DESIGN.md §14).
+	for _, host := range []string{
+		"example.com",
+		"ntp.attacker.example",
+		"pool.example.org",
+	} {
+		path := write(t, `version: 1
+targets:
+  - name: Clock
+    host: `+host+`
+    port: 123
+    probe: ntp
+    class: reference
+    tier: 0
+`)
+		_, err := config.Load(path)
+		if err == nil {
+			t.Errorf("%q was accepted; ntp is allowlisted", host)
+			continue
+		}
+		if !strings.Contains(err.Error(), "fixed allowlist") {
+			t.Errorf("%q error = %v, want the allowlist named", host, err)
+		}
+	}
+}
