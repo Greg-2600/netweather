@@ -321,7 +321,7 @@ Auth: bearer. The newest observations for one target, newest first. This is the 
 ```
 
 - `404` for an unknown target. A target that exists but has never been probed is `200` with an empty list — those mean different things.
-- Raw probes are retained for 72h (`SCHEMA.md` §11); for longer ranges use `/series` when it lands.
+- Raw probes are retained for 72h (`SCHEMA.md` §11); for a longer window use `/series` (`API.md` §6.10) or the export route (§6.16).
 - `since` is not a parameter here: this endpoint is "the last N", not a range scan.
 
 ### 6.7 `GET /api/v1/incidents` — stable
