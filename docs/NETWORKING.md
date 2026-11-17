@@ -86,10 +86,10 @@ A prober that reports outages caused by its own MTU is worse than useless.
 **Fix, in order:**
 
 1. Set the compose network MTU to match the real path (`1400` is a safe default for anything VPN'd). No capability required.
-2. `netweather doctor` performs a **PMTU check** against a reference host at startup and every hour: send a DF-marked packet of 1400 bytes, then 1280. Report `MTU_SUSPECT` if the large one is lost.
+2. The `mtu` self-check reports the smallest MTU among up, non-loopback interfaces at startup and with maintenance, and warns below 1400. While it is failing and fresh (twenty minutes, twice the maintenance interval), `http_timeout`, `tcp_timeout`, and `tls_handshake` are classified `UNKNOWN` with the reason "egress MTU is below the floor" instead of faking `DOWN`; a `tcp_refused` stays `DOWN`, because the SYN arrived.
 3. Never add `NET_ADMIN` to run `iptables --clamp-mss-to-pmtu`. Fix the network, don't patch the container.
 
-If PMTU is broken, the UI says so, and `TLS`/`HTTP` failures within 60s of that verdict are downgraded from `DOWN` to `UNKNOWN`. Silent MTU loss must never produce a red tile.
+Deliberately not implemented: a DF-marked path probe (1400 bytes, then 1280). That needs raw sockets or platform-specific path-MTU discovery, which the shipped image does not grant, and the interface check plus the classifier gate already covers the documented failure mode: a working path that looks dead. `DESIGN.md` §7.5 states the same limitation in the self-check row.
 
 ---
 
@@ -333,19 +333,17 @@ services:
     networks: [egress]
 ```
 
-Then assert the things only a container can break:
+Then assert the things only a container can break. The suite is `internal/e2e/compose_test.go` behind `//go:build compose`; the names below are its subtests.
 
-| Test | Asserts |
+| Scenario | Asserts |
 |---|---|
-| `TestContainer_DNSBypass` | A country-anchor query reaches the fake authoritative server, **not** `127.0.0.11` |
-| `TestContainer_MTU1400` | A 1400-byte payload to a reference host succeeds; 1500 fails and is classified `UNKNOWN`, not `DOWN` |
-| `TestContainer_TorReachable` | `tor:9050` is reachable, `127.0.0.1:9050` is not, and the effective exit policy is `reject *:*` |
-| `TestContainer_NoPublishedTorPort` | `docker port` shows no mapping for 9050 |
-| `TestContainer_SSRF` | A target resolving to `172.17.0.1` and to `169.254.169.254` is refused, logged, and never dialed |
-| `TestContainer_ReadOnlyRootfs` | The binary starts with `read_only: true` and writes only to `/data` and `/tmp` |
-| `TestContainer_Port53Blocked` | With 53 dropped, country anchors are `UNMEASURABLE`, board is not red |
+| `the image is the hardened release image` | uid 65532, a read-only rootfs, and no shell |
+| `a low MTU is reported, not hidden` | on a 1280-byte bridge the `mtu` self-check fails and names 1280, while `port53` still passes with working egress |
+| `dns probes the configured resolver and refuses private ones` | `1.1.1.1:53` reaches `UP_REACHABILITY`; `127.0.0.11`, `172.17.0.1`, and `169.254.169.254` are `UNMEASURABLE`, so there is no silent fallback to the host resolver and the SSRF policy is not mistaken for an outage |
+| `tor is reachable by service name, not on loopback` | `tor.nw:9050` answers from the app's network after a readiness wait, `127.0.0.1:9050` does not, and `docker port` shows no published 9050 |
+| `port 53 blocked is unmeasurable, not down` | on an `--internal` network the `port53` self-check fails and the DNS target becomes `UNMEASURABLE` |
 
-`TestContainer_SSRF` is the one worth writing first. It is the only test that proves the guard list matches the *actual* container topology rather than the RFC list.
+The SSRF scenario is the one worth writing first: it is the only test that proves the guard list matches the *actual* container topology rather than the RFC list. A probe black-holed by a low MTU cannot be asserted here for the same SSRF reason (the only reachable endpoint is a private address), so the gate is covered by unit tests instead; `QUALITY.md` §5.5 states both.
 
 ---
 
