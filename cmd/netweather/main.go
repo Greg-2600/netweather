@@ -136,6 +136,8 @@ func serve(lg *logging.Logger) error {
 	changes := board.NewBroadcast()
 	source := &board.StoreSource{Store: st, Vantage: "local", Changes: changes}
 
+	ag := newAgent(targets, st, lg)
+
 	ui, err := web.New(web.Deps{
 		Logger:        lg.Logger,
 		Source:        source,
@@ -156,6 +158,7 @@ func serve(lg *logging.Logger) error {
 		Commit:    version.Commit,
 		StartedAt: time.Now(),
 		Source:    source,
+		Control:   ag,
 		Fallback:  ui,
 	})
 	if err != nil {
@@ -178,7 +181,7 @@ func serve(lg *logging.Logger) error {
 		ErrorLog:       slog.NewLogLogger(lg.Handler(), slog.LevelWarn),
 	}
 
-	go probeLoop(ctx, lg, newAgent(targets, st, lg), changes)
+	go probeLoop(ctx, lg, ag, changes)
 
 	go func() {
 		<-ctx.Done()

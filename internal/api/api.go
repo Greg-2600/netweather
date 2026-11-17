@@ -12,6 +12,14 @@ import (
 	"github.com/Greg-2600/netweather/internal/logging"
 )
 
+// Control is the probe kill switch. The agent implements it; a nil Control means
+// the control endpoints are unavailable rather than silently successful.
+type Control interface {
+	Pause()
+	Resume()
+	Paused() bool
+}
+
 // Deps is everything the HTTP layer needs. It is deliberately small: the API
 // reads state, it does not own it.
 type Deps struct {
@@ -23,6 +31,8 @@ type Deps struct {
 	// Source supplies the board. Nil means "not configured": the endpoint
 	// answers 503 rather than inventing an empty board.
 	Source board.Source
+	// Control is the pause/resume switch.
+	Control Control
 	// Fallback serves everything that is not /healthz or /api/. It is the UI.
 	// Nil means "JSON 404", which is the right default for tests.
 	Fallback http.Handler
@@ -50,6 +60,9 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("/api/v1/board", onlyGET(s.handleBoard))
+	apiMux.HandleFunc("/api/v1/control", onlyGET(s.handleControl))
+	apiMux.HandleFunc("/api/v1/pause", onlyPOST(s.handlePause))
+	apiMux.HandleFunc("/api/v1/resume", onlyPOST(s.handleResume))
 	apiMux.HandleFunc("/api/v1/meta", onlyGET(s.handleMeta))
 	apiMux.HandleFunc("/api/v1/logs", onlyGET(s.handleLogs))
 	apiMux.HandleFunc("/", s.handleNotFound)
@@ -79,6 +92,18 @@ func onlyGET(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")
+			writeError(w, r, http.StatusMethodNotAllowed, CodeMethodNotAllowed,
+				fmt.Sprintf("%s is not allowed on %s", r.Method, r.URL.Path))
+			return
+		}
+		h(w, r)
+	}
+}
+
+func onlyPOST(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
 			writeError(w, r, http.StatusMethodNotAllowed, CodeMethodNotAllowed,
 				fmt.Sprintf("%s is not allowed on %s", r.Method, r.URL.Path))
 			return
@@ -129,7 +154,7 @@ type metaResponse struct {
 
 // capabilities is the runtime truth. A client should feature-detect here rather
 // than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs", "board"}
+var capabilities = []string{"health", "meta", "logs", "board", "control"}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}
@@ -195,6 +220,44 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, r, out, &Meta{Count: len(out)})
+}
+
+type controlState struct {
+	Paused bool `json:"paused"`
+}
+
+func (s *server) handleControl(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Control == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "control is not configured")
+		return
+	}
+	writeData(w, r, controlState{Paused: s.deps.Control.Paused()}, nil)
+}
+
+func (s *server) handlePause(w http.ResponseWriter, r *http.Request)  { s.setPaused(w, r, true) }
+func (s *server) handleResume(w http.ResponseWriter, r *http.Request) { s.setPaused(w, r, false) }
+
+func (s *server) setPaused(w http.ResponseWriter, r *http.Request, paused bool) {
+	if s.deps.Control == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "control is not configured")
+		return
+	}
+
+	if paused {
+		s.deps.Control.Pause()
+	} else {
+		s.deps.Control.Resume()
+	}
+
+	// The kill switch is an auditable action: who asked, and for what.
+	s.deps.Logger.Info("probe control",
+		"event", "probe_control",
+		"component", "http",
+		"request_id", requestIDFrom(r),
+		"paused", paused,
+	)
+
+	writeData(w, r, controlState{Paused: paused}, nil)
 }
 
 type logRecord struct {

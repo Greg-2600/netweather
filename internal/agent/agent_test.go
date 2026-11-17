@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -294,6 +295,38 @@ func TestClassifierExpectationsAreCarried(t *testing.T) {
 	}
 	if got := sink.batch()[0].State; got != state.Degraded {
 		t.Fatalf("state = %s, want degraded", got)
+	}
+}
+
+func TestPauseStopsProbing(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	p := newProber()
+	sink := &fakeSink{}
+
+	a := agent.New([]agent.Target{target("t1", "chase.com")}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+	a.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	a.Pause()
+	if !a.Paused() {
+		t.Fatal("Paused() false after Pause")
+	}
+	if ran, err := a.Step(context.Background()); err != nil || ran != 0 {
+		t.Fatalf("paused Step = (%d, %v)", ran, err)
+	}
+	if p.count("https://chase.com/") != 0 {
+		t.Fatal("a paused agent probed")
+	}
+
+	a.Resume()
+	if ran, err := a.Step(context.Background()); err != nil || ran != 1 {
+		t.Fatalf("resumed Step = (%d, %v)", ran, err)
+	}
+	if p.count("https://chase.com/") != 1 {
+		t.Fatal("resumed agent did not probe")
 	}
 }
 

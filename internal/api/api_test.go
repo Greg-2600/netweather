@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -457,6 +458,139 @@ func TestBoardWithoutSourceIsUnavailable(t *testing.T) {
 	}
 	if e.Error.Code != api.CodeUnavailable {
 		t.Fatalf("code = %q", e.Error.Code)
+	}
+}
+
+type fakeControl struct {
+	mu      sync.Mutex
+	paused  bool
+	pauses  int
+	resumes int
+}
+
+func (f *fakeControl) Pause() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.paused = true
+	f.pauses++
+}
+
+func (f *fakeControl) Resume() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.paused = false
+	f.resumes++
+}
+
+func (f *fakeControl) Paused() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.paused
+}
+
+func newControlHandler(t *testing.T, c api.Control) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Control:   c,
+			Version:   "test",
+			Commit:    "deadbeef",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func TestControlRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	c := &fakeControl{}
+	h := newControlHandler(t, c)
+
+	readPaused := func() bool {
+		rec := do(h, http.MethodGet, "/api/v1/control", testToken)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("control status = %d", rec.Code)
+		}
+		var env dataEnvelope
+		if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+			t.Fatal(err)
+		}
+		var state struct {
+			Paused bool `json:"paused"`
+		}
+		if err := json.Unmarshal(env.Data, &state); err != nil {
+			t.Fatal(err)
+		}
+		return state.Paused
+	}
+
+	if readPaused() {
+		t.Fatal("control starts paused")
+	}
+
+	rec := do(h, http.MethodPost, "/api/v1/pause", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("pause status = %d", rec.Code)
+	}
+	if !readPaused() {
+		t.Fatal("pause did not take effect")
+	}
+
+	rec = do(h, http.MethodPost, "/api/v1/resume", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("resume status = %d", rec.Code)
+	}
+	if readPaused() {
+		t.Fatal("resume did not take effect")
+	}
+
+	if c.pauses != 1 || c.resumes != 1 {
+		t.Fatalf("pauses=%d resumes=%d", c.pauses, c.resumes)
+	}
+}
+
+func TestControlRequiresAuth(t *testing.T) {
+	t.Parallel()
+
+	h := newControlHandler(t, &fakeControl{})
+	for _, route := range []string{"/api/v1/control", "/api/v1/pause", "/api/v1/resume"} {
+		method := http.MethodGet
+		if route != "/api/v1/control" {
+			method = http.MethodPost
+		}
+		rec := do(h, method, route, "")
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s %s: status = %d, want 401", method, route, rec.Code)
+		}
+	}
+}
+
+func TestControlUnavailableWithoutImplementation(t *testing.T) {
+	t.Parallel()
+
+	h := newHandler(t, testToken, nil)
+	rec := do(h, http.MethodPost, "/api/v1/pause", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+}
+
+func TestPauseRejectsGET(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newControlHandler(t, &fakeControl{}), http.MethodGet, "/api/v1/pause", testToken)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405", rec.Code)
+	}
+	if got := rec.Header().Get("Allow"); got != "POST" {
+		t.Fatalf("Allow = %q", got)
 	}
 }
 

@@ -16,6 +16,7 @@ Honesty first, because a spec that implies more than the binary does is worse th
 | `GET /api/v1/meta` | **implemented** — build, uptime, auth mode, capabilities |
 | `GET /api/v1/logs` | **implemented** - reads the in-memory ring (`LOGGING.md` §9) |
 | `GET /api/v1/board` | **implemented** - the grid's data from the store |
+| `GET /api/v1/control`, `POST /api/v1/pause`, `POST /api/v1/resume` | **implemented** - the probe kill switch |
 | `GET /events` | **implemented** - the UI's SSE stream; session cookie auth, not bearer. The API-facing counterpart is specified in §7.2 |
 | Everything else in §7 | **specified, not implemented** |
 | `/metrics` (`DESIGN.md` §6.4) | **specified, not implemented** — see §7.4 for why it is separate from `/api/v1` |
@@ -190,7 +191,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
-    "capabilities": ["health", "meta", "logs", "board"],
+    "capabilities": ["health", "meta", "logs", "board", "control"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -264,6 +265,19 @@ Auth: bearer. The grid's data, straight from the store, in source order.
 - No server-side filtering in v1: the list is capped at 2000, and a client that wants only failures can filter locally. Filters arrive with `/api/v1/targets` if they prove necessary.
 - `503 unavailable` when the store is not readable. An empty `data` means "no targets", not "cannot answer".
 
+### 6.5 `POST /api/v1/pause`, `POST /api/v1/resume`, `GET /api/v1/control` — stable
+
+The kill switch. Pausing stops outbound probing immediately; the UI, API, and stored data stay available. Resuming re-arms on the next scheduler tick. `control` reports the current state.
+
+```json
+{"data": {"paused": true}, "meta": {"request_id": "…"}}
+```
+
+- Both POST routes are idempotent: pausing twice is not an error.
+- Bearer auth only. There is no CSRF token because the route is not reachable with a browser session cookie.
+- The action is logged at `INFO` with the request id, so "who paused it" is answerable.
+- **Pause is not persisted across a restart.** A crash must not leave a kill switch on forever, and a restart must not silently silence monitoring.
+
 ---
 
 ## 7. Specified, not implemented
@@ -320,8 +334,6 @@ data: {"id":"01J…","verdict":"INCIDENT","headline":"…"}
 
 | Endpoint | Tier | Purpose |
 |---|---|---|
-| `POST /api/v1/pause` | stable | Stop probing now (the kill switch) |
-| `POST /api/v1/resume` | stable | Resume |
 | `POST /api/v1/debug/scopes` | experimental | Enable scoped `debug`/`trace` for a target, with a mandatory `ttl` ≤ 1h |
 | `DELETE /api/v1/debug/scopes/{id}` | experimental | End a scope early |
 | `POST /api/v1/targets/{id}/trace` | experimental | On-demand traceroute; subject to the ≤10/hour global limit |

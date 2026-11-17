@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/classify"
@@ -55,6 +56,7 @@ type Agent struct {
 
 	next   map[string]time.Time
 	primed bool
+	paused atomic.Bool
 }
 
 // New builds an agent. Now and Rand default to the real clock and math/rand;
@@ -72,8 +74,12 @@ func New(targets []Target, prober Prober, sink Sink) *Agent {
 }
 
 // Step probes every target that is due now and records one batch. It returns how
-// many targets ran.
+// many targets ran. A paused agent does nothing and schedules nothing.
 func (a *Agent) Step(ctx context.Context) (int, error) {
+	if a.paused.Load() {
+		return 0, nil
+	}
+
 	now := a.now()
 	if !a.primed {
 		a.prime(now)
@@ -115,6 +121,22 @@ func (a *Agent) Step(ctx context.Context) (int, error) {
 
 // NextRun reports when a target is next due. Zero means "never scheduled".
 func (a *Agent) NextRun(id string) time.Time { return a.next[id] }
+
+// Pause stops probing. The agent keeps running so the UI and API stay
+// available; it simply stops emitting outbound traffic.
+func (a *Agent) Pause() {
+	a.paused.Store(true)
+	a.logger().Warn("probing paused", "event", "probe_paused", "component", "agent")
+}
+
+// Resume re-arms probing from the next Step.
+func (a *Agent) Resume() {
+	a.paused.Store(false)
+	a.logger().Info("probing resumed", "event", "probe_resumed", "component", "agent")
+}
+
+// Paused reports whether probing is currently suppressed.
+func (a *Agent) Paused() bool { return a.paused.Load() }
 
 func (a *Agent) now() time.Time {
 	if a.Now == nil {
