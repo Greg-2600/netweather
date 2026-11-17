@@ -1,0 +1,9 @@
+#!/bin/sh
+# Enable with: git config core.hooksPath .githooks
+# The full gate (coverage, fuzz, browser, build) belongs in CI; this is the
+# subset that catches the mistakes worth catching before a commit exists.
+set -eu
+
+go run ./internal/devtool fmt -check
+go vet ./...
+go run ./internal/devtool test

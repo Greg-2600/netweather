@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      go-toolchain:
+        patterns:
+          - "golang.org/x/*"
+      test-only:
+        patterns:
+          - "github.com/mxschmitt/playwright-go"
+          - "github.com/deckarep/*"
+          - "github.com/go-stack/*"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

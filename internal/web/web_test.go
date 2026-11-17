@@ -3,6 +3,7 @@ package web_test
 import (
 	"bufio"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -11,8 +12,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"log/slog"
 
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/web"

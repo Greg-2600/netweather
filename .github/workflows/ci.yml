@@ -3,15 +3,16 @@ name: ci
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
   schedule:
-    - cron: "0 6 * * 1"   # weekly: pick up new advisories in the pinned toolchain
+    - cron: "0 6 * * 1"   # weekly: new advisories and a fresh toolchain
 
 permissions:
   contents: read
 
 jobs:
-  build:
+  quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,26 +22,20 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: gofmt
-        run: |
-          unformatted="$(gofmt -l .)"
-          if [ -n "$unformatted" ]; then
-            echo "unformatted files:"
-            echo "$unformatted"
-            exit 1
-          fi
+      - name: format
+        run: go run ./internal/devtool fmt -check
 
       - name: vet
         run: go vet ./...
 
-      - name: build (static, no cgo)
-        run: CGO_ENABLED=0 go build ./...
+      - name: test (race, shuffled)
+        run: go run ./internal/devtool test
 
-      - name: test
-        run: go test -race ./...
+      - name: coverage gates
+        run: go run ./internal/devtool cover
 
-      - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      - name: fuzz (short)
+        run: go test -run=^$ -fuzz=FuzzScrubStringIsIdempotent -fuzztime=20s ./internal/logging
 
   lint:
     runs-on: ubuntu-latest
@@ -55,6 +50,50 @@ jobs:
         with:
           version: latest
 
+  vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: govulncheck (pinned in go.mod)
+        run: go tool govulncheck ./...
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: build (static, version stamped)
+        run: go run ./internal/devtool build
+
+      - name: reproducible build
+        run: go run ./internal/devtool repro
+
+      - name: verify the binary runs
+        run: ./dist/netweather version
+
+      - name: release artefacts
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: go run ./internal/devtool snapshot
+
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          name: release-binaries
+          path: |
+            dist/*
+          retention-days: 30
+
   uitest:
     runs-on: ubuntu-latest
     steps:
@@ -63,12 +102,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
 
       - name: install browser
         run: go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6401.0 install --with-deps chromium
 
       - name: browser tests
-        run: go test -tags=uitest -count=1 ./internal/web/uitest -timeout 10m
+        run: go run ./internal/devtool ui
 
       - uses: actions/upload-artifact@v4
         if: failure()

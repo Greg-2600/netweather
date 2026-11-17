@@ -12,6 +12,8 @@ Most monitors answer only #2, and answer it badly: `curl != 200` becomes "down."
 
 **Status: phase 0, early.** The documents in [`docs/`](docs/) are the specification. The binary currently serves the API contract (`/healthz`, `/api/v1/meta`, `/api/v1/logs`) and a board skeleton — login, grid, SSE deltas — backed by an in-memory source. No container image yet. The probe engine and the store are next.
 
+Build and test with one command: `go run ./internal/devtool verify`.
+
 ---
 
 ## What it is not

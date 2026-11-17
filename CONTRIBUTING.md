@@ -14,18 +14,33 @@ go build ./...
 go test ./...
 ```
 
-## Before you open a PR
+## Build and test
+
+One entry point, identical on Windows, macOS, Linux, and CI:
 
 ```sh
-gofmt -l .            # must print nothing
-go vet ./...
-CGO_ENABLED=0 go build ./...
-go test -race ./...
+go run ./internal/devtool verify   # fmt -check, vet, test, coverage gates, build
+go run ./internal/devtool test     # race (when cgo is available) + shuffle + count=1
+go run ./internal/devtool cover    # coverage profile + per-package floors
+go run ./internal/devtool build    # dist/netweather with version, commit, date
+go run ./internal/devtool repro    # build twice, compare SHA-256
+go run ./internal/devtool snapshot # five platform binaries + SHA256SUMS
+go run ./internal/devtool ui       # Playwright suite (browser required)
 ```
 
-CI additionally runs `golangci-lint`, `gosec`, and `govulncheck`. Run them locally if you can; a failing security scanner is a review blocker, not a style note.
+Formatting and tools are pinned in `go.mod` as `tool` directives, so there are no global installs and no version drift:
 
-`go test -race` needs a C compiler. On Windows without cgo, `go test ./...` is still valid; CI runs the race detector on Linux.
+```sh
+go tool gofumpt -w .
+go tool gci write -s standard -s default .
+go tool govulncheck ./...
+```
+
+CI runs exactly these commands; if `devtool verify` passes locally it should pass there.
+
+Optional pre-commit hook: `git config core.hooksPath .githooks`. It runs `fmt -check`, `vet`, and the test suite.
+
+`go test -race` needs a C compiler. On Windows without cgo, the devtool skips the race flag and CI still runs it on Linux.
 
 ### Browser tests
 

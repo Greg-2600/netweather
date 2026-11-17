@@ -29,3 +29,7 @@ coverage.html
 .vscode/
 .DS_Store
 Thumbs.db
+
+# stray coverage artefacts
+/coverage
+

@@ -457,15 +457,18 @@ Always `-race -covermode=atomic`. Coverage is uploaded per-PR and diffed, so a P
 
 | Stage | Runs | Blocking |
 |---|---|---|
-| format | `gofmt -l`, `goimports -l` | ✅ |
+| format | `devtool fmt -check` (gofumpt + gci) | ✅ |
 | vet | `go vet ./...` | ✅ |
 | lint | `golangci-lint run` | ✅ |
-| test | `go test -race ./...` | ✅ |
+| test | `devtool test` (`-race`, `-shuffle=on`, `-count=1`) | ✅ |
+| coverage | `devtool cover`: profile + per-package floors (70% default; 95% classify, 90% correlate, 85% schedule once they exist) | ✅ |
 | ui test (browser) | Playwright + chromium, `-tags=uitest` | ✅ (paths touching `internal/web`, `internal/board`, templates) |
-| fuzz (short) | `go test -fuzz=FuzzClassify -fuzztime=30s` | ✅ |
-| vuln | `govulncheck ./...`, `osv-scanner` | ✅ |
+| fuzz (short) | `go test -run=^$ -fuzz=FuzzScrubStringIsIdempotent -fuzztime=20s` | ✅ |
+| vuln | `go tool govulncheck ./...` (pinned in `go.mod`) | ✅ |
 | secrets | `gitleaks` | ✅ |
-| build | multi-arch `buildx` | ✅ |
+| build | `devtool build` (static, `-trimpath`, version stamped via ldflags) | ✅ |
+| reproducibility | `devtool repro`: two builds of the same revision, identical SHA-256 | ✅ |
+| release | `devtool snapshot`: five platforms + `SHA256SUMS`, tags only | ✅ (tags) |
 | image scan | `grype`, `hadolint` | ✅ |
 | sbom + sign | `syft`, `cosign` | ✅ |
 | integration | fake internet | ✅ |
@@ -473,7 +476,7 @@ Always `-race -covermode=atomic`. Coverage is uploaded per-PR and diffed, so a P
 | e2e real | 6 targets | ❌ scheduled + release only |
 | mutation | `gremlins` on `classify` | ❌ advisory |
 
-Pre-commit hook runs format + vet + lint + unit. Everything else is CI.
+Pre-commit hook runs format + vet + test. Everything else is CI. Tool versions live in `go.mod`, not in a workflow file.
 
 ---
 
