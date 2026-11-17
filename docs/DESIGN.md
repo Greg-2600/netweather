@@ -469,7 +469,7 @@ The floor is applied **after** jitter, as a final clamp.
 - A 1-second dispatcher tick calls one deterministic `Step`; probes run one at a time, in due order, with per-host serialization and the global ceiling below
 - **Deliberately not a worker pool.** The earlier sketch had 64 workers and a `probe.workers` setting. The shipped loop is a single step so the scheduler rules are testable with an injected clock and no sleeping, and 750 targets at their intervals need a few probes per second, well inside the ceiling; a pool would add nondeterminism without buying throughput the workload needs
 - **Per-host semaphore = 1**, keyed by registrable domain, so `chase.com` and `www.chase.com` share a slot
-- **Global token bucket** ceiling (default 20 req/s) - a bad config cannot melt your connection or look like an attack. **Implemented:** the agent spaces probes by `1/rate`, with the rate from `schedule.RampRate`; the first probe starts immediately and a probe slower than the gap simply lowers the effective rate
+- **Global token bucket** ceiling (default 20 req/s) - a bad config cannot melt your connection or look like an attack. **Implemented:** the agent spaces probes by `1/rate`, with the rate from `schedule.RampRate`; `NETWEATHER_RATE_LIMIT` sets the ceiling (fractional values allowed, malformed or non-positive refuses startup), the first probe starts immediately, and a probe slower than the gap simply lowers the effective rate
 - **Single-flight per target** — never two probes of the same target concurrently
 - Missed ticks are dropped, never queued (no thundering herd after a suspend)
 
@@ -1080,7 +1080,7 @@ Config changes apply without a restart. The path is polled every 30 seconds rath
 |---|---|
 | Minimum interval per host | 30s, not configurable lower |
 | Per-host concurrency | 1 |
-| Global rate ceiling | 20 req/s default, ramped from 2 req/s over ten minutes from the database's first target; **implemented** in the agent's Step pacing |
+| Global rate ceiling | 20 req/s default (`NETWEATHER_RATE_LIMIT`), ramped from 2 req/s over ten minutes from the database's first target; **implemented** in the agent's Step pacing |
 | Allowed ports (outbound) | 80, 443, 53 (DNS), 123 (NTP, fixed allowlist), 853 (DoT, phase 3). **22 and everything else excluded.** |
 | Inbound port | `2600` only; no other listener. Non-loopback bind requires auth (`NETWORKING.md` §7.1) |
 | API rate limit | 60 req/min per token, burst 20, `429` with `Retry-After` (`API.md` §8) |

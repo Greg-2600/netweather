@@ -1150,3 +1150,38 @@ func TestConfigStampSeesANestedConfigEdit(t *testing.T) {
 		t.Fatalf("file stamp = %q", fileStamp)
 	}
 }
+
+func TestRateLimitFromEnv(t *testing.T) {
+	cases := []struct {
+		raw     string
+		want    float64
+		wantErr bool
+	}{
+		{"", 20, false},
+		{"50", 50, false},
+		{"0.5", 0.5, false},
+		{"0", 0, true},
+		{"-1", 0, true},
+		{"many", 0, true},
+		{"2000", 0, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.raw, func(t *testing.T) {
+			t.Setenv("NETWEATHER_RATE_LIMIT", tc.raw)
+
+			got, err := rateLimitFromEnv()
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("%q was accepted as %v", tc.raw, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("%q: %v", tc.raw, err)
+			}
+			if got != tc.want {
+				t.Fatalf("%q = %v, want %v", tc.raw, got, tc.want)
+			}
+		})
+	}
+}

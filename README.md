@@ -176,6 +176,7 @@ Every environment variable the binary reads, including the ones that exist for a
 | `NETWEATHER_METRICS` | `false` | mounts `/metrics` (Prometheus text, aggregates only) |
 | `NETWEATHER_INCIDENT_INTERVAL` | `5m` | incident and anomaly evaluation cadence |
 | `NETWEATHER_DAILY_MB` | `2048` | the direct vantage's daily egress budget; when spent, probing stops until 00:00 UTC and the board says why. `0` disables it |
+| `NETWEATHER_RATE_LIMIT` | `20` | global probe ceiling in requests per second; fractional values are allowed, the cold-start ramp still starts at 2 req/s and lasts ten minutes, and a malformed or non-positive value refuses startup |
 | `NETWEATHER_ENRICH` | on | `false` disables ASN, prefix, and CDN learning |
 | `NETWEATHER_PEERINGDB` / `NETWEATHER_PEERINGDB_URL` | on | exchange-membership labels; `false` disables them without disabling enrichment, and `_URL` points at a mirror |
 | `NETWEATHER_FEEDS` | none | comma list of `ioda`, `radar`, `statuspage`, `aws-status`, `gcp-status`, `azure-status`; empty means no external calls |

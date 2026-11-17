@@ -225,12 +225,21 @@ func serve(lg *logging.Logger) error {
 		ag.Suspend = directBudget.Exhausted
 	}
 
-	// The global request ceiling from DESIGN.md §6.2: 20 req/s steady, ramping
-	// from 2 req/s over the first ten minutes. The ramp is measured from the
-	// database's first target so a restart resumes at the current rate instead
-	// of repeating it (DESIGN.md §6.5).
-	ag.RateCeiling = 20
+	// The global request ceiling from DESIGN.md §6.2: 20 req/s by default and
+	// settable with NETWEATHER_RATE_LIMIT, ramping from 2 req/s over the first
+	// ten minutes. The ramp is measured from the database's first target so a
+	// restart resumes at the current rate instead of repeating it
+	// (DESIGN.md §6.5). A ceiling below the 2 req/s start simply starts at the
+	// ceiling.
+	rateCeiling, err := rateLimitFromEnv()
+	if err != nil {
+		return err
+	}
+	ag.RateCeiling = rateCeiling
 	ag.RateStart = 2
+	if rateCeiling < ag.RateStart {
+		ag.RateStart = rateCeiling
+	}
 	ag.RateRamp = 10 * time.Minute
 	if coldStart, err := st.ColdStartAt(ctx); err == nil && !coldStart.IsZero() {
 		ag.RateSince = coldStart
@@ -850,6 +859,22 @@ func newDirectBudget(lg *logging.Logger) (*bytecap.Budget, error) {
 			"used_bytes", used, "limit_bytes", budget.Limit)
 	}
 	return budget, nil
+}
+
+// rateLimitFromEnv reads NETWEATHER_RATE_LIMIT, the global probe ceiling in
+// requests per second. The default is the documented 20. This is a guardrail,
+// so a malformed, zero, or absurd value refuses startup rather than silently
+// removing the ceiling.
+func rateLimitFromEnv() (float64, error) {
+	raw := strings.TrimSpace(os.Getenv("NETWEATHER_RATE_LIMIT"))
+	if raw == "" {
+		return 20, nil
+	}
+	n, err := strconv.ParseFloat(raw, 64)
+	if err != nil || n <= 0 || n > 1000 {
+		return 0, fmt.Errorf("NETWEATHER_RATE_LIMIT %q is not a rate between 0 and 1000 req/s", raw)
+	}
+	return n, nil
 }
 
 // enrichmentLoop learns ASN, prefix and CDN for hostname targets. It runs at
