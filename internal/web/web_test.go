@@ -3143,3 +3143,102 @@ func TestTargetDetailShowsDNSDivergence(t *testing.T) {
 		t.Error("a target without divergence did not say so")
 	}
 }
+
+type fakeDNSObservations struct {
+	records []store.DNSDivergenceRecord
+	err     error
+}
+
+func (f *fakeDNSObservations) RecentDNSDivergences(context.Context, int) ([]store.DNSDivergenceRecord, error) {
+	return f.records, f.err
+}
+
+func newServerWithDNSObservations(t *testing.T, token string, m *board.Memory, obs web.DNSObservations) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:          m,
+		Watcher:         m,
+		DNSObservations: obs,
+		Vantage:         "local",
+		Token:           token,
+		Version:         "test",
+		StartedAt:       time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestBoardShowsCollapsedDNSObservations(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(board.Target{ID: "1", Name: "Chase", Host: "chase.com", State: board.StateUp})
+	at := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	obs := &fakeDNSObservations{records: []store.DNSDivergenceRecord{
+		{
+			TargetID: "1", Host: "chase.com", TS: at,
+			Verdict: "DNS_ANOMALY", Confidence: "medium",
+			Detail: "one resolver disagrees with its own baseline",
+		},
+	}}
+
+	ts := newServerWithDNSObservations(t, testToken, m, obs)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="dns-strip"`) {
+		t.Fatalf("DNS strip missing:\n%s", page)
+	}
+	for _, want := range []string{
+		"chase.com", "DNS_ANOMALY (medium)", "2026-11-17 12:00",
+		"disagrees with its own baseline", "never changes a tile's state",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("DNS strip missing %q", want)
+		}
+	}
+	// It is a collapsed strip, not an open block.
+	if !strings.Contains(page, `<details class="dns-strip"`) {
+		t.Error("the DNS strip is not a details block")
+	}
+	if strings.Contains(page, `<details class="dns-strip" open`) {
+		t.Error("the DNS strip starts expanded")
+	}
+}
+
+func TestBoardDNSObservationFailureIsStated(t *testing.T) {
+	t.Parallel()
+
+	obs := &fakeDNSObservations{err: errors.New("db down")}
+	ts := newServerWithDNSObservations(t, testToken, fixture(), obs)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want the board to survive a failed strip", resp.StatusCode)
+	}
+	if !strings.Contains(page, `data-testid="dns-note"`) || !strings.Contains(page, "temporarily unavailable") {
+		t.Fatal("a failed DNS observation query was silent")
+	}
+	if !strings.Contains(page, `data-testid="tile"`) {
+		t.Error("a failed strip removed the tiles")
+	}
+}

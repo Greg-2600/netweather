@@ -41,6 +41,8 @@ type Deps struct {
 	CountryEvents CountryEvents
 	// Corridors supplies the corridor page. Nil shows a note, not an empty page.
 	Corridors CorridorStatus
+	// DNSObservations supplies the board's collapsed DNS divergence strip.
+	DNSObservations DNSObservations
 	// IncidentWatcher wakes the UI stream when an incident opens or closes.
 	IncidentWatcher board.Watcher
 	Coverage        Coverage
@@ -129,6 +131,12 @@ type CountryEvents interface {
 type CorridorStatus interface {
 	CorridorStatus(ctx context.Context) ([]store.CorridorStatus, error)
 	CorridorSeries(ctx context.Context, since time.Time) (map[string][]store.CorridorSample, error)
+}
+
+// DNSObservations supplies the board's collapsed DNS divergence strip. Nil
+// omits the strip rather than implying nothing was observed.
+type DNSObservations interface {
+	RecentDNSDivergences(ctx context.Context, limit int) ([]store.DNSDivergenceRecord, error)
 }
 
 // IncidentAnnotator records the operator's ground truth for an incident.

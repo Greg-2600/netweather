@@ -98,6 +98,27 @@
     </p>
     {{end}}
 
+    {{if .DNSObservations}}
+    <details class="dns-strip" data-testid="dns-strip">
+      <summary>{{len .DNSObservations}} DNS divergence observation(s)</summary>
+      <ul>
+        {{range .DNSObservations}}
+        <li data-testid="dns-observation">
+          <span class="mono">{{.At}}</span>
+          <b>{{.Host}}</b> — {{.Verdict}} ({{.Confidence}})
+          <span class="muted small">{{.Detail}}</span>
+        </li>
+        {{end}}
+      </ul>
+      <p class="muted small">
+        Each resolver is compared only against its own history. A single
+        resolver disagreeing is advisory; it never changes a tile's state.
+      </p>
+    </details>
+    {{else if .DNSNote}}
+    <p class="muted small" data-testid="dns-note">{{.DNSNote}}</p>
+    {{end}}
+
     <section class="board density-{{.Density}}" aria-label="Target status"
              data-testid="board" data-density="{{.Density}}">
       {{if not .Groups}}

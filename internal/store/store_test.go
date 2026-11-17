@@ -2491,3 +2491,47 @@ func TestDNSBaselinesAndDivergence(t *testing.T) {
 		}
 	}
 }
+
+func TestRecentDNSDivergencesIsNewestFirst(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	record := func(kind, confidence, detail string, at time.Time) {
+		t.Helper()
+		if err := s.RecordDNSDivergence(ctx, "t1", dnsdiv.Verdict{
+			Kind: kind, Confidence: confidence, Detail: detail,
+		}, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	record("DNS_ANOMALY", "medium", "first", base)
+	record("TAMPER", "high", "second", base.Add(time.Minute))
+
+	got, err := s.RecentDNSDivergences(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("records = %+v", got)
+	}
+	if got[0].Detail != "second" || got[0].Verdict != "TAMPER" {
+		t.Fatalf("newest = %+v", got[0])
+	}
+	if got[0].Host != "chase.com" || got[0].TargetID != "t1" {
+		t.Fatalf("record target = %+v", got[0])
+	}
+	if !got[1].TS.Equal(base) {
+		t.Fatalf("oldest ts = %v", got[1].TS)
+	}
+
+	if one, err := s.RecentDNSDivergences(ctx, 1); err != nil || len(one) != 1 {
+		t.Fatalf("limit = %+v, %v", one, err)
+	}
+	if none, err := s.RecentDNSDivergences(ctx, 0); err != nil || len(none) != 2 {
+		t.Fatalf("zero limit = %+v, %v", none, err)
+	}
+}

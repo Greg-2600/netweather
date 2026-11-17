@@ -249,6 +249,7 @@ func serve(lg *logging.Logger) error {
 		TargetCorroboration: st,
 		CountryEvents:       st,
 		Corridors:           st,
+		DNSObservations:     st,
 		IncidentWatcher:     incidentChanges,
 		Coverage:            st,
 		CoverageTrend:       st,

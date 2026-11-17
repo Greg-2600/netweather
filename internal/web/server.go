@@ -265,6 +265,10 @@ type boardView struct {
 	Feeds       []feedView
 	FeedNote    string
 	FeedWarning bool
+	// DNSObservations is the collapsed DNS divergence strip. A reader that
+	// fails says so; an unconfigured one simply omits the strip.
+	DNSObservations []dnsObservationView
+	DNSNote         string
 }
 
 // feedView is one feed's health on the board. Status is text, not only colour.
@@ -274,6 +278,15 @@ type feedView struct {
 	Age    string
 	Detail string
 	Stale  bool
+}
+
+// dnsObservationView is one divergence verdict in the board strip.
+type dnsObservationView struct {
+	Host       string
+	Verdict    string
+	Confidence string
+	Detail     string
+	At         string
 }
 
 // groupView is one slice of the board. Sectors are the default unit because
@@ -793,6 +806,26 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 					view.FeedWarning = true
 				}
 				view.Feeds = append(view.Feeds, row)
+			}
+		}
+	}
+
+	// The DNS divergence strip is collapsed by design: an advisory is not a
+	// board colour, and a failure here must not hide the board.
+	if s.deps.DNSObservations != nil {
+		records, err := s.deps.DNSObservations.RecentDNSDivergences(r.Context(), 10)
+		switch {
+		case err != nil:
+			s.deps.Logger.Warn("dns observations failed",
+				"event", "dns_observations_failed", "component", "http", "error", err)
+			view.DNSNote = "DNS observations are temporarily unavailable."
+		default:
+			for _, record := range records {
+				view.DNSObservations = append(view.DNSObservations, dnsObservationView{
+					Host: record.Host, Verdict: record.Verdict,
+					Confidence: record.Confidence, Detail: record.Detail,
+					At: formatTimestamp(record.TS),
+				})
 			}
 		}
 	}

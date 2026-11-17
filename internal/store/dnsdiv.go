@@ -122,3 +122,51 @@ func (s *Store) PruneDNSObservations(ctx context.Context, before time.Time) (int
 	}
 	return n, nil
 }
+
+// DNSDivergenceRecord is one stored verdict, with the target's host for a
+// readable board strip.
+type DNSDivergenceRecord struct {
+	TargetID   string
+	Host       string
+	TS         time.Time
+	Verdict    string
+	Confidence string
+	Detail     string
+	Resolvers  string
+}
+
+// RecentDNSDivergences returns the newest verdicts across every target. It is
+// what the board's collapsed DNS strip reads; the per-target copy is on the
+// divergent target's own row.
+func (s *Store) RecentDNSDivergences(ctx context.Context, limit int) ([]DNSDivergenceRecord, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	rows, err := s.reader.QueryContext(ctx, `
+		SELECT d.target_id, t.host, d.ts, d.verdict, d.confidence, d.detail, d.resolvers
+		FROM dns_divergence d
+		JOIN target t ON t.id = d.target_id
+		ORDER BY d.ts DESC, d.id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("store: recent dns divergences: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []DNSDivergenceRecord
+	for rows.Next() {
+		var (
+			record DNSDivergenceRecord
+			ts     int64
+		)
+		if err := rows.Scan(&record.TargetID, &record.Host, &ts, &record.Verdict,
+			&record.Confidence, &record.Detail, &record.Resolvers); err != nil {
+			return nil, fmt.Errorf("store: scan dns divergence: %w", err)
+		}
+		record.TS = time.UnixMilli(ts).UTC()
+		out = append(out, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: recent dns divergences: %w", err)
+	}
+	return out, nil
+}

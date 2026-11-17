@@ -251,6 +251,27 @@ body.auth {
   color: var(--muted);
 }
 
+/* The collapsed DNS divergence strip (CLASSIFIER.md §3.2). It is advisory, so
+   it sits quietly rather than among the board's problems. */
+.dns-strip {
+  margin: 0 0 0.8rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.dns-strip > summary {
+  cursor: pointer;
+}
+
+.dns-strip ul {
+  margin: 0.35rem 0;
+  padding-left: 1.1rem;
+}
+
+.dns-strip li {
+  margin: 0.2rem 0;
+}
+
 .filter-note a { color: var(--accent); }
 
 /* World view: one compact tile per country (DESIGN.md §10.3). */
