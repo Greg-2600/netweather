@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Traceroute - {{.Name}} - netweather</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  {{template "insecure" .}}
+  <main class="wrap">
+    <header class="bar">
+      <h1 class="brand">Traceroute</h1>
+      <nav class="nav">
+        <a href="/targets/{{.ID}}">Back to {{.Name}}</a>
+        <a href="/">Board</a>
+      </nav>
+    </header>
+
+    <p class="muted small">
+      One on-demand walk to <span class="mono">{{.Host}}</span>, at most ten per hour
+      across the instance. A trace is a hint about where a path bends; it never
+      changes a target's state.
+    </p>
+
+    {{if .Destination}}
+    <p data-testid="trace-destination">
+      Destination: <span class="mono">{{.Destination}}</span>,
+      {{if .Reached}}<strong data-testid="trace-reached">reached</strong>{{else}}<strong data-testid="trace-unreached">not reached</strong>{{end}}
+    </p>
+    {{end}}
+
+    {{if .Hops}}
+    <table class="probes" data-testid="trace-hops">
+      <thead><tr><th>TTL</th><th>Address</th><th>RTT</th></tr></thead>
+      <tbody>
+        {{range .Hops}}
+        <tr data-testid="trace-hop">
+          <td class="mono">{{.TTL}}</td>
+          {{if .Timeout}}
+          <td class="mono" title="Routers rate-limit TTL-exceeded; a star is not loss">*</td>
+          <td class="mono">-</td>
+          {{else}}
+          <td class="mono">{{.Addr}}</td>
+          <td class="mono">{{.RTT}}</td>
+          {{end}}
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{end}}
+
+    {{if .Note}}
+    <p class="banner" data-testid="trace-note" role="status">{{.Note}}</p>
+    {{else if not .Hops}}
+    <p class="banner" data-testid="trace-note" role="status">No hop answered.</p>
+    {{end}}
+  </main>
+</body>
+</html>

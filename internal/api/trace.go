@@ -9,7 +9,6 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/probe"
@@ -33,35 +32,6 @@ const (
 	traceWindow = time.Hour
 	traceBudget = 60 * time.Second
 )
-
-// traceGovernor is a fixed-window counter. A caller gets a retry hint when the
-// window is exhausted, because "try later" without a time is not an answer.
-type traceGovernor struct {
-	mu      sync.Mutex
-	started time.Time
-	count   int
-	now     func() time.Time
-}
-
-func newTraceGovernor() *traceGovernor {
-	return &traceGovernor{now: time.Now}
-}
-
-func (g *traceGovernor) allow() (bool, time.Duration) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-
-	now := g.now()
-	if g.started.IsZero() || now.Sub(g.started) >= traceWindow {
-		g.started = now
-		g.count = 0
-	}
-	if g.count >= traceLimit {
-		return false, traceWindow - now.Sub(g.started)
-	}
-	g.count++
-	return true, 0
-}
 
 type traceHopItem struct {
 	TTL     int    `json:"ttl"`
@@ -108,7 +78,7 @@ func (s *server) handleTrace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ok, retry := s.traceBudget.allow(); !ok {
+	if ok, retry := s.traceBudget.Allow(); !ok {
 		w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())+1))
 		writeError(w, r, http.StatusTooManyRequests, CodeRateLimited,
 			fmt.Sprintf("traceroute is limited to %d runs per hour", traceLimit))

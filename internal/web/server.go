@@ -1546,6 +1546,11 @@ type targetView struct {
 	// (DESIGN.md §7.1); RegionalNote names it in words.
 	Vantages     []vantageStateView
 	RegionalNote string
+	// CSRF is the form token for the drawer's actions, and TraceEnabled gates
+	// the on-demand traceroute button. A disabled capability renders the
+	// reason in the trace page instead of a button that cannot work.
+	CSRF         string
+	TraceEnabled bool
 	// Sources is where this row came from and the hash of that payload
 	// (THREAT_MODEL.md T35). SourcesNote states a failed or empty read; both
 	// empty means the panel is omitted.
@@ -1653,6 +1658,12 @@ func toProbeView(row store.ProbeRow) probeView {
 }
 
 func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
+	// The trace action is a POST under the same subtree. It has its own method
+	// and CSRF checks, so it must be dispatched before the page's GET guard.
+	if strings.HasSuffix(r.URL.Path, "/trace") {
+		s.handleTraceAction(w, r)
+		return
+	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1675,6 +1686,9 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 		}
 
 		view := targetView{Tile: toTile(t), Insecure: s.insecure(r)}
+		view.CSRF, _ = s.auth.csrfFrom(r)
+		view.TraceEnabled = s.deps.TraceEnabled && s.deps.Tracer != nil &&
+			s.deps.Resolver != nil && s.deps.TraceBudget != nil
 		vantage := s.deps.Vantage
 		if vantage == "" {
 			vantage = "local"

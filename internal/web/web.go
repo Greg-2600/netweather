@@ -12,8 +12,10 @@ import (
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/ihi"
 	"github.com/Greg-2600/netweather/internal/logging"
+	"github.com/Greg-2600/netweather/internal/probe"
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/streamlimit"
+	"github.com/Greg-2600/netweather/internal/tracebudget"
 	"github.com/Greg-2600/netweather/internal/verdict"
 )
 
@@ -95,6 +97,16 @@ type Deps struct {
 	Series          Series
 	SeriesBatch     SeriesBatch
 	Changes         StateChanges
+	// TraceEnabled gates the drawer's on-demand traceroute, the same switch the
+	// API uses. False renders the reason instead of a button that cannot work.
+	TraceEnabled bool
+	// Tracer runs one walk and Resolver turns the target host into an address.
+	// Both nil disables the action with a stated reason.
+	Tracer   Tracer
+	Resolver HostResolver
+	// TraceBudget is the instance-wide trace governor shared with the API.
+	// Nil disables the action rather than creating a second, additive budget.
+	TraceBudget *tracebudget.Governor
 	// StreamLimit caps concurrent SSE connections. Nil uses the defaults.
 	StreamLimit *streamlimit.Limiter
 	// TrustedProxies are the peers whose X-Forwarded-For is believed for
@@ -228,6 +240,17 @@ type VantageStates interface {
 // T35). Nil omits the panel.
 type ProvenanceReader interface {
 	TargetSources(ctx context.Context, targetID string) ([]store.TargetSource, error)
+}
+
+// Tracer runs one on-demand traceroute. probe.Trace satisfies it.
+type Tracer interface {
+	Run(ctx context.Context, dst netip.Addr) probe.TraceResult
+}
+
+// HostResolver turns a target hostname into addresses for a trace. netx.Dialer
+// satisfies it, so a trace resolves through the same guarded path as probes.
+type HostResolver interface {
+	CheckHost(ctx context.Context, host string) ([]netip.Addr, error)
 }
 
 // FleetReader supplies the overview line from DESIGN.md §10.1. Nil omits the

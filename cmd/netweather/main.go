@@ -47,6 +47,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/selfcheck"
 	"github.com/Greg-2600/netweather/internal/startup"
 	"github.com/Greg-2600/netweather/internal/store"
+	"github.com/Greg-2600/netweather/internal/tracebudget"
 	"github.com/Greg-2600/netweather/internal/verdict"
 	"github.com/Greg-2600/netweather/internal/version"
 	"github.com/Greg-2600/netweather/internal/web"
@@ -378,6 +379,19 @@ func serve(lg *logging.Logger) error {
 	// (THREAT_MODEL.md T36).
 	reloadState := &config.ReloadState{}
 
+	// Traceroute is the most visible thing this binary can do, so the
+	// capability is opt-in and the budget is per instance. The API and the
+	// drawer spend from this one governor, which is what makes the documented
+	// ten-per-hour a property of the process rather than of each surface
+	// (THREAT_MODEL.md T29, DESIGN.md §9.1).
+	traceEnabled := strings.EqualFold(strings.TrimSpace(os.Getenv("NETWEATHER_TRACE_ENABLED")), "true")
+	if traceEnabled {
+		lg.Info("traceroute enabled", "event", "trace_enabled", "component", "startup")
+	}
+	traceBudget := tracebudget.New(10, time.Hour)
+	tracer := probe.NewTrace()
+	traceResolver := netx.New()
+
 	webDeps := web.Deps{
 		Logger:              lg.Logger,
 		Source:              source,
@@ -405,6 +419,10 @@ func serve(lg *logging.Logger) error {
 		Fleet:               st,
 		VantageChanges:      st,
 		ConfigReload:        reloadState,
+		TraceEnabled:        traceEnabled,
+		Tracer:              tracer,
+		Resolver:            traceResolver,
+		TraceBudget:         traceBudget,
 		// The ring and the measured logging setup back the diagnostics page
 		// and the drawer's Why panel (LOGGING.md §9).
 		Logs:            lg,
@@ -436,15 +454,6 @@ func serve(lg *logging.Logger) error {
 	// The applied migration number is not secret and makes a support bundle
 	// useful without database access; unknown is reported as absent.
 	schemaVersion, _ := st.SchemaVersion(ctx)
-
-	// Traceroute is the most visible thing this binary can do. The capability
-	// alone is not consent: it stays off until the operator sets this, which is
-	// why the documented trace override flips exactly this variable (IMAGE.md
-	// §5).
-	traceEnabled := strings.EqualFold(strings.TrimSpace(os.Getenv("NETWEATHER_TRACE_ENABLED")), "true")
-	if traceEnabled {
-		lg.Info("traceroute enabled", "event", "trace_enabled", "component", "startup")
-	}
 
 	// Stopping one host is the abuse-response path (ACCEPTABLE_USE.md §7).
 	// The row and its history stay; the live schedulers drop it immediately,
@@ -501,9 +510,10 @@ func serve(lg *logging.Logger) error {
 		Feeds:           st,
 		Debug:           scopes,
 		IncidentWatcher: incidentChanges,
-		Tracer:          probe.NewTrace(),
+		Tracer:          tracer,
 		TraceEnabled:    traceEnabled,
-		Resolver:        netx.New(),
+		Resolver:        traceResolver,
+		TraceBudget:     traceBudget,
 		Metrics:         metricsHandler,
 		Vantage:         "local",
 		Fallback:        ui,

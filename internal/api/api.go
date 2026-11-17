@@ -25,6 +25,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/streamlimit"
+	"github.com/Greg-2600/netweather/internal/tracebudget"
 	"github.com/Greg-2600/netweather/internal/verdict"
 )
 
@@ -260,6 +261,11 @@ type Deps struct {
 	Resolver HostResolver
 	// StreamLimit caps concurrent SSE connections. Nil uses the defaults.
 	StreamLimit *streamlimit.Limiter
+	// TraceBudget is the shared on-demand traceroute budget. The dashboard and
+	// the API must spend from one governor, because the documented ceiling is
+	// per instance rather than per surface (THREAT_MODEL.md T29). Nil creates
+	// this process's own 10-per-hour governor.
+	TraceBudget *tracebudget.Governor
 	// TrustedProxies are the peers whose X-Forwarded-For is believed for
 	// per-client stream limits and log lines. Empty means trust nobody, which
 	// is the safe default (NETWORKING.md §7.3).
@@ -282,7 +288,7 @@ type server struct {
 	authMode string
 	// traceBudget is per-instance, not per-client: the operator's egress IP is
 	// what a target's abuse desk sees.
-	traceBudget *traceGovernor
+	traceBudget *tracebudget.Governor
 	// idempotency replays action responses for a repeated Idempotency-Key.
 	idempotency *idempotencyStore
 	// streams caps concurrent SSE connections. nil means "unlimited", which
@@ -308,10 +314,13 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	s := &server{
 		deps:        deps,
 		authMode:    cfg.AuthMode(),
-		traceBudget: newTraceGovernor(),
+		traceBudget: deps.TraceBudget,
 		idempotency: newIdempotencyStore(),
 		streams:     deps.StreamLimit,
 		events:      newEventLog(DefaultEventLogSize),
+	}
+	if s.traceBudget == nil {
+		s.traceBudget = tracebudget.New(traceLimit, traceWindow)
 	}
 	if s.streams == nil {
 		s.streams = streamlimit.New(streamlimit.DefaultTotal, streamlimit.DefaultPerIP)

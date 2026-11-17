@@ -806,7 +806,7 @@ Auth: bearer. One on-demand IPv4 ICMP traceroute. The result is a hint about whe
 - `timeout: true` marks a hop that never answered. Routers rate-limit TTL-exceeded, so a star is not loss. Three consecutive silent hops end the walk early.
 - `note` states the container caveats from `NETWORKING.md` §8 when they apply: a private first hop is likely the local gateway rather than a wide-area hop, and a walk that stops after that hop is a NAT/conntrack artifact rather than a path failure. It is absent when neither applies.
 - The destination not answering is `200` with `reached: false`, not an error.
-- Traceroute needs `CAP_NET_RAW`. Without it the endpoint is `503` with the socket error in the message, and the rest of the monitor is unaffected (`compose.trace.yaml` grants the capability).
+- Traceroute needs `CAP_NET_RAW`. Without it the endpoint is `503` with the socket error in the message, and the rest of the monitor is unaffected (`compose.trace.yaml` grants the capability). The dashboard's target drawer offers the same action through a CSRF-checked form and its own result page; both surfaces spend from one ten-per-hour governor, so the ceiling above is per instance, not per surface.
 - The capability is not consent: the endpoint is also `503` unless `NETWEATHER_TRACE_ENABLED=true`, with that variable named in the refusal. The documented override sets both, so enabling raw sockets is a visible second file rather than a line someone uncomments.
 - Every run logs `event=traceroute` with the request id, destination, hop count, and whether the destination answered.
 

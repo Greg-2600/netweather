@@ -178,6 +178,16 @@
       <p class="muted" data-testid="regional-note">{{.RegionalNote}}</p>
       {{end}}
 
+      {{if .TraceEnabled}}
+      <h2 class="section-title">Traceroute</h2>
+      <form method="post" action="/targets/{{.Tile.ID}}/trace">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button type="submit" data-testid="trace-action">Run traceroute</button>
+      </form>
+      <p class="muted small">One walk, at most ten per hour across the instance. It is a
+        hint about where a path bends, never a change to this target's state.</p>
+      {{end}}
+
       <h2 class="section-title">Why?</h2>
       {{if .Why}}
       <table class="probes log-table" data-testid="target-why">
