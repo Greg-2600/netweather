@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -1304,5 +1305,77 @@ func TestBuildFeedPollersHonoursTheDocumentedInterval(t *testing.T) {
 	t.Setenv("NETWEATHER_RADAR_TOKEN", "")
 	if got := buildFeedPollers(st, lg); len(got) != 0 {
 		t.Fatalf("radar without a token produced %+v", got)
+	}
+}
+
+func TestSeedCommandDiffPreviewsWithoutWritingTargets(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "targets.yaml")
+	writeConfig := func(port int) {
+		t.Helper()
+		body := fmt.Sprintf(`version: 1
+targets:
+  - name: One
+    host: one.example
+    port: %d
+    probe: http
+    class: service
+    tier: 2
+    interval_s: 300
+`, port)
+		if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeConfig(443)
+	t.Setenv("NETWEATHER_CONFIG", cfg)
+	t.Setenv("NETWEATHER_DATA", filepath.Join(dir, "data"))
+
+	var out bytes.Buffer
+	if err := run([]string{"seed", "--diff"}, &out); err != nil {
+		t.Fatalf("seed --diff: %v", err)
+	}
+	if !strings.Contains(out.String(), "+ one-example-http") ||
+		!strings.Contains(out.String(), "1 addition(s), 0 change(s)") ||
+		!strings.Contains(out.String(), "no targets were written") {
+		t.Fatalf("diff output = %q", out.String())
+	}
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(dir, "data", "netweather.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := st.TargetIDs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = st.Close()
+	if len(ids) != 0 {
+		t.Fatalf("a preview wrote %v", ids)
+	}
+
+	// Apply, then the same diff is empty.
+	if err := run([]string{"seed"}, io.Discard); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	out.Reset()
+	if err := run([]string{"seed", "--diff"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "0 addition(s), 0 change(s)") {
+		t.Fatalf("diff after apply = %q", out.String())
+	}
+
+	// A port change keeps the derived id, so it is a change rather than an
+	// addition.
+	writeConfig(80)
+	out.Reset()
+	if err := run([]string{"seed", "--diff"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "~ one-example-http") ||
+		!strings.Contains(out.String(), "1 change(s)") {
+		t.Fatalf("diff after a port change = %q", out.String())
 	}
 }

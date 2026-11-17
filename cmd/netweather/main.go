@@ -692,6 +692,8 @@ func seedCommand(args []string, out io.Writer) error {
 	fs.SetOutput(io.Discard)
 	countryAnchors := fs.Bool("country-anchors", false,
 		"fetch the IANA root zone and add one DNS target per ccTLD")
+	diff := fs.Bool("diff", false,
+		"show what would be added or changed without writing anything")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("seed: %w", err)
 	}
@@ -700,7 +702,7 @@ func seedCommand(args []string, out io.Writer) error {
 	}
 
 	path := strings.TrimSpace(os.Getenv("NETWEATHER_CONFIG"))
-	if path == "" && !*countryAnchors {
+	if path == "" && !*countryAnchors && !*diff {
 		return errors.New("seed: NETWEATHER_CONFIG must point at a targets file, or pass --country-anchors")
 	}
 
@@ -716,6 +718,36 @@ func seedCommand(args []string, out io.Writer) error {
 	}
 	defer func() { _ = st.Close() }()
 
+	// --country-anchors needs one fetch either way; a diff and an apply should
+	// compare and write the same set.
+	var anchors []seed.Entry
+	if *countryAnchors {
+		fetchCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		defer cancel()
+
+		zone, err := fetchRootZone(fetchCtx, rootZoneURL())
+		if err != nil {
+			return fmt.Errorf("seed: country anchors: %w", err)
+		}
+		anchors = seed.ParseCountryAnchors(zone)
+		if len(anchors) == 0 {
+			return errors.New("seed: country anchors: the root zone contained no ccTLD delegations")
+		}
+	}
+
+	if *diff {
+		planned, err := plannedSeedTargets(path, anchors)
+		if err != nil {
+			return fmt.Errorf("seed: diff: %w", err)
+		}
+		current, err := st.TargetsWithState(ctx, "local")
+		if err != nil {
+			return err
+		}
+		printSeedDiff(out, planned, current)
+		return nil
+	}
+
 	if err := st.EnsureVantage(ctx, "local", "direct", "primary"); err != nil {
 		return err
 	}
@@ -730,18 +762,7 @@ func seedCommand(args []string, out io.Writer) error {
 	}
 
 	if *countryAnchors {
-		fetchCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		defer cancel()
-
-		zone, err := fetchRootZone(fetchCtx, rootZoneURL())
-		if err != nil {
-			return fmt.Errorf("seed: country anchors: %w", err)
-		}
-		entries := seed.ParseCountryAnchors(zone)
-		if len(entries) == 0 {
-			return errors.New("seed: country anchors: the root zone contained no ccTLD delegations")
-		}
-		targets, err := applySeedEntries(ctx, st, entries)
+		targets, err := applySeedEntries(ctx, st, anchors)
 		if err != nil {
 			return err
 		}
@@ -753,6 +774,76 @@ func seedCommand(args []string, out io.Writer) error {
 
 	_, err = fmt.Fprintf(out, "seeded %d targets into %s\n", total, st.Path())
 	return err
+}
+
+// plannedTarget is the identity a seed diff compares. Name and sector are
+// deliberately omitted: they can change without changing what is probed.
+type plannedTarget struct {
+	ID    string
+	Host  string
+	Probe string
+	Port  int
+}
+
+// plannedSeedTargets returns what a seed run would apply, without applying it.
+// A config file is parsed the same way the apply path parses it; without one,
+// the shipped list is the plan. Country anchors arrive already fetched so a
+// diff and an apply compare and write the same set.
+func plannedSeedTargets(path string, anchors []seed.Entry) ([]plannedTarget, error) {
+	var entries []seed.Entry
+	if path != "" {
+		f, err := config.Load(path)
+		if err != nil {
+			return nil, err
+		}
+		for _, t := range f.Targets {
+			entries = append(entries, seed.Entry{
+				ID: t.ID, Host: t.Host, Port: t.Port, Probe: t.Probe,
+				Tier: schedule.Tier(t.Tier),
+			})
+		}
+	} else {
+		entries = seed.Default()
+	}
+	entries = append(entries, anchors...)
+
+	out := make([]plannedTarget, 0, len(entries))
+	for _, e := range entries {
+		port := e.Port
+		if port == 0 {
+			port = 443
+		}
+		probe := e.Probe
+		if probe == "" {
+			probe = "http"
+		}
+		out = append(out, plannedTarget{ID: e.ID, Host: e.Host, Probe: probe, Port: port})
+	}
+	return out, nil
+}
+
+// printSeedDiff is the review step THREAT_MODEL.md T35 promises: an operator
+// can see what a poisoned seed would add before it reaches the scheduler.
+func printSeedDiff(out io.Writer, planned []plannedTarget, current []store.TargetRow) {
+	have := make(map[string]plannedTarget, len(current))
+	for _, row := range current {
+		have[row.ID] = plannedTarget{ID: row.ID, Host: row.Host, Probe: row.Probe, Port: row.Port}
+	}
+
+	added, changed := 0, 0
+	for _, p := range planned {
+		cur, ok := have[p.ID]
+		switch {
+		case !ok:
+			added++
+			_, _ = fmt.Fprintf(out, "+ %s %s %s:%d\n", p.ID, p.Host, p.Probe, p.Port)
+		case cur != p:
+			changed++
+			_, _ = fmt.Fprintf(out, "~ %s %s %s:%d (was %s %s:%d)\n",
+				p.ID, p.Host, p.Probe, p.Port, cur.Host, cur.Probe, cur.Port)
+		}
+	}
+	_, _ = fmt.Fprintf(out, "%d addition(s), %d change(s); no targets were written\n", added, changed)
 }
 
 // rootZoneURL is the one host the country-anchor seed fetches. The override
