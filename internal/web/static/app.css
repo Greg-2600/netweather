@@ -167,6 +167,38 @@ body.auth {
 .chip b { color: var(--text); }
 
 .board {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.sector { display: block; }
+
+.sector-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 0 0.45rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sector-title .sector-name { color: var(--text); }
+.sector-title .sector-count {
+  font-size: 0.72rem;
+  padding: 0 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.sector-title .sector-worst { margin-left: auto; font-weight: 500; text-transform: none; }
+.sector-title.state-down .sector-worst { color: var(--down); }
+.sector-title.state-degraded .sector-worst { color: var(--degraded); }
+.sector-title.state-blocked .sector-worst { color: var(--muted); }
+
+.tiles {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
   gap: 0.6rem;

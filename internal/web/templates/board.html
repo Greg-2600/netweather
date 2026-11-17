@@ -50,23 +50,35 @@
     </section>
 
     <section class="board" aria-label="Target status" data-testid="board">
-      {{if not .Targets}}
+      {{if not .Groups}}
       <p class="empty" data-testid="empty-board">
-        No targets yet. The probe store arrives in phase 0; until then the board is empty by design.
+        No targets yet. Add a target file or use the shipped defaults.
       </p>
       {{end}}
-      {{range .Targets}}
-      <a class="tile {{.Class}}"
-         href="/targets/{{.ID}}"
-         data-testid="tile"
-         data-target="{{.Host}}"
-         data-state="{{.State}}"
-         aria-label="{{.Aria}}">
-        <span class="glyph" aria-hidden="true">{{.Glyph}}</span>
-        <span class="name">{{.Name}}</span>
-        <span class="host">{{.Host}}</span>
-        <span class="state">{{.Text}}</span>
-      </a>
+      {{range .Groups}}
+      <section class="sector" data-testid="sector" data-sector="{{.Name}}">
+        <h2 class="sector-title {{.WorstCls}}">
+          <span class="glyph" aria-hidden="true">{{.Glyph}}</span>
+          <span class="sector-name">{{.Label}}</span>
+          <span class="sector-count">{{.Count}}</span>
+          <span class="sector-worst">{{.Worst}}</span>
+        </h2>
+        <div class="tiles">
+          {{range .Targets}}
+          <a class="tile {{.Class}}"
+             href="/targets/{{.ID}}"
+             data-testid="tile"
+             data-target="{{.Host}}"
+             data-state="{{.State}}"
+             aria-label="{{.Aria}}">
+            <span class="glyph" aria-hidden="true">{{.Glyph}}</span>
+            <span class="name">{{.Name}}</span>
+            <span class="host">{{.Host}}</span>
+            <span class="state">{{.Text}}</span>
+          </a>
+          {{end}}
+        </div>
+      </section>
       {{end}}
     </section>
   </main>

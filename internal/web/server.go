@@ -198,10 +198,90 @@ type countView struct {
 type boardView struct {
 	Version string
 	CSRF    string
-	Targets []tileView
+	Groups  []sectorGroupView
 	Counts  []countView
 	Paused  bool
 	Control bool
+}
+
+// sectorGroupView is one sector's slice of the board. Sectors are the unit the
+// product is about: "airlines are down" is a different claim from "one airline
+// is down", and a flat wall of icons hides the difference.
+type sectorGroupView struct {
+	Name     string
+	Label    string
+	Count    int
+	Worst    string
+	WorstCls string
+	Glyph    string
+	Targets  []tileView
+}
+
+// groupBySector preserves the incoming (severity) order inside each sector and
+// puts the sector with the worst state first.
+func groupBySector(targets []board.Target) []sectorGroupView {
+	order := make([]string, 0, 8)
+	byName := make(map[string][]board.Target)
+
+	for _, t := range targets {
+		name := t.Sector
+		if name == "" {
+			name = "other"
+		}
+		if _, ok := byName[name]; !ok {
+			order = append(order, name)
+		}
+		byName[name] = append(byName[name], t)
+	}
+
+	groups := make([]sectorGroupView, 0, len(order))
+	for _, name := range order {
+		members := board.Order(byName[name])
+		worst := members[0].State // members are already severity-ordered
+
+		group := sectorGroupView{
+			Name:     name,
+			Label:    sectorLabel(name),
+			Count:    len(members),
+			Worst:    worst.Text(),
+			WorstCls: worst.CSSClass(),
+			Glyph:    worst.Glyph(),
+			Targets:  make([]tileView, 0, len(members)),
+		}
+		for _, t := range members {
+			group.Targets = append(group.Targets, toTile(t))
+		}
+		groups = append(groups, group)
+	}
+
+	sort.SliceStable(groups, func(i, j int) bool {
+		ri, rj := worstRank(groups[i]), worstRank(groups[j])
+		if ri != rj {
+			return ri < rj
+		}
+		return groups[i].Name < groups[j].Name
+	})
+	return groups
+}
+
+func worstRank(g sectorGroupView) int {
+	for _, st := range []board.State{
+		board.StateDown, board.StateDegraded, board.StateBlocked,
+		board.StateUnknown, board.StateConfigError, board.StateUnmeasurable,
+		board.StateUpReachability, board.StateUp,
+	} {
+		if g.WorstCls == st.CSSClass() {
+			return board.SeverityRank(st)
+		}
+	}
+	return 99
+}
+
+func sectorLabel(name string) string {
+	if name == "other" {
+		return "Other"
+	}
+	return name
 }
 
 func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
@@ -224,7 +304,7 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	view := boardView{
 		Version: s.deps.Version,
 		CSRF:    csrf,
-		Targets: make([]tileView, 0, len(targets)),
+		Groups:  groupBySector(targets),
 		Control: s.deps.Control != nil,
 	}
 	if s.deps.Control != nil {
@@ -233,7 +313,6 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	counts := make(map[board.State]int)
 	for _, t := range targets {
 		counts[t.State]++
-		view.Targets = append(view.Targets, toTile(t))
 	}
 
 	for _, st := range []board.State{

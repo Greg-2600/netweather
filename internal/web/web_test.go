@@ -313,6 +313,63 @@ func TestLoginRejectsWrongToken(t *testing.T) {
 	}
 }
 
+func TestBoardGroupsBySector(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if got := strings.Count(page, `data-testid="sector"`); got != 3 {
+		t.Fatalf("sectors = %d, want 3", got)
+	}
+	for _, want := range []string{
+		`data-sector="airline"`, `data-sector="cloud"`, `data-sector="financial/banking"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("board missing sector %q", want)
+		}
+	}
+
+	// The sector with the worst state comes first: airline holds a DOWN tile.
+	airline := strings.Index(page, `data-sector="airline"`)
+	cloud := strings.Index(page, `data-sector="cloud"`)
+	banking := strings.Index(page, `data-sector="financial/banking"`)
+	if airline < 0 || cloud < 0 || banking < 0 || airline > cloud || cloud > banking {
+		t.Fatalf("sector order = airline:%d cloud:%d banking:%d, want worst-first", airline, cloud, banking)
+	}
+}
+
+func TestBoardPutsUnsectoredTargetsInOther(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(
+		board.Target{ID: "1", Name: "Loose", Host: "loose.example", State: board.StateUp},
+	)
+	ts := newServer(t, testToken, m)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-sector="other"`) {
+		t.Fatalf("unsectored target was not grouped under other:\n%s", page)
+	}
+	if !strings.Contains(page, ">Other<") {
+		t.Error("group label is not human-readable")
+	}
+}
+
 func TestLoginAndBoardRender(t *testing.T) {
 	t.Parallel()
 
