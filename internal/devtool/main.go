@@ -251,6 +251,7 @@ func taskCover() error {
 		"/internal/board":        90,
 		"/internal/classify":     95,
 		"/internal/config":       90,
+		"/internal/confirm":      95,
 		"/internal/correlate":    90,
 		"/internal/corridor":     90,
 		"/internal/dnsdiv":       95,

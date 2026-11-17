@@ -658,6 +658,8 @@ Attribution is the highest-value output of the whole system. "8 sites down" is n
 
 Never transition on a single observation. Never transition twice inside the debounce window.
 
+**Implemented:** `internal/confirm` is the rule table as a pure function, and `store.Record` applies it in the same transaction that writes the probe, so the board, the incident detector, and the metrics all read a confirmed state. A probe that is held is still recorded: the observation is real, the state did not change. The FIRST observation of a target adopts its candidate immediately, because establishing a baseline is not a transition; after that, the class row above decides. `BLOCKED` matches on the challenge signature (error class plus the classifier's reason), so two different walls do not confirm each other. `UNMEASURABLE`, `UNKNOWN`, `CONFIG_ERROR`, and `DEGRADED` are adopted immediately: holding a visibility signal would hide a blind vantage, which is worse than a fast transition. The class comes from the target's config class (`reference`; `country`/`network` anchors; everything else is a service target), so there is no second setting that can disagree with the role.
+
 ### 7.5 Self-health — vantage point integrity
 
 Every correlation depends on assumptions that can silently break. Check them.

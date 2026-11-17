@@ -154,8 +154,26 @@ func TestRecordTracksStateAndTransitions(t *testing.T) {
 		t.Fatalf("state changes = %d, want 0 for the first observation", n)
 	}
 
-	// Transition to DOWN carries the reason and the detail.
-	down := probeAt(t0.Add(time.Minute), state.Down)
+	// A service target needs three consecutive failures (DESIGN.md §7.4), so
+	// the first two are recorded as evidence without changing the state.
+	for _, minute := range []int{1, 2} {
+		if err := s.Record(ctx, []store.Probe{probeAt(t0.Add(time.Duration(minute)*time.Minute), state.Down)}); err != nil {
+			t.Fatal(err)
+		}
+		states, _ = s.States(ctx, "local")
+		if states["t1"].State != state.Up {
+			t.Fatalf("failure %d changed the state: %+v", minute, states["t1"])
+		}
+		if states["t1"].FailStreak != minute {
+			t.Fatalf("failure %d streak = %d", minute, states["t1"].FailStreak)
+		}
+		if n, _ := s.StateChangeCount(ctx, "t1", "local"); n != 0 {
+			t.Fatalf("failure %d wrote a transition", minute)
+		}
+	}
+
+	// The third confirms DOWN and carries the reason and the detail.
+	down := probeAt(t0.Add(3*time.Minute), state.Down)
 	down.Reason = "certificate expired"
 	down.Detail = "certificate expired 2h ago"
 	if err := s.Record(ctx, []store.Probe{down}); err != nil {
@@ -163,7 +181,7 @@ func TestRecordTracksStateAndTransitions(t *testing.T) {
 	}
 	states, _ = s.States(ctx, "local")
 	got := states["t1"]
-	if got.State != state.Down || got.FailStreak != 1 || got.LastError != down.Detail {
+	if got.State != state.Down || got.FailStreak != 3 || got.LastError != down.Detail {
 		t.Fatalf("after down: %+v", got)
 	}
 	if got.PrevState != string(state.Up) {
@@ -173,24 +191,19 @@ func TestRecordTracksStateAndTransitions(t *testing.T) {
 		t.Fatalf("state changes = %d, want 1", n)
 	}
 
-	// A second DOWN advances the streak without another transition row.
-	if err := s.Record(ctx, []store.Probe{probeAt(t0.Add(2*time.Minute), state.Down)}); err != nil {
+	// Recovery needs two consecutive passes.
+	if err := s.Record(ctx, []store.Probe{probeAt(t0.Add(4*time.Minute), state.Up)}); err != nil {
 		t.Fatal(err)
 	}
 	states, _ = s.States(ctx, "local")
-	if states["t1"].FailStreak != 2 {
-		t.Fatalf("fail streak = %d", states["t1"].FailStreak)
+	if states["t1"].State != state.Down || states["t1"].OKStreak != 1 {
+		t.Fatalf("first pass = %+v", states["t1"])
 	}
-	if n, _ := s.StateChangeCount(ctx, "t1", "local"); n != 1 {
-		t.Fatalf("state changes = %d, want 1", n)
-	}
-
-	// Recovery.
-	if err := s.Record(ctx, []store.Probe{probeAt(t0.Add(3*time.Minute), state.Up)}); err != nil {
+	if err := s.Record(ctx, []store.Probe{probeAt(t0.Add(5*time.Minute), state.Up)}); err != nil {
 		t.Fatal(err)
 	}
 	states, _ = s.States(ctx, "local")
-	if states["t1"].OKStreak != 1 || states["t1"].FailStreak != 0 {
+	if states["t1"].State != state.Up || states["t1"].OKStreak != 2 || states["t1"].FailStreak != 0 {
 		t.Fatalf("streaks after recovery: %+v", states["t1"])
 	}
 	if n, _ := s.StateChangeCount(ctx, "t1", "local"); n != 2 {
@@ -1440,15 +1453,24 @@ func TestStateChangesAreReturnedNewestFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Service confirmation: three failures to go DOWN, two passes to recover.
 	down := probeAt(base.Add(time.Minute), state.Down)
 	down.Reason = "certificate expired"
-	if err := s.Record(ctx, []store.Probe{down}); err != nil {
-		t.Fatal(err)
+	for i := 0; i < 3; i++ {
+		p := down
+		p.TS = base.Add(time.Duration(i+1) * time.Minute)
+		if err := s.Record(ctx, []store.Probe{p}); err != nil {
+			t.Fatal(err)
+		}
 	}
-	recovered := probeAt(base.Add(2*time.Minute), state.Up)
+	recovered := probeAt(base.Add(4*time.Minute), state.Up)
 	recovered.Reason = "semantic ok"
-	if err := s.Record(ctx, []store.Probe{recovered}); err != nil {
-		t.Fatal(err)
+	for i := 0; i < 2; i++ {
+		p := recovered
+		p.TS = base.Add(time.Duration(i+4) * time.Minute)
+		if err := s.Record(ctx, []store.Probe{p}); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	changes, err := s.StateChanges(ctx, "t1", "local", 10)
@@ -2927,5 +2949,152 @@ func TestRecentProbesReadsTheArchiveAfterPrune(t *testing.T) {
 	}
 	if got, err := s.RecentProbes(ctx, "t1", "local", 10); err != nil || len(got) != 0 {
 		t.Fatalf("recent after a year = %d rows, err = %v", len(got), err)
+	}
+}
+
+func probeFor(targetID string, ts time.Time, st state.State) store.Probe {
+	return store.Probe{
+		TargetID: targetID, VantageID: "local", TS: ts,
+		State: st, Stage: "http", Confidence: "high",
+	}
+}
+
+func TestConfirmationRulesByClass(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	for _, target := range []store.Target{
+		{ID: "ref1", Host: "ref.example", Port: 443, Probe: "http", Name: "Ref", Class: "reference", Tier: 0, IntervalS: 30},
+		{ID: "anc1", Host: "anchor.example", Port: 443, Probe: "http", Name: "Anchor", Class: "country", Tier: 3, IntervalS: 120},
+	} {
+		if err := s.UpsertTarget(ctx, target); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	record := func(id string, at time.Time, st state.State) store.TargetState {
+		t.Helper()
+		if err := s.Record(ctx, []store.Probe{probeFor(id, at, st)}); err != nil {
+			t.Fatal(err)
+		}
+		states, err := s.States(ctx, "local")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return states[id]
+	}
+
+	// Reference: "2 of 3 fails", not two consecutive. A pass between the
+	// failures still confirms when the window holds two.
+	record("ref1", base, state.Up)
+	if got := record("ref1", base.Add(time.Minute), state.Down); got.State != state.Up {
+		t.Fatalf("reference first failure = %+v, want a held UP", got)
+	}
+	if got := record("ref1", base.Add(2*time.Minute), state.Up); got.State != state.Up {
+		t.Fatalf("reference pass = %+v", got)
+	}
+	if got := record("ref1", base.Add(3*time.Minute), state.Down); got.State != state.Down {
+		t.Fatalf("reference 2 of 3 = %+v, want DOWN", got)
+	}
+	// Two passes recover it.
+	record("ref1", base.Add(4*time.Minute), state.Up)
+	if got := record("ref1", base.Add(5*time.Minute), state.Up); got.State != state.Up {
+		t.Fatalf("reference recovery = %+v", got)
+	}
+
+	// Anchor: two consecutive failures, one pass to recover.
+	record("anc1", base, state.Up)
+	if got := record("anc1", base.Add(time.Minute), state.Down); got.State != state.Up {
+		t.Fatalf("anchor first failure = %+v, want a held UP", got)
+	}
+	if got := record("anc1", base.Add(2*time.Minute), state.Down); got.State != state.Down {
+		t.Fatalf("anchor second failure = %+v, want DOWN", got)
+	}
+	// The anchor debounce is 120s, so wait past it before the pass.
+	if got := record("anc1", base.Add(5*time.Minute), state.Up); got.State != state.Up {
+		t.Fatalf("anchor recovery = %+v", got)
+	}
+}
+
+func TestConfirmationBlockedNeedsSameSignature(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	record := func(at time.Time, st state.State, detail string) store.TargetState {
+		t.Helper()
+		p := probeFor("t1", at, st)
+		p.Detail = detail
+		if err := s.Record(ctx, []store.Probe{p}); err != nil {
+			t.Fatal(err)
+		}
+		states, err := s.States(ctx, "local")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return states["t1"]
+	}
+
+	record(base, state.Up, "")
+	if got := record(base.Add(time.Minute), state.Blocked, "challenge: cloudflare"); got.State != state.Up {
+		t.Fatalf("first block = %+v, want a held UP", got)
+	}
+	// A different challenge signature does not confirm either: the block has
+	// to be the same wall twice.
+	if got := record(base.Add(2*time.Minute), state.Blocked, "challenge: akamai"); got.State != state.Up {
+		t.Fatalf("different signature = %+v, want a held UP", got)
+	}
+	if got := record(base.Add(3*time.Minute), state.Blocked, "challenge: akamai"); got.State != state.Blocked {
+		t.Fatalf("second same signature = %+v, want BLOCKED", got)
+	}
+	// One non-challenge response recovers immediately, with no pass threshold
+	// and no debounce.
+	if got := record(base.Add(4*time.Minute), state.Up, ""); got.State != state.Up {
+		t.Fatalf("block recovery = %+v, want an immediate UP", got)
+	}
+}
+
+func TestConfirmationDebounceHoldsASecondChange(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	record := func(at time.Time, st state.State) store.TargetState {
+		t.Helper()
+		if err := s.Record(ctx, []store.Probe{probeFor("t1", at, st)}); err != nil {
+			t.Fatal(err)
+		}
+		states, err := s.States(ctx, "local")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return states["t1"]
+	}
+
+	record(base, state.Up)
+	// Three failures confirm DOWN at base+3m. The service debounce is 90s.
+	for i := 1; i <= 3; i++ {
+		record(base.Add(time.Duration(i)*time.Minute), state.Down)
+	}
+	if got := record(base.Add(4*time.Minute), state.Up); got.State != state.Down {
+		t.Fatalf("first pass = %+v, want a held DOWN", got)
+	}
+	// A second pass still inside the 90-second window cannot transition.
+	if got := record(base.Add(4*time.Minute+20*time.Second), state.Up); got.State != state.Down {
+		t.Fatalf("inside the debounce = %+v, want a held DOWN", got)
+	}
+	// Past the window the next pass recovers.
+	if got := record(base.Add(5*time.Minute+30*time.Second), state.Up); got.State != state.Up {
+		t.Fatalf("past the debounce = %+v, want UP", got)
 	}
 }

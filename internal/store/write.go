@@ -10,6 +10,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/Greg-2600/netweather/internal/confirm"
 	"github.com/Greg-2600/netweather/internal/state"
 )
 
@@ -180,21 +181,68 @@ func recordOne(ctx context.Context, tx *sql.Tx, p Probe) error {
 
 func recordState(ctx context.Context, tx *sql.Tx, p Probe, ts int64, detail string) error {
 	var (
-		prevState  string
-		prevSince  int64
-		failStreak int
-		okStreak   int
+		class       string
+		prevState   string
+		prevSince   int64
+		failStreak  int
+		okStreak    int
+		prevLastErr string
 	)
 
 	err := tx.QueryRowContext(ctx, `
-		SELECT state, since, fail_streak, ok_streak
-		FROM target_state WHERE target_id = ? AND vantage_id = ?`,
-		p.TargetID, p.VantageID).Scan(&prevState, &prevSince, &failStreak, &okStreak)
+		SELECT COALESCE(t.class, ''), ts.state, ts.since, ts.fail_streak, ts.ok_streak,
+		       COALESCE(ts.last_error, '')
+		FROM target_state ts
+		JOIN target t ON t.id = ts.target_id
+		WHERE ts.target_id = ? AND ts.vantage_id = ?`,
+		p.TargetID, p.VantageID).
+		Scan(&class, &prevState, &prevSince, &failStreak, &okStreak, &prevLastErr)
 
-	next := string(p.State)
-	newFail, newOK := nextStreaks(p.State, failStreak, okStreak)
-	lastError := ""
-	if p.State == state.Down && detail != "" {
+	// The confirmation rules need the last three observations: the reference
+	// class confirms DOWN on two failures out of three, and BLOCKED needs the
+	// same challenge signature twice (DESIGN.md §7.4). The current probe was
+	// inserted just above, so it is the newest row.
+	recentFails := 0
+	blockedStreak := 0
+	recent, errRecent := recentObservations(ctx, tx, p.TargetID, p.VantageID)
+	if errRecent == nil {
+		for i, row := range recent {
+			if row.state == state.Down {
+				if i < 3 {
+					recentFails++
+				}
+			}
+		}
+		if p.State == state.Blocked && len(recent) > 0 {
+			sig := recent[0].signature
+			blockedStreak = 1
+			for _, row := range recent[1:] {
+				if row.state == state.Blocked && row.signature == sig {
+					blockedStreak++
+					continue
+				}
+				break
+			}
+		}
+	}
+
+	decision := confirm.Decide(confirm.Inputs{
+		Rule:          confirm.RuleFor(confirm.ClassFor(class)),
+		Prev:          state.State(prevState),
+		PrevSince:     millisOrZero(prevSince),
+		Candidate:     p.State,
+		FailStreak:    failStreak,
+		OKStreak:      okStreak,
+		RecentFails:   recentFails,
+		BlockedStreak: blockedStreak,
+		Now:           time.UnixMilli(ts).UTC(),
+	})
+
+	next := string(decision.State)
+	lastError := prevLastErr
+	if decision.State != state.Down {
+		lastError = ""
+	} else if p.State == state.Down && detail != "" {
 		lastError = detail
 	}
 
@@ -205,7 +253,7 @@ func recordState(ctx context.Context, tx *sql.Tx, p Probe, ts int64, detail stri
 				target_id, vantage_id, state, since, fail_streak, ok_streak,
 				last_probe_at, last_error
 			) VALUES (?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''))`,
-			p.TargetID, p.VantageID, next, ts, newFail, newOK, ts, lastError)
+			p.TargetID, p.VantageID, next, ts, decision.FailStreak, decision.OKStreak, ts, lastError)
 		if err != nil {
 			return fmt.Errorf("store: initial state %s: %w", p.TargetID, err)
 		}
@@ -229,7 +277,7 @@ func recordState(ctx context.Context, tx *sql.Tx, p Probe, ts int64, detail stri
 			state = ?, since = ?, prev_state = COALESCE(?, prev_state),
 			fail_streak = ?, ok_streak = ?, last_probe_at = ?, last_error = NULLIF(?, '')
 		WHERE target_id = ? AND vantage_id = ?`,
-		next, since, prevForRow, newFail, newOK, ts, lastError,
+		next, since, prevForRow, decision.FailStreak, decision.OKStreak, ts, lastError,
 		p.TargetID, p.VantageID); err != nil {
 		return fmt.Errorf("store: update state %s: %w", p.TargetID, err)
 	}
@@ -256,15 +304,55 @@ func recordState(ctx context.Context, tx *sql.Tx, p Probe, ts int64, detail stri
 	return nil
 }
 
-func nextStreaks(next state.State, fail, ok int) (int, int) {
-	switch next {
-	case state.Down:
-		return fail + 1, 0
-	case state.Up, state.UpReachability:
-		return 0, ok + 1
-	default:
-		return fail, ok
+// observation is the part of a stored probe the confirmation rules read.
+type observation struct {
+	state     state.State
+	signature string
+}
+
+// recentObservations returns the newest probes for one target and vantage,
+// newest first. Five are enough for the widest rule ("two of three") plus the
+// BLOCKED signature walk.
+func recentObservations(ctx context.Context, tx *sql.Tx, targetID, vantageID string) ([]observation, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT state, COALESCE(error_class, ''), COALESCE(detail, '')
+		FROM probe
+		WHERE target_id = ? AND vantage_id = ?
+		ORDER BY id DESC
+		LIMIT 5`, targetID, vantageID)
+	if err != nil {
+		return nil, fmt.Errorf("store: recent observations: %w", err)
 	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]observation, 0, 5)
+	for rows.Next() {
+		var (
+			row        observation
+			rawState   string
+			errorClass string
+			detail     string
+		)
+		if err := rows.Scan(&rawState, &errorClass, &detail); err != nil {
+			return nil, fmt.Errorf("store: scan observation: %w", err)
+		}
+		row.state = state.State(rawState)
+		row.signature = errorClass + "\x00" + detail
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: recent observations: %w", err)
+	}
+	return out, nil
+}
+
+// millisOrZero turns a stored unix-millisecond value into a time. Zero means
+// "no previous transition", which the debounce treats as a bootstrap.
+func millisOrZero(ms int64) time.Time {
+	if ms <= 0 {
+		return time.Time{}
+	}
+	return time.UnixMilli(ms).UTC()
 }
 
 // counters maps the eight states onto the five rollup columns. CONFIG_ERROR and
