@@ -591,6 +591,40 @@ func TestSetTargetsSwapsTheLiveSet(t *testing.T) {
 	}
 }
 
+func TestSuspendStopsProbingWithoutPausing(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	p := newProber()
+	sink := &fakeSink{}
+
+	a := agent.New([]agent.Target{target("t1", "chase.com")}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+	a.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	suspended := true
+	a.Suspend = func() bool { return suspended }
+
+	if ran, err := a.Step(context.Background()); err != nil || ran != 0 {
+		t.Fatalf("suspended Step = (%d, %v)", ran, err)
+	}
+	if p.count("https://chase.com/") != 0 {
+		t.Fatal("a suspended agent probed")
+	}
+	if a.Paused() {
+		t.Fatal("a budget suspension must not look like the operator's pause")
+	}
+
+	suspended = false
+	if ran, err := a.Step(context.Background()); err != nil || ran != 1 {
+		t.Fatalf("resumed Step = (%d, %v)", ran, err)
+	}
+	if p.count("https://chase.com/") != 1 {
+		t.Fatal("the agent did not resume probing")
+	}
+}
+
 func TestPauseStopsProbing(t *testing.T) {
 	t.Parallel()
 

@@ -28,6 +28,9 @@ services:
       # and the client fails loudly when the sidecar is missing.
       # NETWEATHER_TOR: "true"
       # NETWEATHER_TOR_SOCKS: tor:9050
+      # Daily volume budget for the tor vantage. Counted on the SOCKS
+      # connection; 0 disables it.
+      # NETWEATHER_TOR_DAILY_MB: "50"
       #
       # External corroboration, also off by default.
       # NETWEATHER_FEEDS: ioda,radar,statuspage,aws-status,gcp-status,azure-status

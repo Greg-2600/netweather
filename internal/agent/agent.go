@@ -121,6 +121,10 @@ type Agent struct {
 	// blocked. Nil means unknown, and an unknown path is treated as working:
 	// a missing health signal must not suppress real DOWN states.
 	DNSBlocked func() bool
+	// Suspend reports whether a self-imposed limit (a daily volume budget, for
+	// example) has stopped this agent. It is not the operator's pause: the
+	// kill switch is Pause/Resume, and this is the vantage's own allowance.
+	Suspend func() bool
 
 	mu      sync.RWMutex
 	targets []Target
@@ -196,6 +200,9 @@ func (a *Agent) TargetIDs() []string {
 // many targets ran. A paused agent does nothing and schedules nothing.
 func (a *Agent) Step(ctx context.Context) (int, error) {
 	if a.paused.Load() {
+		return 0, nil
+	}
+	if a.Suspend != nil && a.Suspend() {
 		return 0, nil
 	}
 

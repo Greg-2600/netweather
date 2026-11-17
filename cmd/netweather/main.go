@@ -39,6 +39,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/selfcheck"
 	"github.com/Greg-2600/netweather/internal/startup"
 	"github.com/Greg-2600/netweather/internal/store"
+	"github.com/Greg-2600/netweather/internal/torcap"
 	"github.com/Greg-2600/netweather/internal/version"
 	"github.com/Greg-2600/netweather/internal/web"
 )
@@ -787,6 +788,10 @@ const (
 	minTorInterval  = 10 * time.Minute
 	defaultTorProxy = "127.0.0.1:9050"
 	torPace         = 2 * time.Second
+	// torDailyMBDefault keeps the corroboration vantage honest: 25 targets at a
+	// ten-minute floor is a few hundred KB a day, so 50 MB is generous headroom
+	// rather than a target.
+	torDailyMBDefault = 50
 )
 
 // newTorAgent builds the optional corroboration vantage. It returns nil when
@@ -805,6 +810,25 @@ func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg
 	if err != nil {
 		return nil, err
 	}
+
+	// ACCEPTABLE_USE.md §8: the Tor vantage carries a daily volume budget. It
+	// is counted on the SOCKS connection itself, not estimated from response
+	// sizes, so a large body or a retry cannot slip past it.
+	dailyMB := torDailyMBDefault
+	if raw := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_DAILY_MB")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 {
+			return nil, fmt.Errorf("NETWEATHER_TOR_DAILY_MB %q is not a non-negative integer", raw)
+		}
+		dailyMB = n
+	}
+	budget := torcap.New(int64(dailyMB) << 20)
+	budget.OnExhausted = func(used int64) {
+		lg.Warn("tor daily volume budget exhausted; the tor vantage stops until UTC midnight",
+			"event", "tor_budget_exhausted", "component", "agent",
+			"used_bytes", used, "limit_bytes", budget.Limit, "proxy", proxyAddr)
+	}
+	torDial := probe.DialFunc(budget.Wrap(dial))
 
 	maxTargets := defaultTorMax
 	if raw := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_MAX")); raw != "" {
@@ -825,13 +849,14 @@ func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg
 	}
 
 	runner := agent.Instruments{
-		HTTP: probe.NewHTTPWithDial(probe.DialFunc(dial)),
-		TLS:  probe.NewTLSWithDial(probe.DialFunc(dial)),
-		TCP:  probe.NewTCPWithDial(probe.DialFunc(dial)),
+		HTTP: probe.NewHTTPWithDial(torDial),
+		TLS:  probe.NewTLSWithDial(torDial),
+		TCP:  probe.NewTCPWithDial(torDial),
 	}
 	ag := agent.New(selected, runner, st)
 	ag.Logger = lg.Logger
 	ag.Pace = torPace
+	ag.Suspend = budget.Exhausted
 
 	lg.Info("tor vantage enabled",
 		"event", "tor_enabled", "component", "agent",
