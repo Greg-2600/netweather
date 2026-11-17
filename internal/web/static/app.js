@@ -40,8 +40,11 @@
     const glyph = el.querySelector(".glyph");
     if (glyph) glyph.textContent = d.glyph;
 
-    const state = el.querySelector(".state");
-    if (state) state.textContent = d.state_text;
+    // Update only the text node. Rewriting the whole .state element would
+    // delete the glyph span (DESIGN.md 10.7 requires a non-colour marker) and
+    // the "your connection" label.
+    const stateText = el.querySelector(".state-text");
+    if (stateText) stateText.textContent = d.state_text;
 
     el.setAttribute(
       "aria-label",

@@ -290,8 +290,13 @@ func TestLiveUpdateArrivesOverSSE(t *testing.T) {
 	if err := expect.Locator(tile).ToHaveAttribute("data-state", "up"); err != nil {
 		t.Fatalf("tile did not update from SSE: %v", err)
 	}
-	if err := expect.Locator(tile.Locator(".state")).ToHaveText("Up"); err != nil {
+	if err := expect.Locator(tile.Locator(".state-text")).ToHaveText("Up"); err != nil {
 		t.Fatalf("state label did not update: %v", err)
+	}
+	// The live update must keep the non-colour marker, not just the label:
+	// rewriting the whole .state element used to delete it (DESIGN.md 10.7).
+	if err := expect.Locator(tile.Locator(".glyph")).ToHaveText("●"); err != nil {
+		t.Fatalf("state glyph did not survive the update: %v", err)
 	}
 
 	// The summary chip follows the tile, not the initial render.

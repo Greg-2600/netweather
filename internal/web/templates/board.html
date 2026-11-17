@@ -224,7 +224,7 @@
             <span class="host">{{.Host}}</span>
             {{if .Spark}}<span class="tile-spark mono" data-testid="tile-spark"
                   title="24-hour availability shape" aria-hidden="true">{{.Spark}}</span>{{end}}
-            <span class="state"><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Text}}{{if .Local}} <span class="local-path-label" data-testid="local-path">your connection</span>{{end}}</span>
+            <span class="state"><span class="glyph" aria-hidden="true">{{.Glyph}}</span> <span class="state-text">{{.Text}}</span>{{if .Local}} <span class="local-path-label" data-testid="local-path">your connection</span>{{end}}</span>
             {{if .Badge}}<span class="badge" title="{{.BadgeTitle}}" data-testid="tile-badge">{{.Badge}}</span>{{end}}
           </a>
           {{end}}
