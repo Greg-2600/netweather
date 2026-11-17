@@ -81,3 +81,20 @@ func (s *Store) CrossVantageDisagreement(ctx context.Context) (bool, error) {
 	}
 	return found == 1, nil
 }
+
+// FailureSpread counts the distinct sectors and origin ASNs among confirmed
+// DOWN targets for one vantage. It is the secondary "is it me?" heuristic from
+// DESIGN.md §7.1: a handful of failures in one corner of the estate looks like
+// a service or a region; failures spread across many sectors and networks at
+// once are more likely to be this path.
+func (s *Store) FailureSpread(ctx context.Context, vantageID string) (sectors, asns int, err error) {
+	if err := s.reader.QueryRowContext(ctx, `
+		SELECT COUNT(DISTINCT CASE WHEN t.sector <> '' THEN t.sector END),
+		       COUNT(DISTINCT CASE WHEN t.asn > 0 THEN t.asn END)
+		FROM target t
+		JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
+		WHERE t.enabled = 1 AND ts.state = 'down'`, vantageID).Scan(&sectors, &asns); err != nil {
+		return 0, 0, fmt.Errorf("store: failure spread: %w", err)
+	}
+	return sectors, asns, nil
+}

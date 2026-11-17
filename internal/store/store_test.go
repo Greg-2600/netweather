@@ -3255,3 +3255,55 @@ func TestScopeCoverageHistory(t *testing.T) {
 		t.Fatalf("empty coverage history = %v", empty)
 	}
 }
+
+func TestFailureSpread(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	ctx := context.Background()
+	if err := s.EnsureVantage(ctx, "local", "direct", "primary"); err != nil {
+		t.Fatal(err)
+	}
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	var probes []store.Probe
+	for i := 0; i < 10; i++ {
+		id := fmt.Sprintf("t%d", i)
+		if err := s.UpsertTarget(ctx, store.Target{
+			ID: id, Host: id + ".example", Port: 443, Probe: "http",
+			Name: id, Class: "service", Sector: fmt.Sprintf("s%d", i%5),
+			Tier: 2, IntervalS: 300,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.UpdateEnrichment(ctx, id, store.Enrichment{
+			ASN: 64500 + i, ASName: "Example",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		probes = append(probes, store.Probe{
+			TargetID: id, VantageID: "local", TS: base,
+			State: state.Down, Stage: "http", Confidence: "high",
+		})
+	}
+	if err := s.Record(ctx, probes); err != nil {
+		t.Fatal(err)
+	}
+
+	sectors, asns, err := s.FailureSpread(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sectors != 5 || asns != 10 {
+		t.Fatalf("spread = %d sectors, %d ASNs; want 5 and 10", sectors, asns)
+	}
+
+	// A vantage with no failures has no spread.
+	empty, emptyASN, err := s.FailureSpread(ctx, "other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty != 0 || emptyASN != 0 {
+		t.Fatalf("empty spread = %d/%d", empty, emptyASN)
+	}
+}

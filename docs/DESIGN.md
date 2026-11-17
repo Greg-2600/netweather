@@ -540,6 +540,8 @@ if failures in one 30s bucket span >= 5 sectors AND >= 10 ASNs  ->  LOCAL_SUSPEC
 
 `LOCAL_SUSPECT` suppresses red styling but does not assert `LOCAL`; the UI says "possibly your connection" and shows both interpretations.
 
+**Implemented:** the primary rule uses the reference class (`ReferenceStates`): two of three or more failing reports `LOCAL`. The secondary heuristic counts the distinct sectors and origin ASNs among confirmed `DOWN` targets (`store.FailureSpread`); five sectors and ten networks at once reports `LOCAL` with the detail "failures span N sectors and M ASNs; possibly your connection", and the tile mute applies. It is a confirmed-state count rather than a literal 30-second bucket, because that is the durable signal the rest of the pipeline reads; the wording stays qualified because a genuine mass outage produces the same pattern.
+
 Third signal — the one that makes this precise: **vantage comparison.** If the primary vantage says `DOWN` but a corroborating vantage reaches the same target, the path is the problem, not the service. That is `REGIONAL`, and it is the only evidence that distinguishes *your ISP* from *your country* from *the service*.
 
 ### 7.2 Anomaly detection (the actual mass-outage detector)

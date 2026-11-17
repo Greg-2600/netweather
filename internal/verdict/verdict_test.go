@@ -3,6 +3,7 @@ package verdict_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -144,6 +145,8 @@ type fakeStore struct {
 	last        time.Time
 	counts      map[state.State]int
 	reference   map[state.State]int
+	sectors     int
+	asns        int
 	open        int
 	divergences []store.DNSDivergenceRecord
 	cross       bool
@@ -161,6 +164,10 @@ func (f *fakeStore) StateCounts(context.Context, string) (map[state.State]int, e
 
 func (f *fakeStore) ReferenceStates(context.Context, string) (map[state.State]int, error) {
 	return f.reference, f.err
+}
+
+func (f *fakeStore) FailureSpread(context.Context, string) (int, int, error) {
+	return f.sectors, f.asns, f.err
 }
 
 func (f *fakeStore) OpenIncidentCount(context.Context) (int, error) { return f.open, f.err }
@@ -225,5 +232,58 @@ func TestBuildTreatsReadFailuresAsAbsentSignals(t *testing.T) {
 	// probe time the only honest answer is that the monitor cannot speak.
 	if got.Verdict != verdict.Stale {
 		t.Fatalf("verdict = %s (%s), want STALE", got.Verdict, got.Detail)
+	}
+}
+
+func TestFailureSpreadIsTheSecondaryLocalHeuristic(t *testing.T) {
+	t.Parallel()
+
+	// Five sectors and ten networks at once is the documented secondary
+	// heuristic: spread that wide is more likely this path than ten unrelated
+	// services.
+	in := healthy()
+	in.FailureSectors = 5
+	in.FailureASNs = 10
+	got := verdict.Evaluate(in)
+	if got.Verdict != verdict.Local {
+		t.Fatalf("verdict = %s, want LOCAL", got.Verdict)
+	}
+	if !strings.Contains(got.Detail, "possibly your connection") {
+		t.Fatalf("detail = %q, want the qualified wording", got.Detail)
+	}
+
+	// One short of either bound is a cluster, not a path problem.
+	for _, tc := range []struct {
+		sectors, asns int
+	}{
+		{4, 10},
+		{5, 9},
+	} {
+		in := healthy()
+		in.FailureSectors, in.FailureASNs = tc.sectors, tc.asns
+		if got := verdict.Evaluate(in); got.Verdict == verdict.Local {
+			t.Errorf("%d sectors/%d ASNs reported LOCAL", tc.sectors, tc.asns)
+		}
+	}
+}
+
+func TestBuildPassesTheFailureSpread(t *testing.T) {
+	t.Parallel()
+
+	now := base()
+	src := &fakeStore{
+		last:      now.Add(-10 * time.Second),
+		counts:    map[state.State]int{state.Up: 20, state.Down: 20},
+		reference: map[state.State]int{state.Up: 3},
+		sectors:   6,
+		asns:      12,
+		history:   make([]float64, 28),
+	}
+	got := (&verdict.Builder{
+		Store: src, Vantage: "local", StartedAt: now.Add(-time.Hour),
+		Now: func() time.Time { return now },
+	}).Build(context.Background())
+	if got.Verdict != verdict.Local || !strings.Contains(got.Detail, "6 sectors and 12 ASNs") {
+		t.Fatalf("verdict = %s (%s), want the spread-based LOCAL", got.Verdict, got.Detail)
 	}
 }

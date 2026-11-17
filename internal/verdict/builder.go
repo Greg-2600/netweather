@@ -16,6 +16,7 @@ type Store interface {
 	LastProbeAt(ctx context.Context, vantageID string) (time.Time, error)
 	StateCounts(ctx context.Context, vantageID string) (map[state.State]int, error)
 	ReferenceStates(ctx context.Context, vantageID string) (map[state.State]int, error)
+	FailureSpread(ctx context.Context, vantageID string) (sectors, asns int, err error)
 	OpenIncidentCount(ctx context.Context) (int, error)
 	RecentDNSDivergences(ctx context.Context, limit int) ([]store.DNSDivergenceRecord, error)
 	CrossVantageDisagreement(ctx context.Context) (bool, error)
@@ -70,6 +71,10 @@ func (b *Builder) Build(ctx context.Context) Result {
 	}
 	if open, err := b.Store.OpenIncidentCount(ctx); err == nil {
 		in.OpenIncidents = open
+	}
+	if sectors, asns, err := b.Store.FailureSpread(ctx, b.Vantage); err == nil {
+		in.FailureSectors = sectors
+		in.FailureASNs = asns
 	}
 	if records, err := b.Store.RecentDNSDivergences(ctx, 200); err == nil {
 		for _, rec := range records {

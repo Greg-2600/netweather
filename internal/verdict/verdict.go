@@ -57,6 +57,11 @@ type Inputs struct {
 	// ReferenceTotal and ReferenceFailing describe the "is it me?" set.
 	ReferenceTotal   int
 	ReferenceFailing int
+	// FailureSectors and FailureASNs describe how widely the confirmed DOWN
+	// targets are spread. Five sectors and ten networks at once is the
+	// secondary "is it me?" heuristic from DESIGN.md §7.1.
+	FailureSectors int
+	FailureASNs    int
 	// TamperAt is the newest DNS TAMPER verdict.
 	TamperAt     time.Time
 	TamperWindow time.Duration
@@ -122,6 +127,16 @@ func Evaluate(in Inputs) Result {
 		return Result{Local, fmt.Sprintf(
 			"%d of %d reference targets failing; this is likely your path",
 			in.ReferenceFailing, in.ReferenceTotal)}
+	}
+
+	// The secondary heuristic (DESIGN.md §7.1): failures spread across five
+	// sectors and ten networks at once are more likely this path than ten
+	// unrelated services. The wording stays "possibly" because a real mass
+	// outage looks the same.
+	if in.FailureSectors >= 5 && in.FailureASNs >= 10 {
+		return Result{Local, fmt.Sprintf(
+			"failures span %d sectors and %d ASNs; possibly your connection",
+			in.FailureSectors, in.FailureASNs)}
 	}
 
 	if in.CrossVantage {
