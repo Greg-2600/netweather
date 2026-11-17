@@ -12,7 +12,7 @@ That changes the tooling budget. The effort moves from *"is the type right?"* to
 
 | Compiler cannot catch | Covered by |
 |---|---|
-| Data races across 64 probe workers | `go test -race` |
+| Data races across the probe path (step, ring, board) | `go test -race` |
 | Unclosed HTTP response bodies | `bodyclose`, `go vet httpresponse` |
 | Goroutine and timer leaks | `goleak`, `go vet lostcancel` |
 | A `switch` missing a new state | `exhaustive` |

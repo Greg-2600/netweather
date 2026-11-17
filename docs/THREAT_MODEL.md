@@ -174,7 +174,7 @@ This is the highest-severity area, because a mistake here turns the operator's I
 | T21 | Hostile response body | 32 KB read cap, decompression cap, no JS execution, no HTML rendering, signature matching only, no `Content-Length` trust | Enforced |
 | T22 | Malicious TLS | Verification always on. No `InsecureSkipVerify`, no custom `VerifyPeerCertificate` that returns nil. Cert parse limits via `crypto/x509` | Enforced |
 | T23 | Slowloris from the target side | Per-stage deadlines (DNS, TCP, TLS, TTFB, total) and a body-read deadline; no unbounded `io.ReadAll` | Enforced |
-| T24 | Connection exhaustion | Per-host semaphore 1, worker pool bound, `MaxConnsPerHost`, idle pool capped, global token bucket | Enforced |
+| T24 | Connection exhaustion | Per-host semaphore 1, one probe at a time in the step, `MaxConnsPerHost`, idle pool capped, global token bucket | Enforced |
 | T25 | Using the tool as a scanner | One port per target, no port sweep, max 2000 targets, 30s floor per host, GET/HEAD only, no payloads | Enforced |
 | T26 | Using the tool as a load generator | Global 20 req/s default, per-host 1 concurrent, 30s floor, kill switch (`netweather pause`) | Enforced |
 | T27 | Amplification via DNS/NTP | DNS: normal recursive queries to configured resolvers only. NTP: fixed pool allowlist, single client request, no `monlist`, no broadcast | Enforced |

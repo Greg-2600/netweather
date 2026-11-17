@@ -460,8 +460,8 @@ The floor is applied **after** jitter, as a final clamp.
 
 ### 6.2 Concurrency and pacing
 
-- Dispatcher ticks 1s, selects due targets, submits to a bounded pool
-- Worker pool default 64 (config `probe.workers`)
+- A 1-second dispatcher tick calls one deterministic `Step`; probes run one at a time, in due order, with per-host serialization and the global ceiling below
+- **Deliberately not a worker pool.** The earlier sketch had 64 workers and a `probe.workers` setting. The shipped loop is a single step so the scheduler rules are testable with an injected clock and no sleeping, and 750 targets at their intervals need a few probes per second, well inside the ceiling; a pool would add nondeterminism without buying throughput the workload needs
 - **Per-host semaphore = 1**, keyed by registrable domain, so `chase.com` and `www.chase.com` share a slot
 - **Global token bucket** ceiling (default 20 req/s) - a bad config cannot melt your connection or look like an attack. **Implemented:** the agent spaces probes by `1/rate`, with the rate from `schedule.RampRate`; the first probe starts immediately and a probe slower than the gap simply lowers the effective rate
 - **Single-flight per target** — never two probes of the same target concurrently
