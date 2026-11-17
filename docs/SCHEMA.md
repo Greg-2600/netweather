@@ -616,6 +616,21 @@ One snapshot per scope per hour, written by maintenance. Sampling the same hour 
 
 The baseline reads the last 28 samples whose **hour-of-week** matches the evaluation instant (`internal/baseline`). That is why this table stores the raw hourly value rather than a pre-aggregated median: the window and the bucket key are detection policy, and policy changes should not require re-sampling history.
 
+**Migration `0021`** adds the atypical-day exclusion (`DESIGN.md` §7.2):
+
+```sql
+CREATE TABLE atypical_day (
+    day         TEXT NOT NULL,              -- YYYY-MM-DD, UTC
+    scope       TEXT NOT NULL DEFAULT '',   -- '' = all scopes
+    scope_value TEXT NOT NULL DEFAULT '',
+    marked_at   INTEGER NOT NULL,
+    source      TEXT NOT NULL,              -- 'calendar' or 'detector'
+    PRIMARY KEY (day, scope, scope_value)
+) WITHOUT ROWID;
+```
+
+A day listed in the operator's calendar, or one the both-direction rule marks while it is happening, must not become an hour-of-week sample: otherwise the band learns the anomaly it exists to catch. `MarkAtypicalDay` records the row and deletes that day's `scope_sample` rows in one transaction, and `SampleScopes` skips the day from then on. A calendar entry with regions records `scope='country'` for each region, so a US holiday narrows to the US baseline; an entry without regions records the empty scope and applies to every scope.
+
 ---
 
 ## 11. Retention

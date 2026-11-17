@@ -141,7 +141,18 @@ func (s *Store) SampleScopes(ctx context.Context, vantageID string, now time.Tim
 
 	bucket := now.UTC().Truncate(time.Hour).UnixMilli() / 3600000
 
+	// An atypical day does not contribute baseline samples (DESIGN.md §7.2),
+	// or the band learns the holiday it is meant to notice. The row is written
+	// by a calendar entry or by the both-direction rule.
+	excluded, err := s.AtypicalDayScopes(ctx, now.UTC().Format("2006-01-02"))
+	if err != nil {
+		return err
+	}
+
 	for _, ref := range refs {
+		if atypicalMatches(excluded, ref) {
+			continue
+		}
 		counts, judgeable, err := s.ScopeStates(ctx, vantageID, ref.Scope, ref.Value)
 		if err != nil {
 			return err

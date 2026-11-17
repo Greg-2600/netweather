@@ -41,6 +41,13 @@ type Evaluator struct {
 	wideners  map[string]*baseline.DayWidener
 	last      map[string]time.Time
 
+	// OnAtypicalDay is called once per UTC day when the both-direction rule
+	// marks the day atypical, so the caller can exclude its samples from the
+	// baseline (DESIGN.md §7.2). The callback owns logging and error handling;
+	// detection must not fail because a bookkeeping write did.
+	OnAtypicalDay func(day string)
+	atypicalDays  map[string]struct{}
+
 	// Coverage has its own detectors, widening, and cooldown: a health drop and
 	// a visibility drop are different advisories and must not suppress each
 	// other (DESIGN.md §7.2).
@@ -60,6 +67,8 @@ func New(src Source, sink Sink, vantage string) *Evaluator {
 		detectors: make(map[string]*baseline.Detector),
 		wideners:  make(map[string]*baseline.DayWidener),
 		last:      make(map[string]time.Time),
+
+		atypicalDays: make(map[string]struct{}),
 
 		coverageDetectors: make(map[string]*baseline.Detector),
 		coverageWideners:  make(map[string]*baseline.DayWidener),
@@ -156,7 +165,15 @@ func (e *Evaluator) Evaluate(ctx context.Context) (int, error) {
 		}
 
 		widener := e.widener(key)
+		wasWidened := widener.Widened()
 		band, _ := widener.Observe(now, health, stats)
+		if !wasWidened && widener.Widened() && e.OnAtypicalDay != nil {
+			day := now.UTC().Format("2006-01-02")
+			if _, done := e.atypicalDays[day]; !done {
+				e.atypicalDays[day] = struct{}{}
+				e.OnAtypicalDay(day)
+			}
+		}
 
 		// A small or partially measurable denominator is noisy, so the band
 		// widens 1.5x (DESIGN.md §7.2). The floors below stop detection
@@ -306,8 +323,10 @@ func (e *Evaluator) evaluateCoverage(ctx context.Context, ref store.ScopeRef, ke
 	return true, nil
 }
 
-// Loop evaluates every interval until ctx is done.
-func Loop(ctx context.Context, src Source, sink Sink, vantage string, every time.Duration, logger *slog.Logger) {
+// Loop evaluates every interval until ctx is done. onAtypical, when non-nil,
+// is called once per UTC day when the both-direction rule marks the day
+// atypical; the caller excludes that day's samples from the baseline.
+func Loop(ctx context.Context, src Source, sink Sink, vantage string, every time.Duration, logger *slog.Logger, onAtypical func(day string)) {
 	if every <= 0 {
 		every = 5 * time.Minute
 	}
@@ -316,6 +335,7 @@ func Loop(ctx context.Context, src Source, sink Sink, vantage string, every time
 	}
 
 	ev := New(src, sink, vantage)
+	ev.OnAtypicalDay = onAtypical
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
 

@@ -635,7 +635,9 @@ Hour-of-week is a good prior and a terrible absolute. Christmas, New Year, Ramad
 - **Calendar.** A config-provided `config/calendar.yaml`: dates plus optional region tags. Never hardcoded, never fetched at runtime. A date with no entry is a normal day.
 - **Both-direction rule.** If the first three buckets of a day fall outside the band in *both* directions, the day is atypical and the band widens to `median ± 6·MAD` for the rest of that day. A one-directional excursion is an incident, not a holiday — this is what stops the rule from becoming a way to ignore real outages.
 - **Atypical days are excluded from baseline samples.** Otherwise the band learns the anomaly it is supposed to catch.
-- **DST.** Bucket keys are UTC. Hour-of-week is derived from a configured fixed offset. Transition days are automatically atypical. This matters because 28 samples is few enough that two duplicated or missing hours can shift a median.
+- **DST.** Bucket keys are UTC, and there is no configured offset: a DST transition cannot duplicate or skip a bucket.
+
+**Implemented:** `NETWEATHER_CALENDAR` (or a `calendar.yaml` beside the target config) is parsed strictly at startup. Each entry is `date: YYYY-MM-DD` plus optional two-letter `regions:`. Every listed date is written to `atypical_day` and its already-recorded `scope_sample` rows are deleted; `SampleScopes` skips that day from then on, so the exclusion is not only a one-time delete. A region narrows the exclusion to that country's baseline; an entry with no regions applies to every scope. The both-direction rule is `baseline.DayWidener`, and when it first marks a day atypical the evaluator calls back to record the day with source `detector`, deleting the morning's samples and skipping the rest, once per UTC day. A malformed calendar refuses startup; an absent one is a normal deployment.
 
 The calendar is advisory, not authoritative: an operator who never touches it gets slightly more sensitive detection on holidays, not a broken one.
 

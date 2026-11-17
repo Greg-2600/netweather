@@ -27,6 +27,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/api"
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/bytecap"
+	"github.com/Greg-2600/netweather/internal/calendar"
 	"github.com/Greg-2600/netweather/internal/classify"
 	"github.com/Greg-2600/netweather/internal/config"
 	"github.com/Greg-2600/netweather/internal/corridor"
@@ -200,6 +201,32 @@ func serve(lg *logging.Logger) error {
 
 	if err := st.EnsureVantage(ctx, "local", "direct", "primary"); err != nil {
 		return err
+	}
+
+	// The atypical-day calendar is local and static (DESIGN.md §7.2). Every
+	// listed date is marked once at startup: a future date costs no delete
+	// now and is skipped when it arrives, and a past date loses the samples
+	// it should never have contributed.
+	if path := calendarPathFromEnv(); path != "" {
+		entries, err := calendar.Load(path)
+		if err != nil {
+			lg.Error("calendar invalid", "event", "calendar_invalid", "component", "maintenance", "error", err)
+			return err
+		}
+		for _, entry := range entries {
+			for _, scope := range entry.Scopes() {
+				if _, err := st.MarkAtypicalDay(ctx, entry.Date, scope[0], scope[1], "calendar", time.Now()); err != nil {
+					lg.Warn("calendar day could not be marked",
+						"event", "calendar_mark_failed", "component", "maintenance",
+						"day", entry.Date, "error", err)
+				}
+			}
+		}
+		if len(entries) > 0 {
+			lg.Info("atypical-day calendar loaded",
+				"event", "calendar_loaded", "component", "maintenance",
+				"days", len(entries), "path", path)
+		}
 	}
 
 	targets, err := loadTargets(ctx, st)
@@ -496,7 +523,18 @@ func serve(lg *logging.Logger) error {
 	}
 	go incidents.Loop(ctx, st, st, st, "local", incidentInterval, lg.Logger, incidentChanges.Notify,
 		func() bool { return healthGate.Blocked("clock-sync") })
-	go anomaly.Loop(ctx, st, st, "local", incidentInterval, lg.Logger)
+	go anomaly.Loop(ctx, st, st, "local", incidentInterval, lg.Logger, func(day string) {
+		// The both-direction rule marked the day atypical. Its samples are
+		// already in scope_sample, so delete them as well as skipping the rest
+		// (DESIGN.md §7.2); otherwise the band keeps the morning it learned.
+		if _, err := st.MarkAtypicalDay(ctx, day, "", "", "detector", time.Now()); err != nil {
+			lg.Warn("atypical day could not be excluded",
+				"event", "atypical_day_failed", "component", "anomaly", "day", day, "error", err)
+			return
+		}
+		lg.Info("atypical day marked; its samples are excluded from the baseline",
+			"event", "atypical_day", "component", "anomaly", "day", day)
+	})
 	go maintenanceLoop(ctx, st, lg, selfRunner, healthGate, scopes)
 	go configLoop(ctx, st, ag, lg.Logger)
 	go enrichmentLoop(ctx, st, lg)
@@ -1180,6 +1218,29 @@ func trustedProxiesFromEnv() ([]netip.Prefix, error) {
 		out = append(out, netip.PrefixFrom(addr, addr.BitLen()))
 	}
 	return out, nil
+}
+
+// calendarPathFromEnv resolves the atypical-day calendar (DESIGN.md §7.2).
+// NETWEATHER_CALENDAR wins; otherwise a calendar.yaml beside the target config
+// is used, whether that config is a file or a directory. An absent file is not
+// an error and disables the calendar.
+func calendarPathFromEnv() string {
+	if v := strings.TrimSpace(os.Getenv("NETWEATHER_CALENDAR")); v != "" {
+		return v
+	}
+	cfgPath := strings.TrimSpace(os.Getenv("NETWEATHER_CONFIG"))
+	if cfgPath == "" {
+		return ""
+	}
+	base := filepath.Dir(cfgPath)
+	if info, err := os.Stat(cfgPath); err == nil && info.IsDir() { // #nosec G703 -- operator-supplied NETWEATHER_CONFIG.
+		base = cfgPath
+	}
+	candidate := filepath.Join(base, "calendar.yaml")
+	if _, err := os.Stat(candidate); err == nil { // #nosec G703 -- operator-supplied NETWEATHER_CONFIG plus a fixed name.
+		return candidate
+	}
+	return ""
 }
 
 // enrichmentLoop learns ASN, prefix and CDN for hostname targets. It runs at

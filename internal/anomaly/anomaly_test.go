@@ -279,7 +279,7 @@ func TestLoopStopsOnCancel(t *testing.T) {
 	done := make(chan struct{})
 
 	go func() {
-		anomaly.Loop(ctx, newSource(healthy(50)), &fakeSink{}, "local", time.Millisecond, nil)
+		anomaly.Loop(ctx, newSource(healthy(50)), &fakeSink{}, "local", time.Millisecond, nil, nil)
 		close(done)
 	}()
 

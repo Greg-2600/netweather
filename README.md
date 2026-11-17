@@ -156,6 +156,7 @@ Every environment variable the binary reads, including the ones that exist for a
 | Variable | Default | Meaning |
 |---|---|---|
 | `NETWEATHER_CONFIG` | shipped seed list | target file |
+| `NETWEATHER_CALENDAR` | `calendar.yaml` beside the target config | atypical-day calendar (`dates:` with `date:` and optional `regions:`); a listed day is excluded from baseline samples and a malformed file refuses startup (`docs/DESIGN.md` §7.2) |
 | `NETWEATHER_SEED` | `default` | `none` starts with an empty board |
 | `NETWEATHER_DATA` | `./data` | SQLite database and rotated log file |
 | `NETWEATHER_UI_LISTEN` | `0.0.0.0:2600` | HTTP bind address |
