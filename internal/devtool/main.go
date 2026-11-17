@@ -230,6 +230,7 @@ func taskCover() error {
 		"/internal/classify":  95,
 		"/internal/config":    90,
 		"/internal/correlate": 90,
+		"/internal/enrich":    85,
 		"/internal/feeds":     85,
 		"/internal/incidents": 85,
 		"/internal/logging":   78,

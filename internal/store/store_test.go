@@ -1518,3 +1518,45 @@ func TestTargetRowsCarryEnrichment(t *testing.T) {
 		t.Fatalf("detail row = %+v", row)
 	}
 }
+
+func TestEnrichmentRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	needs, err := s.TargetsNeedingEnrichment(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(needs) != 1 || needs[0].ID != "t1" || needs[0].Host != "chase.com" {
+		t.Fatalf("needs = %+v", needs)
+	}
+
+	if err := s.UpdateEnrichment(ctx, "t1", 64500, "203.0.113.0/24", "akamai"); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := s.TargetsWithState(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows[0].ASN != 64500 || rows[0].Prefix != "203.0.113.0/24" || rows[0].CDN != "akamai" {
+		t.Fatalf("row = %+v", rows[0])
+	}
+
+	// A learned target is no longer in the queue.
+	needs, err = s.TargetsNeedingEnrichment(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(needs) != 0 {
+		t.Fatalf("learned target still queued: %+v", needs)
+	}
+
+	// Updating an unknown target is a no-op, not an error.
+	if err := s.UpdateEnrichment(ctx, "nope", 1, "x", "y"); err != nil {
+		t.Fatalf("unknown target: %v", err)
+	}
+}

@@ -187,6 +187,10 @@ Diversity is the point: different ASNs, different protocols. If two of these fou
 
 Every target gets `asn`, `as_country`, `prefix` via **Team Cymru DNS** (`origin.asn.cymru.com`, `asn.cymru.com`) — no GeoIP database in the image, two cached DNS queries per target. Refreshed daily and on IP change.
 
+**Implemented (migration-era phase 0):** `internal/enrich` resolves the target through the guarded dialer, asks `origin.asn.cymru.com` / `origin6.asn.cymru.com` over DNS to `1.1.1.1:53`, and records the ASN and covering prefix. It also maps the CNAME chain to a known CDN suffix (Cloudflare, Akamai, CloudFront, Fastly, Azure, Google, CDN77). A direct answer leaves `cdn` empty rather than guessing. `NETWEATHER_ENRICH=false` disables the loop; it runs once at startup and every six hours, paced at 150 ms per target.
+
+Still specified: the organisation/country lookup (`asn.cymru.com`), daily refresh tied to address changes, and PeeringDB labels (§8.5). Empty enrichment in the drawer reads "not learned yet", so the gap is visible instead of fabricated.
+
 This powers the coverage panel (§10.6) and the attribution engine (§7.3).
 
 ---

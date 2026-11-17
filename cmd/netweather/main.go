@@ -25,6 +25,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/api"
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/config"
+	"github.com/Greg-2600/netweather/internal/enrich"
 	"github.com/Greg-2600/netweather/internal/feeds"
 	"github.com/Greg-2600/netweather/internal/incidents"
 	"github.com/Greg-2600/netweather/internal/logging"
@@ -280,6 +281,7 @@ func serve(lg *logging.Logger) error {
 	go anomaly.Loop(ctx, st, st, "local", incidentInterval, lg.Logger)
 	go maintenanceLoop(ctx, st, lg, selfRunner, scopes)
 	go configLoop(ctx, st, ag, lg.Logger)
+	go enrichmentLoop(ctx, st, lg)
 
 	go func() {
 		<-ctx.Done()
@@ -523,6 +525,81 @@ func newAgent(targets []agent.Target, st *store.Store, lg *logging.Logger) *agen
 	ag := agent.New(targets, newInstruments(), st)
 	ag.Logger = lg.Logger
 	return ag
+}
+
+// enrichmentLoop learns ASN, prefix and CDN for hostname targets. It runs at
+// startup and every six hours; NETWEATHER_ENRICH=false disables it.
+func enrichmentLoop(ctx context.Context, st *store.Store, lg *logging.Logger) {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("NETWEATHER_ENRICH")), "false") {
+		return
+	}
+
+	dialer := netx.New()
+	resolver := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			// Every query goes to one well-known resolver over the guarded
+			// dialer; the host's resolver is not part of the trust boundary.
+			return dialer.DialContext(ctx, "udp", "1.1.1.1:53")
+		},
+	}
+
+	run := func() {
+		targets, err := st.TargetsNeedingEnrichment(ctx, 50)
+		if err != nil {
+			lg.Warn("enrichment scan failed",
+				"event", "enrichment_scan_failed", "component", "enrich", "error", err)
+			return
+		}
+		for _, t := range targets {
+			if ctx.Err() != nil {
+				return
+			}
+
+			addrs, err := dialer.CheckHost(ctx, t.Host)
+			if err != nil {
+				lg.Debug("enrichment resolve failed",
+					"event", "enrichment_resolve_failed", "component", "enrich",
+					"target", t.Host, "error", err)
+				continue
+			}
+			res, err := enrich.Host(ctx, resolver, t.Host, addrs)
+			if err != nil {
+				lg.Debug("enrichment lookup failed",
+					"event", "enrichment_lookup_failed", "component", "enrich",
+					"target", t.Host, "error", err)
+				continue
+			}
+			if err := st.UpdateEnrichment(ctx, t.ID, res.ASN, res.Prefix, res.CDN); err != nil {
+				lg.Warn("enrichment write failed",
+					"event", "enrichment_write_failed", "component", "enrich",
+					"target", t.Host, "error", err)
+				continue
+			}
+			lg.Info("target enriched",
+				"event", "target_enriched", "component", "enrich",
+				"target", t.Host, "asn", res.ASN, "prefix", res.Prefix, "cdn", res.CDN)
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(150 * time.Millisecond):
+			}
+		}
+	}
+
+	run()
+
+	ticker := time.NewTicker(6 * time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			run()
+		}
+	}
 }
 
 // Tor caps from ACCEPTABLE_USE.md §8: at most 25 targets, at least 2s between
