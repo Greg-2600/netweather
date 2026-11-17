@@ -225,7 +225,7 @@ Residual: encryption at rest is the host's responsibility. The document says so 
 | T53 | Privileged mode for ICMP | Not used. Unprivileged ICMP via `ping_group_range`; `CAP_NET_RAW` only in the optional trace profile | Enforced |
 | T54 | Writable rootfs persistence | `read_only`, `/tmp` tmpfs, `/data` the only volume | Enforced |
 | T55 | Host path mount exposes secrets | Compose mounts exactly three paths; the image runs as one UID and cannot read what that UID cannot read | Enforced |
-| T56 | Tor sidecar becomes a relay | `ClientOnly 1`, `ExitPolicy reject *:*`, `BridgeRelay 0`, `PublishServerDescriptor 0`, verified at startup by parsing `torrc` **and** refusing to run if the sidecar is reachable as a relay | Enforced |
+| T56 | Tor sidecar becomes a relay | The sidecar image is built here (`Dockerfile.tor`) with `ClientOnly 1`, `ExitPolicy reject *:*`, `BridgeRelay 0`, and `PublishServerDescriptor 0` baked into `torrc`, and a unit test fails if any is missing. The app checks that the SOCKS endpoint answers, not the peer's config, because it cannot read it | Enforced by the image; reachability checked |
 | T57 | Tor control port exposed | Control port disabled or cookie-authenticated on a private plane only; `SocksPort` never published to the host | Enforced |
 
 ### 5.6 Supply chain (B5 → build)
@@ -267,7 +267,7 @@ These are the properties the security model reduces to. They are listed as testa
 8. Every response carries CSP, `nosniff`, `X-Frame-Options`, and `Referrer-Policy`.
 9. A state-changing request without a CSRF token returns 403.
 10. Login timing does not distinguish unknown from known account — constant-time compare and a fixed floor delay.
-11. `torrc` contains the four client-only directives and the startup check fails if any is missing.
+11. The shipped `torrc` contains the four client-only directives, and a unit test fails if any is missing; `netweather doctor` proves the SOCKS endpoint answers.
 12. No compose example mounts `/var/run/docker.sock` or publishes anything except `2600`.
 13. The release image has no shell: `docker run --rm image sh` fails.
 14. `probe.detail` is truncated at 200 bytes and control characters are stripped.

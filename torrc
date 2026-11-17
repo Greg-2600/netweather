@@ -1,10 +1,12 @@
 # netweather Tor sidecar configuration (docs/IMAGE.md 7).
 #
-# Baked into the image on purpose: the two lines that matter are the ones a
+# Baked into the image on purpose: the lines that matter are the ones a
 # forgotten mount would silently drop. The monitor only ever reads from this
-# proxy, so it carries no exit traffic and opens no control port.
+# proxy, so it carries no exit traffic, no bridge, and no descriptor.
 ClientOnly 1
 ExitPolicy reject *:*
+BridgeRelay 0
+PublishServerDescriptor 0
 
 # The app reaches this over the compose egress network; nothing is published.
 SocksPort 0.0.0.0:9050

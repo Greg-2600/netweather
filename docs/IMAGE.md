@@ -125,11 +125,14 @@ services:
       timeout: 5s
       retries: 3
 
-  # Optional: Tor vantage (docs/DESIGN.md §5.7)
+  # Optional: Tor vantage (docs/DESIGN.md §5.7). Built from this repository's
+  # Dockerfile.tor so the client-only torrc is baked in, not mounted.
   tor:
-    image: ghcr.io/<owner>/netweather-tor:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.tor
+    image: netweather-tor:local
     profiles: ["tor"]
-    volumes: ["./torrc:/etc/tor/torrc:ro"]
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]

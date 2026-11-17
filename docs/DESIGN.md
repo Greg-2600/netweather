@@ -372,13 +372,15 @@ Point at **any** SOCKS5 endpoint — Tor, an SSH tunnel, a VPN, a corporate prox
 
 ```yaml
   tor:
-    image: dperson/torproxy:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.tor
+    image: netweather-tor:local
     profiles: ["tor"]
-    volumes: ["./torrc:/etc/tor/torrc:ro"]
     restart: unless-stopped
 ```
 
-This keeps the main image small, keeps Tor security updates independent of the release cycle, and lets users reuse a proxy they already run. An all-in-one image with `tor` + `s6-overlay` is acceptable as an optional variant, but it is not the default.
+This keeps the main image small, keeps Tor security updates independent of the release cycle, and lets users reuse a proxy they already run. The sidecar is built from this repository's `Dockerfile.tor` so the client-only `torrc` is baked in rather than mounted: a forgotten mount cannot turn the proxy into an exit relay. An all-in-one image with `tor` + `s6-overlay` is acceptable as an optional variant, but it is not the default.
 
 #### Client-only torrc
 
