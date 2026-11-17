@@ -1,0 +1,143 @@
+# netweather
+
+> **netweather.** A self-hosted internet weather station. "Downdetector" is an Ookla trademark and is not this project's name.
+
+A self-hosted internet weather station. One small container that answers three questions, in this order:
+
+1. **Is something large happening on the internet right now?** — cyberwar, mass outage, cable cut, BGP hijack, national shutdown
+2. **Is a specific service or sector down?** — banking, airlines, cloud, socials
+3. **Is it me?** — my ISP, my DNS, my egress, my container
+
+Most monitors answer only #2, and answer it badly: `curl != 200` becomes "down." That produces enough false alarms that people stop looking. This one classifies bot protection instead of evading it, and refuses to call a single vantage point a global truth.
+
+**Status: design phase.** No code yet. The documents in [`docs/`](docs/) are the specification.
+
+---
+
+## What it is not
+
+- Not a Downdetector clone — you are one vantage point, and the UI never claims otherwise
+- Not a homelab uptime monitor — use Uptime Kuma or Gatus for "is my NAS up"
+- Not a scraper, a load tester, or a port scanner — see `docs/ACCEPTABLE_USE.md`
+- Not a paging system — no on-call, no SLOs
+
+---
+
+## Prior art
+
+This project is the synthesis of three earlier experiments. Each contributed one idea; each had one thing wrong with it.
+
+| Repo | What it did | What it contributed | What was wrong |
+|---|---|---|---|
+| **[censor_sensor](https://github.com/Greg-2600/censor_sensor)** | Bash loop over a `site_list.txt`, `curl --head` each domain, grep for `200`, print a pass/fail count | The core model: **a list of domains, periodically checked, clustered by availability.** Also the reason the UI is a grid of favicons rather than a list of rows | One HEAD request, one bit of output. No history, no diagnosis, and `HEAD` is rejected by a lot of servers — so it reported failures that weren't |
+| **[global_packet_throwing](https://github.com/Greg-2600/global_packet_throwing)** | Enumerated every ccTLD, generated `xx.xx` / `www.xx` / `nic.xx` / `gov.xx`, resolved, pinged, printed latency with a country label | The idea that **country is a dimension**, and that you can reach other countries from one box. That idea is now the country-anchor layer | The instrument was wrong: `www.jp` usually resolves to a CDN edge near *you*, so the "international circuit" was often a local PoP. Fixed by querying the ccTLD's own authoritative nameservers over DNS instead |
+| **[proxy_scan](https://github.com/Greg-2600/proxy_scan)** | Installed `nmap` / `proxychains` / `tor`, wrote `torrc` and `proxychains.conf`, then scanned through the proxy | **Transport substitution**: the tool above doesn't know it's proxied. That became the `Dialer` interface and the Tor vantage model. Its client-only `torrc` (`ExitPolicy reject *:*`) is now mandatory here | Scraping public proxy lists is unreliable and ethically dubious — this project accepts user-supplied SOCKS5 only |
+
+The through-line: `censor_sensor` asked *"can I reach it?"*, `global_packet_throwing` asked *"can I reach it from over there?"*, `proxy_scan` asked *"can I reach it through something else?"* netweather asks **"what does that mean, and how sure am I?"**
+
+---
+
+## Design docs
+
+| Doc | Covers |
+|---|---|
+| [`docs/DESIGN.md`](docs/DESIGN.md) | Architecture, target classes, scheduler, state model, correlation, attribution, external feeds, vantages, sectors/ASN/country, UI, storage, deployment, guardrails |
+| [`docs/CLASSIFIER.md`](docs/CLASSIFIER.md) | The rule table that turns a response into a state — error classes, WAF signatures, precedence, confidence, hard-target recipes, golden fixtures |
+| [`docs/IMAGE.md`](docs/IMAGE.md) | Container base image, two-image strategy, hardening, capabilities, supply chain |
+| [`docs/NETWORKING.md`](docs/NETWORKING.md) | Docker topology, MTU/PMTU, embedded DNS, SSRF reachability, Tailscale and proxy access, Tor sidecar wiring |
+| [`docs/QUALITY.md`](docs/QUALITY.md) | Linters, security scanning, six test layers, fuzzing, the fake internet, container smoke tests, coverage gates, CI |
+| [`docs/SCHEMA.md`](docs/SCHEMA.md) | SQLite tables, pragmas and pools, incremental rollups, retention jobs, query shapes, backup and export |
+| [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) | Assets, adversaries, trust boundaries, SSRF and exposure threats, supply chain, invariants, residual risk, operator runbook |
+| [`docs/ACCEPTABLE_USE.md`](docs/ACCEPTABLE_USE.md) | Wire-level behaviour, hard limits, volume math, target selection, prohibited uses, abuse handling, Tor policy |
+
+---
+
+## At a glance
+
+**Targets** — four classes, ~750 probes:
+
+| Class | Count | Job |
+|---|---|---|
+| Service | 400 | Sector health (banking, airlines, cloud, …) |
+| Country anchor | 250 | ccTLD nameservers — "is country X still on the internet?" |
+| Network anchor | 100 | Root servers, public resolvers, IXP route servers |
+| Reference | 10–100 | The "is it me?" baseline |
+
+**States** — `UP` · `UP_REACHABILITY` · `DEGRADED` · `DOWN` · `BLOCKED` · `UNKNOWN` · `CONFIG_ERROR`. `BLOCKED` and `CONFIG_ERROR` never count against health, which is what keeps the board from being permanently on fire.
+
+**Verdicts** — `OK` · `INCIDENT` · `REGIONAL` · `LOCAL` · `TAMPER` · `STALE`.
+
+**Instruments** — DNS, DoH, TCP, TLS, HTTP(S), ICMP, TCP-ping, NTP, traceroute (on-demand only).
+
+**Vantages** — `direct` (your connection) and optional `socks5` (Tor, with exit-country pinning). Only the primary vantage may declare `DOWN`.
+
+**External intelligence** — IODA, Cloudflare Radar, RIPE RIS, Statuspage family. All optional; the core works with zero feeds.
+
+**Stack** — Go, SQLite (pure Go), server-rendered HTML + HTMX + SSE. One binary. No JS build step.
+
+---
+
+## Container
+
+Single container, read-only rootfs, non-root, no shell in the release image. Outbound for probes; **inbound only on 2600** for the dashboard.
+
+```yaml
+services:
+  netweather:
+    image: ghcr.io/<owner>/netweather:latest
+    networks: [ui, egress]
+    ports: ["2600:2600"]
+    volumes:
+      - ./data:/data
+      - ./config:/config:ro
+      - ./secrets/ui_token:/run/secrets/ui_token:ro
+    environment:
+      NETWEATHER_UI_LISTEN: 0.0.0.0:2600
+      NETWEATHER_UI_TOKEN_FILE: /run/secrets/ui_token
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    sysctls:
+      net.ipv4.ping_group_range: "0 2147483647"   # unprivileged ICMP, no NET_RAW
+    restart: unless-stopped
+
+networks:
+  ui:
+  egress:
+    driver_opts:
+      com.docker.network.driver.mtu: 1400          # VPN uplinks are not 1500
+```
+
+Ships with ~10 targets. Scale is opt-in via `netweather seed`.
+
+Everything optional is a compose profile, so the default file publishes one port and grants zero capabilities: `tor` (corroboration vantage), `tailscale` (tailnet access without publishing a port), `ripe-atlas` (RIPE's own probe, separate trust domain). Traceroute is a separate `compose.trace.yaml` because it needs `CAP_NET_RAW`.
+
+**Port 2600** — 2600 Hz, phreaking, *2600: The Hacker Quarterly*; unassigned by IANA and above 1024 so the non-root UID can bind it without `NET_BIND_SERVICE`. The cool options that lose: `179` (BGP — privileged, collides with real BGP daemons) and `6667` (IRC/botnet C2 — Chrome and Firefox refuse to load it as an unsafe port). Full comparison in [`docs/NETWORKING.md`](docs/NETWORKING.md) §7.1.
+
+`0.0.0.0` is the default bind, and that is fine — but an unauthenticated dashboard is not. A non-loopback listen with `ui.auth: none` refuses to start unless `ui.allow_public: true` is *also* set. The page publishes your target list, egress ASN, and coverage gaps; that is the disclosure, not the HTML.
+
+Container networking is not an afterthought here: Docker's bridge defaults, embedded DNS, and MTU will all silently produce fake outages if unhandled. [`docs/NETWORKING.md`](docs/NETWORKING.md) covers the topology, the PMTU check, the SSRF reachability map, and Tailscale/reverse-proxy access. Base image and hardening: [`docs/IMAGE.md`](docs/IMAGE.md).
+
+---
+
+## Safety posture
+
+This tool sends periodic requests to third-party sites. That is dual-use, so the limits are enforced in code rather than documented and hoped for:
+
+- 30s minimum interval per host, not configurable lower
+- Per-host concurrency 1, global rate ceiling, 2 GB/day egress budget with a hard stop
+- Outbound ports 80/443/53/123/853 only
+- Inbound: `2600` only, and a non-loopback bind requires auth
+- Private ranges blocked after DNS resolution **and** after every redirect
+- Traceroute: on-demand or anomaly-triggered, ≤10 runs/hour
+- Tor vantages: off by default, ≤25 targets, ≥2s spacing, daily bandwidth budget
+- No telemetry, ever
+
+At the full 750-target fleet this is ~430k probes/day and ~0.7 GB/day, dominated by TLS handshakes. The default install is ~10 targets and ~15 MB/day. Details and the arithmetic: [`docs/ACCEPTABLE_USE.md`](docs/ACCEPTABLE_USE.md) §4.
+
+---
+
+## License
+
+Apache-2.0.

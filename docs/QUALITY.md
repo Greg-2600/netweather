@@ -1,0 +1,421 @@
+# netweather — Code quality, security scanning, and testing
+
+> Python gives you `black` + `isort` + `pylint` + `mypy` + `bandit` + `pytest`. This is the Go equivalent, and in two places it is strictly better.
+
+---
+
+## 1. Start with the thing Python cannot give you
+
+**`mypy` has no equivalent here because Go does not need one.** The compiler is a whole-program static type checker that runs on every build. There is no untyped runtime, no `AttributeError` at 3am, no `None` where a `Target` was expected. Roughly a third of the bug classes `mypy` exists to catch are impossible by construction.
+
+That changes the tooling budget. The effort moves from *"is the type right?"* to *"what the compiler cannot see"*:
+
+| Compiler cannot catch | Covered by |
+|---|---|
+| Data races across 64 probe workers | `go test -race` |
+| Unclosed HTTP response bodies | `bodyclose`, `go vet httpresponse` |
+| Goroutine and timer leaks | `goleak`, `go vet lostcancel` |
+| A `switch` missing a new state | `exhaustive` |
+| A swallowed error | `errcheck`, `errorlint` |
+| Decompression bombs from gzip bodies | `gosec G110` |
+| SSRF via a user-supplied URL | `gosec G107` + runtime guard |
+
+That last row is the point: this codebase has a real attack surface and real concurrency. The tooling should be aimed there.
+
+---
+
+## 2. Parity table
+
+| Python | Purpose | Go equivalent | Notes |
+|---|---|---|---|
+| `black` | formatting | **`gofmt`** | Canonical, zero config. Go has one style; there is nothing to argue about. |
+| `isort` | import order | **`goimports`** + `gci` | Also removes unused imports |
+| `pylint` / `flake8` | lint | **`staticcheck`** + `go vet` | `staticcheck` is the de-facto standard and covers ~150 checks |
+| `ruff` | fast all-in-one lint | **`golangci-lint`** | Aggregator; runs the below in one pass |
+| `mypy` | static types | **the compiler** | Plus `nilaway` for nil-panic analysis |
+| `bandit` | security lint | **`gosec`** | Same class of rules (G1xx–G6xx) |
+| `pip-audit` / `safety` | dependency CVEs | **`govulncheck`** | Call-graph aware — only reports vulns you actually reach |
+| `pytest` | tests | **`go test`** | Table-driven, subtests, `-race`, `-fuzz` all built in |
+| `pytest-cov` | coverage | `-coverprofile` + `go tool cover` | |
+| `hypothesis` | property tests | **native fuzzing** + `rapid` | Built into the toolchain |
+| `pytest-benchmark` | benchmarks | `testing.B` + `benchstat` | |
+| `tox` / `nox` | matrix | GitHub Actions matrix | |
+| `pre-commit` | hooks | `lefthook` / `pre-commit` | Both work fine with Go |
+| `vulture` | dead code | `unused` (staticcheck `U1000`), `deadcode` | |
+| `radon` | complexity | `gocyclo`, `gocognit`, `maintidx` | |
+| `pyupgrade` | modernize | `gopls` modernize analyzers | |
+| `interrogate` | doc coverage | `revive`, `godot` | |
+| `liccheck` | licenses | `go-licenses` | |
+| `mutmut` | mutation testing | `gremlins` | Optional; see §5.7 |
+
+Nothing in the Python list is missing a counterpart. Four Go tools have no Python equivalent at all: **`-race`**, **native fuzzing**, **`exhaustive`**, and **`bodyclose`**.
+
+---
+
+## 3. Linter stack
+
+`golangci-lint` is the single entry point. Enabled set, chosen for *this* codebase rather than for maximum count:
+
+```yaml
+# .golangci.yml
+version: "2"
+linters:
+  default: none
+  enable:
+    # correctness
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - bodyclose          # HTTP bodies must be closed - critical at ~5 probes/s
+    - rowserrcheck
+    - sqlclosecheck
+    - contextcheck
+    - noctx              # every outbound request needs a context
+    - errorlint          # errors.Is/As, not ==
+    - nilerr
+    - nilnil
+    - exhaustive         # every state in every switch
+    - durationcheck
+    - copyloopvar
+    - forcetypeassert
+    - wastedassign
+
+    # security
+    - gosec
+
+    # resource hygiene
+    - prealloc
+    - makezero
+    - perfsprint
+
+    # style and structure
+    - revive
+    - gocritic
+    - misspell
+    - godot
+    - usestdlibvars
+    - goconst
+    - gocyclo
+    - funlen
+    - dupl
+    - unparam
+
+    # tests
+    - paralleltest
+    - tparallel
+    - thelper
+    - testpackage
+    - testifylint
+
+  settings:
+    exhaustive:
+      default-signifies-exhaustive: false   # force explicit cases
+    gocyclo:
+      min-complexity: 15
+    funlen:
+      lines: 80
+      statements: 50
+    gosec:
+      excludes: [G404]                      # we want math/rand for jitter, not crypto/rand
+    revive:
+      rules:
+        - name: exported
+        - name: error-return
+        - name: context-as-argument
+        - name: indent-error-flow
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+    - gci
+    - gofumpt
+```
+
+Why these specifically:
+
+- **`bodyclose`** — a prober that leaks response bodies exhausts file descriptors and sockets within hours. This is the single highest-value linter in the list.
+- **`exhaustive`** — the state machine has 7 states and several switch sites. Adding `TAMPER` and forgetting a case should be a build failure, not a runtime default.
+- **`noctx` + `contextcheck`** — every probe must be cancellable, or a hung target blocks a worker forever.
+- **`gosec G107`** — flags HTTP requests with variable URLs, which is precisely our SSRF surface. Expect to annotate it deliberately at the one place it is intentional, with a comment explaining the runtime guard.
+- **`gosec G110`** — decompression bombs. We read gzip bodies with a 32 KB cap; the cap must apply *after* decompression.
+- **`testpackage`** — tests live in `_test` packages, so they can only use the public API. Keeps the seams honest.
+
+Deliberately **not** enabled: `wsl`, `nlreturn`, `varnamelen`, `lll`. They generate style churn without catching bugs, and they make contributors fight the tool instead of the problem.
+
+---
+
+## 4. Security scanning
+
+Four layers, because they catch different things.
+
+| Layer | Tool | Gate |
+|---|---|---|
+| Source rules | `gosec` (via golangci-lint) | blocking |
+| Dependency CVEs | `govulncheck ./...` | blocking, call-graph aware |
+| Dependency + SBOM | `osv-scanner` on `go.sum` | blocking |
+| Container | `grype` on the built image | blocking on `HIGH`/`CRITICAL` |
+| Secrets | `gitleaks` | blocking |
+| Dockerfile | `hadolint` | blocking |
+| Workflows | `actionlint`, `zizmor` | blocking |
+| Custom rules | `semgrep` with project rules | advisory |
+
+Custom `semgrep` rules worth writing, because they encode decisions this project has made:
+
+```
+- pattern: http.Get(...)                  → use the instrument's context-aware client
+- pattern: tls.Config{InsecureSkipVerify: true}  → forbidden
+- pattern: os.Getenv("...")                → config must come from the config file
+- pattern: math/rand.Read                  → crypto/rand for anything security-relevant
+- pattern: fmt.Errorf($X)  (no %w)         → wrap errors so errors.Is works
+```
+
+`govulncheck` deserves a note: unlike `pip-audit`, it builds a call graph, so a CVE in a package you import but never call does not fail the build. Fewer false positives, higher signal.
+
+---
+
+## 5. Testing strategy
+
+Six layers. Each answers a question the layer below cannot.
+
+```
+        ┌──────────────────────────────┐
+   E2E  │ real endpoints, 6 targets    │  "does it work on the actual internet?"
+        ├──────────────────────────────┤
+   E2E  │ stubbed internet, real binary│  "does the whole system behave?"
+        ├──────────────────────────────┤
+   Ctr  │ compose topology, real image │  "does Docker break it?"
+        ├──────────────────────────────┤
+  Integ │ component + fake dialer      │  "do the pieces fit?"
+        ├──────────────────────────────┤
+   Fuzz │ classifier, parser           │  "is it total and deterministic?"
+        ├──────────────────────────────┤
+   Unit │ pure functions, tables       │  "is the logic right?"
+        └──────────────────────────────┘
+```
+
+### 5.1 Unit tests
+
+Table-driven, `t.Parallel()`, no network, no disk, no sleep.
+
+| Package | What is tested |
+|---|---|
+| `internal/classify` | Every rule in `CLASSIFIER.md` — one case per row, plus golden fixtures |
+| `internal/probe` | The ladder: which stage failed, with a fake dialer |
+| `internal/schedule` | Tiering, jitter bounds, per-host semaphore, backoff, missed ticks (fake clock) |
+| `internal/correlate` | LOCAL, REGIONAL, attribution scoring, anomaly thresholds (fixture datasets) |
+| `internal/config` | TXT/YAML parsing, sector inference from paths, validation errors |
+| `internal/store` | Migrations, retention pruning, rollup math |
+
+Golden files for anything with a stable serialized form: classifier decisions, rendered templates, JSON API responses.
+
+### 5.2 Property and fuzz tests
+
+Go's native fuzzing is the best fit for the classifier contract, which states that classification is **total** and **deterministic**:
+
+```go
+func FuzzClassify(f *testing.F) {
+    f.Add([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+    f.Fuzz(func(t *testing.T, raw []byte) {
+        r := parseResponse(raw)          // must never panic
+        s1, _, _ := classify(target, r)
+        s2, _, _ := classify(target, r)
+        if s1 != s2 {
+            t.Fatalf("non-deterministic: %v vs %v", s1, s2)
+        }
+        if !s1.Valid() {
+            t.Fatalf("invalid state: %v", s1)
+        }
+    })
+}
+```
+
+Fuzz targets:
+
+- `classify` — totality, determinism, no panic on arbitrary bytes
+- `parseResponse` — truncated headers, huge headers, invalid UTF-8, chunked weirdness
+- `parseConfig` — arbitrary YAML/TXT must produce an error, never a panic
+- `attribution` — invariants: score is monotonic in failures, winner share ≤ 1
+
+`rapid` (property-based) is worth it for the attribution scorer: generate random failure distributions and assert the chosen cluster always contains the most failures.
+
+### 5.3 Integration — the fake internet
+
+This is the highest-value harness in the project, because the classifier is only as good as the responses it is tested against.
+
+A single test binary that stands up a complete, deterministic, offline internet:
+
+```
+testdata/internet/
+  scenarios.yaml      # per-host behaviour
+  certs/              # test CA + leaf certs
+```
+
+```yaml
+- host: chase.test
+  tls: valid
+  http:
+    - status: 403
+      headers: { cf-mitigated: challenge }
+      body: "<html>Just a moment...</html>"
+
+- host: akamai.test
+  http:
+    - status: 403
+      body: "Access Denied<br>Reference #18.abc123"
+
+- host: slow.test
+  delay: 30s
+
+- host: loop.test
+  http: [{ status: 302, location: /a }]
+
+- host: expired.test
+  tls: expired
+
+- host: ipv6only.test
+  aaaa: true
+```
+
+It provides, on `127.0.0.1` with ephemeral ports:
+
+- an HTTPS server per scenario, using a **local CA** injected into the client's root pool
+- a UDP DNS server answering from `scenarios.yaml`
+- a SOCKS5 server that forwards to the fake hosts (exercises the Tor vantage path)
+- a controllable clock and a controllable "egress IP" endpoint
+
+Then run the **real binary** against it, drive it through its HTTP API, and assert on rendered state. No mocks of our own code — the seams are `Dialer` and `Clock`, which are already design requirements.
+
+This catches the bugs unit tests cannot: config → scheduler → probe → classify → store → correlate → SSE → template.
+
+### 5.4 E2E — real endpoints, as small as possible
+
+Six targets. Not 750. Runtime under ~10 seconds. Loose assertions, because the internet is not deterministic.
+
+| Target | Probe | Expectation |
+|---|---|---|
+| `https://example.com/` | `http` | `UP` |
+| `https://www.gstatic.com/generate_204` | `http` | `UP` (204, purpose-built health endpoint) |
+| `https://1.1.1.1/cdn-cgi/trace` | `http` | `UP` + egress IP parsed |
+| `a.root-servers.net` | `dns` | `UP` |
+| `https://github.com/` | `http` + status URL | `UP`, and official status fetched |
+| `https://example.com/does-not-exist` | `http` | `CONFIG_ERROR` (proves we never call a 404 an outage) |
+
+Assertions are set-membership, never equality:
+
+```go
+// Wrong: the internet is not a fixture.
+if state != UP { t.Fatal(...) }
+
+// Right: we care that it did not lie.
+if !state.In(UP, UP_REACHABILITY, DEGRADED) { t.Fatal(...) }
+if state == CONFIG_ERROR { /* only allowed for the 404 target */ }
+```
+
+Rules:
+
+- Behind `//go:build e2e`, skipped under `-short`
+- **Never blocking on PRs** — a flaky network must not block a merge. It runs on a schedule and on release tags.
+- One retry, then report. A second failure is worth investigating, not retrying again.
+- Assertions on *behaviour*, not on third parties being healthy.
+
+A second real-endpoint test covers the **Tor vantage**: one target, `1 probe/2s`, asserting that `BLOCKED` is treated as a normal outcome rather than a failure. Runs weekly.
+
+### 5.5 Container smoke test — the network plane
+
+The stub E2E above runs in-process and therefore proves nothing about Docker. A separate compose-based suite runs the real image in the real topology and asserts only the things a container can break: DNS bypass to authoritative servers, MTU black-holing classified as `UNKNOWN`, Tor reachable at `tor:9050` and not at `127.0.0.1:9050`, no published 9050, SSRF refusal of `172.17.0.1` and `169.254.169.254`, read-only rootfs, and port-53 blocking producing `UNMEASURABLE` rather than `DOWN`.
+
+Seven tests, ~40s total, blocking on PRs that touch `internal/netguard`, `internal/probe`, or the Dockerfile. The full table and compose file are in [`NETWORKING.md`](NETWORKING.md) §12.
+
+### 5.6 Contract tests for external feeds
+
+IODA and Radar will change their JSON. Record one real response per endpoint into `testdata/feeds/`, then:
+
+- parse it → assert the fields we depend on
+- parse a mutated version → assert we degrade gracefully rather than crash
+- parse a truncated version → assert `(data, observed_at, err)` returns an error and the UI shows `stale`
+
+Recorded, never live, in CI.
+
+### 5.7 Mutation testing (optional, high value)
+
+`gremlins` mutates the classifier and checks whether the fixture suite notices. This is the only way to prove the tests are not vacuous — a rule table with 40 fixtures can still have 20 fixtures that assert nothing.
+
+Scope it to `internal/classify` only; it is slow and the classifier is where correctness lives. Advisory in CI, not blocking.
+
+---
+
+## 6. Testability requirements
+
+These are design constraints, not test conveniences. They are already in `DESIGN.md`; restating them because the test strategy depends on them.
+
+| Seam | Why |
+|---|---|
+| **`Dialer` interface** (`DESIGN.md` §5.6) | Every probe goes through it. Tests inject the fake internet; production injects direct or SOCKS5. |
+| **`Clock` interface** | Scheduler, jitter, baselines, and retention must be deterministic. `time.Now()` is banned outside `internal/clock`. |
+| **`Recorder`** | `--record` captures live responses into fixtures, so every production surprise becomes a regression test. |
+| **No globals** | `gochecknoglobals` keeps state injectable. |
+| **`TestMain` network guard** | Any test that dials a real address fails loudly. Prevents accidental network dependence from creeping in. |
+
+That last one is worth writing explicitly:
+
+```go
+func TestMain(m *testing.M) {
+    net.DefaultResolver.PreferGo = true
+    defaultDialer = dialerFunc(func(ctx context.Context, n, a string) (net.Conn, error) {
+        panic("test attempted a real network connection to " + a)
+    })
+    os.Exit(m.Run())
+}
+```
+
+---
+
+## 7. Coverage policy
+
+100% coverage is a bad target; it rewards assertion-free tests. Instead:
+
+| Scope | Gate |
+|---|---|
+| `internal/classify` | **95%** — it decides whether the tool is useful |
+| `internal/correlate` | **90%** |
+| `internal/schedule` | **85%** |
+| everything else | **70%** |
+| overall | reported, not gated |
+
+Always `-race -covermode=atomic`. Coverage is uploaded per-PR and diffed, so a PR that drops `classify` coverage is visible even if the global number stays flat.
+
+---
+
+## 8. CI pipeline
+
+| Stage | Runs | Blocking |
+|---|---|---|
+| format | `gofmt -l`, `goimports -l` | ✅ |
+| vet | `go vet ./...` | ✅ |
+| lint | `golangci-lint run` | ✅ |
+| test | `go test -race -covermode=atomic ./...` | ✅ |
+| fuzz (short) | `go test -fuzz=FuzzClassify -fuzztime=30s` | ✅ |
+| vuln | `govulncheck ./...`, `osv-scanner` | ✅ |
+| secrets | `gitleaks` | ✅ |
+| build | multi-arch `buildx` | ✅ |
+| image scan | `grype`, `hadolint` | ✅ |
+| sbom + sign | `syft`, `cosign` | ✅ |
+| integration | fake internet | ✅ |
+| container smoke | compose topology, 7 network tests | ✅ (paths that touch netguard/probe/Dockerfile) |
+| e2e real | 6 targets | ❌ scheduled + release only |
+| mutation | `gremlins` on `classify` | ❌ advisory |
+
+Pre-commit hook runs format + vet + lint + unit. Everything else is CI.
+
+---
+
+## 9. Deliberately not doing
+
+- **No style linters that fight contributors** (`wsl`, `lll`, `varnamelen`). Bug-catching rules only.
+- **No coverage badge as a quality claim.** A high number with weak assertions is worse than a lower honest one.
+- **No live third-party calls in CI.** Feeds are recorded; E2E-real is separate and non-blocking.
+- **No mocking our own packages.** If a package needs a mock, its seam is wrong — fix the seam.
+- **No `-short` in CI for the integration layer.** The fake internet is fast; skipping it hides the bugs that matter.

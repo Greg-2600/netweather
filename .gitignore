@@ -1,0 +1,31 @@
+# Binaries
+/netweather
+/netweather.exe
+/dist/
+/bin/
+
+# Runtime state (never committed)
+/data/
+/secrets/
+*.db
+*.db-wal
+*.db-shm
+backup-*.db
+
+# Local config overrides
+/config/local/
+.env
+.env.*
+!.env.example
+
+# Test artefacts
+/testdata/tmp/
+/testdata/out/
+coverage.out
+coverage.html
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

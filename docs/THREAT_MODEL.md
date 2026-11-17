@@ -1,0 +1,289 @@
+# netweather — Threat model
+
+> This tool is a public-facing web service that makes outbound requests to third parties from the operator's network. Both halves are attack surface. This document states what is being protected, from whom, by what, and what is knowingly left exposed.
+
+Companion documents: [`NETWORKING.md`](NETWORKING.md) (topology and reachability), [`IMAGE.md`](IMAGE.md) (hardening), [`QUALITY.md`](QUALITY.md) (scanning and tests), [`ACCEPTABLE_USE.md`](ACCEPTABLE_USE.md) (what the tool may be pointed at).
+
+---
+
+## 1. Scope
+
+### In scope
+
+| Surface | Why it matters |
+|---|---|
+| The dashboard and its HTTP handlers | Internet-reachable by default (`0.0.0.0:2600`) |
+| The probe engine | Turns configuration into requests from the operator's IP |
+| The target list and seed ingestion | Untrusted input that selects those requests |
+| The SQLite database and backups | Contains the target list, egress identity, and a timeline |
+| The container runtime and image | Runs as a non-root process on the operator's host |
+| Dependencies and build pipeline | Published binary consumed by strangers |
+| The optional Tor sidecar | A proxy that must never become a relay |
+| External feed clients | Outbound fetches to third-party APIs with credentials |
+
+### Out of scope
+
+- A host that is already root-compromised. Container hardening raises the cost of escape; it does not survive a hostile kernel or a hostile container runtime.
+- The operator's browser and workstation.
+- Physical access.
+- Denial of service by a party who can saturate the operator's uplink. The tool degrades; it does not defend the link.
+- Legal advice. `ACCEPTABLE_USE.md` describes intent, not a jurisdiction-by-jurisdiction opinion.
+
+### Method
+
+Assets → adversaries → trust boundaries → threats per boundary → mitigation → residual risk → the invariant that makes the mitigation testable. Every mitigation listed as "enforced" has a corresponding test in `QUALITY.md` §5 or a startup assertion; a mitigation that is only a sentence in a document is listed as *policy*, not *enforced*.
+
+---
+
+## 2. Assets, ranked by what an attacker actually wants
+
+| # | Asset | Why it is valuable | Worst realistic outcome |
+|---|---|---|---|
+| A1 | **The target list** | A curated map of banks, airlines, clouds, and country anchors, with intervals and vantages. That is reconnaissance someone else did for free | Disclosure of which institutions the operator considers critical, and of coverage gaps |
+| A2 | **The egress identity** | Public IP, ASN, geolocation, and (if Tor is on) exit countries. Shown on the dashboard by design | The operator is identified and their measurement is correlated to them |
+| A3 | **The probe engine as a primitive** | Anything that makes the process issue requests from the operator's IP is SSRF, and at scale is a scanner | The operator's IP is the source of abusive traffic |
+| A4 | **The container as a foothold** | It sits inside the operator's network, often on a NAS or a VPS with other services | Lateral movement into the operator's estate |
+| A5 | **The database** | History, incident annotations (free-text operator notes), feed tokens | Disclosure of notes and credentials, or silent history tampering |
+| A6 | **The build** | The image is pulled by strangers | Supply-chain compromise at scale |
+| A7 | **The Tor sidecar** | A misconfigured `tor` is an exit relay, and an exit relay is a legal event | Traffic attributed to the operator; abuse complaints; ISP termination |
+
+The ranking drives the design: A1–A3 are why authentication is mandatory and why the SSRF rules are enforced in the dialer rather than in each probe.
+
+---
+
+## 3. Adversaries
+
+| ID | Adversary | Capability | Motivation |
+|---|---|---|---|
+| X1 | Opportunistic scanner | Port scans, path brute force, known-CVE probes | Whatever is open |
+| X2 | Curious or hostile visitor | Reads the dashboard if it is reachable | Learn A1/A2 |
+| X3 | Credential attacker | Password/token guessing, session theft, CSRF | A1, A4 |
+| X4 | Malicious target or MITM on the path | Returns hostile responses, redirects, malformed TLS, huge bodies, DNS answers pointing at private ranges | A3, A4 |
+| X5 | Poisoned target list | A seed URL, a contributed `targets.yaml`, or a compromised upstream list adds hosts under the attacker's control | A3 |
+| X6 | Compromised dependency | Typosquat, hijacked module, malicious transitive dep | A4, A6 |
+| X7 | Local network attacker | Can reach `2600` on the LAN, can spoof DNS | A1, A2, A3 |
+| X8 | Abused third party | A target that objects to being probed | Availability, legal |
+| X9 | Operator error | A typo in config, an over-broad CIDR, a public bind with auth off | All of the above |
+
+X9 is listed as an adversary on purpose. Most real incidents in a tool like this are self-inflicted configuration, not attacks.
+
+---
+
+## 4. Trust boundaries
+
+```
+                       untrusted internet
+                              |
+             +----------------+----------------+
+             |                                 |
+      [ B1 dashboard ]                  [ B2 probe egress ]
+             |                                 |
+   ===== trust boundary =====        ===== trust boundary =====
+             |                                 |
+      +------+------+                   +------+------+
+      |  handlers   |                   |   dialer    |
+      +------+------+                   +------+------+
+             |                                 |
+             +-----------+   +-----------------+
+                         |   |
+                   [ B3 store ]  [ B4 config/seed ]
+                         |              |
+                         +------+-------+
+                                |
+                        ===== trust boundary =====
+                                |
+                        [ B5 container boundary ]
+                                |
+                        [ B6 host / kernel ]
+```
+
+| Boundary | Crossing | Rule |
+|---|---|---|
+| B1 | Browser → handlers | Authenticated, CSRF-protected, rate-limited, no state change on GET |
+| B2 | Dialer → internet | Only public addresses, only allowlisted ports, only GET/HEAD, always revalidated |
+| B3 | Handlers/probes → SQLite | One writer, readers `query_only`, no SQL string concatenation |
+| B4 | Config/seed → scheduler | Untrusted; validated, capped, provenance-recorded |
+| B5 | Process → host | Non-root, read-only rootfs, no capabilities, no docker socket |
+| B6 | Container → host kernel | Out of scope; documented residual |
+
+The critical property is that **B2 is the only place a connection is created**. No handler, feed client, or plugin opens a socket directly. That is what makes the SSRF rules auditable: one function, one test suite, one review surface.
+
+---
+
+## 5. Threats and mitigations
+
+### 5.1 Exposure and authentication (B1)
+
+| ID | Threat | Mitigation | Status |
+|---|---|---|---|
+| T1 | Dashboard reachable with no auth | Non-loopback listen + `ui.auth: none` **refuses to start** unless `ui.allow_public: true` is also set | Enforced |
+| T2 | Token compared with `==` | `subtle.ConstantTimeCompare` on fixed-length hashes | Enforced |
+| T3 | Token in URL, logs, or referrer | Accepted only via `Authorization` header or login form POST; never a query parameter; redacted in logs | Enforced |
+| T4 | Session theft via XSS | `HttpOnly`, `SameSite=Lax`, `Secure` when the request arrived over TLS; no token in `localStorage`; strict CSP, no inline script, no third-party assets | Enforced |
+| T5 | CSRF on state-changing routes | All mutations are `POST` with a per-session token; `SameSite=Lax` alone is not treated as sufficient | Enforced |
+| T6 | Password/token brute force | Per-IP and global token buckets on `/login`, exponential backoff after 5 failures, no username enumeration (single account, identical error and timing) | Enforced |
+| T7 | Session fixation | Session ID regenerated on login; sessions expire (default 12h idle, 7d absolute) | Enforced |
+| T8 | No transport encryption | The binary does **not** terminate TLS. A plaintext bind shows a persistent "insecure transport" badge and the startup log says so. TLS is the reverse proxy's job | Documented |
+| T9 | Open redirect in `?next=` | Only same-origin relative paths accepted | Enforced |
+| T10 | Handler-level DoS | `ReadHeaderTimeout`, `ReadTimeout`, `WriteTimeout`, `IdleTimeout`, `MaxHeaderBytes`, request body limit (SSE excluded from `WriteTimeout`), SSE connection cap | Enforced |
+| T11 | Clickjacking | `X-Frame-Options: DENY` + `frame-ancestors 'none'` | Enforced |
+| T12 | MIME sniffing | `X-Content-Type-Options: nosniff`, explicit `Content-Type` on every response | Enforced |
+| T13 | Token file readable by others | Refuse to start if the token file is group/world-readable (POSIX); on Windows, warn | Enforced (POSIX) |
+| T14 | Secrets in the image or env | Token from a file or secret mount; env var accepted but flagged; `.dockerignore` and `gitleaks` in CI | Enforced |
+| T15 | Error pages leaking paths/SQL | Generic error page with a request ID; details only in logs | Enforced |
+
+Residual: a public bind with `ui.allow_public: true` and a weak token is the operator's choice. The startup banner states it once, loudly, and the badge never goes away.
+
+### 5.2 Probe egress — SSRF and scanning (B2)
+
+This is the highest-severity area, because a mistake here turns the operator's IP into the attacker's.
+
+| ID | Threat | Mitigation | Status |
+|---|---|---|---|
+| T16 | Target resolves to a private address | Resolve first, reject RFC1918, loopback, link-local, CGNAT (`100.64/10`), multicast, unspecified, IPv6 ULA, `::1`, `169.254.169.254`, and IPv4-mapped v6 forms | Enforced |
+| T17 | DNS rebinding between check and connect | Dial the **validated IP literal**, not the hostname; keep SNI and `Host` header as the original name; revalidate on every new connection, including pool reuse after TTL | Enforced |
+| T18 | Redirect to a private address or a new port | Every hop revalidated: scheme, host, resolved IPs, port allowlist; max 5 hops; cross-host redirects re-resolve | Enforced |
+| T19 | Redirect to a different port | Port allowlist applies after redirect, not just to the configured target | Enforced |
+| T20 | Arbitrary port probing | Outbound allowlist: 80, 443, 53, 123, 853. `22` and everything else rejected at config load **and** at dial time | Enforced |
+| T21 | Hostile response body | 32 KB read cap, decompression cap, no JS execution, no HTML rendering, signature matching only, no `Content-Length` trust | Enforced |
+| T22 | Malicious TLS | Verification always on. No `InsecureSkipVerify`, no custom `VerifyPeerCertificate` that returns nil. Cert parse limits via `crypto/x509` | Enforced |
+| T23 | Slowloris from the target side | Per-stage deadlines (DNS, TCP, TLS, TTFB, total) and a body-read deadline; no unbounded `io.ReadAll` | Enforced |
+| T24 | Connection exhaustion | Per-host semaphore 1, worker pool bound, `MaxConnsPerHost`, idle pool capped, global token bucket | Enforced |
+| T25 | Using the tool as a scanner | One port per target, no port sweep, max 2000 targets, 30s floor per host, GET/HEAD only, no payloads | Enforced |
+| T26 | Using the tool as a load generator | Global 20 req/s default, per-host 1 concurrent, 30s floor, kill switch (`netweather pause`) | Enforced |
+| T27 | Amplification via DNS/NTP | DNS: normal recursive queries to configured resolvers only. NTP: fixed pool allowlist, single client request, no `monlist`, no broadcast | Enforced |
+| T28 | ICMP as a covert channel or scan | Echo request only, unprivileged datagram ICMP where possible, never to private ranges, never the sole up/down signal | Enforced |
+| T29 | Traceroute abuse | On-demand only, ≤10/hour globally, no private ranges, never scheduled | Enforced |
+| T30 | Proxy chaining hides the source of abuse | Never chain proxies; a target has exactly one vantage; SOCKS5 is `socks5h` only, so DNS happens at the proxy | Enforced |
+| T31 | Environment proxy vars reroute traffic | `http.Transport.Proxy = nil` explicitly; `HTTP_PROXY` is not honored | Enforced |
+| T32 | Feed URL as an SSRF vector | Feed endpoints are compiled-in constants; a user-supplied feed URL is opt-in, must be HTTPS, and goes through the same dialer | Enforced |
+
+Residual: a public host that later *becomes* a private address after the operator's DNS is compromised is caught at dial time, not before. A target that is genuinely public but hostile can still return 32 KB of garbage — that is bounded, not prevented.
+
+### 5.3 Untrusted configuration and seeds (B4)
+
+| ID | Threat | Mitigation | Status |
+|---|---|---|---|
+| T33 | Poisoned seed adds attacker-controlled hosts | Seed payloads are untrusted: hostname syntax and IDN/punycode normalization, no IP literals for service targets, no wildcards, no userinfo, no non-allowlisted ports, dedupe, hard cap 2000 | Enforced |
+| T34 | Poisoned seed adds thousands of hosts | Cap enforced before scheduling; a seed that exceeds it is rejected wholesale, not truncated silently | Enforced |
+| T35 | No provenance for a bad target | `target_source` records source string and SHA-256 of the payload; `netweather seed --diff` shows additions before apply | Enforced |
+| T36 | Config typo takes the monitor down | Invalid reload is rejected; previous config stays live; error surfaced in the UI | Enforced |
+| T37 | Config points at the operator's own services | Documented: the private-range block will refuse them; local monitoring is explicitly not a use case | Policy |
+| T38 | YAML bomb / alias expansion | Size cap on config files, alias expansion limit, no custom tags | Enforced |
+| T39 | Path traversal in config paths | Config root is fixed; names are validated; no `..` | Enforced |
+| T40 | Seed fetched over HTTP | Seed URLs must be HTTPS (or `file://` for local); redirects revalidated | Enforced |
+
+### 5.4 Storage (B3)
+
+| ID | Threat | Mitigation | Status |
+|---|---|---|---|
+| T41 | SQL injection | Only `?` placeholders; no string-built SQL; `query_only` readers make an accidental write a hard error | Enforced |
+| T42 | Handler writes to the DB | Readers are `query_only=1`; write access exists only in the store package | Enforced |
+| T43 | Backup copied while WAL is live → corrupt file | Only `VACUUM INTO`; documentation forbids copying the live file | Enforced |
+| T44 | Restored DB with stale `-wal` | Restore procedure deletes `-wal`/`-shm` siblings; startup detects a mismatched WAL and refuses | Enforced |
+| T45 | Database readable by other users on the host | File created `0600`, directory `0700`; container runs as one UID; volume ownership documented | Enforced |
+| T46 | Operator annotations leak sensitive context | Free text, stored as written, never sent anywhere; the export command is explicit | Policy |
+| T47 | Downgrade silently drops columns | Refuse to start if `schema_version` is newer than the binary | Enforced |
+| T48 | Disk fill from a runaway writer | Retention jobs, per-table caps, `self_check` disk warning at 80% and a hard stop on probes at 95% | Enforced |
+
+Residual: encryption at rest is the host's responsibility. The document says so instead of pretending a SQLite file is encrypted.
+
+### 5.5 Container and host (B5)
+
+| ID | Threat | Mitigation | Status |
+|---|---|---|---|
+| T49 | Container escape via a kernel bug | Non-root UID 65532, `read_only: true`, `cap_drop: ALL`, `no-new-privileges`, default seccomp, no shell or package manager in the release image | Enforced |
+| T50 | Docker socket abuse | Never mounted. Not a config option | Enforced |
+| T51 | Host networking widens SSRF to the host | Bridge is the default; host networking is opt-in and the docs say exactly what it exposes | Enforced (default) |
+| T52 | Reaching the Docker API or metadata service | `172.17.0.1`, `host.docker.internal`, and `169.254.169.254` are in the private-range block | Enforced |
+| T53 | Privileged mode for ICMP | Not used. Unprivileged ICMP via `ping_group_range`; `CAP_NET_RAW` only in the optional trace profile | Enforced |
+| T54 | Writable rootfs persistence | `read_only`, `/tmp` tmpfs, `/data` the only volume | Enforced |
+| T55 | Host path mount exposes secrets | Compose mounts exactly three paths; the image runs as one UID and cannot read what that UID cannot read | Enforced |
+| T56 | Tor sidecar becomes a relay | `ClientOnly 1`, `ExitPolicy reject *:*`, `BridgeRelay 0`, `PublishServerDescriptor 0`, verified at startup by parsing `torrc` **and** refusing to run if the sidecar is reachable as a relay | Enforced |
+| T57 | Tor control port exposed | Control port disabled or cookie-authenticated on a private plane only; `SocksPort` never published to the host | Enforced |
+
+### 5.6 Supply chain (B5 → build)
+
+| ID | Threat | Mitigation | Status |
+|---|---|---|---|
+| T58 | Malicious or hijacked dependency | `go.sum` + checksum DB, minimal dependency set, `govulncheck` + `osv-scanner` in CI, new-dependency review rule | Enforced (process) |
+| T59 | Typosquatted module | Dependency allowlist reviewed in `go.mod`; `gomodguard` blocks non-allowlisted domains | Enforced |
+| T60 | Tampered image | Images referenced by digest in docs and compose examples; cosign signature + SBOM published with releases | Enforced (release) |
+| T61 | Compromised base image | Chainguard/Wolfi minimal base, digest-pinned, rebuilt weekly, `grype` gate on HIGH/CRITICAL | Enforced (CI) |
+| T62 | Secrets in the build | `gitleaks` on every commit and in the image build; no build args carrying secrets | Enforced |
+| T63 | Dockerfile mistakes | `hadolint`, no `ADD` from URLs, no `latest`, explicit non-root `USER`, no secrets in layers | Enforced |
+| T64 | Malicious contribution | `semgrep` + review rules: PRs adding evasion, scraping, or new outbound ports are rejected on sight (`ACCEPTABLE_USE.md` §9) | Policy |
+
+### 5.7 Privacy and disclosure of the operator
+
+| ID | Threat | Mitigation | Status |
+|---|---|---|---|
+| T65 | Dashboard reveals egress ASN/IP | Deliberate: the tool's honesty depends on showing its vantage. An optional "redact egress" display mode hides the literal IP, not the ASN | Policy |
+| T66 | Target list reveals the operator's interests | Auth-gated; not in any public endpoint; no telemetry | Enforced |
+| T67 | Telemetry or analytics | None. No outbound request that is not a probe, a feed poll, or a self-check | Enforced |
+| T68 | Logs contain tokens or full URLs with credentials | Structured logs redact `Authorization`, cookies, query strings on `/login`, and feed tokens | Enforced |
+| T69 | Public instance indexed by search engines | `robots.txt` disallows everything and `X-Robots-Tag: noindex` is set | Enforced |
+| T70 | RIPE Atlas profile is a third-party daemon on host networking | Ships only as an opt-in profile; netweather never connects to it; the profile README states what RIPE sees (operator IP, uptime); its traffic is RIPE's, not netweather's, and is governed by RIPE's terms | Policy |
+
+---
+
+## 6. Invariants (each one is a test)
+
+These are the properties the security model reduces to. They are listed as testable statements because a threat model that cannot fail a build is a mood board.
+
+1. No outbound connection is created outside the `Dialer` — enforced by a `forbidigo`/`depguard` rule banning `net.Dial*` outside `internal/netx`.
+2. `Dialer` rejects every address in the private-range table, including IPv4-mapped IPv6 — table-driven test with ~40 cases.
+3. `Dialer` connects to the validated IP, and the `Host`/SNI observed by the peer equals the configured name — test against a local TLS server.
+4. A redirect to a private address, a new port, or a non-HTTP scheme fails closed — recorded-response fixtures.
+5. Outbound port allowlist is applied at config load and at dial time, and `22` fails both.
+6. `http.Transport.Proxy` is nil even with `HTTP_PROXY` set in the environment.
+7. The binary refuses to start when: non-loopback + `auth: none` + `allow_public` unset; token file is world-readable; `schema_version` > binary; it is running as UID 0.
+8. Every response carries CSP, `nosniff`, `X-Frame-Options`, and `Referrer-Policy`.
+9. A state-changing request without a CSRF token returns 403.
+10. Login timing does not distinguish unknown from known account — constant-time compare and a fixed floor delay.
+11. `torrc` contains the four client-only directives and the startup check fails if any is missing.
+12. No compose example mounts `/var/run/docker.sock` or publishes anything except `2600`.
+13. The release image has no shell: `docker run --rm image sh` fails.
+14. `probe.detail` is truncated at 200 bytes and control characters are stripped.
+15. A 10 MB decompression bomb is cut at 32 KB decompressed.
+
+---
+
+## 7. Residual risk register
+
+| Risk | Likelihood | Impact | Accepted? | Note |
+|---|---|---|---|---|
+| Operator publishes a weak token on a public bind | Medium | High | Operator's decision | Startup refuses only the *unauthenticated* case; it cannot refuse a bad password |
+| Public target turns hostile and returns 32 KB of junk | High | Low | Yes | Bounded, never rendered |
+| Operator's DNS is compromised and returns a public IP for an internal name | Low | Medium | Yes | Private block catches private answers; a public answer for an internal name is indistinguishable from a real target |
+| Kernel-level container escape | Low | High | Yes | Out of scope; hardening raises cost |
+| Abuse complaint from a probed third party | Medium | Medium | Mitigated | Contact UA, `pause`, target removal, `ACCEPTABLE_USE.md` §7 |
+| Legal exposure in an unfriendly jurisdiction | Low | High | Documented | Not legal advice; operator decides |
+| Tor exit used by the operator's vantage is itself blocked | High | Low | Yes | `BLOCKED` is a normal state; the Tor vantage is never `primary` |
+| Free-text annotation contains something the operator later regrets | Low | Medium | Yes | Never transmitted; export is explicit |
+| Dependency compromise between scans | Low | High | Partly | Pinning, SBOM, cosign, weekly rebuild |
+| RIPE Atlas probe compromised → host-network access | Low | High | Operator opt-in | Runs host-networked per RIPE's requirements; isolated from netweather, not from the host |
+
+---
+
+## 8. Operator runbook
+
+**Rotate the token.** Replace the file contents, restart or `SIGHUP`; all sessions are invalidated because session IDs are derived from a token hash.
+
+**Suspect compromise.** `netweather pause` stops all probing immediately. Then: stop the container, keep the volume for forensics, do not reuse the token, check `self_check` and the egress IP history, and assume the target list is disclosed.
+
+**Receive an abuse complaint.** Stop probing the host (`netweather disable <target>`), reply with the contact in `ACCEPTABLE_USE.md` §7, and record the interval and method used. The logs can produce the exact request pattern.
+
+**Publish an instance.** Read `NETWORKING.md` §7.1 first. The page is the disclosure: target list, egress ASN, coverage gaps.
+
+**Vulnerability reports.** `SECURITY.md` (to be written) is the intake path. Until it exists, the repository's private advisory channel is the intake path.
+
+---
+
+## 9. Open questions
+
+1. **Single account vs. OIDC.** A single token is right for self-hosting; OIDC is right for teams. Ship the token, leave the interface open (`ui.auth: oidc` reserved, not implemented).
+2. **`allow_public: true` should probably require an explicit acknowledgement string**, not a boolean, so it cannot be enabled by a stray line in a copied compose file.
+3. **Read-only mode for public demos** — a sanitized board with no target names would let people evaluate the tool without publishing their list. Not v1.
+4. **Per-target `robots.txt` handling.** The tool is not a crawler, but a courtesy check on the first probe of a new target may be worth the extra request. Leaning no: it doubles first-contact traffic and robots.txt is not a security control.
+5. **Memory zeroing for the token.** Go cannot guarantee it. Constant-time compare and process isolation are the practical mitigations; say so rather than pretending.
