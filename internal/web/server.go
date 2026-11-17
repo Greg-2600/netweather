@@ -224,10 +224,14 @@ type countView struct {
 type boardView struct {
 	Version string
 	CSRF    string
-	Groups  []sectorGroupView
+	Groups  []groupView
 	Counts  []countView
 	Paused  bool
 	Control bool
+	// Group is the current grouping key, and GroupOptions is the toggle. The
+	// board is about "airlines are down" only when the reader chose that lens.
+	Group        string
+	GroupOptions []groupOption
 	// Focus hides everything that is not DOWN or DEGRADED. The counts still
 	// describe the whole fleet, so the summary does not lie about what is
 	// hidden.
@@ -247,10 +251,11 @@ type feedView struct {
 	Stale  bool
 }
 
-// sectorGroupView is one sector's slice of the board. Sectors are the unit the
-// product is about: "airlines are down" is a different claim from "one airline
-// is down", and a flat wall of icons hides the difference.
-type sectorGroupView struct {
+// groupView is one slice of the board. Sectors are the default unit because
+// "airlines are down" is a different claim from "one airline is down", and a
+// flat wall of icons hides the difference. The same view serves every grouping
+// key so the summary, collapse behaviour, and ordering cannot diverge.
+type groupView struct {
 	Name     string
 	Label    string
 	Count    int
@@ -261,24 +266,62 @@ type sectorGroupView struct {
 	Targets  []tileView
 }
 
-// groupBySector preserves the incoming (severity) order inside each sector and
-// puts the sector with the worst state first.
-func groupBySector(targets []board.Target) []sectorGroupView {
+// groupOption is one entry in the grouping toggle.
+type groupOption struct {
+	Key    string
+	Label  string
+	Active bool
+	// Href switches the lens while preserving focus mode. Built here so the
+	// template does not have to assemble query strings.
+	Href string
+}
+
+// groupModes is the documented toggle order (DESIGN.md §10.2): sector is the
+// default, then the lenses that answer "is it one host, one network, one
+// country, or one broken stage?".
+var groupModes = []struct {
+	Key   string
+	Label string
+}{
+	{"sector", "Sector"},
+	{"state", "State"},
+	{"cdn", "CDN"},
+	{"asn", "ASN"},
+	{"country", "Country"},
+	{"stage", "Stage"},
+}
+
+// normaliseGroupMode maps an unknown or empty value to the default. An invalid
+// value is a typo, not a 400: the board still renders.
+func normaliseGroupMode(mode string) string {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	for _, m := range groupModes {
+		if m.Key == mode {
+			return mode
+		}
+	}
+	return "sector"
+}
+
+// groupBy groups severity-ordered targets by mode, preserving the incoming
+// order inside each group and putting the group with the worst state first.
+func groupBy(targets []board.Target, mode string) []groupView {
+	mode = normaliseGroupMode(mode)
+
 	order := make([]string, 0, 8)
+	labels := make(map[string]string, 8)
 	byName := make(map[string][]board.Target)
 
 	for _, t := range targets {
-		name := t.Sector
-		if name == "" {
-			name = "other"
-		}
+		name, label := groupKey(t, mode)
 		if _, ok := byName[name]; !ok {
 			order = append(order, name)
+			labels[name] = label
 		}
 		byName[name] = append(byName[name], t)
 	}
 
-	groups := make([]sectorGroupView, 0, len(order))
+	groups := make([]groupView, 0, len(order))
 	for _, name := range order {
 		members := board.Order(byName[name])
 		worst := members[0].State // members are already severity-ordered
@@ -291,9 +334,9 @@ func groupBySector(targets []board.Target) []sectorGroupView {
 			}
 		}
 
-		group := sectorGroupView{
+		group := groupView{
 			Name:     name,
-			Label:    sectorLabel(name),
+			Label:    labels[name],
 			Count:    len(members),
 			Worst:    worst.Text(),
 			WorstCls: worst.CSSClass(),
@@ -317,7 +360,59 @@ func groupBySector(targets []board.Target) []sectorGroupView {
 	return groups
 }
 
-func worstRank(g sectorGroupView) int {
+// groupKey returns the stable identity and the human label for one target under
+// a grouping mode. An empty value is a fact ("not learned yet"), so it gets its
+// own bucket rather than being folded into a named one.
+func groupKey(t board.Target, mode string) (name, label string) {
+	switch mode {
+	case "state":
+		return string(t.State), t.State.Text()
+	case "cdn":
+		if t.CDN == "" {
+			return "none", "No CDN learned"
+		}
+		return t.CDN, t.CDN
+	case "asn":
+		if t.ASN == 0 {
+			return "0", "ASN not learned yet"
+		}
+		return strconv.Itoa(t.ASN), "AS" + strconv.Itoa(t.ASN)
+	case "country":
+		if t.Country == "" {
+			return "none", "Country unknown"
+		}
+		return t.Country, t.Country
+	case "stage":
+		if t.Stage == "" {
+			return "none", "No stage recorded"
+		}
+		return t.Stage, t.Stage
+	default:
+		if t.Sector == "" {
+			return "other", "Other"
+		}
+		return t.Sector, t.Sector
+	}
+}
+
+// groupOptions builds the toggle with the active entry marked. Focus mode is
+// preserved when switching lenses, because the two controls answer different
+// questions and silently resetting one is hostile.
+func groupOptions(active string, focus bool) []groupOption {
+	out := make([]groupOption, 0, len(groupModes))
+	for _, m := range groupModes {
+		href := "/?group=" + m.Key
+		if focus {
+			href += "&focus=problems"
+		}
+		out = append(out, groupOption{
+			Key: m.Key, Label: m.Label, Active: m.Key == active, Href: href,
+		})
+	}
+	return out
+}
+
+func worstRank(g groupView) int {
 	for _, st := range []board.State{
 		board.StateDown, board.StateDegraded, board.StateBlocked,
 		board.StateUnknown, board.StateConfigError, board.StateUnmeasurable,
@@ -328,13 +423,6 @@ func worstRank(g sectorGroupView) int {
 		}
 	}
 	return 99
-}
-
-func sectorLabel(name string) string {
-	if name == "other" {
-		return "Other"
-	}
-	return name
 }
 
 func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
@@ -374,12 +462,15 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	csrf, _ := s.auth.csrfFrom(r)
+	group := normaliseGroupMode(r.URL.Query().Get("group"))
 	view := boardView{
-		Version: s.deps.Version,
-		CSRF:    csrf,
-		Groups:  groupBySector(targets),
-		Control: s.deps.Control != nil,
-		Focus:   focus,
+		Version:      s.deps.Version,
+		CSRF:         csrf,
+		Groups:       groupBy(targets, group),
+		Control:      s.deps.Control != nil,
+		Focus:        focus,
+		Group:        group,
+		GroupOptions: groupOptions(group, focus),
 	}
 	if s.deps.Control != nil {
 		view.Paused = s.deps.Control.Paused()

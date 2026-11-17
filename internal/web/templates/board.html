@@ -54,6 +54,15 @@
       </a>
     </section>
 
+    <nav class="grouping" aria-label="Group targets by" data-testid="group-toggle">
+      <span class="muted small">Group by</span>
+      {{range .GroupOptions}}
+      <a class="group-link{{if .Active}} active{{end}}" href="{{.Href}}"
+         data-testid="group-{{.Key}}" data-group="{{.Key}}"
+         {{if .Active}}aria-current="true"{{end}}>{{.Label}}</a>
+      {{end}}
+    </nav>
+
     {{if .Feeds}}
     <p class="feeds" aria-label="Feed health" data-testid="feed-health">
       {{range .Feeds}}

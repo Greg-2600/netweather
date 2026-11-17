@@ -831,6 +831,8 @@ The same state is exposed machine-readably under `/api/v1`; the contract, envelo
 
 The wall of favicons. Grouping is a toggle: **sector (default)** · state · CDN · ASN · country · failure stage.
 
+**Implemented:** the toggle is a query parameter (`/?group=cdn`) with one link per lens; the chosen lens is marked active and focus mode is preserved when switching. Ordering inside a group and between groups is the same severity order the flat board uses, so "worst first" survives every lens. An unknown lens falls back to sector rather than returning an error. Empty values get their own explicit bucket ("ASN not learned yet", "No stage recorded") instead of being folded into a real one.
+
 **Implemented:** tiles render a generated square icon per target (`/icon/{id}.svg`): the name's initial on a colour derived from the host. It is generated rather than fetched, because pulling `/favicon.ico` from every target would add requests with no measurement justification (`ACCEPTABLE_USE.md`). The icon is session-protected like the board, and each tile keeps its state colour, text, corner stage badge, and accessible name.
 
 - **Compact** (default at 750+): 40–48px tiles, ring colour + corner stage badge (`DNS`/`TLS`/`403`/`429`). ~760 per screen, so 750 targets is about one screen — no virtualisation needed.

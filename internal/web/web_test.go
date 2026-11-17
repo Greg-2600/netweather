@@ -1009,6 +1009,140 @@ func TestBoardPutsUnsectoredTargetsInOther(t *testing.T) {
 	}
 }
 
+func TestBoardGroupingToggle(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(
+		board.Target{
+			ID: "1", Name: "Chase", Host: "chase.com", Sector: "financial/banking",
+			State: board.StateUp, CDN: "akamai", ASN: 20940, Country: "US", Stage: "tls",
+		},
+		board.Target{
+			ID: "2", Name: "United", Host: "united.com", Sector: "airline",
+			State: board.StateDown, CDN: "akamai", ASN: 20940, Country: "US", Stage: "dns",
+		},
+		board.Target{
+			ID: "3", Name: "Cloudflare", Host: "cloudflare.com", Sector: "cloud",
+			State: board.StateUp, CDN: "cloudflare", ASN: 13335, Country: "DE",
+		},
+	)
+	ts := newServer(t, testToken, m)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	get := func(path string) string {
+		t.Helper()
+		resp, err := client.Get(ts.URL + path) //nolint:bodyclose // body() closes it
+		if err != nil {
+			t.Fatal(err)
+		}
+		return body(t, resp)
+	}
+
+	// The toggle is always present, and sector is the default lens.
+	page := get("/")
+	if !strings.Contains(page, `data-testid="group-toggle"`) {
+		t.Fatalf("grouping toggle missing:\n%s", page)
+	}
+	for _, want := range []string{
+		`data-group="sector"`, `data-group="state"`, `data-group="cdn"`,
+		`data-group="asn"`, `data-group="country"`, `data-group="stage"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("toggle missing %q", want)
+		}
+	}
+	if !strings.Contains(page, `class="group-link active" href="/?group=sector"`) {
+		t.Error("sector is not marked as the active default")
+	}
+
+	// Grouping by CDN merges the two Akamai targets into one bucket and keeps
+	// the Cloudflare one separate.
+	page = get("/?group=cdn")
+	if got := strings.Count(page, `data-testid="sector"`); got != 2 {
+		t.Fatalf("cdn groups = %d, want 2", got)
+	}
+	if !strings.Contains(page, `data-sector="akamai"`) || !strings.Contains(page, `data-sector="cloudflare"`) {
+		t.Error("cdn groups missing their buckets")
+	}
+	if !strings.Contains(page, `class="group-link active" href="/?group=cdn"`) {
+		t.Error("cdn is not marked active after switching")
+	}
+
+	// ASN buckets are labelled with their number.
+	page = get("/?group=asn")
+	if !strings.Contains(page, `data-sector="20940"`) || !strings.Contains(page, ">AS20940<") {
+		t.Error("ASN group missing its number or label")
+	}
+
+	// Country and stage buckets are explicit about a missing value instead of
+	// folding it into a real one.
+	page = get("/?group=country")
+	if !strings.Contains(page, `data-sector="DE"`) {
+		t.Error("country group missing DE")
+	}
+	page = get("/?group=stage")
+	if !strings.Contains(page, `data-sector="dns"`) {
+		t.Error("stage group missing dns")
+	}
+	if !strings.Contains(page, "No stage recorded") {
+		t.Error("a target with no stage was not given an explicit bucket")
+	}
+
+	// State grouping uses the state text as its label.
+	page = get("/?group=state")
+	if !strings.Contains(page, `data-sector="down"`) || !strings.Contains(page, ">Down<") {
+		t.Error("state group missing its bucket or label")
+	}
+}
+
+func TestBoardGroupingFallsBackOnATypo(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/?group=bogus") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	// A typo is not a client error: the board still renders, on the default.
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if !strings.Contains(page, `data-sector="airline"`) {
+		t.Fatal("an unknown grouping did not fall back to sector")
+	}
+	if !strings.Contains(page, `class="group-link active" href="/?group=sector"`) {
+		t.Error("fallback did not mark sector active")
+	}
+}
+
+func TestBoardGroupingPreservesFocusMode(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/?group=cdn&focus=problems") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	// Switching lens must not silently drop focus mode.
+	if !strings.Contains(page, `href="/?group=country&amp;focus=problems"`) {
+		t.Fatalf("grouping link dropped focus mode:\n%s", page)
+	}
+	if !strings.Contains(page, `data-testid="focus-toggle"`) {
+		t.Fatal("focus toggle missing")
+	}
+}
+
 func TestLoginAndBoardRender(t *testing.T) {
 	t.Parallel()
 
