@@ -4746,3 +4746,74 @@ func TestLoginLimiterTrustsOnlyConfiguredProxies(t *testing.T) {
 		t.Fatalf("sixth distinct claim from one untrusted peer = %d, want 429", code)
 	}
 }
+
+func TestBoardShowsTheInsecureTransportBadge(t *testing.T) {
+	t.Parallel()
+
+	build := func(trusted []netip.Prefix) *httptest.Server {
+		t.Helper()
+
+		m := fixture()
+		h, err := web.New(web.Deps{
+			Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Source:         m,
+			Watcher:        m,
+			Token:          testToken,
+			Version:        "test",
+			StartedAt:      time.Now(),
+			TrustedProxies: trusted,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ts := httptest.NewServer(h)
+		t.Cleanup(ts.Close)
+		return ts
+	}
+
+	get := func(t *testing.T, ts *httptest.Server, client *http.Client, proto string) string {
+		t.Helper()
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+"/", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if proto != "" {
+			req.Header.Set("X-Forwarded-Proto", proto)
+		}
+		resp, err := client.Do(req) //nolint:bodyclose // body() closes it
+		if err != nil {
+			t.Fatal(err)
+		}
+		return body(t, resp)
+	}
+
+	// A direct plaintext connection shows the badge.
+	direct := build(nil)
+	client, _ := newClient(t)
+	login(t, direct, client, testToken)
+	if page := get(t, direct, client, ""); !strings.Contains(page, `data-testid="insecure-transport"`) {
+		t.Fatalf("a plaintext board hid the transport warning:\n%s", page)
+	}
+
+	// A TLS-terminating proxy the app trusts says the browser is on HTTPS, so
+	// the badge is not drawn.
+	trusting := build([]netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")})
+	client2, _ := newClient(t)
+	login(t, trusting, client2, testToken)
+	if page := get(t, trusting, client2, "https"); strings.Contains(page, `data-testid="insecure-transport"`) {
+		t.Fatalf("an HTTPS request behind a trusted proxy drew the warning:\n%s", page)
+	}
+	// The same trusted proxy without the header is still plaintext.
+	if page := get(t, trusting, client2, ""); !strings.Contains(page, `data-testid="insecure-transport"`) {
+		t.Fatal("a trusted proxy without X-Forwarded-Proto hid the warning")
+	}
+
+	// An untrusted peer cannot suppress the badge with a forged header.
+	untrusting := build([]netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")})
+	client3, _ := newClient(t)
+	login(t, untrusting, client3, testToken)
+	if page := get(t, untrusting, client3, "https"); !strings.Contains(page, `data-testid="insecure-transport"`) {
+		t.Fatal("an untrusted peer suppressed the warning with a forged header")
+	}
+}

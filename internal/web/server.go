@@ -87,8 +87,11 @@ func New(deps Deps) (http.Handler, error) {
 // --- login -----------------------------------------------------------------
 
 type loginView struct {
-	Error string
-	CSRF  string
+	// Insecure marks a plaintext browser connection so the page can say so
+	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
+	Insecure bool
+	Error    string
+	CSRF     string
 }
 
 func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -102,28 +105,28 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 		csrf := randomToken()
 		s.auth.setCSRFCookie(w, csrf, now)
-		s.renderLogin(w, http.StatusOK, loginView{CSRF: csrf})
+		s.renderLogin(w, r, http.StatusOK, loginView{CSRF: csrf})
 
 	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
-			s.renderLogin(w, http.StatusBadRequest, loginView{Error: "Malformed form."})
+			s.renderLogin(w, r, http.StatusBadRequest, loginView{Error: "Malformed form."})
 			return
 		}
 		if !s.auth.limit.Allow(s.clientIP(r)) || !s.auth.global.Allow("login") {
 			w.Header().Set("Retry-After", "60")
-			s.renderLogin(w, http.StatusTooManyRequests, loginView{Error: "Too many attempts. Wait a minute."})
+			s.renderLogin(w, r, http.StatusTooManyRequests, loginView{Error: "Too many attempts. Wait a minute."})
 			return
 		}
 		if !s.auth.csrfMatches(r, r.PostFormValue("csrf")) {
 			csrf := randomToken()
 			s.auth.setCSRFCookie(w, csrf, now)
-			s.renderLogin(w, http.StatusBadRequest, loginView{Error: "Session expired. Try again.", CSRF: csrf})
+			s.renderLogin(w, r, http.StatusBadRequest, loginView{Error: "Session expired. Try again.", CSRF: csrf})
 			return
 		}
 		if !s.auth.checkToken(r.PostFormValue("token")) {
 			s.deps.Logger.Warn("login failed",
 				"event", "login_failed", "component", "http", "client", s.clientIP(r))
-			s.renderLogin(w, http.StatusUnauthorized, loginView{
+			s.renderLogin(w, r, http.StatusUnauthorized, loginView{
 				Error: "That token is not correct.",
 				CSRF:  r.PostFormValue("csrf"),
 			})
@@ -139,8 +142,9 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *server) renderLogin(w http.ResponseWriter, status int, view loginView) {
+func (s *server) renderLogin(w http.ResponseWriter, r *http.Request, status int, view loginView) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	view.Insecure = s.insecure(r)
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	w.WriteHeader(status)
@@ -250,12 +254,15 @@ type countView struct {
 }
 
 type boardView struct {
-	Version string
-	CSRF    string
-	Groups  []groupView
-	Counts  []countView
-	Paused  bool
-	Control bool
+	// Insecure marks a plaintext browser connection so the page can say so
+	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
+	Insecure bool
+	Version  string
+	CSRF     string
+	Groups   []groupView
+	Counts   []countView
+	Paused   bool
+	Control  bool
 	// Group is the current grouping key, and GroupOptions is the toggle. The
 	// board is about "airlines are down" only when the reader chose that lens.
 	Group        string
@@ -848,6 +855,7 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view := boardView{
+		Insecure:       s.insecure(r),
 		Version:        s.deps.Version,
 		CSRF:           csrf,
 		Groups:         groups,
@@ -1098,6 +1106,7 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	view.Insecure = s.insecure(r)
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "board.html", view)
@@ -1337,6 +1346,9 @@ func asnLabel(asn int) string {
 }
 
 type targetView struct {
+	// Insecure marks a plaintext browser connection so the page can say so
+	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
+	Insecure   bool
 	Tile       tileView
 	Probes     []probeView
 	History    bool
@@ -1480,7 +1492,7 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		view := targetView{Tile: toTile(t)}
+		view := targetView{Tile: toTile(t), Insecure: s.insecure(r)}
 		vantage := s.deps.Vantage
 		if vantage == "" {
 			vantage = "local"
@@ -1689,6 +1701,7 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		view.Insecure = s.insecure(r)
 		w.Header().Set("Content-Security-Policy",
 			"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 		_ = s.tmpl.ExecuteTemplate(w, "target.html", view)
@@ -1712,6 +1725,9 @@ type incidentRow struct {
 }
 
 type incidentListView struct {
+	// Insecure marks a plaintext browser connection so the page can say so
+	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
+	Insecure  bool
 	Incidents []incidentRow
 }
 
@@ -1726,6 +1742,9 @@ type attributionView struct {
 }
 
 type incidentDetailView struct {
+	// Insecure marks a plaintext browser connection so the page can say so
+	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
+	Insecure          bool
 	ID                string
 	Headline          string
 	Scope             string
@@ -1777,7 +1796,7 @@ func (s *server) handleIncidents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	view := incidentListView{Incidents: make([]incidentRow, 0, len(rows))}
+	view := incidentListView{Incidents: make([]incidentRow, 0, len(rows)), Insecure: s.insecure(r)}
 	for _, inc := range rows {
 		row := incidentRow{
 			ID: inc.ID, OpenedAt: inc.OpenedAt.UTC().Format("2006-01-02 15:04"),
@@ -1792,6 +1811,7 @@ func (s *server) handleIncidents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	view.Insecure = s.insecure(r)
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "incidents.html", view)
@@ -1830,7 +1850,8 @@ func (s *server) handleIncident(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view := incidentDetailView{
-		ID: inc.ID, Headline: inc.Headline, Scope: inc.Scope, ScopeValue: inc.ScopeValue,
+		Insecure: s.insecure(r),
+		ID:       inc.ID, Headline: inc.Headline, Scope: inc.Scope, ScopeValue: inc.ScopeValue,
 		OpenedAt:   inc.OpenedAt.UTC().Format("2006-01-02 15:04"),
 		Confidence: inc.Confidence, Closed: !inc.ClosedAt.IsZero(),
 		Targets: targets,
@@ -1916,6 +1937,7 @@ func (s *server) handleIncident(w http.ResponseWriter, r *http.Request) {
 	view.CanAnnotate = s.deps.Annotator != nil
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	view.Insecure = s.insecure(r)
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "incident.html", view)
@@ -1993,6 +2015,9 @@ type staleRow struct {
 }
 
 type coverageView struct {
+	// Insecure marks a plaintext browser connection so the page can say so
+	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
+	Insecure      bool
 	Total         int
 	Measurable    int
 	Unmeasurable  int
@@ -2103,6 +2128,7 @@ func (s *server) handleCoverage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view := coverageView{
+		Insecure:     s.insecure(r),
 		Total:        cov.Totals.Total,
 		Measurable:   cov.Totals.Measurable,
 		Unmeasurable: cov.Totals.Unmeasurable,
@@ -2156,6 +2182,7 @@ func (s *server) handleCoverage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	view.Insecure = s.insecure(r)
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "coverage.html", view)
@@ -2166,6 +2193,9 @@ func (s *server) handleCoverage(w http.ResponseWriter, r *http.Request) {
 // worldView is the country-level board (DESIGN.md §10.3). It answers "which
 // countries look unhappy?" before the target grid answers "which host?".
 type worldView struct {
+	// Insecure marks a plaintext browser connection so the page can say so
+	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
+	Insecure  bool
 	Version   string
 	CSRF      string
 	Countries []countryView
@@ -2243,7 +2273,7 @@ func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
 	}
 
 	csrf, _ := s.auth.csrfFrom(r)
-	view := worldView{Version: s.deps.Version, CSRF: csrf, Unplaced: unplaced}
+	view := worldView{Version: s.deps.Version, CSRF: csrf, Unplaced: unplaced, Insecure: s.insecure(r)}
 
 	// The overlay is one query for the whole page. A missing reader or a failed
 	// query is stated, never rendered as "no known event".
@@ -2318,6 +2348,7 @@ func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	view.Insecure = s.insecure(r)
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "world.html", view)
@@ -2344,6 +2375,9 @@ func worstStateFromClass(class string) board.State {
 // sample and the open step change, not a sparkline: the detection rule is the
 // product, and a sparkline without a baseline would invite the wrong question.
 type corridorsView struct {
+	// Insecure marks a plaintext browser connection so the page can say so
+	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
+	Insecure   bool
 	Version    string
 	CSRF       string
 	Rows       []corridorRow
@@ -2381,7 +2415,7 @@ func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
 	}
 
 	csrf, _ := s.auth.csrfFrom(r)
-	view := corridorsView{Version: s.deps.Version, CSRF: csrf}
+	view := corridorsView{Version: s.deps.Version, CSRF: csrf, Insecure: s.insecure(r)}
 
 	if s.deps.Corridors == nil {
 		view.Note = "Corridors are not configured on this instance."
@@ -2440,6 +2474,7 @@ func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	view.Insecure = s.insecure(r)
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "corridors.html", view)
@@ -2449,6 +2484,9 @@ func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
 // release image has no shell, so this is the only way to see the ring, the
 // backpressure counters, and the debug scopes that are still on.
 type diagnosticsView struct {
+	// Insecure marks a plaintext browser connection so the page can say so
+	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
+	Insecure    bool
 	Version     string
 	CSRF        string
 	Note        string
@@ -2474,10 +2512,13 @@ type diagnosticsRecord struct {
 
 // ihiView is the /ihi page: the number, its parts, and what was left out.
 type ihiView struct {
-	Version string
-	CSRF    string
-	Health  healthView
-	Note    string
+	// Insecure marks a plaintext browser connection so the page can say so
+	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
+	Insecure bool
+	Version  string
+	CSRF     string
+	Health   healthView
+	Note     string
 }
 
 // handleIHI is the page behind the board's index chip. It carries the same
@@ -2491,7 +2532,7 @@ func (s *server) handleIHI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	csrf, _ := s.auth.csrfFrom(r)
-	view := ihiView{Version: s.deps.Version, CSRF: csrf}
+	view := ihiView{Version: s.deps.Version, CSRF: csrf, Insecure: s.insecure(r)}
 
 	if s.deps.Health == nil {
 		view.Note = "The health index is not configured on this instance."
@@ -2500,6 +2541,7 @@ func (s *server) handleIHI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	view.Insecure = s.insecure(r)
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "ihi.html", view)
@@ -2513,7 +2555,7 @@ func (s *server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	csrf, _ := s.auth.csrfFrom(r)
-	view := diagnosticsView{Version: s.deps.Version, CSRF: csrf}
+	view := diagnosticsView{Version: s.deps.Version, CSRF: csrf, Insecure: s.insecure(r)}
 
 	if s.deps.Logs == nil {
 		view.Note = "The log ring is not wired on this instance."
@@ -2551,6 +2593,7 @@ func (s *server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	view.Insecure = s.insecure(r)
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "diagnostics.html", view)
@@ -3038,6 +3081,23 @@ func (s *server) clientIP(r *http.Request) string {
 		return "unknown"
 	}
 	return ip
+}
+
+// insecure reports whether the browser's connection to this instance is
+// plaintext. There is no TLS in the binary, so a non-TLS request is the
+// ordinary case; a TLS-terminating proxy supplies X-Forwarded-Proto, which is
+// believed only from a configured trusted proxy (NETWORKING.md §7.1, T8).
+func (s *server) insecure(r *http.Request) bool {
+	if r.TLS != nil {
+		return false
+	}
+	if netx.TrustedPeer(r.RemoteAddr, s.deps.TrustedProxies) {
+		proto := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Proto"), ",")[0])
+		if strings.EqualFold(proto, "https") {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *server) stateMap(ctx context.Context) map[string]board.Target {

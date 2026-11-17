@@ -63,3 +63,10 @@ func isTrusted(prefixes []netip.Prefix, host string) bool {
 	}
 	return false
 }
+
+// TrustedPeer reports whether the immediate peer is inside one of the trusted
+// prefixes. It is for decisions that depend on a proxy-supplied header (the
+// effective scheme) but not on the client address itself.
+func TrustedPeer(remoteAddr string, trusted []netip.Prefix) bool {
+	return len(trusted) > 0 && isTrusted(trusted, hostFromRemote(remoteAddr))
+}

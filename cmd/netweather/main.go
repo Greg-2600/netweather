@@ -147,6 +147,13 @@ func serve(lg *logging.Logger) error {
 			"event", "trusted_proxies", "component", "http", "count", len(trustedProxies))
 	}
 
+	// There is no TLS in the binary, so the listener is plaintext even behind a
+	// proxy that terminates TLS. Say it once at startup; the board also shows a
+	// per-request badge when the browser's own connection is plaintext
+	// (NETWORKING.md §7.1, THREAT_MODEL.md T8).
+	lg.Warn("dashboard listener is plaintext HTTP; terminate TLS at a reverse proxy for anything beyond a trusted network",
+		"event", "plaintext_transport", "component", "http", "listen", cfg.Listen)
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

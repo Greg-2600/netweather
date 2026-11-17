@@ -115,3 +115,21 @@ func TestClientIP(t *testing.T) {
 		})
 	}
 }
+
+func TestTrustedPeer(t *testing.T) {
+	t.Parallel()
+
+	trusted := prefixes(t, "10.0.0.0/8")
+	if !netx.TrustedPeer("10.0.0.2:443", trusted) {
+		t.Error("a configured peer was not trusted")
+	}
+	if netx.TrustedPeer("203.0.113.9:443", trusted) {
+		t.Error("an unconfigured peer was trusted")
+	}
+	if netx.TrustedPeer("10.0.0.2:443", nil) {
+		t.Error("a peer was trusted with no configuration")
+	}
+	if netx.TrustedPeer("[2001:db8::1]:443", trusted) {
+		t.Error("an IPv6 peer matched an IPv4 prefix")
+	}
+}
