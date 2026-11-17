@@ -780,6 +780,9 @@ func configPayloadSHA(path string) (string, error) {
 // is stored with them, and an entry that names neither keeps the shipped
 // HTTP-on-443 default.
 func applySeedEntries(ctx context.Context, st *store.Store, entries []seed.Entry, source, payload string) ([]agent.Target, error) {
+	if len(entries) > config.MaxTargets {
+		return nil, fmt.Errorf("seed: %d entries exceeds the %d target limit", len(entries), config.MaxTargets)
+	}
 	loadedAt := time.Now().UTC()
 	out := make([]agent.Target, 0, len(entries))
 	for _, e := range entries {

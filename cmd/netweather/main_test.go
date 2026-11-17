@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/agent"
+	"github.com/Greg-2600/netweather/internal/config"
 	"github.com/Greg-2600/netweather/internal/feeds"
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/probe"
@@ -1735,5 +1736,30 @@ func TestBackupCommand(t *testing.T) {
 	}
 	if err := run([]string{"backup", "-o", dest, "extra"}, io.Discard); err == nil {
 		t.Fatal("backup accepted an extra argument")
+	}
+}
+
+func TestApplySeedEntriesRejectsTooMany(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(dir, "netweather.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	// The cap is refused wholesale before any row is written, not truncated
+	// silently (THREAT_MODEL.md T34).
+	entries := make([]seed.Entry, config.MaxTargets+1)
+	if _, err := applySeedEntries(ctx, st, entries, "seed:test", "x"); err == nil ||
+		!strings.Contains(err.Error(), "target limit") {
+		t.Fatalf("error = %v, want a target-limit refusal", err)
+	}
+	ids, err := st.TargetIDs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 0 {
+		t.Fatalf("a refused seed wrote %v", ids)
 	}
 }

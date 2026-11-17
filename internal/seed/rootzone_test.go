@@ -1,6 +1,7 @@
 package seed_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Greg-2600/netweather/internal/schedule"
@@ -73,5 +74,33 @@ a.root-servers.net.	172800	IN	A	198.41.0.4
 	bad := "ad.\t172800\tIN\tNS\tbroken\n"
 	if got := seed.ParseCountryAnchors(bad); len(got) != 0 {
 		t.Fatalf("anchors = %+v, want none for a bad NS", got)
+	}
+}
+
+func TestParseCountryAnchorsRejectsMalformedNameservers(t *testing.T) {
+	t.Parallel()
+
+	// The root zone is external input. A nameserver that is not a hostname is
+	// skipped rather than handed to the scheduler (THREAT_MODEL.md T33).
+	cases := []string{
+		"ns_bad.nic.ad",                      // underscore
+		"-ns.nic.ad",                         // leading hyphen
+		"ns-.nic.ad",                         // trailing hyphen
+		"ns..nic.ad",                         // empty label
+		"ns.nic.ad..",                        // empty label after trimming one dot
+		"ns .nic.ad",                         // whitespace split makes this unusable too
+		strings.Repeat("a", 64) + ".nic.ad",  // label over 63
+		strings.Repeat("a.", 127) + "nic.ad", // over 253 overall
+	}
+	for _, ns := range cases {
+		zone := "ad.\t172800\tIN\tNS\t" + ns + "\n"
+		if got := seed.ParseCountryAnchors(zone); len(got) != 0 {
+			t.Errorf("nameserver %q produced %+v", ns, got)
+		}
+	}
+
+	// A well-formed one still parses, so the filter is not a blanket refusal.
+	if got := seed.ParseCountryAnchors("ad.\t172800\tIN\tNS\tns1.nic.ad.\n"); len(got) != 1 {
+		t.Fatalf("a valid nameserver was rejected: %+v", got)
 	}
 }

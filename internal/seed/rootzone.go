@@ -56,6 +56,9 @@ func ParseCountryAnchors(body string) []Entry {
 		if ns == "" || !strings.Contains(ns, ".") {
 			continue
 		}
+		if !validNSName(ns) {
+			continue
+		}
 		if !isCountryTLD(name) {
 			continue
 		}
@@ -105,6 +108,31 @@ func isCountryTLD(name string) bool {
 	for _, r := range name {
 		if r < 'a' || r > 'z' {
 			return false
+		}
+	}
+	return true
+}
+
+// validNSName accepts the hostname shape a root-zone NS RDATA can take: one or
+// more dot-separated labels of letters, digits, and hyphens, with no leading or
+// trailing hyphen, at most 253 characters. The root zone is external input, so
+// a malformed nameserver is skipped rather than handed to the scheduler
+// (THREAT_MODEL.md T33).
+func validNSName(name string) bool {
+	if name == "" || len(name) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(name, ".") {
+		if label == "" || len(label) > 63 {
+			return false
+		}
+		if label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, r := range label {
+			if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
+				return false
+			}
 		}
 	}
 	return true
