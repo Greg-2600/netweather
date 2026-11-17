@@ -62,13 +62,17 @@ target ──┬── probe ────────────── probe_ar
          ├── state_change
          ├── rollup_5m ── rollup_1h ── rollup_1d
          ├── dns_baseline / dns_observation
-         └── cert_pin
+         ├── cert_pin
+         └── target_source        (seed or config provenance)
 
 incident ── incident_target ── target
          ├── attribution
          └── anomaly (nullable link)
 
 vantage ── probe / target_state / rollup_*
+
+scope_sample ── atypical_day   (the hour-of-week baseline and its exclusions)
+vantage_change                 (detected egress moves)
 
 self_check, external_event, feed_state, coverage_snapshot   (standalone)
 ```
