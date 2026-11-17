@@ -116,6 +116,14 @@ func (w *statusWriter) Write(p []byte) (int, error) {
 // will need.
 func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
+// Flush keeps streaming routes working through the access-log wrapper: a plain
+// embedding would satisfy http.ResponseWriter but hide http.Flusher.
+func (w *statusWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // withAccessLog is DEBUG per request and WARN for 5xx: a dashboard can produce a
 // lot of request lines, and none of them are more interesting than a state
 // change.

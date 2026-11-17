@@ -200,7 +200,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
-    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export"],
+    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -571,6 +571,30 @@ Auth: bearer. Streams observations for a time range. Nothing is buffered: the st
 - If the stream fails mid-way the status is already `200`; the failure is logged with `event=export_failed`. A client must treat a truncated file as truncated, not as complete.
 - Raw probes are retained for 72h, so a longer window returns what exists, not an error.
 
+### 6.17 `GET /api/v1/events` — stable
+
+Auth: bearer. Server-sent events. One `snapshot` on connect, then only changes.
+
+```
+event: snapshot
+data: {"targets":[{"target":"chase.com","name":"Chase","state":"up","state_text":"Up",
+                   "glyph":"●","class":"state-up","vantage":"local"}]}
+
+event: state
+data: {"target":"united.com","name":"United","state":"down","state_text":"Down",
+       "glyph":"✕","class":"state-down","since":"2026-11-17T12:00:00Z","vantage":"local"}
+
+: heartbeat
+```
+
+- Heartbeat comment every 15 seconds so proxies do not idle-close.
+- The write deadline is cleared for this route only; normal requests keep the 30-second timeout.
+- `Last-Event-ID` is **not** implemented: the board broadcast has no replay buffer. A reconnecting client refetches `/api/v1/board` and resumes from its snapshot. The UI stream uses the same contract and the same limitation.
+- The initial `snapshot` is an addition to the original delta-only sketch; it removes the connect-then-fetch race without sending a full page twice.
+- `503` when no board source is configured, rather than a connection that can only heartbeat.
+
+For browser `EventSource`, which cannot set an `Authorization` header, use the UI's cookie-authenticated `/events`; an API client should use a `fetch`-based SSE reader instead.
+
 ---
 
 ## 7. Specified, not implemented
@@ -585,32 +609,14 @@ Each of these is a promise about shape, not a claim that it works. `GET /api/v1/
 
 ### 7.2 Live updates
 
-`GET /api/v1/events` - SSE, `stable`. **Specified, not implemented.**
-
-There are two paths for one stream:
+`GET /api/v1/events` is **implemented**; the contract is in 6.17. The UI path `/events` uses the same event shape with a session cookie instead of a bearer token.
 
 | Path | Auth | Audience | Status |
 |---|---|---|---|
 | `/events` | session cookie | the browser UI | **implemented** |
-| `/api/v1/events` | bearer, or session cookie | API clients | specified |
+| `/api/v1/events` | bearer | API clients | **implemented** |
 
-`EventSource` cannot set an `Authorization` header, which is why the UI path uses the cookie. An API client that wants bearer auth uses a `fetch`-based SSE reader rather than `EventSource`. Both paths emit exactly the schema below; there is one handler, not two.
-
-```
-event: state
-data: {"target":"chase.com","vantage":"local","state":"DOWN","since":"…","trace_id":"…"}
-
-event: incident
-data: {"id":"01J…","verdict":"INCIDENT","headline":"…"}
-
-: heartbeat
-```
-
-- Deltas only, never a full page.
-- Heartbeat comment every 15 s so proxies do not idle-close.
-- `Last-Event-ID` resumes within the ring; beyond that the client refetches the board.
-- Connection cap and per-IP limit (`THREAT_MODEL.md` T10).
-- `WriteTimeout` is extended per-connection for this route only.
+Two limitations are stated rather than hidden: `Last-Event-ID` replay is not implemented (the broadcast has no ring), and neither stream emits `incident` events yet; incident changes are visible by polling `/api/v1/incidents`. Connection caps and a per-IP limit remain specified (`THREAT_MODEL.md` T10).
 
 ### 7.3 Actions (POST)
 

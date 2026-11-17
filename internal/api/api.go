@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -84,6 +86,8 @@ type Deps struct {
 	// Source supplies the board. Nil means "not configured": the endpoint
 	// answers 503 rather than inventing an empty board.
 	Source board.Source
+	// Watcher drives the SSE stream. Nil keeps /events heartbeat-only.
+	Watcher board.Watcher
 	// Control is the pause/resume switch.
 	Control Control
 	// Probes reads recent observations for one target. Nil disables the route.
@@ -146,6 +150,7 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	apiMux.HandleFunc("/api/v1/coverage", onlyGET(s.handleCoverage))
 	apiMux.HandleFunc("/api/v1/selfcheck", onlyGET(s.handleSelfCheck))
 	apiMux.HandleFunc("/api/v1/export", onlyGET(s.handleExport))
+	apiMux.HandleFunc("/api/v1/events", onlyGET(s.handleEvents))
 	apiMux.HandleFunc("/api/v1/incidents", onlyGET(s.handleIncidents))
 	apiMux.HandleFunc("/api/v1/incidents/", onlyGET(s.handleIncidentByID))
 	apiMux.HandleFunc("/", s.handleNotFound)
@@ -242,7 +247,7 @@ type metaResponse struct {
 
 // capabilities is the runtime truth. A client should feature-detect here rather
 // than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export"}
+var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events"}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}
@@ -1148,6 +1153,187 @@ func exportObject(row store.ExportRow) map[string]any {
 		"latency_ms":  row.LatencyMS,
 		"confidence":  row.Confidence,
 		"detail":      row.Detail,
+	}
+}
+
+// sseState is one delta in the API stream. It mirrors the UI's shape on purpose:
+// there is one contract, not two by accident.
+type sseState struct {
+	Target  string `json:"target"`
+	Name    string `json:"name"`
+	State   string `json:"state"`
+	Text    string `json:"state_text"`
+	Glyph   string `json:"glyph"`
+	Class   string `json:"class"`
+	Since   string `json:"since,omitempty"`
+	Vantage string `json:"vantage"`
+}
+
+type sseSnapshot struct {
+	Targets []sseState `json:"targets"`
+}
+
+// handleEvents is the bearer-authenticated SSE stream. It sends one snapshot on
+// connect, then only changes, plus a heartbeat comment so proxies keep the
+// connection.
+//
+// It does not implement Last-Event-ID: the board broadcast carries no replay
+// buffer, so a reconnecting client refetches /api/v1/board. That is stated in
+// the contract rather than silently pretending to resume.
+func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	// A stream with no board to report is not a stream; say so instead of
+	// holding a connection open that will only ever heartbeat.
+	if s.deps.Source == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "board source is not configured")
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, r, http.StatusInternalServerError, CodeInternal, "streaming unsupported")
+		return
+	}
+
+	// Normal requests have a 30s write timeout; this one outlives it.
+	rc := http.NewResponseController(w)
+	_ = rc.SetWriteDeadline(time.Time{})
+
+	h := w.Header()
+	h.Set("Content-Type", "text/event-stream; charset=utf-8")
+	h.Set("Cache-Control", "no-cache")
+	h.Set("Connection", "keep-alive")
+	h.Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	if _, err := io.WriteString(w, "retry: 3000\n\n"); err != nil {
+		return
+	}
+	flusher.Flush()
+
+	writeState := func(event string, v any) bool {
+		data, err := json.Marshal(v)
+		if err != nil {
+			return true
+		}
+		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data); err != nil {
+			return false
+		}
+		return true
+	}
+
+	last, err := s.streamSnapshot(r.Context())
+	if err != nil {
+		_ = writeState("error", map[string]string{"message": "board unavailable"})
+		flusher.Flush()
+		return
+	}
+	if !writeState("snapshot", sseSnapshot{Targets: last.list()}) {
+		return
+	}
+	flusher.Flush()
+
+	if s.deps.Watcher == nil {
+		s.heartbeat(w, r, flusher)
+		return
+	}
+
+	ch, cancel := s.deps.Watcher.Subscribe()
+	defer cancel()
+
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			if _, err := io.WriteString(w, ": heartbeat\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-ch:
+			current, err := s.streamSnapshot(r.Context())
+			if err != nil {
+				return
+			}
+			for _, id := range current.ids() {
+				next := current[id]
+				if prev, seen := last[id]; seen && prev.State == next.State {
+					continue
+				}
+				if !writeState("state", next) {
+					return
+				}
+			}
+			last = current
+			flusher.Flush()
+		}
+	}
+}
+
+// sseStates is the board keyed by host, because that is the stable identity a
+// script has without reading target ids first.
+type sseStates map[string]sseState
+
+func (m sseStates) ids() []string {
+	ids := make([]string, 0, len(m))
+	for id := range m {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func (m sseStates) list() []sseState {
+	out := make([]sseState, 0, len(m))
+	for _, id := range m.ids() {
+		out = append(out, m[id])
+	}
+	return out
+}
+
+func (s *server) streamSnapshot(ctx context.Context) (sseStates, error) {
+	targets, err := s.deps.Source.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(sseStates, len(targets))
+	for _, t := range targets {
+		state := sseState{
+			Target: t.Host, Name: t.Name, State: string(t.State),
+			Text: t.State.Text(), Glyph: t.State.Glyph(), Class: t.State.CSSClass(),
+			Vantage: s.vantage(),
+		}
+		if !t.Since.IsZero() {
+			state.Since = t.Since.UTC().Format(time.RFC3339)
+		}
+		out[t.Host] = state
+	}
+	return out, nil
+}
+
+func (s *server) vantage() string {
+	if s.deps.Vantage == "" {
+		return "local"
+	}
+	return s.deps.Vantage
+}
+
+func (s *server) heartbeat(w http.ResponseWriter, r *http.Request, flusher http.Flusher) {
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			if _, err := io.WriteString(w, ": heartbeat\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
 	}
 }
 

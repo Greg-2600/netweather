@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -1989,6 +1990,157 @@ func TestExportUnavailableAndAuth(t *testing.T) {
 	rec = do(newExportHandler(t, exportFixture()), http.MethodGet, "/api/v1/export", "")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+func newEventsHandler(t *testing.T, src board.Source, watcher board.Watcher) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Source:    src,
+			Watcher:   watcher,
+			Vantage:   "local",
+			Version:   "test",
+			Commit:    "deadbeef",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+// readEvent consumes SSE lines until it finds the named event, returning its
+// data line. Real clients do the same thing; a test that sleeps instead is a
+// flaky test.
+func readEvent(t *testing.T, r *bufio.Reader, want string) string {
+	t.Helper()
+
+	event := ""
+	for {
+		line, err := r.ReadString('\n')
+		if err != nil {
+			t.Fatalf("stream ended before %q: %v", want, err)
+		}
+		line = strings.TrimRight(line, "\r\n")
+
+		switch {
+		case strings.HasPrefix(line, "event: "):
+			event = strings.TrimPrefix(line, "event: ")
+		case strings.HasPrefix(line, "data: ") && event == want:
+			return strings.TrimPrefix(line, "data: ")
+		}
+	}
+}
+
+func TestEventsSendsSnapshotThenDeltas(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(
+		board.Target{ID: "1", Name: "Chase", Host: "chase.com", State: board.StateUp},
+		board.Target{ID: "2", Name: "United", Host: "united.com", State: board.StateUp},
+	)
+
+	ts := httptest.NewServer(newEventsHandler(t, m, m))
+	defer ts.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/api/v1/events", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+testToken)
+
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("Content-Type = %q status = %d body = %s", ct, resp.StatusCode, body)
+	}
+
+	reader := bufio.NewReader(resp.Body)
+	snapshot := readEvent(t, reader, "snapshot")
+	var snap struct {
+		Targets []struct {
+			Target  string `json:"target"`
+			State   string `json:"state"`
+			Vantage string `json:"vantage"`
+		} `json:"targets"`
+	}
+	if err := json.Unmarshal([]byte(snapshot), &snap); err != nil {
+		t.Fatalf("snapshot: %v (%s)", err, snapshot)
+	}
+	if len(snap.Targets) != 2 {
+		t.Fatalf("snapshot targets = %d", len(snap.Targets))
+	}
+	if snap.Targets[0].Vantage != "local" {
+		t.Fatalf("vantage = %q", snap.Targets[0].Vantage)
+	}
+
+	if _, changed := m.Set("1", board.StateDown); !changed {
+		t.Fatal("fixture did not change")
+	}
+
+	delta := readEvent(t, reader, "state")
+	var state struct {
+		Target string `json:"target"`
+		State  string `json:"state"`
+		Text   string `json:"state_text"`
+	}
+	if err := json.Unmarshal([]byte(delta), &state); err != nil {
+		t.Fatalf("delta: %v (%s)", err, delta)
+	}
+	if state.Target != "chase.com" || state.State != "down" {
+		t.Fatalf("delta = %+v", state)
+	}
+	if state.Text != "Down" {
+		t.Fatalf("state_text = %q", state.Text)
+	}
+}
+
+func TestEventsRequiresAuthAndSource(t *testing.T) {
+	t.Parallel()
+
+	h := newEventsHandler(t, board.NewMemory(), nil)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/events", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+
+	rec = do(newHandler(t, testToken, nil), http.MethodGet, "/api/v1/events", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 with no source", rec.Code)
+	}
+}
+
+func TestEventsHeartbeatOnlyWithoutWatcher(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(board.Target{ID: "1", Host: "chase.com", State: board.StateUp})
+	ts := httptest.NewServer(newEventsHandler(t, m, nil))
+	defer ts.Close()
+
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/api/v1/events", nil)
+	req.Header.Set("Authorization", "Bearer "+testToken)
+
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	reader := bufio.NewReader(resp.Body)
+	if got := readEvent(t, reader, "snapshot"); !strings.Contains(got, "chase.com") {
+		t.Fatalf("snapshot = %s", got)
 	}
 }
 
