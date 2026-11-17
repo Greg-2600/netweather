@@ -109,7 +109,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			s.renderLogin(w, http.StatusBadRequest, loginView{Error: "Malformed form."})
 			return
 		}
-		if !s.auth.limit.Allow(clientIP(r)) {
+		if !s.auth.limit.Allow(clientIP(r)) || !s.auth.global.Allow("login") {
 			w.Header().Set("Retry-After", "60")
 			s.renderLogin(w, http.StatusTooManyRequests, loginView{Error: "Too many attempts. Wait a minute."})
 			return

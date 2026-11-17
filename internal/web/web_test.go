@@ -4487,3 +4487,44 @@ func TestBoardWithoutTorHasNoTorBudgetLine(t *testing.T) {
 		t.Fatal("a Tor budget line rendered without Tor")
 	}
 }
+
+func TestLoginHasAGlobalAttemptCap(t *testing.T) {
+	t.Parallel()
+
+	m := fixture()
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		Token:     testToken,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	post := func(from int) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("token=wrong"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.RemoteAddr = "192.0.2." + strconv.Itoa(from) + ":1234"
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// Thirty distinct clients each spend one attempt: no per-client allowance
+	// is exhausted, and the process-wide allowance is exactly spent.
+	for i := 1; i <= 30; i++ {
+		if rec := post(i); rec.Code == http.StatusTooManyRequests {
+			t.Fatalf("client %d was capped early", i)
+		}
+	}
+	rec := post(31)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("31st client = %d, want 429", rec.Code)
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Error("the global cap had no Retry-After")
+	}
+}

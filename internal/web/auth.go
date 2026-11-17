@@ -31,6 +31,9 @@ type authenticator struct {
 	key    []byte
 	secure bool
 	limit  *logging.Limiter
+	// global caps the whole process, so a distributed attempt against many
+	// source addresses cannot spend the per-client allowance indefinitely.
+	global *logging.Limiter
 }
 
 func newAuthenticator(token string, secure bool) *authenticator {
@@ -42,6 +45,9 @@ func newAuthenticator(token string, secure bool) *authenticator {
 		// Five login attempts per minute per client; enough for a typo, not
 		// enough to be interesting.
 		limit: logging.NewLimiter(time.Minute, 5),
+		// Thirty per minute across the process. Six clients can each use their
+		// full personal allowance before the global cap applies.
+		global: logging.NewLimiter(time.Minute, 30),
 	}
 }
 
