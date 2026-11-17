@@ -77,7 +77,9 @@ services:
   tor:
     # Built from this repository's Dockerfile.tor, not a third-party image: the
     # client-only torrc is baked in, so an operator cannot turn the proxy into
-    # an exit node by forgetting a mount (docs/IMAGE.md 7).
+    # an exit node by forgetting a mount (docs/IMAGE.md 7). The release job also
+    # publishes and signs ghcr.io/<owner>/netweather-tor; replace the two build
+    # lines with that image (pinned by digest) if you pull rather than build.
     build:
       context: .
       dockerfile: Dockerfile.tor

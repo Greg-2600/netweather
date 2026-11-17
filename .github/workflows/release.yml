@@ -110,3 +110,53 @@ jobs:
             echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # The Tor sidecar is published too (docs/IMAGE.md 3 and 7). Compose builds it
+  # locally by default, but a pinned, signed image is what a deployment that
+  # mirrors the compose file should run.
+  tor-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: version metadata
+        id: meta
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: build and push the sidecar
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.tor
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}-tor:${{ steps.meta.outputs.version }}
+            ${{ env.IMAGE }}-tor:latest
+          provenance: mode=max
+          sbom: true
+
+      - uses: sigstore/cosign-installer@v3
+
+      - name: sign the sidecar
+        run: cosign sign --yes "${IMAGE}-tor@${{ steps.build.outputs.digest }}"
+
+      - name: write the sidecar summary
+        run: |
+          {
+            echo "## netweather-tor ${{ steps.meta.outputs.version }}"
+            echo
+            echo "Digest: \`${{ steps.build.outputs.digest }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
