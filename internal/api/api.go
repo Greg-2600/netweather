@@ -207,7 +207,7 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 
 	root := http.NewServeMux()
 	root.HandleFunc("/healthz", onlyGET(s.handleHealthz))
-	root.Handle("/api/", withRateLimit(limiter, withBearerAuth(cfg.Token, withIdempotency(s.idempotency, apiMux))))
+	root.Handle("/api/", withRateLimit(limiter, withBearerAuth(cfg.Token, withCompression(withIdempotency(s.idempotency, apiMux)))))
 	if deps.Metrics != nil {
 		// Aggregate metrics still describe the operator's fleet, so they get the
 		// same credential as the API.

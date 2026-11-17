@@ -26,9 +26,8 @@ Honesty first, because a spec that implies more than the binary does is worse th
 | `GET /api/v1/targets/{id}/probes` | **implemented** - recent raw observations for one target |
 | `GET /api/v1/incidents`, `GET /api/v1/incidents/{id}` | **implemented** - the incident log and ranked attribution |
 | `GET /metrics` | **implemented** - aggregate Prometheus text; off unless `NETWEATHER_METRICS=true`; bearer auth when a token is set |
-| `GET /events` | **implemented** - the UI's SSE stream; session cookie auth, not bearer. The API-facing counterpart is specified in §7.2 |
-| Everything else in §7 | **specified, not implemented** |
-| `/metrics` (`DESIGN.md` §6.4) | **specified, not implemented** — see §7.4 for why it is separate from `/api/v1` |
+| `GET /events` | **implemented** - the UI's SSE stream; session cookie auth, not bearer. The API-facing counterpart is `GET /api/v1/events` (§6.17) |
+| Everything else in §7 | **implemented** — the section is kept as the action/index surface, not a backlog |
 
 `GET /api/v1/meta` returns the list of implemented capabilities, so a client can discover the truth at runtime instead of trusting this table.
 
@@ -759,10 +758,10 @@ Off by default: set `NETWEATHER_METRICS=true` to mount it. When a UI token is co
 |---|---|
 | Request ID | `X-Request-Id` honoured if 1–64 `[A-Za-z0-9_-]`; otherwise generated. Always echoed and always present in logs |
 | Security headers | `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow`, `Cache-Control: no-store` |
-| Compression | gzip/br for JSON over 1 KB; SSE never compressed. Specified: not implemented yet |
+| Compression | gzip for JSON over 1 KB when the client offers it; SSE and CSV are never compressed, and small bodies stay identity |
 | CORS | None. Same-origin only. No `Access-Control-Allow-*` headers are emitted |
 | Rate limit | 60 requests/minute per token, burst 20; `429` with `Retry-After` |
-| Body limit | 64 KB for JSON actions; `413` beyond. Applies when the first POST route lands |
+| Body limit | 8 KiB for JSON actions (`/api/v1/debug/scopes`); unknown fields are rejected |
 | Timeouts | Header 5 s, read 15 s, write 30 s (SSE excepted), idle 60 s |
 | Panics | Recovered, logged with stack, returned as `500 internal` with the request ID |
 | Method handling | Wrong method on a known path → JSON `405` + `Allow` |

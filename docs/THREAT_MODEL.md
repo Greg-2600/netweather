@@ -52,12 +52,12 @@ What exists in code today, and therefore what "enforced" currently means:
 | Handler timeouts and header limits | **implemented** | `cmd/netweather/main.go` |
 | Log redaction, ring, non-blocking sink | **implemented** | `internal/logging`, `redact_test.go`, `async_test.go` |
 | Target escaping in HTML | **implemented** | `internal/web/web_test.go` |
-| Probe dialer, SSRF rules, port allowlist | **not implemented** | `internal/netx` is the next component |
-| Store, migrations, retention, backups | **not implemented** | `docs/SCHEMA.md` is the spec |
-| Container image, compose, capabilities, read-only rootfs | **not implemented** | `docs/IMAGE.md`, `docs/NETWORKING.md` are the specs |
-| Feeds, Tor sidecar, RIPE Atlas profile | **not implemented** | `docs/DESIGN.md` §8, §6 |
+| Probe dialer, SSRF rules, port allowlist | **implemented** | `internal/netx`, `dialer_test.go`, `policy_test.go` |
+| Store, migrations, retention, backups | **implemented** | `internal/store`, `docs/SCHEMA.md` |
+| Container image, compose, capabilities, read-only rootfs | **implemented** | `Dockerfile`, `compose.yaml`, `docs/IMAGE.md`, `docs/NETWORKING.md` |
+| Feeds, Tor sidecar, RIPE Atlas profile | **implemented** | `internal/feeds`, `compose.yaml` profiles, `docs/DESIGN.md` §8 |
 
-Until the dialer exists, the SSRF rules in §5.2 are **requirements on code that has not been written**, not properties of the running binary. That distinction matters more than any table row: a threat model that reads as "done" when the probe engine does not exist is the failure mode this section prevents.
+The SSRF rules in §5.2 are properties of the running binary: every instrument dials through `internal/netx`, which resolves, checks the address and port against the policy, and only then dials the checked IP (name resolution for the Host/SNI is preserved). The table describes code that exists; where a capability is optional (raw ICMP, traceroute), the degradation is explicit rather than silent.
 
 ---
 
