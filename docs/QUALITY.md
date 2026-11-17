@@ -341,7 +341,7 @@ The stub E2E above runs in-process and therefore proves nothing about Docker. A 
 
 **Implemented now:** the CI `container` job builds the real image and asserts the container-level invariants: `/healthz` answers, the process runs as `65532:65532`, the rootfs is read-only, and there is no shell in the image. The same sequence was run locally against the release image. `netweather doctor` additionally reports what the container can and cannot do (raw ICMP/traceroute are warnings without `CAP_NET_RAW`).
 
-**Implemented now, the network plane:** `internal/e2e/compose_test.go`, behind `//go:build compose`, builds `netweather:compose-test`, creates both a bridge network with a 1280-byte MTU and an `--internal` network, and runs five scenarios. It needs a Docker daemon, so `go test ./...` never touches it; the CI `compose` job runs it with a 20-minute timeout.
+**Implemented now, the network plane:** `internal/e2e/compose_test.go`, behind `//go:build compose`, builds `netweather:compose-test`, creates both a bridge network with a 1280-byte MTU and an `--internal` network, and runs five scenarios. It needs a Docker daemon, so `go test ./...` never touches it; `go run ./internal/devtool compose` runs it locally and the CI `compose` job runs it with a 20-minute timeout.
 
 - **The image is the hardened release image.** The running container is `65532:65532`, its rootfs is read-only, and `docker exec … sh -c true` fails because there is no shell.
 - **A low MTU is reported, not hidden.** On the 1280-byte network the `mtu` self-check fails and names 1280, and the `port53` self-check passes on that same network with working egress.

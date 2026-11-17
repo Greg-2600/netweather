@@ -4,7 +4,7 @@
 //
 //	go run ./internal/devtool <task>
 //
-// Tasks: fmt, vet, test, cover, ui, build, snapshot, verify
+// Tasks: fmt, vet, test, cover, ui, compose, build, snapshot, verify
 package main
 
 import (
@@ -57,6 +57,10 @@ func main() {
 		err = runGo("test", "-tags=uitest", "-count=1", "./internal/web/uitest")
 	case "e2e":
 		err = runGo("test", "-tags=e2e", "-count=1", "./internal/e2e")
+	case "compose":
+		// The suite builds and tears down its own image and networks, so this is
+		// the whole harness: it needs Docker and nothing else.
+		err = runGo("test", "-tags=compose", "-count=1", "-timeout", "15m", "./internal/e2e")
 	case "build":
 		err = taskBuild()
 	case "repro":
@@ -88,6 +92,7 @@ func usage() {
   go run ./internal/devtool cover          coverage profile + per-package gates
   go run ./internal/devtool ui             Playwright suite (needs a browser)
   go run ./internal/devtool e2e            real-endpoint E2E (needs NETWEATHER_E2E=1)
+  go run ./internal/devtool compose        container network-plane suite (needs Docker)
   go run ./internal/devtool build          static binary with version metadata
   go run ./internal/devtool repro          build twice, compare hashes
   go run ./internal/devtool snapshot       cross-platform build matrix + SHA256SUMS

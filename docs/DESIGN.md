@@ -707,7 +707,7 @@ Free with a Cloudflare account token. The BGP feeds are the cyberwar signal.
 
 Free websocket, no auth. Real-time BGP updates, subscribable by prefix or ASN. Powerful and **very noisy** - only worth it with a tuned withdrawal-rate detector. Deferred behind the plugin interface; v1 ships IODA and Radar summaries only, because a summary answers "is something large happening" and a firehose answers "what exactly changed, right now" - and the second question is only useful once the baseline machinery (§7.2) is proven.
 
-### 8.4 Statuspage family — phase 2
+### 8.4 Statuspage family
 
 One adapter covers a huge number of companies:
 
