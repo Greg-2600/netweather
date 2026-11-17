@@ -412,6 +412,39 @@ func TestNonHTTPFailureUsesTheTransportClass(t *testing.T) {
 	}
 }
 
+func TestNTPNeverProducesATargetState(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	p := newProber()
+	p.set("", probe.Result{Latency: 12 * time.Millisecond, Offset: -1500 * time.Millisecond})
+
+	tg := target("ntp1", "time.example")
+	tg.Instrument = "ntp"
+	tg.Address = "time.example:123"
+	tg.URL = ""
+
+	sink := &fakeSink{}
+	a := agent.New([]agent.Target{tg}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	got := sink.batch()[0]
+	if got.State != state.Unknown {
+		t.Fatalf("state = %s, want unknown: NTP is self-health only", got.State)
+	}
+	if !strings.Contains(got.Reason, "-1.5s") {
+		t.Fatalf("reason = %q, want the measured offset", got.Reason)
+	}
+	if got.Stage != "ntp" {
+		t.Fatalf("stage = %q, want ntp", got.Stage)
+	}
+}
+
 func TestInstrumentsDispatch(t *testing.T) {
 	t.Parallel()
 
@@ -423,6 +456,7 @@ func TestInstrumentsDispatch(t *testing.T) {
 		TLS: &probe.TLS{Dial: boom},
 		TCP: &probe.TCP{Dial: boom},
 		DNS: probe.NewDNS(boom),
+		NTP: probe.NewNTPWithDial(boom),
 	}
 
 	if got := inst.Run(context.Background(), agent.Target{Instrument: "tcp", Address: "x.example:443"}); got.ErrorClass != "tcp_refused" {
@@ -436,9 +470,14 @@ func TestInstrumentsDispatch(t *testing.T) {
 	}); got.ErrorClass != "dns_error" {
 		t.Errorf("dns dispatch: class = %q", got.ErrorClass)
 	}
+	if got := inst.Run(context.Background(), agent.Target{
+		Instrument: "ntp", Address: "x.example:123",
+	}); got.ErrorClass != "ntp_unreachable" {
+		t.Errorf("ntp dispatch: class = %q", got.ErrorClass)
+	}
 
 	empty := agent.Instruments{}
-	for _, instrument := range []string{"tcp", "tls", "dns", "http"} {
+	for _, instrument := range []string{"tcp", "tls", "dns", "ntp", "http"} {
 		if got := empty.Run(context.Background(), agent.Target{Instrument: instrument}); got.Err == nil {
 			t.Errorf("%s: a missing instrument must be an error, not a silent success", instrument)
 		}

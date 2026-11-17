@@ -55,3 +55,14 @@ targets:
     class: network
     tier: 3
     interval_s: 120
+
+  # NTP is self-health: it records this vantage's clock offset and never
+  # produces UP or DOWN. A large offset is visible in the reason, not as an
+  # outage.
+  - name: Cloudflare time
+    host: time.cloudflare.com
+    port: 123
+    probe: ntp
+    class: reference
+    tier: 0
+    interval_s: 600

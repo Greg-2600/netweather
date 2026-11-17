@@ -1,0 +1,85 @@
+==> fmt -check
+==> modules
+all modules verified
+==> tidy
+==> vet
+==> lint
+0 issues.
+==> test
+ok  	github.com/Greg-2600/netweather/cmd/netweather	2.351s
+ok  	github.com/Greg-2600/netweather/internal/agent	0.671s
+ok  	github.com/Greg-2600/netweather/internal/anomaly	2.435s
+ok  	github.com/Greg-2600/netweather/internal/api	0.837s
+ok  	github.com/Greg-2600/netweather/internal/baseline	0.824s
+ok  	github.com/Greg-2600/netweather/internal/board	2.453s
+ok  	github.com/Greg-2600/netweather/internal/classify	1.076s
+ok  	github.com/Greg-2600/netweather/internal/config	1.236s
+ok  	github.com/Greg-2600/netweather/internal/correlate	0.706s
+ok  	github.com/Greg-2600/netweather/internal/devtool	0.743s
+ok  	github.com/Greg-2600/netweather/internal/feeds	0.602s
+ok  	github.com/Greg-2600/netweather/internal/incidents	1.783s
+ok  	github.com/Greg-2600/netweather/internal/logging	0.861s
+ok  	github.com/Greg-2600/netweather/internal/metrics	0.758s
+ok  	github.com/Greg-2600/netweather/internal/netx	0.648s
+ok  	github.com/Greg-2600/netweather/internal/probe	2.091s
+ok  	github.com/Greg-2600/netweather/internal/schedule	1.253s
+ok  	github.com/Greg-2600/netweather/internal/seed	1.181s
+ok  	github.com/Greg-2600/netweather/internal/selfcheck	0.437s
+ok  	github.com/Greg-2600/netweather/internal/startup	1.044s
+ok  	github.com/Greg-2600/netweather/internal/state	1.023s
+ok  	github.com/Greg-2600/netweather/internal/store	1.556s
+ok  	github.com/Greg-2600/netweather/internal/version	0.595s
+ok  	github.com/Greg-2600/netweather/internal/web	0.508s
+==> cover
+ok  	github.com/Greg-2600/netweather/cmd/netweather	4.788s	coverage: 50.1% of statements
+ok  	github.com/Greg-2600/netweather/internal/agent	2.735s	coverage: 92.7% of statements
+ok  	github.com/Greg-2600/netweather/internal/anomaly	2.190s	coverage: 91.5% of statements
+ok  	github.com/Greg-2600/netweather/internal/api	0.898s	coverage: 90.4% of statements
+ok  	github.com/Greg-2600/netweather/internal/baseline	0.930s	coverage: 98.8% of statements
+ok  	github.com/Greg-2600/netweather/internal/board	2.604s	coverage: 93.3% of statements
+ok  	github.com/Greg-2600/netweather/internal/classify	1.758s	coverage: 96.3% of statements
+ok  	github.com/Greg-2600/netweather/internal/config	1.258s	coverage: 95.2% of statements
+ok  	github.com/Greg-2600/netweather/internal/correlate	0.670s	coverage: 93.5% of statements
+ok  	github.com/Greg-2600/netweather/internal/devtool	0.761s	coverage: 16.5% of statements
+ok  	github.com/Greg-2600/netweather/internal/feeds	0.588s	coverage: 89.4% of statements
+ok  	github.com/Greg-2600/netweather/internal/incidents	1.245s	coverage: 86.7% of statements
+ok  	github.com/Greg-2600/netweather/internal/logging	0.900s	coverage: 81.5% of statements
+ok  	github.com/Greg-2600/netweather/internal/metrics	1.010s	coverage: 100.0% of statements
+ok  	github.com/Greg-2600/netweather/internal/netx	0.849s	coverage: 95.4% of statements
+ok  	github.com/Greg-2600/netweather/internal/probe	7.050s	coverage: 90.6% of statements
+ok  	github.com/Greg-2600/netweather/internal/schedule	0.821s	coverage: 96.3% of statements
+ok  	github.com/Greg-2600/netweather/internal/seed	1.372s	coverage: 100.0% of statements
+ok  	github.com/Greg-2600/netweather/internal/selfcheck	1.954s	coverage: 87.0% of statements
+ok  	github.com/Greg-2600/netweather/internal/startup	1.138s	coverage: 75.0% of statements
+ok  	github.com/Greg-2600/netweather/internal/state	1.102s	coverage: 100.0% of statements
+ok  	github.com/Greg-2600/netweather/internal/store	2.514s	coverage: 80.0% of statements
+ok  	github.com/Greg-2600/netweather/internal/version	1.095s	coverage: 100.0% of statements
+ok  	github.com/Greg-2600/netweather/internal/web	0.716s	coverage: 75.4% of statements
+package                                                     cover    min
+github.com/Greg-2600/netweather/cmd/netweather              50.1%    30% ok
+github.com/Greg-2600/netweather/internal/agent              92.7%    85% ok
+github.com/Greg-2600/netweather/internal/anomaly            91.5%    90% ok
+github.com/Greg-2600/netweather/internal/api                90.4%    90% ok
+github.com/Greg-2600/netweather/internal/baseline           98.8%    95% ok
+github.com/Greg-2600/netweather/internal/board              93.3%    90% ok
+github.com/Greg-2600/netweather/internal/classify           96.3%    95% ok
+github.com/Greg-2600/netweather/internal/config             95.2%    90% ok
+github.com/Greg-2600/netweather/internal/correlate          93.5%    90% ok
+github.com/Greg-2600/netweather/internal/devtool            16.5%    15% ok
+github.com/Greg-2600/netweather/internal/feeds              89.4%    85% ok
+github.com/Greg-2600/netweather/internal/incidents          86.7%    85% ok
+github.com/Greg-2600/netweather/internal/logging            81.5%    78% ok
+github.com/Greg-2600/netweather/internal/metrics           100.0%    90% ok
+github.com/Greg-2600/netweather/internal/netx               95.4%    95% ok
+github.com/Greg-2600/netweather/internal/probe              90.6%    90% ok
+github.com/Greg-2600/netweather/internal/schedule           96.3%    85% ok
+github.com/Greg-2600/netweather/internal/seed              100.0%    70% ok
+github.com/Greg-2600/netweather/internal/selfcheck          87.0%    70% ok
+github.com/Greg-2600/netweather/internal/startup            75.0%    75% ok
+github.com/Greg-2600/netweather/internal/state             100.0%    70% ok
+github.com/Greg-2600/netweather/internal/store              80.0%    80% ok
+github.com/Greg-2600/netweather/internal/version           100.0%    70% ok
+github.com/Greg-2600/netweather/internal/web                75.4%    72% ok
+TOTAL (library)                                             86.3%    70%
+==> build
+verify: ok

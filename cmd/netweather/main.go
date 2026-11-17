@@ -319,7 +319,7 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 			url = targetURL(t.Host, t.Port)
 		case "tls", "tcp":
 			address = net.JoinHostPort(t.Host, strconv.Itoa(t.Port))
-		case "dns":
+		case "dns", "ntp":
 			address = net.JoinHostPort(t.Host, strconv.Itoa(t.Port))
 		default:
 			return nil, fmt.Errorf("target %s: probe %q is not implemented yet", t.Host, t.Probe)
@@ -503,6 +503,7 @@ func newInstruments() agent.Instruments {
 		TLS:  probe.NewTLS(dialer),
 		TCP:  probe.NewTCP(dialer),
 		DNS:  probe.NewDNS(dialer.DialContext),
+		NTP:  probe.NewNTP(dialer),
 	}
 }
 

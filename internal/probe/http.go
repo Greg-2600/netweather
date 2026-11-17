@@ -32,11 +32,14 @@ const (
 
 // Result is one HTTP observation, already bounded and timed.
 type Result struct {
-	Status     int
-	Header     http.Header
-	Body       []byte
-	FinalURL   string
-	Latency    time.Duration
+	Status   int
+	Header   http.Header
+	Body     []byte
+	FinalURL string
+	Latency  time.Duration
+	// Offset is set only by the NTP instrument: clock offset from the server,
+	// positive when the local clock is behind.
+	Offset     time.Duration
 	ErrorClass string
 	Err        error
 }

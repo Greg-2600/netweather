@@ -52,6 +52,7 @@ type Instruments struct {
 	TLS  *probe.TLS
 	TCP  *probe.TCP
 	DNS  *probe.DNS
+	NTP  *probe.NTP
 }
 
 // Run executes the instrument named by the target.
@@ -75,6 +76,12 @@ func (i Instruments) Run(ctx context.Context, t Target) probe.Result {
 		}
 		r := i.DNS.Do(ctx, t.Address, t.Query)
 		return probe.Result{Latency: r.Latency, ErrorClass: r.ErrorClass, Err: r.Err}
+	case "ntp":
+		if i.NTP == nil {
+			return probe.Result{Err: fmt.Errorf("agent: ntp instrument not configured")}
+		}
+		r := i.NTP.Do(ctx, t.Address)
+		return probe.Result{Latency: r.RTT, Offset: r.Offset, ErrorClass: r.ErrorClass, Err: r.Err}
 	default:
 		if i.HTTP == nil {
 			return probe.Result{Err: fmt.Errorf("agent: http instrument not configured")}
@@ -327,6 +334,21 @@ func (a *Agent) toProbe(t Target, res probe.Result, now time.Time) store.Probe {
 // decisionFor gives non-HTTP success its own answer. A completed TCP or TLS
 // handshake is reachability, not a missing HTTP status.
 func decisionFor(t Target, res probe.Result) classify.Result {
+	// NTP is self-health: it can warn about this vantage's clock, but it never
+	// says a target is up or down (CLASSIFIER.md §3.6).
+	if t.Instrument == "ntp" {
+		if res.Err != nil || res.ErrorClass != "" {
+			return classify.Decide(t.Expect, classify.Response{
+				Err: res.Err, ErrorClass: res.ErrorClass,
+			})
+		}
+		return classify.Result{
+			State:      state.Unknown,
+			Confidence: classify.Low,
+			Reason:     "clock offset " + res.Offset.Round(time.Millisecond).String(),
+		}
+	}
+
 	if t.Instrument != "" && t.Instrument != "http" && res.Err == nil && res.ErrorClass == "" {
 		return classify.Result{
 			State:      state.UpReachability,
@@ -352,12 +374,16 @@ func stageFor(t Target, class string) string {
 		return "tcp"
 	case strings.HasPrefix(class, "tls_"):
 		return "tls"
+	case strings.HasPrefix(class, "ntp_"):
+		return "ntp"
 	}
 	switch t.Instrument {
 	case "tls":
 		return "tls"
 	case "tcp":
 		return "tcp"
+	case "ntp":
+		return "ntp"
 	default:
 		return "http"
 	}

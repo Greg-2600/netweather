@@ -238,15 +238,15 @@ targets:
 }
 
 func TestLoadTargetsRejectsUnimplementedProbe(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "ntp.yaml")
+	path := filepath.Join(t.TempDir(), "icmp.yaml")
 	yaml := `version: 1
 targets:
-  - name: Clock
-    host: time.example
-    port: 123
-    probe: ntp
-    class: reference
-    tier: 0
+  - name: Gateway
+    host: 192.0.2.1
+    port: 0
+    probe: icmp
+    class: network
+    tier: 3
 `
 	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
 		t.Fatal(err)
@@ -254,7 +254,7 @@ targets:
 	t.Setenv("NETWEATHER_CONFIG", path)
 
 	ctx := context.Background()
-	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "ntp.db"))
+	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "icmp.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,6 +262,42 @@ targets:
 
 	if _, err := loadTargets(ctx, st); err == nil || !strings.Contains(err.Error(), "not implemented") {
 		t.Fatalf("error = %v, want an explicit unimplemented-probe error", err)
+	}
+}
+
+func TestLoadTargetsAcceptsNTP(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ntp.yaml")
+	yaml := `version: 1
+targets:
+  - name: Cloudflare time
+    host: time.cloudflare.com
+    port: 123
+    probe: ntp
+    class: reference
+    tier: 0
+    interval_s: 600
+`
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NETWEATHER_CONFIG", path)
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "ntp-ok.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+
+	got, err := loadTargets(ctx, st)
+	if err != nil {
+		t.Fatalf("loadTargets: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("targets = %d", len(got))
+	}
+	if got[0].Instrument != "ntp" || got[0].Address != "time.cloudflare.com:123" {
+		t.Fatalf("ntp target = %+v", got[0])
 	}
 }
 

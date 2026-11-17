@@ -151,11 +151,14 @@ That rule catches the real threat — a locally trusted CA being used to interce
 
 | Class | Condition | Candidate state |
 |---|---|---|
-| `icmp_timeout` | no echo reply | DOWN **only** for `icmp`-class targets (anchors, corridors) |
-| `icmp_unreachable` | ICMP unreachable / admin prohibited | DOWN |
-| `icmp_loss_partial` | < 5 of 5 replies | `DEGRADED` — **never** DOWN |
-| `ntp_unreachable` | no reply from ≥2 of 4 servers | self-health warning only |
-| `ntp_offset` | offset > 2s | self-health warning only |
+| `icmp_timeout` | no echo reply | DOWN **only** for `icmp`-class targets (anchors, corridors) — *specified* |
+| `icmp_unreachable` | ICMP unreachable / admin prohibited | DOWN — *specified* |
+| `icmp_loss_partial` | < 5 of 5 replies | `DEGRADED` — **never** DOWN — *specified* |
+| `ntp_timeout` | no reply within the exchange timeout | self-health warning only — **implemented** |
+| `ntp_unreachable` | dial/read failure | self-health warning only — **implemented** |
+| `ntp_bad_response` | wrong mode, or stratum > 15 | self-health warning only — **implemented** |
+| `ntp_denied` | kiss-o'-death (stratum 0) | self-health warning only — **implemented** |
+| `ntp_offset` | offset beyond 2s | self-health warning only — **measured, advisory** |
 
 Two hard rules:
 
