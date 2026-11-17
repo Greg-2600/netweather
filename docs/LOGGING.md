@@ -122,7 +122,7 @@ Semantics (**implemented** for the HTTP surface):
 - A scoped session pins the ring's `debug` records for that target, so the evidence survives the session ending.
 - Expiry logs one `INFO` line: `debug scope expired`.
 
-The HTTP contract is in `API.md` §6.19 (`POST/GET /api/v1/debug/scopes`, `DELETE /api/v1/debug/scopes/{id}`). The CLI verbs in the sketch above are not implemented yet; until they are, use `curl` with the bearer token.
+The HTTP contract is in `API.md` §6.19 (`POST/GET /api/v1/debug/scopes`, `DELETE /api/v1/debug/scopes/{id}`), and the CLI verbs above are implemented: `netweather debug enable|status|disable` talk to that API with `NETWEATHER_UI_TOKEN` (or `_FILE`) and `NETWEATHER_API_URL` (default `http://127.0.0.1:2600`).
 
 Level semantics: a `debug` scope admits `DEBUG` and more severe records matching its selectors; a `trace` scope additionally admits `TRACE`. Sinks are always built at `TRACE` and the scope handler is the only level decision, so enabling a scope works even when `NETWEATHER_LOG_LEVEL=info`.
 

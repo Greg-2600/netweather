@@ -750,8 +750,9 @@ The binary is also scriptable, and its contract matters as much as HTTP:
 | `netweather serve` | 0 clean shutdown, 1 startup or runtime failure | logs to stdout |
 | `netweather seed` | 0 applied, 1 rejected | summary |
 | `netweather export` | 0 success, 1 error | data to stdout, logs to stderr |
+| `netweather debug enable\|status\|disable` | 0 success, 1 error | one line per scope |
 
-Commands that exist in the binary today: `serve`, `version`, `healthcheck`, `seed`, `export`. `debug` and the `pause` verb are specified; pause/resume are available over HTTP.
+Commands that exist in the binary today: `serve`, `version`, `healthcheck`, `seed`, `export`, `debug`. Pause/resume remain HTTP-only (`POST /api/v1/pause`, `POST /api/v1/resume`).
 
 Rules:
 
