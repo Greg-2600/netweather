@@ -80,7 +80,7 @@ Six values. No more.
 | Flag | Meaning |
 |---|---|
 | `measurability: ok` | Has produced a real measurement in the last 7 days |
-| `measurability: mostly_blocked` | `BLOCKED` > 80% of probes over 7 days → **UNMEASURABLE** |
+| `measurability: unmeasurable` | The "mostly blocked" condition: `BLOCKED` > 80% of probes over 7 days. Excluded from health and coverage. |
 | `confidence: high` | Transport resolved and a semantic assertion passed, or an unambiguous challenge / origin failure |
 | `confidence: medium` | Single-signature challenge, semantic mismatch, or a DNS-derived `DOWN` pending corroboration |
 | `confidence: low` | Reachability only, a JS shell, a flapping target (>6 transitions/24h), or a single observation |
@@ -251,13 +251,15 @@ Not every target needs HTTP. A bank that bot-walls you is better measured with `
 
 For hard targets (banks, airlines, socials), the most bot-friendly path on the internet is `/robots.txt`. It is small, static, cacheable, explicitly published for automated clients, and rarely behind a challenge.
 
-Default recipe for `measurability: mostly_blocked` targets:
+Default recipe for targets that are mostly blocked:
 
 1. `GET /robots.txt` → expect `200` or `404` (both prove the origin is serving)
 2. If blocked, fall back to `TLS`-only probe
 3. If that fails, mark `UNMEASURABLE` and stop wasting requests
 
 This measures **reachability** honestly instead of pretending to measure content.
+
+**Implemented as operator guidance, not an automatic rewrite.** netweather does not silently change a target's URL or instrument: the calibration marks a permanently blocked target `unmeasurable` (so it stops dragging health down), and an operator who wants the robots or TLS recipe configures it as an override (`DESIGN.md` §13.2). Rewriting the probe would change what the target measures without saying so, which is the kind of quiet reinterpretation the project rejects.
 
 ### 5.4 What each instrument cannot tell you
 
