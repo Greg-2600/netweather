@@ -405,7 +405,7 @@ MaxCircuitDirtiness 3600  # stable path for comparable measurements
 NewCircuitPeriod 3600
 ```
 
-`ClientOnly 1` + `ExitPolicy reject *:*` is non-negotiable. `netweather doctor` verifies it and refuses to manage a Tor whose exit policy is open. (This is the one thing `proxy_scan.sh` gets exactly right: `ExitPolicy reject *:*`, `BridgeRelay 0`, `PublishServerDescriptor 0`.)
+`ClientOnly 1` + `ExitPolicy reject *:*` is non-negotiable. They are baked into the shipped `torrc` (not a mount an operator can forget) and pinned by a test. `netweather doctor` proves the SOCKS endpoint answers; it cannot read the sidecar's effective config, so it does not claim to audit the policy. (This is the one thing `proxy_scan.sh` gets exactly right: `ExitPolicy reject *:*`, `BridgeRelay 0`, `PublishServerDescriptor 0`.)
 
 The `0.0.0.0` bind is safe only because the sidecar publishes no ports and lives on an internal-only network — see `NETWORKING.md` §9.
 
@@ -942,11 +942,11 @@ A single 0-100 number, with its components always shown underneath. Never the on
 
 | Component | Weight | Source |
 |---|---|---|
-| Own health vs baseline | 0.35 | §7.2 |
-| External outage severity | 0.25 | IODA max country score |
+| Own health (live judgeable share) | 0.35 | §7.2 |
+| External outage severity | 0.25 | highest feed severity in 24h |
 | BGP stability | 0.15 | Radar hijack/leak severity |
 | Corridor stability | 0.15 | §9 |
-| Tamper signals | 0.10 | DNS anomaly + cert anomalies (`CLASSIFIER.md` §3.2) |
+| Tamper signals | 0.10 | DNS divergence verdicts (`CLASSIFIER.md` §3.2); cert pins are shown, not scored |
 
 Rules:
 
