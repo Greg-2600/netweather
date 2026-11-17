@@ -200,3 +200,29 @@ jobs:
             echo "--- $name ---"
             docker logs --tail 100 "$name" 2>&1 || true
           done
+
+  # Mutation testing is advisory (QUALITY.md 5.7): it asks whether the
+  # classifier's fixture suite would notice a rule being wrong. It is slow and
+  # its findings need judgement, so it never blocks a merge.
+  mutate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: mutation testing on the classifier (advisory)
+        run: go run ./internal/devtool mutate
+
+      - name: upload the mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: mutation.json
+          if-no-files-found: ignore
+          retention-days: 14

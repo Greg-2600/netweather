@@ -365,9 +365,11 @@ Recorded, never live, in CI. The fixtures are captured shapes rather than live c
 
 ### 5.7 Mutation testing (optional, high value)
 
-`gremlins` mutates the classifier and checks whether the fixture suite notices. This is the only way to prove the tests are not vacuous — a rule table with 40 fixtures can still have 20 fixtures that assert nothing.
+`gremlins` mutates the classifier and checks whether the fixture suite notices. This is the only way to prove the tests are not vacuous - a rule table with 40 fixtures can still have 20 fixtures that assert nothing.
 
 Scope it to `internal/classify` only; it is slow and the classifier is where correctness lives. Advisory in CI, not blocking.
+
+**Implemented:** `go run ./internal/devtool mutate` runs `gremlins` v0.6.0 (pinned in the task, so no `tool` directive is needed for something this slow) against `internal/classify` with two workers, a ten-times timeout coefficient, and a machine-readable `mutation.json`. The CI `mutate` job is `continue-on-error: true` with a 25-minute timeout and uploads the report, so a surviving mutant is a prompt to look rather than a merge block.
 
 ### 5.8 Browser UI tests
 
@@ -496,6 +498,7 @@ Always `-race -covermode=atomic`. Coverage is uploaded per-PR and diffed, so a P
 | coverage | `devtool cover`: profile + the per-package floors in §7 (the same numbers `internal/devtool/main.go` enforces) | ✅ |
 | ui test (browser) | Playwright + chromium, `-tags=uitest` | ✅ (paths touching `internal/web`, `internal/board`, templates) |
 | fuzz (short) | `go test -run=^$ -fuzz=FuzzScrubStringIsIdempotent -fuzztime=20s` | ✅ |
+| mutation (advisory) | `devtool mutate`: gremlins on `internal/classify`, `mutation.json` uploaded | advisory; job-level `continue-on-error` |
 | vuln | `go tool govulncheck ./...` (pinned in `go.mod`) | ✅ |
 | secrets | `gitleaks` | ✅ |
 | build | `devtool build` (static, `-trimpath`, version stamped via ldflags) | ✅ |
