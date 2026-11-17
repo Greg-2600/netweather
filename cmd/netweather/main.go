@@ -179,6 +179,7 @@ func serve(lg *logging.Logger) error {
 		Control:   ag,
 		Probes:    st,
 		Incidents: st,
+		Scopes:    st,
 		Metrics:   metricsHandler,
 		Vantage:   "local",
 		Fallback:  ui,

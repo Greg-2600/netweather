@@ -783,6 +783,60 @@ func TestExportProbesRange(t *testing.T) {
 	}
 }
 
+func TestScopeStates(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	if err := s.UpsertTarget(ctx, store.Target{
+		ID: "t2", Host: "united.com", Port: 443, Probe: "http",
+		Name: "United", Class: "service", Sector: "airline", Tier: 2, IntervalS: 300,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertTarget(ctx, store.Target{
+		ID: "t3", Host: "delta.com", Port: 443, Probe: "http",
+		Name: "Delta", Class: "service", Sector: "airline", Tier: 2, IntervalS: 300,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	up1 := probeAt(now, state.Up)
+	down := probeAt(now, state.Down)
+	down.TargetID = "t2"
+	up2 := probeAt(now, state.Up)
+	up2.TargetID = "t3"
+	if err := s.Record(ctx, []store.Probe{up1, down, up2}); err != nil {
+		t.Fatal(err)
+	}
+
+	counts, judgeable, err := s.ScopeStates(ctx, "local", "global", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if judgeable != 3 || counts[state.Up] != 2 || counts[state.Down] != 1 {
+		t.Fatalf("global = %v judgeable=%d", counts, judgeable)
+	}
+
+	counts, judgeable, err = s.ScopeStates(ctx, "local", "sector", "airline")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if judgeable != 2 || counts[state.Up] != 1 || counts[state.Down] != 1 {
+		t.Fatalf("airline = %v judgeable=%d", counts, judgeable)
+	}
+
+	if _, _, err := s.ScopeStates(ctx, "local", "asn", "nope"); err == nil {
+		t.Fatal("invalid ASN should be an error")
+	}
+	if _, _, err := s.ScopeStates(ctx, "local", "planet", ""); err == nil {
+		t.Fatal("unknown scope should be an error")
+	}
+}
+
 func TestFoldBuildsHourlyAndDaily(t *testing.T) {
 	t.Parallel()
 

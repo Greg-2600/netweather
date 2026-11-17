@@ -1235,6 +1235,164 @@ func TestTargetSeriesRequiresAuth(t *testing.T) {
 	}
 }
 
+type fakeScopes struct {
+	counts    map[state.State]int
+	judgeable int
+	err       error
+}
+
+func (f *fakeScopes) ScopeStates(context.Context, string, string, string) (map[state.State]int, int, error) {
+	return f.counts, f.judgeable, f.err
+}
+
+func newScopesHandler(t *testing.T, reader api.ScopeReader) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Scopes:    reader,
+			Version:   "test",
+			Commit:    "deadbeef",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func decodeScope(t *testing.T, body []byte) struct {
+	Scope      string         `json:"scope"`
+	Status     string         `json:"status"`
+	Mode       string         `json:"mode"`
+	Health     *float64       `json:"health"`
+	Coverage   float64        `json:"coverage"`
+	Measurable int            `json:"measurable"`
+	Judgeable  int            `json:"judgeable"`
+	States     map[string]int `json:"states"`
+} {
+	t.Helper()
+
+	var env dataEnvelope
+	if err := json.Unmarshal(body, &env); err != nil {
+		t.Fatal(err)
+	}
+	var out struct {
+		Scope      string         `json:"scope"`
+		Status     string         `json:"status"`
+		Mode       string         `json:"mode"`
+		Health     *float64       `json:"health"`
+		Coverage   float64        `json:"coverage"`
+		Measurable int            `json:"measurable"`
+		Judgeable  int            `json:"judgeable"`
+		States     map[string]int `json:"states"`
+	}
+	if err := json.Unmarshal(env.Data, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func TestScopeHealthAndCoverage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		counts     map[state.State]int
+		judgeable  int
+		wantStatus string
+		wantHealth bool
+	}{
+		{
+			name:       "healthy",
+			counts:     map[state.State]int{state.Up: 90, state.Down: 10},
+			judgeable:  100,
+			wantStatus: "ok",
+			wantHealth: true,
+		},
+		{
+			name:       "low coverage",
+			counts:     map[state.State]int{state.Up: 60, state.Unknown: 40},
+			judgeable:  100,
+			wantStatus: "low_coverage",
+			wantHealth: true,
+		},
+		{
+			name:       "too few measurable",
+			counts:     map[state.State]int{state.Up: 5, state.Unknown: 95},
+			judgeable:  100,
+			wantStatus: "unknown",
+			wantHealth: false,
+		},
+		{
+			name:       "empty scope",
+			counts:     map[state.State]int{},
+			judgeable:  0,
+			wantStatus: "unknown",
+			wantHealth: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			rec := do(newScopesHandler(t, &fakeScopes{counts: tc.counts, judgeable: tc.judgeable}),
+				http.MethodGet, "/api/v1/scopes/global", testToken)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d", rec.Code)
+			}
+
+			got := decodeScope(t, rec.Body.Bytes())
+			if got.Status != tc.wantStatus {
+				t.Fatalf("status = %q, want %q", got.Status, tc.wantStatus)
+			}
+			if (got.Health != nil) != tc.wantHealth {
+				t.Fatalf("health = %v, want present=%v", got.Health, tc.wantHealth)
+			}
+			if got.Mode != "learning" {
+				t.Fatalf("mode = %q", got.Mode)
+			}
+			if len(got.States) != 8 {
+				t.Fatalf("states = %v", got.States)
+			}
+		})
+	}
+}
+
+func TestScopeValidation(t *testing.T) {
+	t.Parallel()
+
+	h := newScopesHandler(t, &fakeScopes{judgeable: 1, counts: map[state.State]int{state.Up: 1}})
+	for _, path := range []string{
+		"/api/v1/scopes/planet",
+		"/api/v1/scopes/sector",
+		"/api/v1/scopes/asn?value=not-a-number",
+	} {
+		rec := do(h, http.MethodGet, path, testToken)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", path, rec.Code)
+		}
+	}
+}
+
+func TestScopeUnavailableAndAuth(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/api/v1/scopes/global", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+
+	rec = do(newScopesHandler(t, &fakeScopes{}), http.MethodGet, "/api/v1/scopes/global", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
 func TestSecurityHeaders(t *testing.T) {
 	t.Parallel()
 

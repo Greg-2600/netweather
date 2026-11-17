@@ -38,6 +38,11 @@ type IncidentReader interface {
 	IncidentByID(ctx context.Context, id string) (store.Incident, []store.Attribution, []string, error)
 }
 
+// ScopeReader is the read side for scope health and coverage.
+type ScopeReader interface {
+	ScopeStates(ctx context.Context, vantageID, scope, value string) (map[state.State]int, int, error)
+}
+
 // Deps is everything the HTTP layer needs. It is deliberately small: the API
 // reads state, it does not own it.
 type Deps struct {
@@ -55,6 +60,8 @@ type Deps struct {
 	Probes ProbeReader
 	// Incidents reads the incident log. Nil disables the routes.
 	Incidents IncidentReader
+	// Scopes reads scope health/coverage. Nil disables the route.
+	Scopes ScopeReader
 	// Metrics is the Prometheus handler. Nil keeps /metrics unmounted, which is
 	// the default: exposing it is an operator decision.
 	Metrics http.Handler
@@ -94,6 +101,7 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	apiMux.HandleFunc("/api/v1/meta", onlyGET(s.handleMeta))
 	apiMux.HandleFunc("/api/v1/logs", onlyGET(s.handleLogs))
 	apiMux.HandleFunc("/api/v1/targets/", onlyGET(s.handleTargetProbes))
+	apiMux.HandleFunc("/api/v1/scopes/", onlyGET(s.handleScope))
 	apiMux.HandleFunc("/api/v1/incidents", onlyGET(s.handleIncidents))
 	apiMux.HandleFunc("/api/v1/incidents/", onlyGET(s.handleIncidentByID))
 	apiMux.HandleFunc("/", s.handleNotFound)
@@ -190,7 +198,7 @@ type metaResponse struct {
 
 // capabilities is the runtime truth. A client should feature-detect here rather
 // than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents"}
+var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes"}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}
@@ -620,6 +628,106 @@ func (s *server) serveSeries(w http.ResponseWriter, r *http.Request, id string) 
 	}
 
 	writeData(w, r, out, &Meta{Count: len(out)})
+}
+
+type scopeResponse struct {
+	Scope      string         `json:"scope"`
+	Value      string         `json:"value,omitempty"`
+	Status     string         `json:"status"`
+	Mode       string         `json:"mode"`
+	Health     *float64       `json:"health"`
+	Coverage   float64        `json:"coverage"`
+	Measurable int            `json:"measurable"`
+	Judgeable  int            `json:"judgeable"`
+	States     map[string]int `json:"states"`
+}
+
+// handleScope reports health and coverage for global, sector, country, or ASN.
+//
+// It applies the coverage floors from DESIGN.md §7.2 in one place: a scope with
+// too little visibility is UNKNOWN, not healthy.
+func (s *server) handleScope(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Scopes == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "scopes are not configured")
+		return
+	}
+
+	scope := strings.TrimPrefix(r.URL.Path, "/api/v1/scopes/")
+	if scope == "" || strings.Contains(scope, "/") {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such scope")
+		return
+	}
+	switch scope {
+	case "global", "sector", "country", "asn":
+	default:
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument,
+			"scope must be global, sector, country, or asn")
+		return
+	}
+
+	value := strings.TrimSpace(r.URL.Query().Get("value"))
+	if scope != "global" && value == "" {
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "value is required for this scope")
+		return
+	}
+	if scope == "asn" {
+		if n, err := strconv.Atoi(value); err != nil || n <= 0 {
+			writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "value must be a positive ASN")
+			return
+		}
+	}
+
+	vantage := s.deps.Vantage
+	if vantage == "" {
+		vantage = "local"
+	}
+
+	counts, judgeable, err := s.deps.Scopes.ScopeStates(r.Context(), vantage, scope, value)
+	if err != nil {
+		s.deps.Logger.Error("scope read failed", "event", "scope_failed", "component", "http", "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "scope unavailable")
+		return
+	}
+
+	measurable := counts[state.Up] + counts[state.UpReachability] + counts[state.Degraded] + counts[state.Down]
+	healthy := counts[state.Up] + counts[state.UpReachability] + counts[state.Degraded]
+
+	coverage := 0.0
+	if judgeable > 0 {
+		coverage = float64(measurable) / float64(judgeable)
+	}
+
+	status := "ok"
+	var health *float64
+	if judgeable == 0 || coverage < 0.5 || measurable < 8 {
+		status = "unknown"
+	} else {
+		h := float64(healthy) / float64(measurable)
+		health = &h
+		if coverage < 0.8 || measurable < 20 {
+			status = "low_coverage"
+		}
+	}
+
+	states := make(map[string]int, 8)
+	for _, st := range []state.State{
+		state.Up, state.UpReachability, state.Degraded, state.Down,
+		state.Blocked, state.Unknown, state.ConfigError, state.Unmeasurable,
+	} {
+		states[string(st)] = counts[st]
+	}
+
+	writeData(w, r, scopeResponse{
+		Scope:      scope,
+		Value:      value,
+		Status:     status,
+		Mode:       "learning",
+		Health:     health,
+		Coverage:   coverage,
+		Measurable: measurable,
+		Judgeable:  judgeable,
+		States:     states,
+	}, nil)
 }
 
 type controlState struct {
