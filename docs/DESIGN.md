@@ -869,6 +869,8 @@ The same state is exposed machine-readably under `/api/v1`; the contract, envelo
 
 **Implemented, the overview line:** the board's summary carries `Health 98.7% (normal 97.9-99.2%)`, the age of the newest confirmed probe, the enabled target count, and the `UNMEASURABLE` count. Health is `(up + up_reachability + degraded) / (up + up_reachability + degraded + down)`, the same definition the hourly scope sample uses, so the band and the number are comparable. The band is the global hour-of-week baseline at 3 sigma; while it has fewer than 21 of 28 weekly samples the line says "learning n/28" rather than drawing a range, and when the measurable share is below 0.80 or the scope is under 20 targets the band is widened 1.5x exactly as the detector widens it, with the page saying so. A fleet with no judgeable targets states that instead of rendering 0%.
 
+**Implemented, "what's happening":** below the overview line the board lists the newest three open incidents, each as its stored headline linked to the incident page, with the scope and open time. The section is deliberately shallow: attribution and evidence stay on `/incidents/{id}`. An unconfigured incident reader, a failed query, and a configured log with no open incidents are three different statements and each says its own, rather than rendering an empty list that reads as calm.
+
 ### 10.2 Board
 
 The wall of favicons. Grouping is a toggle: **sector (default)** · state · CDN · ASN · country · failure stage.

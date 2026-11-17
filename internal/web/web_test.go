@@ -4619,3 +4619,59 @@ func TestTargetDrawerSaysYouVersusOfficial(t *testing.T) {
 		})
 	}
 }
+
+func TestBoardShowsWhatsHappening(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	history := &fakeIncidentHistory{items: []store.Incident{{
+		ID: "inc-open", OpenedAt: at, Verdict: "INCIDENT",
+		Scope: "sector", ScopeValue: "airline",
+		Headline: "5 of 6 airline targets failing", Confidence: "high",
+	}}}
+	ts := newServerWithIncidents(t, testToken, fixture(), history)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	for _, want := range []string{
+		`data-testid="whats-happening"`, `href="/incidents/inc-open"`,
+		"5 of 6 airline targets failing", "sector airline",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("what's happening missing %q", want)
+		}
+	}
+
+	// A configured log with nothing open says so.
+	empty := newServerWithIncidents(t, testToken, fixture(), &fakeIncidentHistory{})
+	client2, _ := newClient(t)
+	login(t, empty, client2, testToken)
+	resp, err = client2.Get(empty.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = body(t, resp)
+	if !strings.Contains(page, `data-testid="happening-note"`) ||
+		!strings.Contains(page, "No open incidents.") {
+		t.Fatalf("an empty incident log was not stated:\n%s", page)
+	}
+
+	// An unwired log is a different statement.
+	bare := newServer(t, testToken, fixture())
+	client3, _ := newClient(t)
+	login(t, bare, client3, testToken)
+	resp, err = client3.Get(bare.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = body(t, resp)
+	if !strings.Contains(page, `data-testid="happening-note"`) ||
+		!strings.Contains(page, "not configured") {
+		t.Fatalf("an unwired incident log was silent:\n%s", page)
+	}
+}

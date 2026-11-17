@@ -161,6 +161,22 @@
     <p class="muted small" data-testid="dns-note">{{.DNSNote}}</p>
     {{end}}
 
+    {{if .Incidents}}
+    <section class="happening" aria-label="Open incidents" data-testid="whats-happening">
+      <h2 class="section-title">What's happening</h2>
+      <ul>
+        {{range .Incidents}}
+        <li data-testid="happening-incident">
+          <a href="/incidents/{{.ID}}">{{.Headline}}</a>
+          <span class="muted small">{{.Scope}} · opened {{.OpenedAt}} UTC</span>
+        </li>
+        {{end}}
+      </ul>
+    </section>
+    {{else if .HappeningNote}}
+    <p class="muted small" data-testid="happening-note">{{.HappeningNote}}</p>
+    {{end}}
+
     <section class="board density-{{.Density}}" aria-label="Target status"
              data-testid="board" data-density="{{.Density}}">
       {{if not .Groups}}

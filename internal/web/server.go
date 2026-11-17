@@ -301,6 +301,20 @@ type boardView struct {
 	// Fleet is the overview line: judged health, its learned band, and the
 	// counters that make the denominator visible (DESIGN.md §10.1).
 	Fleet fleetView
+	// Incidents is the "what's happening" summary: the newest open incidents,
+	// headline and link only (DESIGN.md §10.1). HappeningNote states why the
+	// list is empty when the reader is missing or the query failed.
+	Incidents     []happeningView
+	HappeningNote string
+}
+
+// happeningView is one open incident on the board summary. It is deliberately
+// shallow: the incidents page carries attribution and evidence.
+type happeningView struct {
+	ID       string
+	Headline string
+	Scope    string
+	OpenedAt string
 }
 
 // fleetView is the overview line as the board renders it. The percentages are
@@ -1035,6 +1049,37 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 			view.Fleet = fleetView{Note: "Fleet health is temporarily unavailable."}
 		} else {
 			view.Fleet = toFleetView(fleet, now)
+		}
+	}
+
+	// "What's happening" is the incident summary from the overview sketch
+	// (DESIGN.md §10.1): headline and link, never a second incidents page.
+	// A missing reader, a failed query, and no open incidents are three
+	// different statements and each says its own.
+	if s.deps.Incidents == nil {
+		view.HappeningNote = "The incident log is not configured on this instance."
+	} else {
+		open, err := s.deps.Incidents.Incidents(r.Context(), true, 3)
+		switch {
+		case err != nil:
+			s.deps.Logger.Warn("board incidents failed",
+				"event", "board_incidents_failed", "component", "http", "error", err)
+			view.HappeningNote = "The incident log is temporarily unavailable."
+		case len(open) == 0:
+			view.HappeningNote = "No open incidents."
+		default:
+			for _, inc := range open {
+				scope := inc.Scope
+				if inc.ScopeValue != "" {
+					scope += " " + inc.ScopeValue
+				}
+				view.Incidents = append(view.Incidents, happeningView{
+					ID:       inc.ID,
+					Headline: inc.Headline,
+					Scope:    scope,
+					OpenedAt: formatTimestamp(inc.OpenedAt),
+				})
+			}
 		}
 	}
 
