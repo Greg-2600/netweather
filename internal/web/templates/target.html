@@ -111,6 +111,28 @@
       {{end}}
       {{end}}
 
+      {{if or .Sources .SourcesNote}}
+      <h2 class="section-title">Source</h2>
+      <p class="muted small">Where this target came from, and the payload hash that
+        produced it. A target is untrusted input; this is how a bad list is traced.</p>
+      {{if .Sources}}
+      <table class="probes" data-testid="target-sources">
+        <thead><tr><th>Source</th><th>Loaded</th><th>SHA-256</th></tr></thead>
+        <tbody>
+          {{range .Sources}}
+          <tr data-testid="target-source">
+            <td class="mono">{{.Source}}</td>
+            <td class="mono">{{if .FetchedAt}}{{.FetchedAt}}{{else}}unknown{{end}}</td>
+            <td class="mono" title="{{.SHA256}}">{{.Short}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="muted" data-testid="target-sources-note">{{.SourcesNote}}</p>
+      {{end}}
+      {{end}}
+
       <h2 class="section-title">Recent probes</h2>
       {{if .Probes}}
       <table class="probes" data-testid="probe-history">

@@ -563,6 +563,10 @@ Auth: bearer. One target with its current state and metadata.
        "since": "2026-11-17T12:00:00Z", "last_probe": "2026-11-17T12:04:00Z"},
       {"id": "tor-1", "kind": "socks5", "role": "corroboration", "state": "up",
        "since": "2026-11-17T11:58:00Z", "last_probe": "2026-11-17T12:03:00Z"}
+    ],
+    "sources": [
+      {"source": "seed:builtin", "fetched_at": "2026-11-17T12:00:00Z",
+       "sha256": "9f2c1a7b4e8d03569f2c1a7b4e8d03569f2c1a7b4e8d03569f2c1a7b4e8d0356"}
     ]
   },
   "meta": {"request_id": "…"}
@@ -579,6 +583,7 @@ Auth: bearer. One target with its current state and metadata.
 - `dns_verdict`, `dns_confidence`, `dns_detail`, and `dns_at` are the newest per-resolver divergence advisory (migration `0017`, §3.2 of `CLASSIFIER.md`). They are absent until one has been observed, and they never change `state`: `DNS_ANOMALY` is advisory and `TAMPER` is a ladder verdict that still leaves the recorded probe as its own measurement.
 - `ix_names` is PeeringDB exchange membership for the target's ASN: enrichment only, never a signal. It is absent until enrichment has learned it.
 - `status_url` is the operator's declared status page for this target: config data, not an observation. When present, the drawer's **Provider status** panel lists that page's incidents from the last 24 hours, matched by the page's host (`DESIGN.md` §10.5). It is absent when the target declares no page.
+- `sources` is the target's provenance: the seed or config that produced the row and the SHA-256 of that payload (migration `0022`, `THREAT_MODEL.md` T35). `netweather seed` records `seed:builtin` or `seed:root-zone`, and a config load records `config:<path>`. The block is absent when no provenance reader is configured; a failed read is logged and leaves it absent rather than failing the target, and an empty list means the row predates the table.
 
 ### 6.14 `GET /api/v1/coverage` — stable
 

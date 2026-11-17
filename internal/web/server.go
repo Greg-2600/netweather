@@ -1456,6 +1456,19 @@ type targetView struct {
 	// (DESIGN.md §7.1); RegionalNote names it in words.
 	Vantages     []vantageStateView
 	RegionalNote string
+	// Sources is where this row came from and the hash of that payload
+	// (THREAT_MODEL.md T35). SourcesNote states a failed or empty read; both
+	// empty means the panel is omitted.
+	Sources     []sourceView
+	SourcesNote string
+}
+
+// sourceView is one provenance row in the drawer.
+type sourceView struct {
+	Source    string
+	FetchedAt string
+	SHA256    string
+	Short     string
 }
 
 // vantageStateView is one vantage's row in the drawer.
@@ -1606,6 +1619,36 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 				}
 				if primaryDown && otherUp {
 					view.RegionalNote = "The primary vantage cannot reach this target but another vantage can: this is a regional path problem, not a service outage."
+				}
+			}
+		}
+
+		// Where the row came from (THREAT_MODEL.md T35). The drawer shows the
+		// source and the payload hash so a poisoned list can be traced back to
+		// the input that produced it. An unwired reader omits the panel; a
+		// failed or empty read states its case rather than leaving it blank.
+		if s.deps.Provenance != nil {
+			sources, err := s.deps.Provenance.TargetSources(r.Context(), t.ID)
+			switch {
+			case err != nil:
+				s.deps.Logger.Warn("target provenance failed",
+					"event", "target_provenance_failed", "component", "http",
+					"target", t.Host, "error", err)
+				view.SourcesNote = "Provenance is temporarily unavailable."
+			case len(sources) == 0:
+				view.SourcesNote = "No provenance recorded for this target; it may predate the provenance table."
+			default:
+				for _, src := range sources {
+					short := src.SHA256
+					if len(short) > 12 {
+						short = short[:12]
+					}
+					view.Sources = append(view.Sources, sourceView{
+						Source:    src.Source,
+						FetchedAt: formatTimestamp(src.FetchedAt),
+						SHA256:    src.SHA256,
+						Short:     short,
+					})
 				}
 			}
 		}

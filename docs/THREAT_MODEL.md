@@ -192,7 +192,7 @@ Residual: a public host that later *becomes* a private address after the operato
 |---|---|---|---|
 | T33 | Poisoned seed adds attacker-controlled hosts | Seed payloads are untrusted: hostname syntax and IDN/punycode normalization, no IP literals for service targets, no wildcards, no userinfo, no non-allowlisted ports, dedupe, hard cap 2000 | Enforced |
 | T34 | Poisoned seed adds thousands of hosts | Cap enforced before scheduling; a seed that exceeds it is rejected wholesale, not truncated silently | Enforced |
-| T35 | No provenance for a bad target | `target_source` records source string and SHA-256 of the payload; `netweather seed --diff` shows additions before apply | Enforced |
+| T35 | No provenance for a bad target | `target_source` records the source string and SHA-256 of the payload, written by every seed and config load; the target drawer and `GET /api/v1/targets/{id}` show the source and hash, so a poisoned list can be traced rather than merely recorded; `netweather seed --diff` shows additions before apply | Enforced |
 | T36 | Config typo takes the monitor down | Invalid reload is rejected; previous config stays live; error surfaced in the UI | Enforced |
 | T37 | Config points at the operator's own services | Documented: the private-range block will refuse them; local monitoring is explicitly not a use case | Policy |
 | T38 | YAML bomb / alias expansion | Size cap on config files, alias expansion limit, no custom tags | Enforced |

@@ -395,6 +395,7 @@ func serve(lg *logging.Logger) error {
 		Verdict:             globalVerdict,
 		Anomalies:           st,
 		Vantages:            st,
+		Provenance:          st,
 		Fleet:               st,
 		VantageChanges:      st,
 		// The ring and the measured logging setup back the diagnostics page
@@ -484,6 +485,7 @@ func serve(lg *logging.Logger) error {
 		Anomalies:       st,
 		Vantages:        st,
 		Targets:         st,
+		Provenance:      st,
 		Coverage:        st,
 		CoverageHistory: st,
 		SelfChecks:      st,

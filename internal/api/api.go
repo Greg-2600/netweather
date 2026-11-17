@@ -133,6 +133,12 @@ type TargetReader interface {
 	TargetByID(ctx context.Context, vantageID, id string) (store.TargetRow, error)
 }
 
+// ProvenanceReader reads where a target came from: the seed or config payload
+// that produced it, and the SHA-256 of that payload (THREAT_MODEL.md T35).
+type ProvenanceReader interface {
+	TargetSources(ctx context.Context, targetID string) ([]store.TargetSource, error)
+}
+
 // CoverageReader builds the blind-spot panel.
 type CoverageReader interface {
 	Coverage(ctx context.Context, vantageID string, now time.Time) (store.Coverage, error)
@@ -222,6 +228,9 @@ type Deps struct {
 	Anomalies AnomalyReader
 	// Targets reads one target with its current state. Nil disables the route.
 	Targets TargetReader
+	// Provenance reads where a target came from. Nil omits the block rather
+	// than implying the target has no source.
+	Provenance ProvenanceReader
 	// Vantages supplies every vantage's state for a target detail. Nil omits
 	// the vantages block rather than implying one path.
 	Vantages VantageStates
@@ -516,6 +525,17 @@ type targetItem struct {
 	// first. A disagreement is how a client sees REGIONAL rather than a
 	// service outage (DESIGN.md §7.1).
 	Vantages []vantageItem `json:"vantages,omitempty"`
+	// Sources is the provenance of this row: the seed or config that produced
+	// it and the SHA-256 of that payload (THREAT_MODEL.md T35). It is what
+	// makes a poisoned list traceable rather than merely recorded.
+	Sources []targetSourceItem `json:"sources,omitempty"`
+}
+
+// targetSourceItem is one provenance row for a target.
+type targetSourceItem struct {
+	Source    string `json:"source"`
+	FetchedAt string `json:"fetched_at,omitempty"`
+	SHA256    string `json:"sha256,omitempty"`
 }
 
 // vantageItem is one vantage's confirmed state for a target.
@@ -812,6 +832,24 @@ func (s *server) serveTarget(w http.ResponseWriter, r *http.Request, id string) 
 				v.LastProbe = state.LastProbe.UTC().Format(time.RFC3339)
 			}
 			item.Vantages = append(item.Vantages, v)
+		}
+	}
+
+	// Where the row came from (THREAT_MODEL.md T35). A failed read is a missing
+	// block with a log line, not a missing target.
+	if s.deps.Provenance != nil {
+		sources, err := s.deps.Provenance.TargetSources(r.Context(), row.ID)
+		if err != nil {
+			s.deps.Logger.Warn("target provenance failed",
+				"event", "target_provenance_failed", "component", "http",
+				"target", row.Host, "error", err)
+		}
+		for _, src := range sources {
+			item.Sources = append(item.Sources, targetSourceItem{
+				Source:    src.Source,
+				FetchedAt: certNotAfterJSON(src.FetchedAt),
+				SHA256:    src.SHA256,
+			})
 		}
 	}
 

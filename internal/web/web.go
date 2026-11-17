@@ -62,6 +62,10 @@ type Deps struct {
 	// Vantages supplies every vantage's state for a target, so the drawer can
 	// show a regional disagreement rather than calling it global.
 	Vantages VantageStates
+	// Provenance supplies where a target came from, so the drawer can show the
+	// seed or config payload that produced it (THREAT_MODEL.md T35). Nil omits
+	// the panel rather than implying the target has no source.
+	Provenance ProvenanceReader
 	// Fleet supplies the overview line's judged health and learned band. Nil
 	// omits the line rather than inventing a band.
 	Fleet FleetReader
@@ -214,6 +218,13 @@ type AnomalyReader interface {
 // §7.1). Nil omits the panel rather than implying one path.
 type VantageStates interface {
 	TargetVantages(ctx context.Context, targetID string) ([]store.VantageState, error)
+}
+
+// ProvenanceReader supplies where a target came from. The drawer shows the
+// source and payload hash so a poisoned list can be traced (THREAT_MODEL.md
+// T35). Nil omits the panel.
+type ProvenanceReader interface {
+	TargetSources(ctx context.Context, targetID string) ([]store.TargetSource, error)
 }
 
 // FleetReader supplies the overview line from DESIGN.md §10.1. Nil omits the
