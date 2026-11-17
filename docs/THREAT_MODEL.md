@@ -232,11 +232,11 @@ Residual: encryption at rest is the host's responsibility. The document says so 
 
 | ID | Threat | Mitigation | Status |
 |---|---|---|---|
-| T58 | Malicious or hijacked dependency | `go.sum` + checksum DB, minimal dependency set, `govulncheck` + `osv-scanner` in CI, new-dependency review rule | Enforced (process) |
-| T59 | Typosquatted module | Dependency allowlist reviewed in `go.mod`; `gomodguard` blocks non-allowlisted domains | Enforced |
+| T58 | Malicious or hijacked dependency | `go.sum` + checksum DB, a deliberately small direct-dependency set, `govulncheck` over the module graph in CI, `grype` on the release image, and a review rule for new direct dependencies | Enforced (process) |
+| T59 | Typosquatted module | Direct dependencies are reviewed in `go.mod` and kept small; a new module is a review item rather than an automatic accept. There is no automated domain allowlist: the lint toolchain itself pulls a large transitive graph, and a rule broad enough to pass it would not catch a typosquat in a domain it already allows. | Policy |
 | T60 | Tampered image | Images referenced by digest in docs and compose examples; cosign signature + SBOM published with releases | Enforced (release) |
 | T61 | Compromised base image | Chainguard static/Wolfi for the main image and Alpine for the Tor sidecar (Wolfi does not package `tor`); every `FROM` is digest-pinned, Dependabot updates the digest weekly, and `grype` gates the release image on HIGH/CRITICAL. `TestDockerfilesPinBaseImages` fails if an unpinned `FROM` returns. | Enforced (CI) |
-| T62 | Secrets in the build | `gitleaks` on every commit and in the image build; no build args carrying secrets | Enforced |
+| T62 | Secrets in the build | `gitleaks` over full history in CI on every push and PR; no build args carry secrets; `.dockerignore` keeps the data directory and token files out of the build context | Enforced |
 | T63 | Dockerfile mistakes | `hadolint`, no `ADD` from URLs, no `latest`, explicit non-root `USER`, no secrets in layers | Enforced |
 | T64 | Malicious contribution | `semgrep` + review rules: PRs adding evasion, scraping, or new outbound ports are rejected on sight (`ACCEPTABLE_USE.md` §9) | Policy |
 
