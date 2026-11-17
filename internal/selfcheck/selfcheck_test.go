@@ -14,6 +14,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/probe"
 	"github.com/Greg-2600/netweather/internal/selfcheck"
 	"github.com/Greg-2600/netweather/internal/store"
+	"golang.org/x/net/dns/dnsmessage"
 )
 
 func TestRunnerRunsEveryCheck(t *testing.T) {
@@ -179,6 +180,129 @@ func TestEgressCheck(t *testing.T) {
 
 	if ok, _, _, _ := selfcheck.EgressCheck(nil, "").Run(context.Background()); ok {
 		t.Fatal("a missing instrument reported success")
+	}
+}
+
+// startFakeDNS answers one A record per query on a local UDP port. It lets the
+// port-53 check be exercised end to end without a resolver or a network.
+func startFakeDNS(t *testing.T) string {
+	t.Helper()
+
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = pc.Close() })
+
+	go func() {
+		buf := make([]byte, 1500)
+		for {
+			n, addr, err := pc.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			var query dnsmessage.Message
+			if err := query.Unpack(buf[:n]); err != nil {
+				continue
+			}
+			resp := dnsmessage.Message{
+				Header:    dnsmessage.Header{ID: query.ID, Response: true},
+				Questions: query.Questions,
+			}
+			if len(query.Questions) > 0 {
+				resp.Answers = []dnsmessage.Resource{{
+					Header: dnsmessage.ResourceHeader{
+						Name: query.Questions[0].Name, Type: dnsmessage.TypeA,
+						Class: dnsmessage.ClassINET, TTL: 60,
+					},
+					Body: &dnsmessage.AResource{A: [4]byte{203, 0, 113, 9}},
+				}}
+			}
+			packed, err := resp.Pack()
+			if err != nil {
+				continue
+			}
+			_, _ = pc.WriteTo(packed, addr)
+		}
+	}()
+
+	return pc.LocalAddr().String()
+}
+
+func TestPort53CheckRequiresBothTransports(t *testing.T) {
+	t.Parallel()
+
+	udpAddr := startFakeDNS(t)
+	accepting, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = accepting.Close() })
+	go func() {
+		for {
+			conn, err := accepting.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
+
+	dns := probe.NewDNS(func(ctx context.Context, network, _ string) (net.Conn, error) {
+		var d net.Dialer
+		return d.DialContext(ctx, network, udpAddr)
+	})
+	tcp := &probe.TCP{Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+		var d net.Dialer
+		return d.DialContext(ctx, network, accepting.Addr().String())
+	}}
+
+	ok, value, detail, err := selfcheck.Port53Check(dns, tcp, "127.0.0.1:53", "example.test").
+		Run(context.Background())
+	if err != nil || !ok {
+		t.Fatalf("check = (%v, %q, %q, %v)", ok, value, detail, err)
+	}
+	if value != "udp+tcp" {
+		t.Fatalf("value = %q", value)
+	}
+}
+
+func TestPort53CheckNamesTheBlockedTransport(t *testing.T) {
+	t.Parallel()
+
+	refused := func(context.Context, string, string) (net.Conn, error) {
+		return nil, &net.OpError{Op: "dial", Err: errors.New("refused")}
+	}
+
+	// Both blocked: UDP is reported first because it is the common case.
+	ok, value, detail, _ := selfcheck.Port53Check(
+		probe.NewDNS(refused), &probe.TCP{Dial: refused}, "127.0.0.1:53", "example.test").
+		Run(context.Background())
+	if ok || value != "udp blocked" || !strings.Contains(detail, "udp/53") {
+		t.Fatalf("udp failure = (%v, %q, %q)", ok, value, detail)
+	}
+
+	// UDP answers, TCP is blocked: a middlebox that allows queries but not
+	// fallback is exactly what this half of the check exists to find.
+	udpAddr := startFakeDNS(t)
+	dns := probe.NewDNS(func(ctx context.Context, network, _ string) (net.Conn, error) {
+		var d net.Dialer
+		return d.DialContext(ctx, network, udpAddr)
+	})
+	ok, value, detail, _ = selfcheck.Port53Check(dns, &probe.TCP{Dial: refused},
+		"127.0.0.1:53", "example.test").Run(context.Background())
+	if ok || value != "tcp blocked" || !strings.Contains(detail, "tcp/53") {
+		t.Fatalf("tcp failure = (%v, %q, %q)", ok, value, detail)
+	}
+
+	// A missing instrument is a configuration error, not a pass.
+	if ok, _, _, _ := selfcheck.Port53Check(nil, &probe.TCP{Dial: refused}, "x:53", "x").
+		Run(context.Background()); ok {
+		t.Fatal("a missing DNS instrument reported success")
+	}
+	if ok, _, _, _ := selfcheck.Port53Check(probe.NewDNS(refused), nil, "x:53", "x").
+		Run(context.Background()); ok {
+		t.Fatal("a missing TCP instrument reported success")
 	}
 }
 

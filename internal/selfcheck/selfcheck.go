@@ -148,6 +148,39 @@ func EgressCheck(tcp *probe.TCP, address string) Check {
 	}
 }
 
+// Port53Check proves both transports to a resolver on port 53 work.
+//
+// A blocked port 53 is the documented false-red source: every DNS anchor times
+// out and the board looks like a global outage while the internet is fine
+// (DESIGN.md §7.5). UDP is the common case and TCP catches a middlebox that
+// allows queries but blocks fallback, so both are checked.
+func Port53Check(dns *probe.DNS, tcp *probe.TCP, server, name string) Check {
+	return Check{
+		Name: "port53",
+		Run: func(ctx context.Context) (bool, string, string, error) {
+			if dns == nil || tcp == nil {
+				return false, "", "dns or tcp instrument is not configured", nil
+			}
+
+			udp := dns.Do(ctx, server, name)
+			if udp.Failed() {
+				return false, "udp blocked",
+					"udp/53: " + udp.ErrorClass + ": " + errText(udp.Err), nil
+			}
+
+			tcpRes := tcp.Do(ctx, server)
+			if tcpRes.Failed() {
+				return false, "tcp blocked",
+					"tcp/53: " + tcpRes.ErrorClass + ": " + errText(tcpRes.Err), nil
+			}
+
+			return true, "udp+tcp", fmt.Sprintf("udp %s, tcp %s",
+				udp.Latency.Round(time.Millisecond),
+				tcpRes.Latency.Round(time.Millisecond)), nil
+		},
+	}
+}
+
 // ClockCheck compares the local clock with the Date header of one HTTP response.
 // Skew beyond maxSkew is a degraded check, not a process failure: the board
 // still renders, but timestamps and baselines become suspect.
