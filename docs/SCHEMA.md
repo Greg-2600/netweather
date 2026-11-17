@@ -431,13 +431,18 @@ Per-resolver baselines are the fix for `CLASSIFIER.md` §3.2. A resolver's own h
 CREATE TABLE self_check (
     id     INTEGER PRIMARY KEY,
     ts     INTEGER NOT NULL,
-    check  TEXT NOT NULL,                     -- 'clock','egress_ip','resolver','disk','mtu','port53','heartbeat'
+    "check" TEXT NOT NULL,                    -- 'clock','egress','resolver','disk','mtu','port53','heartbeat'
     ok     INTEGER NOT NULL,
     value  TEXT,                              -- e.g. '203.0.113.9,AS7922,US'
     detail TEXT
 );
 
-CREATE INDEX self_check_name_ts ON self_check(check, ts DESC);
+CREATE INDEX self_check_name_ts ON self_check("check", ts DESC);
+```
+
+`check` is a reserved word in SQLite, so it is quoted in the migration and in every query. The column keeps the name because "check" is what it holds.
+
+**Implemented in migration `0006`:** `disk`, `resolver`, `egress`, and `clock` are recorded by `internal/selfcheck`; `mtu` and `port53` are still specified, because they need raw sockets or a second transport rather than the guarded dialer.
 
 CREATE TABLE external_event (
     id          INTEGER PRIMARY KEY,

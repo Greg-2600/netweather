@@ -31,6 +31,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/probe"
 	"github.com/Greg-2600/netweather/internal/schedule"
 	"github.com/Greg-2600/netweather/internal/seed"
+	"github.com/Greg-2600/netweather/internal/selfcheck"
 	"github.com/Greg-2600/netweather/internal/startup"
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/version"
@@ -148,6 +149,16 @@ func serve(lg *logging.Logger) error {
 
 	ag := newAgent(targets, st, lg)
 
+	// The monitor must be able to see before its board is believable, so the
+	// self-checks run at startup and with maintenance, not only on request.
+	instruments := newInstruments()
+	selfRunner := &selfcheck.Runner{Checks: []selfcheck.Check{
+		selfcheck.DiskCheck(dataDir),
+		selfcheck.DNSCheck(instruments.DNS, "1.1.1.1:53", "example.com"),
+		selfcheck.EgressCheck(instruments.TCP, "1.1.1.1:443"),
+		selfcheck.ClockCheck(instruments.HTTP, "https://www.cloudflare.com/", time.Minute),
+	}}
+
 	var metricsHandler http.Handler
 	if os.Getenv("NETWEATHER_METRICS") == "true" {
 		metricsHandler = metrics.Handler(st, "local")
@@ -171,22 +182,23 @@ func serve(lg *logging.Logger) error {
 	}
 
 	handler, err := api.New(cfg, api.Deps{
-		Logger:    lg.Logger,
-		Ring:      lg.Ring,
-		Version:   version.Version,
-		Commit:    version.Commit,
-		StartedAt: time.Now(),
-		Source:    source,
-		Control:   ag,
-		Probes:    st,
-		Incidents: st,
-		Scopes:    st,
-		Anomalies: st,
-		Targets:   st,
-		Coverage:  st,
-		Metrics:   metricsHandler,
-		Vantage:   "local",
-		Fallback:  ui,
+		Logger:     lg.Logger,
+		Ring:       lg.Ring,
+		Version:    version.Version,
+		Commit:     version.Commit,
+		StartedAt:  time.Now(),
+		Source:     source,
+		Control:    ag,
+		Probes:     st,
+		Incidents:  st,
+		Scopes:     st,
+		Anomalies:  st,
+		Targets:    st,
+		Coverage:   st,
+		SelfChecks: st,
+		Metrics:    metricsHandler,
+		Vantage:    "local",
+		Fallback:   ui,
 	})
 	if err != nil {
 		return err
@@ -218,7 +230,7 @@ func serve(lg *logging.Logger) error {
 	}
 	go incidents.Loop(ctx, st, st, st, "local", incidentInterval, lg.Logger)
 	go anomaly.Loop(ctx, st, st, "local", incidentInterval, lg.Logger)
-	go maintenanceLoop(ctx, st, lg)
+	go maintenanceLoop(ctx, st, lg, selfRunner)
 	go configLoop(ctx, st, ag, lg.Logger)
 
 	go func() {
@@ -448,23 +460,51 @@ func healthcheck() error {
 	return nil
 }
 
-func newAgent(targets []agent.Target, st *store.Store, lg *logging.Logger) *agent.Agent {
+func newInstruments() agent.Instruments {
 	dialer := netx.New()
-	runner := agent.Instruments{
+	return agent.Instruments{
 		HTTP: probe.NewHTTP(dialer),
 		TLS:  probe.NewTLS(dialer),
 		TCP:  probe.NewTCP(dialer),
 		DNS:  probe.NewDNS(dialer.DialContext),
 	}
-	ag := agent.New(targets, runner, st)
+}
+
+func newAgent(targets []agent.Target, st *store.Store, lg *logging.Logger) *agent.Agent {
+	ag := agent.New(targets, newInstruments(), st)
 	ag.Logger = lg.Logger
 	return ag
 }
 
-// maintenanceLoop folds closed rollups and applies retention. It runs once at
-// startup so a long downtime self-heals, then every ten minutes.
-func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger) {
+// maintenanceLoop folds closed rollups, applies retention, and runs the
+// self-checks. It runs once at startup so a long downtime self-heals, then every
+// ten minutes.
+func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger, self *selfcheck.Runner) {
+	runSelfChecks := func() {
+		if self == nil {
+			return
+		}
+		results, err := self.Record(ctx, st)
+		if err != nil {
+			lg.Warn("self-check record failed",
+				"event", "selfcheck_record_failed", "component", "maintenance", "error", err)
+		}
+		for _, res := range results {
+			if res.OK {
+				lg.Debug("self-check ok",
+					"event", "selfcheck", "component", "maintenance",
+					"check", res.Check, "value", res.Value, "detail", res.Detail)
+				continue
+			}
+			lg.Warn("self-check failed",
+				"event", "selfcheck_failed", "component", "maintenance",
+				"check", res.Check, "detail", res.Detail)
+		}
+	}
+
 	run := func() {
+		runSelfChecks()
+
 		if err := st.SampleScopes(ctx, "local", time.Now()); err != nil {
 			lg.Warn("scope sampling failed",
 				"event", "scope_sampling_failed", "component", "maintenance", "error", err)

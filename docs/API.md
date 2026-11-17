@@ -200,7 +200,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
-    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage"],
+    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -534,6 +534,27 @@ Auth: bearer. The blind-spot panel. It reports **measurement**, not health: a do
 - `stale` lists enabled targets the scheduler has not reached within three of their own intervals (minimum 15 minutes), including targets that have never been probed. A never-probed target has no `last_probe` and no `age_seconds`.
 - The panel is per-vantage: it says "this vantage cannot see these", not "these are broken".
 
+### 6.15 `GET /api/v1/selfcheck` — internal
+
+Auth: bearer. The newest result for each self-health check. This answers "can the monitor see at all?", which is a different question from "is the internet up?".
+
+```json
+{
+  "data": [
+    {"check": "clock", "ok": true, "value": "2026-11-17T12:00:00Z", "detail": "1s skew",
+     "ts": "2026-11-17T12:00:05Z"},
+    {"check": "disk", "ok": false, "detail": "read-only file system",
+     "ts": "2026-11-17T12:00:05Z"}
+  ],
+  "meta": {"request_id": "…", "count": 2}
+}
+```
+
+- Checks are `disk`, `resolver`, `egress`, and `clock`. `mtu` and `port53` are specified but need raw sockets or a second transport; they are not claimed here.
+- `ok: false` means the monitor's own path failed, which is why this endpoint is separate from the board: a broken monitor must not look like a broken internet.
+- One row per check; the endpoint reports the latest run, not a history.
+- Self-checks run at startup and with maintenance every ten minutes, so a failed check is already in the logs before anyone opens this page.
+
 ---
 
 ## 7. Specified, not implemented
@@ -545,7 +566,6 @@ Each of these is a promise about shape, not a claim that it works. `GET /api/v1/
 | Endpoint | Tier | Purpose |
 |---|---|---|
 | `GET /api/v1/feeds` | stable | Feed state: last success, staleness, consecutive failures |
-| `GET /api/v1/selfcheck` | internal | Self-health results (clock, egress, MTU, port 53, disk) |
 | `GET /api/v1/export` | stable | Streaming CSV/JSON over a time range; never loads the set into memory |
 
 ### 7.2 Live updates

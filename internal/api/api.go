@@ -60,6 +60,11 @@ type CoverageReader interface {
 	Coverage(ctx context.Context, vantageID string, now time.Time) (store.Coverage, error)
 }
 
+// SelfCheckReader reads the latest self-health results.
+type SelfCheckReader interface {
+	LatestSelfChecks(ctx context.Context) ([]store.SelfCheck, error)
+}
+
 // Deps is everything the HTTP layer needs. It is deliberately small: the API
 // reads state, it does not own it.
 type Deps struct {
@@ -85,6 +90,8 @@ type Deps struct {
 	Targets TargetReader
 	// Coverage builds the blind-spot panel. Nil disables the route.
 	Coverage CoverageReader
+	// SelfChecks reads the latest self-health results. Nil disables the route.
+	SelfChecks SelfCheckReader
 	// Metrics is the Prometheus handler. Nil keeps /metrics unmounted, which is
 	// the default: exposing it is an operator decision.
 	Metrics http.Handler
@@ -127,6 +134,7 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	apiMux.HandleFunc("/api/v1/scopes/", onlyGET(s.handleScope))
 	apiMux.HandleFunc("/api/v1/anomalies", onlyGET(s.handleAnomalies))
 	apiMux.HandleFunc("/api/v1/coverage", onlyGET(s.handleCoverage))
+	apiMux.HandleFunc("/api/v1/selfcheck", onlyGET(s.handleSelfCheck))
 	apiMux.HandleFunc("/api/v1/incidents", onlyGET(s.handleIncidents))
 	apiMux.HandleFunc("/api/v1/incidents/", onlyGET(s.handleIncidentByID))
 	apiMux.HandleFunc("/", s.handleNotFound)
@@ -223,7 +231,7 @@ type metaResponse struct {
 
 // capabilities is the runtime truth. A client should feature-detect here rather
 // than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage"}
+var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck"}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}
@@ -970,6 +978,41 @@ func (s *server) handleCoverage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, r, out, nil)
+}
+
+type selfCheckItem struct {
+	Check  string `json:"check"`
+	OK     bool   `json:"ok"`
+	Value  string `json:"value,omitempty"`
+	Detail string `json:"detail,omitempty"`
+	TS     string `json:"ts"`
+}
+
+// handleSelfCheck reports the newest result per self-health check. It is the
+// "can the monitor see at all?" page, and it is separate from target health on
+// purpose: a broken monitor must not look like a broken internet.
+func (s *server) handleSelfCheck(w http.ResponseWriter, r *http.Request) {
+	if s.deps.SelfChecks == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "self-check is not configured")
+		return
+	}
+
+	rows, err := s.deps.SelfChecks.LatestSelfChecks(r.Context())
+	if err != nil {
+		s.deps.Logger.Error("self-check read failed", "event", "selfcheck_failed", "component", "http", "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "self-check unavailable")
+		return
+	}
+
+	out := make([]selfCheckItem, 0, len(rows))
+	for _, c := range rows {
+		out = append(out, selfCheckItem{
+			Check: c.Check, OK: c.OK, Value: c.Value, Detail: c.Detail,
+			TS: c.TS.UTC().Format(time.RFC3339),
+		})
+	}
+
+	writeData(w, r, out, &Meta{Count: len(out)})
 }
 
 type controlState struct {

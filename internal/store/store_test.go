@@ -67,8 +67,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 5 {
-		t.Errorf("schema version = %d, want 5", stats.SchemaVersion)
+	if stats.SchemaVersion != 6 {
+		t.Errorf("schema version = %d, want 6", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -96,7 +96,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 5 {
+	if err != nil || version != 6 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -1197,5 +1197,56 @@ func TestCoverageFindsBlindSpotsAndStaleTargets(t *testing.T) {
 	// Everything is stale: t1 never ran, and nl-1..4 never ran.
 	if len(cov.Stale) != 5 {
 		t.Fatalf("stale = %+v, want the five unprobed targets", cov.Stale)
+	}
+}
+
+func TestSelfCheckRoundTripAndLatest(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	if err := s.RecordSelfCheck(ctx, store.SelfCheck{
+		TS: base, Check: "disk", OK: true, Value: "64 KiB", Detail: "",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// A newer run of the same check replaces it; a different check is separate.
+	if err := s.RecordSelfCheck(ctx, store.SelfCheck{
+		TS: base.Add(time.Minute), Check: "disk", OK: false, Detail: "read-only file system",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordSelfCheck(ctx, store.SelfCheck{
+		TS: base, Check: "egress", OK: true, Value: "1.1.1.1:443",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.LatestSelfChecks(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("checks = %d, want one row per name", len(got))
+	}
+	if got[0].Check != "disk" {
+		t.Fatalf("first = %+v", got[0])
+	}
+	if got[0].OK || got[0].Detail != "read-only file system" {
+		t.Fatalf("latest disk check = %+v", got[0])
+	}
+	if got[1].Check != "egress" || !got[1].OK || got[1].Value != "1.1.1.1:443" {
+		t.Fatalf("egress = %+v", got[1])
+	}
+
+	empty, _ := openTest(t)
+	none, err := empty.LatestSelfChecks(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(none) != 0 {
+		t.Fatalf("fresh database returned %d self checks", len(none))
 	}
 }

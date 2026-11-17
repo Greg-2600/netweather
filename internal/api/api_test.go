@@ -1758,6 +1758,97 @@ func TestCoverageUnavailableAndAuth(t *testing.T) {
 	}
 }
 
+type fakeSelfChecks struct {
+	rows []store.SelfCheck
+	err  error
+}
+
+func (f *fakeSelfChecks) LatestSelfChecks(context.Context) ([]store.SelfCheck, error) {
+	return f.rows, f.err
+}
+
+func newSelfCheckHandler(t *testing.T, reader api.SelfCheckReader) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+			SelfChecks: reader,
+			Version:    "test",
+			Commit:     "deadbeef",
+			StartedAt:  time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func TestSelfCheckList(t *testing.T) {
+	t.Parallel()
+
+	ts := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	reader := &fakeSelfChecks{rows: []store.SelfCheck{
+		{ID: 1, TS: ts, Check: "clock", OK: true, Value: "2026-11-17T12:00:00Z", Detail: "1s skew"},
+		{ID: 2, TS: ts, Check: "disk", OK: false, Detail: "read-only file system"},
+	}}
+
+	rec := do(newSelfCheckHandler(t, reader), http.MethodGet, "/api/v1/selfcheck", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var items []struct {
+		Check  string `json:"check"`
+		OK     bool   `json:"ok"`
+		Value  string `json:"value"`
+		Detail string `json:"detail"`
+		TS     string `json:"ts"`
+	}
+	if err := json.Unmarshal(env.Data, &items); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(items) != 2 {
+		t.Fatalf("items = %d", len(items))
+	}
+	if items[0].Check != "clock" || !items[0].OK || items[0].TS != "2026-11-17T12:00:00Z" {
+		t.Fatalf("first = %+v", items[0])
+	}
+	if items[1].Check != "disk" || items[1].OK || items[1].Detail == "" {
+		t.Fatalf("second = %+v", items[1])
+	}
+	if env.Meta.Count != 2 {
+		t.Errorf("meta.count = %d", env.Meta.Count)
+	}
+}
+
+func TestSelfCheckUnavailableAndAuth(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/api/v1/selfcheck", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+
+	rec = do(newSelfCheckHandler(t, &fakeSelfChecks{err: errors.New("db down")}),
+		http.MethodGet, "/api/v1/selfcheck", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 on a read failure", rec.Code)
+	}
+
+	rec = do(newSelfCheckHandler(t, &fakeSelfChecks{}), http.MethodGet, "/api/v1/selfcheck", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
 func TestSecurityHeaders(t *testing.T) {
 	t.Parallel()
 
