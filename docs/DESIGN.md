@@ -712,6 +712,8 @@ Every correlation depends on assumptions that can silently break. Check them.
 
 That kind of admission is what keeps the tool trustworthy. A monitor that silently keeps comparing against a baseline from a different network is worse than no monitor.
 
+**Implemented:** `store.RecordVantageChange` appends the previous and current egress tuples when maintenance's `egress-ip` comparison sees a move, and `store.LatestVantageChange` reads the newest row. The board shows the sentence above for 24 hours after the move, with the ASN and country but not the literal address; an expired change, a failed read, and an unwired reader each omit the banner rather than inventing one. The values are the same tuples the self-check already stores, so a restart does not lose the fact that the baselines belong to a different path.
+
 **Diagnostics.** Self-health failures are only useful if you can act on them. The logging model — levels, the canonical decision record, redaction, the in-memory ring, backpressure, and the debug bundle — is specified in [`LOGGING.md`](LOGGING.md). Two invariants from that document matter here: a stalled log sink must never stall the scheduler (drops are counted, not blocked), and the `reason` string on a transition is identical in the log line and in `state_change.reason`.
 
 ---

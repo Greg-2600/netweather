@@ -4878,3 +4878,97 @@ func TestBoardShowsTheNoAuthBanner(t *testing.T) {
 		t.Fatal("an authenticated board drew the no-auth banner")
 	}
 }
+
+type fakeVantageChanges struct {
+	change store.VantageChange
+	ok     bool
+	err    error
+}
+
+func (f *fakeVantageChanges) LatestVantageChange(context.Context) (store.VantageChange, bool, error) {
+	return f.change, f.ok, f.err
+}
+
+func newServerWithVantageChanges(t *testing.T, changes web.VantageChangeReader) *httptest.Server {
+	t.Helper()
+
+	m := fixture()
+	h, err := web.New(web.Deps{
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:         m,
+		Watcher:        m,
+		VantageChanges: changes,
+		Token:          testToken,
+		Version:        "test",
+		StartedAt:      time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestBoardSaysWhenTheEgressMoved(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	cases := []struct {
+		name   string
+		reader web.VantageChangeReader
+		want   bool
+	}{
+		{
+			name: "a recent move is stated",
+			reader: &fakeVantageChanges{ok: true, change: store.VantageChange{
+				At: now.Add(-5 * time.Minute), Previous: "203.0.113.9,AS7922,US",
+				Current: "198.51.100.4,AS9009,NL",
+			}},
+			want: true,
+		},
+		{
+			name: "an old move has expired",
+			reader: &fakeVantageChanges{ok: true, change: store.VantageChange{
+				At: now.Add(-25 * time.Hour), Previous: "203.0.113.9,AS7922,US",
+				Current: "198.51.100.4,AS9009,NL",
+			}},
+			want: false,
+		},
+		{
+			name:   "a failed read is silent",
+			reader: &fakeVantageChanges{err: errors.New("db down")},
+			want:   false,
+		},
+		{name: "no reader", reader: nil, want: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ts := newServerWithVantageChanges(t, tc.reader)
+			client, _ := newClient(t)
+			login(t, ts, client, testToken)
+			resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+			if err != nil {
+				t.Fatal(err)
+			}
+			page := body(t, resp)
+			has := strings.Contains(page, `data-testid="vantage-change"`)
+			if has != tc.want {
+				t.Fatalf("vantage banner present = %v, want %v:\n%s", has, tc.want, page)
+			}
+			if !tc.want {
+				return
+			}
+			for _, want := range []string{
+				"Your egress changed", "AS7922 → AS9009", "US → NL", "Baselines reset",
+			} {
+				if !strings.Contains(page, want) {
+					t.Errorf("vantage banner missing %q", want)
+				}
+			}
+		})
+	}
+}

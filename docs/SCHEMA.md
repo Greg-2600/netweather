@@ -547,6 +547,19 @@ CREATE INDEX self_check_name_ts ON self_check("check", ts DESC);
 
 **Implemented in migration `0006`:** `disk`, `resolver`, `egress`, `clock`, `mtu`, and `port53` are recorded by `internal/selfcheck`. `mtu` reports the smallest local interface MTU (a path MTU needs a DF-bit probe and raw sockets); `port53` proves both UDP/53 and TCP/53 through the guarded dialer.
 
+**Migration `0023`** adds the egress-move record (`DESIGN.md` §7.5):
+
+```sql
+CREATE TABLE vantage_change (
+    id         INTEGER PRIMARY KEY,
+    changed_at INTEGER NOT NULL,
+    previous   TEXT NOT NULL,   -- ip,AS...,CC
+    current    TEXT NOT NULL
+);
+```
+
+Maintenance compares consecutive successful `egress-ip` observations and appends one row when the tuple moves; it does not record a failed or missing observation, because an unknown is not evidence of a move. The board reads the newest row, and within 24 hours renders "Your egress changed (AS7922 → AS9009, US → NL). Baselines reset; expect about 24h of reduced anomaly sensitivity." It shows the ASN and country, never the literal address.
+
 CREATE TABLE external_event (
     id          INTEGER PRIMARY KEY,
     feed        TEXT NOT NULL,                -- 'ioda','radar'

@@ -65,6 +65,9 @@ type Deps struct {
 	// Fleet supplies the overview line's judged health and learned band. Nil
 	// omits the line rather than inventing a band.
 	Fleet FleetReader
+	// VantageChanges supplies the newest egress move, so the board can explain
+	// why its baselines reset. Nil omits the note.
+	VantageChanges VantageChangeReader
 	// DNSObservations supplies the board's collapsed DNS divergence strip.
 	DNSObservations DNSObservations
 	// Logs supplies the ring and logging setup for the diagnostics page and
@@ -217,6 +220,12 @@ type VantageStates interface {
 // line; a nil band is shown as "learning n/28" rather than a guessed range.
 type FleetReader interface {
 	FleetHealth(ctx context.Context, vantageID string, now time.Time) (store.FleetHealth, error)
+}
+
+// VantageChangeReader supplies the newest detected egress move so the board can
+// say why its baselines reset (DESIGN.md §7.5). Nil omits the note.
+type VantageChangeReader interface {
+	LatestVantageChange(ctx context.Context) (store.VantageChange, bool, error)
 }
 
 // DNSObservations supplies the board's collapsed DNS divergence strip. Nil

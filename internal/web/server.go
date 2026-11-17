@@ -304,6 +304,10 @@ type boardView struct {
 	// fails says so; an unconfigured one simply omits the strip.
 	DNSObservations []dnsObservationView
 	DNSNote         string
+	// VantageNote states a recent egress move and what it did to the
+	// baselines (DESIGN.md §7.5). Empty means no change in the last day or no
+	// reader configured.
+	VantageNote string
 	// BudgetNote is set only while the daily egress budget is spent. It is a
 	// hard stop, so the board names the reason rather than showing old tiles as
 	// if they were fresh (ACCEPTABLE_USE.md §4).
@@ -1123,6 +1127,20 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// A recent egress move invalidates every latency and anomaly baseline; the
+	// board says so plainly rather than leaving the reader to wonder why the
+	// numbers moved (DESIGN.md §7.5). The note expires after a day.
+	if s.deps.VantageChanges != nil {
+		change, ok, err := s.deps.VantageChanges.LatestVantageChange(r.Context())
+		switch {
+		case err != nil:
+			s.deps.Logger.Warn("vantage change read failed",
+				"event", "vantage_change_read_failed", "component", "http", "error", err)
+		case ok && s.now().Sub(change.At) <= 24*time.Hour:
+			view.VantageNote = vantageSentence(change)
+		}
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	view.Insecure = s.insecure(r)
 	view.NoAuth = s.auth.disabled()
@@ -1346,6 +1364,43 @@ func displayOr(value, fallback string) string {
 
 // humanBytes formats a byte count for the budget banner. MB and GB are the only
 // units the setting uses, and a decimal keeps 2 GB from rendering as "2048 MB".
+// vantageSentence renders DESIGN.md §7.5's admission. The stored tuple is
+// "ip,AS<number>,<CC>"; the literal address is deliberately left off the board,
+// while the ASN and country are what a reader can act on.
+func vantageSentence(c store.VantageChange) string {
+	prevASN, prevCC := egressLabels(c.Previous)
+	newASN, newCC := egressLabels(c.Current)
+
+	var parts []string
+	if prevASN != "" && newASN != "" && prevASN != newASN {
+		parts = append(parts, prevASN+" → "+newASN)
+	}
+	if prevCC != "" && newCC != "" && prevCC != newCC {
+		parts = append(parts, prevCC+" → "+newCC)
+	}
+	if len(parts) == 0 {
+		return "Your egress changed. Baselines reset; expect about 24h of reduced anomaly sensitivity."
+	}
+	return fmt.Sprintf("Your egress changed (%s). Baselines reset; expect about 24h of reduced anomaly sensitivity.",
+		strings.Join(parts, ", "))
+}
+
+// egressLabels extracts the ASN and country from a stored egress tuple. A
+// failed self-check stores an empty value, which yields empty labels rather
+// than a made-up one.
+func egressLabels(tuple string) (asn, country string) {
+	for _, part := range strings.Split(tuple, ",") {
+		part = strings.TrimSpace(part)
+		switch {
+		case strings.HasPrefix(part, "AS"):
+			asn = part
+		case len(part) == 2 && part == strings.ToUpper(part):
+			country = part
+		}
+	}
+	return asn, country
+}
+
 func humanBytes(n int64) string {
 	switch {
 	case n >= 1<<30:
@@ -2993,6 +3048,15 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		logCh = ch
 	}
 
+	// Capture the baseline at subscription time, before the preamble is
+	// visible. Taking it after the flush lets a change that lands between the
+	// client reading "retry:" and this snapshot be folded into the baseline and
+	// never sent: a lost wake-up, not a slow one.
+	var last map[string]board.Target
+	if watcher != nil {
+		last = s.stateMap(r.Context())
+	}
+
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream; charset=utf-8")
 	h.Set("Cache-Control", "no-cache")
@@ -3010,7 +3074,6 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	last := s.stateMap(r.Context())
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 

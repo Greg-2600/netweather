@@ -147,6 +147,10 @@
     <p class="muted small" data-testid="tor-budget">{{.TorBudget}}</p>
     {{end}}
 
+    {{if .VantageNote}}
+    <p class="banner" data-testid="vantage-change" role="status">{{.VantageNote}}</p>
+    {{end}}
+
     {{if .CoverageNote}}
     <p class="banner" data-testid="coverage-advisory" role="status">{{.CoverageNote}}</p>
     {{end}}

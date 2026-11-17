@@ -396,6 +396,7 @@ func serve(lg *logging.Logger) error {
 		Anomalies:           st,
 		Vantages:            st,
 		Fleet:               st,
+		VantageChanges:      st,
 		// The ring and the measured logging setup back the diagnostics page
 		// and the drawer's Why panel (LOGGING.md §9).
 		Logs:            lg,
@@ -2233,6 +2234,12 @@ func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger, s
 			switch res.Check {
 			case "egress-ip":
 				if changed, detail := selfcheck.VantageChange(previous["egress-ip"], res); changed {
+					// Record the move so the board can say why its baselines
+					// reset, not only the log (DESIGN.md §7.5).
+					if err := st.RecordVantageChange(ctx, previous["egress-ip"].Value, res.Value, time.Now()); err != nil {
+						lg.Warn("vantage change record failed",
+							"event", "vantage_change_record_failed", "component", "maintenance", "error", err)
+					}
 					lg.Warn("vantage changed",
 						"event", "vantage_changed", "component", "maintenance", "detail", detail)
 					resetDNSBaselines("egress changed")
