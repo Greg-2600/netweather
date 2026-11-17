@@ -25,6 +25,8 @@ go test -race ./...
 
 CI additionally runs `golangci-lint`, `gosec`, and `govulncheck`. Run them locally if you can; a failing security scanner is a review blocker, not a style note.
 
+`go test -race` needs a C compiler. On Windows without cgo, `go test ./...` is still valid; CI runs the race detector on Linux.
+
 ## Rules that are not negotiable
 
 1. **No evasion.** No User-Agent rotation, TLS fingerprint impersonation, CAPTCHA solving, or residential proxy pools. `BLOCKED` is a valid, useful answer.

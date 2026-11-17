@@ -47,6 +47,7 @@ The through-line: `censor_sensor` asked *"can I reach it?"*, `global_packet_thro
 | [`docs/NETWORKING.md`](docs/NETWORKING.md) | Docker topology, MTU/PMTU, embedded DNS, SSRF reachability, Tailscale and proxy access, Tor sidecar wiring |
 | [`docs/QUALITY.md`](docs/QUALITY.md) | Linters, security scanning, six test layers, fuzzing, the fake internet, container smoke tests, coverage gates, CI |
 | [`docs/SCHEMA.md`](docs/SCHEMA.md) | SQLite tables, pragmas and pools, incremental rollups, retention jobs, query shapes, backup and export |
+| [`docs/LOGGING.md`](docs/LOGGING.md) | Levels and volume, decision-record fields, redaction, sinks, backpressure, the in-memory ring, debug bundle |
 | [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) | Assets, adversaries, trust boundaries, SSRF and exposure threats, supply chain, invariants, residual risk, operator runbook |
 | [`docs/ACCEPTABLE_USE.md`](docs/ACCEPTABLE_USE.md) | Wire-level behaviour, hard limits, volume math, target selection, prohibited uses, abuse handling, Tor policy |
 

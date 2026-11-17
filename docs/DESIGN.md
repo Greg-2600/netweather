@@ -662,6 +662,8 @@ Every correlation depends on assumptions that can silently break. Check them.
 
 That kind of admission is what keeps the tool trustworthy. A monitor that silently keeps comparing against a baseline from a different network is worse than no monitor.
 
+**Diagnostics.** Self-health failures are only useful if you can act on them. The logging model — levels, the canonical decision record, redaction, the in-memory ring, backpressure, and the debug bundle — is specified in [`LOGGING.md`](LOGGING.md). Two invariants from that document matter here: a stalled log sink must never stall the scheduler (drops are counted, not blocked), and the `reason` string on a transition is identical in the log line and in `state_change.reason`.
+
 ---
 
 ## 8. External intelligence
