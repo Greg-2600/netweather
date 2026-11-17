@@ -313,6 +313,111 @@ func TestLoginRejectsWrongToken(t *testing.T) {
 	}
 }
 
+func TestBoardTileBadgeShowsTheStage(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(
+		board.Target{
+			ID: "1", Name: "Chase", Host: "chase.com", State: board.StateDown,
+			Stage: "tls", ErrorClass: "tls_cert_expired",
+		},
+		board.Target{
+			ID: "2", Name: "United", Host: "united.com", State: board.StateBlocked,
+			Stage: "http", HTTPStatus: 403,
+		},
+	)
+	ts := newServer(t, testToken, m)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if got := strings.Count(page, `data-testid="tile-badge"`); got != 2 {
+		t.Fatalf("badges = %d, want 2", got)
+	}
+	for _, want := range []string{">TLS<", `title="tls_cert_expired"`, ">403<", `title="HTTP 403"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("board missing badge %q", want)
+		}
+	}
+}
+
+func TestBoardFocusHidesHealthyTargets(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/?focus=problems") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if strings.Contains(page, `data-target="chase.com"`) {
+		t.Error("healthy target survived focus mode")
+	}
+	if !strings.Contains(page, `data-target="united.com"`) {
+		t.Error("down target was hidden by focus mode")
+	}
+	// The summary still describes the whole fleet.
+	if !strings.Contains(page, `data-testid="count-up"`) {
+		t.Error("counts stopped describing the whole fleet")
+	}
+	if !strings.Contains(page, "Show all") {
+		t.Error("focus toggle did not offer the way back")
+	}
+}
+
+func TestBoardFocusWithNothingToShow(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(
+		board.Target{ID: "1", Name: "Chase", Host: "chase.com", State: board.StateUp},
+	)
+	ts := newServer(t, testToken, m)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/?focus=problems") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, "No target is down or degraded.") {
+		t.Fatal("focus mode with nothing to show did not say so")
+	}
+}
+
+func TestBoardHealthySectorsStartCollapsed(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	// The airline sector holds a DOWN tile, so it is expanded; the all-up
+	// financial sector is collapsed.
+	if !strings.Contains(page, `data-sector="airline" open`) {
+		t.Fatalf("problem sector is collapsed:\n%s", page)
+	}
+	if strings.Contains(page, `data-sector="financial/banking" open`) {
+		t.Fatal("healthy sector started expanded")
+	}
+}
+
 func TestBoardGroupsBySector(t *testing.T) {
 	t.Parallel()
 

@@ -106,6 +106,11 @@ type TargetRow struct {
 	Target
 	State state.State
 	Since time.Time
+	// Last observation, for the board's corner badge. Empty stage means
+	// "never probed".
+	Stage      string
+	ErrorClass string
+	HTTPStatus int
 }
 
 // TargetsWithState is the board query: every enabled target plus its current
@@ -114,11 +119,17 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 	rows, err := s.reader.QueryContext(ctx, `
 		SELECT t.id, t.host, t.port, t.probe, t.name, t.class,
 		       COALESCE(t.sector, ''), COALESCE(t.country, ''), t.tier, t.interval_s,
-		       COALESCE(ts.state, 'unknown'), COALESCE(ts.since, 0)
+		       COALESCE(ts.state, 'unknown'), COALESCE(ts.since, 0),
+		       COALESCE(p.stage, ''), COALESCE(p.error_class, ''), COALESCE(p.http_status, 0)
 		FROM target t
 		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
+		LEFT JOIN probe p ON p.id = (
+			SELECT p2.id FROM probe p2
+			WHERE p2.target_id = t.id AND p2.vantage_id = ?
+			ORDER BY p2.ts DESC, p2.id DESC LIMIT 1
+		)
 		WHERE t.enabled = 1
-		ORDER BY t.class, COALESCE(t.sector, ''), t.name`, vantageID)
+		ORDER BY t.class, COALESCE(t.sector, ''), t.name`, vantageID, vantageID)
 	if err != nil {
 		return nil, fmt.Errorf("store: targets with state: %w", err)
 	}
@@ -134,6 +145,7 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 			&row.ID, &row.Host, &row.Port, &row.Probe, &row.Name, &row.Class,
 			&row.Sector, &row.Country, &row.Tier, &row.IntervalS,
 			&row.State, &since,
+			&row.Stage, &row.ErrorClass, &row.HTTPStatus,
 		); err != nil {
 			return nil, fmt.Errorf("store: scan target: %w", err)
 		}

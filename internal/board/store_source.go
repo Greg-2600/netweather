@@ -24,14 +24,17 @@ func (s *StoreSource) Snapshot(ctx context.Context) ([]Target, error) {
 	out := make([]Target, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, Target{
-			ID:      r.ID,
-			Name:    r.Name,
-			Host:    r.Host,
-			Class:   r.Class,
-			Sector:  r.Sector,
-			Country: r.Country,
-			State:   r.State,
-			Since:   r.Since,
+			ID:         r.ID,
+			Name:       r.Name,
+			Host:       r.Host,
+			Class:      r.Class,
+			Sector:     r.Sector,
+			Country:    r.Country,
+			State:      r.State,
+			Since:      r.Since,
+			Stage:      r.Stage,
+			ErrorClass: r.ErrorClass,
+			HTTPStatus: r.HTTPStatus,
 		})
 	}
 	return out, nil

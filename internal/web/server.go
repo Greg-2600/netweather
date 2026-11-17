@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -177,16 +178,18 @@ func (s *server) setPaused(w http.ResponseWriter, r *http.Request, paused bool) 
 // --- board -----------------------------------------------------------------
 
 type tileView struct {
-	ID     string
-	Name   string
-	Host   string
-	Sector string
-	State  string
-	Text   string
-	Glyph  string
-	Class  string
-	Since  string
-	Aria   string
+	ID         string
+	Name       string
+	Host       string
+	Sector     string
+	State      string
+	Text       string
+	Glyph      string
+	Class      string
+	Since      string
+	Aria       string
+	Badge      string
+	BadgeTitle string
 }
 
 type countView struct {
@@ -204,6 +207,10 @@ type boardView struct {
 	Counts  []countView
 	Paused  bool
 	Control bool
+	// Focus hides everything that is not DOWN or DEGRADED. The counts still
+	// describe the whole fleet, so the summary does not lie about what is
+	// hidden.
+	Focus bool
 }
 
 // sectorGroupView is one sector's slice of the board. Sectors are the unit the
@@ -216,6 +223,7 @@ type sectorGroupView struct {
 	Worst    string
 	WorstCls string
 	Glyph    string
+	Healthy  bool
 	Targets  []tileView
 }
 
@@ -241,6 +249,14 @@ func groupBySector(targets []board.Target) []sectorGroupView {
 		members := board.Order(byName[name])
 		worst := members[0].State // members are already severity-ordered
 
+		healthy := true
+		for _, t := range members {
+			if t.State != board.StateUp && t.State != board.StateUpReachability {
+				healthy = false
+				break
+			}
+		}
+
 		group := sectorGroupView{
 			Name:     name,
 			Label:    sectorLabel(name),
@@ -248,6 +264,7 @@ func groupBySector(targets []board.Target) []sectorGroupView {
 			Worst:    worst.Text(),
 			WorstCls: worst.CSSClass(),
 			Glyph:    worst.Glyph(),
+			Healthy:  healthy,
 			Targets:  make([]tileView, 0, len(members)),
 		}
 		for _, t := range members {
@@ -302,19 +319,36 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	// Failures first: the grid answers "what is down?", not "what is alphabetical".
 	targets = board.Order(targets)
 
+	// Counts describe the whole fleet even in focus mode: the summary must not
+	// claim there are no healthy targets just because they are hidden.
+	counts := make(map[board.State]int)
+	for _, t := range targets {
+		counts[t.State]++
+	}
+
+	focus := false
+	switch r.URL.Query().Get("focus") {
+	case "problems", "problem":
+		focus = true
+		filtered := make([]board.Target, 0, len(targets))
+		for _, t := range targets {
+			if t.State == board.StateDown || t.State == board.StateDegraded {
+				filtered = append(filtered, t)
+			}
+		}
+		targets = filtered
+	}
+
 	csrf, _ := s.auth.csrfFrom(r)
 	view := boardView{
 		Version: s.deps.Version,
 		CSRF:    csrf,
 		Groups:  groupBySector(targets),
 		Control: s.deps.Control != nil,
+		Focus:   focus,
 	}
 	if s.deps.Control != nil {
 		view.Paused = s.deps.Control.Paused()
-	}
-	counts := make(map[board.State]int)
-	for _, t := range targets {
-		counts[t.State]++
 	}
 
 	for _, st := range []board.State{
@@ -346,11 +380,43 @@ func toTile(t board.Target) tileView {
 		aria += ", since " + since
 	}
 
+	badge, badgeTitle := badgeFor(t)
+	if badge != "" {
+		aria += ", " + badgeTitle
+	}
+
 	return tileView{
 		ID: t.ID, Name: t.Name, Host: t.Host, Sector: t.Sector,
 		State: string(t.State), Text: t.State.Text(), Glyph: t.State.Glyph(),
 		Class: t.State.CSSClass(), Since: since, Aria: aria,
+		Badge: badge, BadgeTitle: badgeTitle,
 	}
+}
+
+// badgeFor is the corner marker from DESIGN.md §10.2: the stage or status that
+// produced the current state, so a tile says "TLS" or "403" at a glance.
+func badgeFor(t board.Target) (string, string) {
+	if t.ErrorClass != "" {
+		switch {
+		case strings.HasPrefix(t.ErrorClass, "dns_"):
+			return "DNS", t.ErrorClass
+		case strings.HasPrefix(t.ErrorClass, "tcp_"):
+			return "TCP", t.ErrorClass
+		case strings.HasPrefix(t.ErrorClass, "tls_"):
+			return "TLS", t.ErrorClass
+		case strings.HasPrefix(t.ErrorClass, "http_"):
+			return "HTTP", t.ErrorClass
+		default:
+			return "ERR", t.ErrorClass
+		}
+	}
+	if t.HTTPStatus > 0 {
+		return strconv.Itoa(t.HTTPStatus), fmt.Sprintf("HTTP %d", t.HTTPStatus)
+	}
+	if t.Stage != "" {
+		return strings.ToUpper(t.Stage), "stage " + t.Stage
+	}
+	return "", ""
 }
 
 type targetView struct {

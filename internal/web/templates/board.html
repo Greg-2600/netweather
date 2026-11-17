@@ -48,22 +48,26 @@
         <b>{{.Count}}</b>
       </span>
       {{end}}
+      <a class="chip focus" href="{{if .Focus}}/{{else}}/?focus=problems{{end}}"
+         data-testid="focus-toggle">
+        {{if .Focus}}Show all{{else}}Focus problems{{end}}
+      </a>
     </section>
 
     <section class="board" aria-label="Target status" data-testid="board">
       {{if not .Groups}}
       <p class="empty" data-testid="empty-board">
-        No targets yet. Add a target file or use the shipped defaults.
+        {{if .Focus}}No target is down or degraded.{{else}}No targets yet. Add a target file or use the shipped defaults.{{end}}
       </p>
       {{end}}
       {{range .Groups}}
-      <section class="sector" data-testid="sector" data-sector="{{.Name}}">
-        <h2 class="sector-title {{.WorstCls}}">
+      <details class="sector" data-testid="sector" data-sector="{{.Name}}" {{if not .Healthy}}open{{end}}>
+        <summary class="sector-title {{.WorstCls}}">
           <span class="glyph" aria-hidden="true">{{.Glyph}}</span>
           <span class="sector-name">{{.Label}}</span>
           <span class="sector-count">{{.Count}}</span>
           <span class="sector-worst">{{.Worst}}</span>
-        </h2>
+        </summary>
         <div class="tiles">
           {{range .Targets}}
           <a class="tile {{.Class}}"
@@ -76,10 +80,11 @@
             <span class="name">{{.Name}}</span>
             <span class="host">{{.Host}}</span>
             <span class="state">{{.Text}}</span>
+            {{if .Badge}}<span class="badge" title="{{.BadgeTitle}}" data-testid="tile-badge">{{.Badge}}</span>{{end}}
           </a>
           {{end}}
         </div>
-      </section>
+      </details>
       {{end}}
     </section>
   </main>

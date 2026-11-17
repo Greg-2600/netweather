@@ -173,6 +173,15 @@ body.auth {
 }
 
 .sector { display: block; }
+.sector > summary { cursor: pointer; list-style: none; }
+.sector > summary::-webkit-details-marker { display: none; }
+.sector > summary::after {
+  content: "▸";
+  margin-left: 0.35rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.sector[open] > summary::after { content: "▾"; }
 
 .sector-title {
   display: flex;
@@ -227,6 +236,27 @@ body.auth {
 .tile .name { font-weight: 600; overflow-wrap: anywhere; }
 .tile .host { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
 .tile .state { font-size: 0.8rem; color: var(--muted); }
+
+/* Corner marker: the stage or status behind the state (DESIGN.md §10.2). */
+.tile .badge {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.45rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.05rem 0.3rem;
+  background: var(--bg);
+}
+
+.chip.focus {
+  margin-left: auto;
+  text-decoration: none;
+  border-style: dashed;
+}
+.chip.focus:hover { color: var(--text); }
 
 /* Shape, not only colour: DESIGN.md 10.7 */
 .tile.state-up { border-left: 4px solid var(--up); }

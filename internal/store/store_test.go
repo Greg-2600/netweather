@@ -311,6 +311,9 @@ func TestTargetsWithState(t *testing.T) {
 	if rows[0].Since.IsZero() {
 		t.Error("since was not populated")
 	}
+	if rows[0].Stage != "http" {
+		t.Errorf("stage = %q, want the last probe's stage", rows[0].Stage)
+	}
 
 	// A target that has never been probed is present and UNKNOWN, not absent.
 	if err := s.UpsertTarget(ctx, store.Target{

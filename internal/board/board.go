@@ -37,6 +37,10 @@ type Target struct {
 	Country string
 	State   State
 	Since   time.Time
+	// Last observation, for the tile's corner badge.
+	Stage      string
+	ErrorClass string
+	HTTPStatus int
 }
 
 // Source returns the current board. It must be safe for concurrent use.
