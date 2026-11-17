@@ -2144,6 +2144,61 @@ func TestEventsHeartbeatOnlyWithoutWatcher(t *testing.T) {
 	}
 }
 
+func TestEventsEmitsIncidentChanges(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(board.Target{ID: "1", Host: "chase.com", State: board.StateUp})
+	incidentChanges := board.NewBroadcast()
+	reader := incidentFixture()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Source:          m,
+			Watcher:         m,
+			IncidentWatcher: incidentChanges,
+			Incidents:       reader,
+			Version:         "test",
+			Commit:          "deadbeef",
+			StartedAt:       time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ts := httptest.NewServer(h)
+	defer ts.Close()
+
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/api/v1/events", nil)
+	req.Header.Set("Authorization", "Bearer "+testToken)
+
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	stream := bufio.NewReader(resp.Body)
+	readEvent(t, stream, "snapshot")
+
+	incidentChanges.Notify()
+
+	data := readEvent(t, stream, "incident")
+	var got struct {
+		ID       string `json:"id"`
+		Headline string `json:"headline"`
+		Scope    string `json:"scope"`
+	}
+	if err := json.Unmarshal([]byte(data), &got); err != nil {
+		t.Fatalf("incident event: %v (%s)", err, data)
+	}
+	if got.ID != "inc-1" || got.Scope != "sector" || got.Headline == "" {
+		t.Fatalf("incident event = %+v", got)
+	}
+}
+
 type fakeFeeds struct {
 	states []store.FeedState
 	events []store.ExternalEvent

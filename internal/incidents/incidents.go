@@ -174,7 +174,7 @@ func Reconcile(ctx context.Context, src Source, sink Reconciler, vantage string,
 
 // Loop evaluates every interval until ctx is done. A single failed evaluation is
 // logged and retried on the next tick; it never stops the loop.
-func Loop(ctx context.Context, src Source, sink Sink, reconciler Reconciler, vantage string, every time.Duration, logger *slog.Logger) {
+func Loop(ctx context.Context, src Source, sink Sink, reconciler Reconciler, vantage string, every time.Duration, logger *slog.Logger, notify func()) {
 	if every <= 0 {
 		every = 5 * time.Minute
 	}
@@ -216,6 +216,12 @@ func Loop(ctx context.Context, src Source, sink Sink, reconciler Reconciler, van
 			if closed > 0 {
 				logger.Info("incidents closed",
 					"event", "incidents_closed", "component", "incidents", "count", closed)
+			}
+			// Waking the stream after either change means an opening incident is
+			// visible before the next five-minute tick, which is the point of a
+			// live dashboard.
+			if (opened || closed > 0) && notify != nil {
+				notify()
 			}
 		}
 	}

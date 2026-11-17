@@ -108,6 +108,9 @@ type Deps struct {
 	Source board.Source
 	// Watcher drives the SSE stream. Nil keeps /events heartbeat-only.
 	Watcher board.Watcher
+	// IncidentWatcher signals incident changes on the same stream. Nil disables
+	// incident events without affecting state events.
+	IncidentWatcher board.Watcher
 	// Control is the pause/resume switch.
 	Control Control
 	// Probes reads recent observations for one target. Nil disables the route.
@@ -1347,6 +1350,36 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	ch, cancel := s.deps.Watcher.Subscribe()
 	defer cancel()
 
+	var incidentCh <-chan struct{}
+	if s.deps.IncidentWatcher != nil {
+		incCh, incCancel := s.deps.IncidentWatcher.Subscribe()
+		defer incCancel()
+		incidentCh = incCh
+	}
+
+	emitIncidents := func(ctx context.Context) bool {
+		if s.deps.Incidents == nil {
+			return true
+		}
+		open, err := s.deps.Incidents.Incidents(ctx, true, 50)
+		if err != nil {
+			s.deps.Logger.Warn("incident stream read failed",
+				"event", "incident_stream_failed", "component", "http", "error", err)
+			return true
+		}
+		for _, inc := range open {
+			if !writeState("incident", incidentEvent{
+				ID: inc.ID, Verdict: inc.Verdict, Scope: inc.Scope,
+				ScopeValue: inc.ScopeValue, Headline: inc.Headline,
+				Confidence: inc.Confidence,
+				OpenedAt:   inc.OpenedAt.UTC().Format(time.RFC3339),
+			}) {
+				return false
+			}
+		}
+		return true
+	}
+
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
@@ -1356,6 +1389,14 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-ticker.C:
 			if _, err := io.WriteString(w, ": heartbeat\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-incidentCh:
+			// Open incidents are re-sent whole; a client upserts by id. A close
+			// is not sent as an event because the stream carries current state,
+			// not a diff, and guessing would be worse than a refetch.
+			if !emitIncidents(r.Context()) {
 				return
 			}
 			flusher.Flush()
@@ -1377,6 +1418,17 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+// incidentEvent is the wire shape for an incident on the stream.
+type incidentEvent struct {
+	ID         string `json:"id"`
+	Verdict    string `json:"verdict"`
+	Scope      string `json:"scope"`
+	ScopeValue string `json:"scope_value,omitempty"`
+	Headline   string `json:"headline"`
+	Confidence string `json:"confidence"`
+	OpenedAt   string `json:"opened_at"`
 }
 
 // sseStates is the board keyed by host, because that is the stable identity a

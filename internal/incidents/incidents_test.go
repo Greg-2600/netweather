@@ -260,7 +260,7 @@ func TestLoopStopsOnCancel(t *testing.T) {
 	sink := newSink()
 
 	go func() {
-		incidents.Loop(ctx, &fakeSource{obs: airlineFailures(5, 6)}, sink, sink, "local", time.Millisecond, nil)
+		incidents.Loop(ctx, &fakeSource{obs: airlineFailures(5, 6)}, sink, sink, "local", time.Millisecond, nil, nil)
 		close(done)
 	}()
 

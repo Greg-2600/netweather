@@ -167,6 +167,9 @@ func serve(lg *logging.Logger) error {
 	}
 
 	changes := board.NewBroadcast()
+	// One signal stream for the board, one for the incident log: a state change
+	// and an incident opening are different events even when they share a tick.
+	incidentChanges := board.NewBroadcast()
 	source := &board.StoreSource{Store: st, Vantage: "local", Changes: changes}
 
 	ag := newAgent(targets, st, lg)
@@ -231,6 +234,7 @@ func serve(lg *logging.Logger) error {
 		Exporter:        st,
 		Feeds:           st,
 		Debug:           scopes,
+		IncidentWatcher: incidentChanges,
 		Metrics:         metricsHandler,
 		Vantage:         "local",
 		Fallback:        ui,
@@ -266,7 +270,7 @@ func serve(lg *logging.Logger) error {
 			incidentInterval = d
 		}
 	}
-	go incidents.Loop(ctx, st, st, st, "local", incidentInterval, lg.Logger)
+	go incidents.Loop(ctx, st, st, st, "local", incidentInterval, lg.Logger, incidentChanges.Notify)
 	go anomaly.Loop(ctx, st, st, "local", incidentInterval, lg.Logger)
 	go maintenanceLoop(ctx, st, lg, selfRunner, scopes)
 	go configLoop(ctx, st, ag, lg.Logger)
