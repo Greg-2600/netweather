@@ -42,6 +42,7 @@ type Target struct {
 	Host       string `yaml:"host"`
 	Port       int    `yaml:"port"`
 	Probe      string `yaml:"probe"`
+	QName      string `yaml:"qname"`
 	Class      string `yaml:"class"`
 	Sector     string `yaml:"sector"`
 	Country    string `yaml:"country"`
@@ -224,6 +225,21 @@ func validateTarget(t *Target) error {
 
 	if t.Tier < 0 || t.Tier > 3 {
 		return fmt.Errorf("tier %d must be 0-3", t.Tier)
+	}
+
+	// qname is the name a DNS anchor asks its server about. It is required for
+	// dns targets and meaningless for every other instrument, so a stray value
+	// is a config mistake rather than something to ignore.
+	t.QName = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(t.QName), "."))
+	if t.Probe == "dns" {
+		if t.QName == "" {
+			return errors.New("dns targets require qname")
+		}
+		if !validHostname(t.QName) {
+			return fmt.Errorf("invalid qname %q", t.QName)
+		}
+	} else if t.QName != "" {
+		return fmt.Errorf("qname is only valid for dns targets, not %q", t.Probe)
 	}
 
 	interval := t.Interval()

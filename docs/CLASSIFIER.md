@@ -56,12 +56,12 @@ A lone failure from a corroborating vantage is not even a signal. Tor exits are 
 
 | Class | Condition | Candidate state | Notes |
 |---|---|---|---|
-| `dns_nxdomain` | RCODE 3 | DOWN | **Must** be corroborated (§3.2) |
-| `dns_nodata` | RCODE 0, 0 answers | DOWN | Apex exists but no A/AAAA |
-| `dns_servfail` | RCODE 2 | DOWN | Could be resolver, not target |
-| `dns_refused` | RCODE 5 | DOWN | |
-| `dns_timeout` | no response in 3s | DOWN | Retry once with TCP/53 |
-| `dns_divergence` | answer outside that resolver's own baseline | **DNS_ANOMALY**; `TAMPER` only with a second signal | See §3.2 |
+| `dns_nxdomain` | RCODE 3 | DOWN | **Implemented.** Must be corroborated (§3.2) |
+| `dns_nodata` | RCODE 0, 0 answers | DOWN | **Implemented.** Apex exists but no A/AAAA |
+| `dns_servfail` | RCODE 2 | DOWN | Specified; the Go resolver surfaces it as `dns_error` today |
+| `dns_refused` | RCODE 5 | DOWN | Specified; likewise `dns_error` today |
+| `dns_timeout` | no response in the target timeout | DOWN | **Implemented.** Default 5s |
+| `dns_divergence` | answer outside that resolver's own baseline | **DNS_ANOMALY**; `TAMPER` only with a second signal | Specified; see §3.2 |
 
 ### 3.2 DNS divergence — the tamper detector
 

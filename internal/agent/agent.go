@@ -29,8 +29,9 @@ type Target struct {
 	Name       string
 	Host       string
 	URL        string
-	Address    string // host:port for tls/tcp
-	Instrument string // http, tls, tcp
+	Address    string // host:port for tls/tcp/dns
+	Query      string // qname for dns
+	Instrument string // http, tls, tcp, dns
 	Vantage    string
 	Tier       schedule.Tier
 	Interval   time.Duration
@@ -50,6 +51,7 @@ type Instruments struct {
 	HTTP *probe.HTTP
 	TLS  *probe.TLS
 	TCP  *probe.TCP
+	DNS  *probe.DNS
 }
 
 // Run executes the instrument named by the target.
@@ -66,6 +68,12 @@ func (i Instruments) Run(ctx context.Context, t Target) probe.Result {
 			return probe.Result{Err: fmt.Errorf("agent: tcp instrument not configured")}
 		}
 		r := i.TCP.Do(ctx, t.Address)
+		return probe.Result{Latency: r.Latency, ErrorClass: r.ErrorClass, Err: r.Err}
+	case "dns":
+		if i.DNS == nil {
+			return probe.Result{Err: fmt.Errorf("agent: dns instrument not configured")}
+		}
+		r := i.DNS.Do(ctx, t.Address, t.Query)
 		return probe.Result{Latency: r.Latency, ErrorClass: r.ErrorClass, Err: r.Err}
 	default:
 		if i.HTTP == nil {

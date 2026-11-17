@@ -370,6 +370,7 @@ func TestInstrumentsDispatch(t *testing.T) {
 	inst := agent.Instruments{
 		TLS: &probe.TLS{Dial: boom},
 		TCP: &probe.TCP{Dial: boom},
+		DNS: probe.NewDNS(boom),
 	}
 
 	if got := inst.Run(context.Background(), agent.Target{Instrument: "tcp", Address: "x.example:443"}); got.ErrorClass != "tcp_refused" {
@@ -378,9 +379,14 @@ func TestInstrumentsDispatch(t *testing.T) {
 	if got := inst.Run(context.Background(), agent.Target{Instrument: "tls", Address: "x.example:443"}); got.ErrorClass != "tcp_refused" {
 		t.Errorf("tls dispatch: class = %q", got.ErrorClass)
 	}
+	if got := inst.Run(context.Background(), agent.Target{
+		Instrument: "dns", Address: "x.example:53", Query: "example.com",
+	}); got.ErrorClass != "dns_error" {
+		t.Errorf("dns dispatch: class = %q", got.ErrorClass)
+	}
 
 	empty := agent.Instruments{}
-	for _, instrument := range []string{"tcp", "tls", "http"} {
+	for _, instrument := range []string{"tcp", "tls", "dns", "http"} {
 		if got := empty.Run(context.Background(), agent.Target{Instrument: instrument}); got.Err == nil {
 			t.Errorf("%s: a missing instrument must be an error, not a silent success", instrument)
 		}

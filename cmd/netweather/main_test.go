@@ -195,7 +195,7 @@ targets:
 	}
 }
 
-func TestLoadTargetsRejectsUnimplementedProbe(t *testing.T) {
+func TestLoadTargetsAcceptsADNSAnchor(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "dns.yaml")
 	yaml := `version: 1
 targets:
@@ -203,8 +203,10 @@ targets:
     host: 198.41.0.4
     port: 53
     probe: dns
+    qname: example.com
     class: network
     tier: 3
+    interval_s: 120
 `
 	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
 		t.Fatal(err)
@@ -213,6 +215,45 @@ targets:
 
 	ctx := context.Background()
 	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "dns.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+
+	got, err := loadTargets(ctx, st)
+	if err != nil {
+		t.Fatalf("loadTargets: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("targets = %d", len(got))
+	}
+	target := got[0]
+	if target.Instrument != "dns" || target.Address != "198.41.0.4:53" || target.Query != "example.com" {
+		t.Fatalf("dns target = %+v", target)
+	}
+	if target.URL != "" {
+		t.Fatalf("dns target should not carry an HTTP URL: %q", target.URL)
+	}
+}
+
+func TestLoadTargetsRejectsUnimplementedProbe(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ntp.yaml")
+	yaml := `version: 1
+targets:
+  - name: Clock
+    host: time.example
+    port: 123
+    probe: ntp
+    class: reference
+    tier: 0
+`
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NETWEATHER_CONFIG", path)
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "ntp.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -39,6 +39,7 @@ targets:
     host: 198.41.0.4
     port: 53
     probe: dns
+    qname: example.com
     class: network
     tier: 3
     interval_s: 120
@@ -102,6 +103,9 @@ func TestLoadRejects(t *testing.T) {
 		{"header value without name", "version: 1\ntargets:\n  - name: x\n    host: x.com\n    port: 443\n    probe: http\n    class: service\n    expect:\n      header_value: green\n", "header_name"},
 		{"bad regex", "version: 1\ntargets:\n  - name: x\n    host: x.com\n    port: 443\n    probe: http\n    class: service\n    expect:\n      body_regex: \"(\"\n", "body_regex"},
 		{"icmp with a port", "version: 1\ntargets:\n  - name: x\n    host: x.com\n    port: 443\n    probe: icmp\n    class: service\n", "port 0"},
+		{"dns without qname", "version: 1\ntargets:\n  - name: anchor\n    host: 198.41.0.4\n    port: 53\n    probe: dns\n    class: network\n    tier: 3\n", "qname"},
+		{"dns with a bad qname", "version: 1\ntargets:\n  - name: anchor\n    host: 198.41.0.4\n    port: 53\n    probe: dns\n    qname: \"not a name\"\n    class: network\n    tier: 3\n", "qname"},
+		{"qname on a non-dns target", "version: 1\ntargets:\n  - name: x\n    host: x.com\n    port: 443\n    probe: http\n    qname: example.com\n    class: service\n", "only valid for dns"},
 	}
 
 	for _, tc := range tests {
@@ -209,6 +213,37 @@ func TestMissingFile(t *testing.T) {
 
 	if _, err := config.Load(filepath.Join(t.TempDir(), "absent.yaml")); err == nil {
 		t.Fatal("missing file should be an error")
+	}
+}
+
+func TestLoadAcceptsADNSAnchor(t *testing.T) {
+	t.Parallel()
+
+	path := write(t, `version: 1
+targets:
+  - name: Root server A
+    host: 198.41.0.4
+    port: 53
+    probe: dns
+    qname: Example.COM.
+    class: network
+    tier: 3
+    interval_s: 120
+`)
+
+	f, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	got := f.Targets[0]
+	if got.Host != "198.41.0.4" || got.Port != 53 || got.Probe != "dns" {
+		t.Fatalf("target = %+v", got)
+	}
+	if got.QName != "example.com" {
+		t.Fatalf("qname = %q, want the normalised name", got.QName)
+	}
+	if got.IntervalS != 120 {
+		t.Fatalf("interval = %d", got.IntervalS)
 	}
 }
 

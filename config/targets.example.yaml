@@ -45,10 +45,13 @@ targets:
       status: [200]
       title_contains: "Wikipedia"
 
-  # An anchor may use an IP literal; a service target may not.
-  # - name: Root server A
-  #   host: 198.41.0.4
-  #   port: 53
-  #   probe: dns
-  #   class: network
-  #   tier: 3
+  # An anchor may use an IP literal; a service target may not. A dns target
+  # asks its listed server about qname rather than using the host resolver.
+  - name: Root server A
+    host: 198.41.0.4
+    port: 53
+    probe: dns
+    qname: example.com
+    class: network
+    tier: 3
+    interval_s: 120

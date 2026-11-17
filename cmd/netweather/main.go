@@ -269,6 +269,8 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 			url = targetURL(t.Host, t.Port)
 		case "tls", "tcp":
 			address = net.JoinHostPort(t.Host, strconv.Itoa(t.Port))
+		case "dns":
+			address = net.JoinHostPort(t.Host, strconv.Itoa(t.Port))
 		default:
 			return nil, fmt.Errorf("target %s: probe %q is not implemented yet", t.Host, t.Probe)
 		}
@@ -298,6 +300,7 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 			Host:       t.Host,
 			URL:        url,
 			Address:    address,
+			Query:      t.QName,
 			Instrument: t.Probe,
 			Vantage:    "local",
 			Tier:       schedule.Tier(t.Tier),
@@ -449,6 +452,7 @@ func newAgent(targets []agent.Target, st *store.Store, lg *logging.Logger) *agen
 		HTTP: probe.NewHTTP(dialer),
 		TLS:  probe.NewTLS(dialer),
 		TCP:  probe.NewTCP(dialer),
+		DNS:  probe.NewDNS(dialer.DialContext),
 	}
 	ag := agent.New(targets, runner, st)
 	ag.Logger = lg.Logger
