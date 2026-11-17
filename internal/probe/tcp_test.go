@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Greg-2600/netweather/internal/netx"
 	"github.com/Greg-2600/netweather/internal/probe"
 )
 
@@ -25,6 +26,8 @@ func TestClassifyDialError(t *testing.T) {
 		{"dns other", &net.DNSError{Err: "servfail"}, "dns_error"},
 		{"refused", &net.OpError{Op: "dial", Err: errors.New("refused")}, "tcp_refused"},
 		{"reset", &net.OpError{Op: "read", Err: errors.New("reset")}, "tcp_reset"},
+		{"blocked address", netx.ErrBlocked, "policy_blocked"},
+		{"blocked port", netx.ErrBlockedPort, "policy_blocked_port"},
 		{"other", errors.New("boom"), "tcp_error"},
 	}
 

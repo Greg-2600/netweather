@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net"
+
+	"github.com/Greg-2600/netweather/internal/netx"
 )
 
 // DialFunc is the connect seam shared by the instruments. It matches
@@ -19,6 +21,16 @@ func ClassifyDialError(err error) string {
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "tcp_timeout"
+	}
+
+	// A destination this monitor's own policy refuses is not a target outage:
+	// the probe never reached the network. Naming it lets the classifier say
+	// "unmeasurable" rather than DOWN (THREAT_MODEL.md T16).
+	switch {
+	case errors.Is(err, netx.ErrBlockedPort):
+		return "policy_blocked_port"
+	case errors.Is(err, netx.ErrBlocked):
+		return "policy_blocked"
 	}
 
 	var dnsErr *net.DNSError

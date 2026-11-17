@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Greg-2600/netweather/internal/netx"
 	"github.com/Greg-2600/netweather/internal/probe"
 )
 
@@ -216,6 +217,8 @@ func TestClassifyError(t *testing.T) {
 		{"deadline", context.DeadlineExceeded, "http_timeout"},
 		{"dial", &net.OpError{Op: "dial"}, "tcp_refused"},
 		{"read", &net.OpError{Op: "read"}, "tcp_reset"},
+		{"blocked address", netx.ErrBlocked, "policy_blocked"},
+		{"blocked port", netx.ErrBlockedPort, "policy_blocked_port"},
 		{"other", errors.New("boom"), "http_error"},
 	}
 

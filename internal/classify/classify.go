@@ -174,6 +174,11 @@ func transport(t Expected, r Response) Result {
 			return Result{state.Unknown, High, class + ": one resolver disagrees with its own baseline"}
 		}
 		return Result{state.Down, Medium, class}
+	case class == "policy_blocked", class == "policy_blocked_port":
+		// The destination is refused by this monitor's own outbound policy, so
+		// the probe never reached the network. That measures us, not the
+		// target; never let a refused address turn into DOWN (THREAT_MODEL T16).
+		return Result{state.Unmeasurable, High, class + ": destination refused by the outbound policy"}
 	case strings.HasPrefix(class, "tcp_"), strings.HasPrefix(class, "tls_"), class == "icmp_unreachable":
 		return Result{state.Down, High, class}
 	default:

@@ -166,7 +166,7 @@ This is the highest-severity area, because a mistake here turns the operator's I
 
 | ID | Threat | Mitigation | Status |
 |---|---|---|---|
-| T16 | Target resolves to a private address | Resolve first, reject RFC1918, loopback, link-local, CGNAT (`100.64/10`), multicast, unspecified, IPv6 ULA, `::1`, `169.254.169.254`, and IPv4-mapped v6 forms | Enforced |
+| T16 | Target resolves to a private address | Resolve first, reject RFC1918, loopback, link-local, CGNAT (`100.64/10`), multicast, unspecified, IPv6 ULA, `::1`, `169.254.169.254`, and IPv4-mapped v6 forms | Enforced; a refused destination is `UNMEASURABLE` with `policy_blocked`, never `DOWN` |
 | T17 | DNS rebinding between check and connect | Dial the **validated IP literal**, not the hostname; keep SNI and `Host` header as the original name; revalidate on every new connection, including pool reuse after TTL | Enforced |
 | T18 | Redirect to a private address or a new port | Every hop revalidated: scheme, host, resolved IPs, port allowlist; max 5 hops; cross-host redirects re-resolve | Enforced |
 | T19 | Redirect to a different port | Port allowlist applies after redirect, not just to the configured target | Enforced |

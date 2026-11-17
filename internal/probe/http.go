@@ -207,6 +207,16 @@ func ClassifyError(err error) string {
 		return ""
 	}
 
+	// A destination this monitor's own outbound policy refuses is not a target
+	// outage. The HTTP client wraps it, so this runs before the TLS and net
+	// cases and matches through the wrapping (THREAT_MODEL.md T16).
+	switch {
+	case errors.Is(err, netx.ErrBlockedPort):
+		return "policy_blocked_port"
+	case errors.Is(err, netx.ErrBlocked):
+		return "policy_blocked"
+	}
+
 	var invalid x509.CertificateInvalidError
 	if errors.As(err, &invalid) {
 		if invalid.Reason == x509.Expired {

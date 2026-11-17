@@ -461,3 +461,22 @@ func TestDNSDivergenceIsAdvisory(t *testing.T) {
 		t.Fatalf("reason = %q, want the divergence named", got.Reason)
 	}
 }
+
+func TestPolicyRefusalIsUnmeasurable(t *testing.T) {
+	t.Parallel()
+
+	for _, class := range []string{"policy_blocked", "policy_blocked_port"} {
+		got := classify.Decide(classify.Expected{}, classify.Response{
+			Err: errors.New("destination blocked"), ErrorClass: class,
+		})
+		if got.State != state.Unmeasurable {
+			t.Errorf("%s state = %s, want unmeasurable", class, got.State)
+		}
+		if got.Confidence != classify.High {
+			t.Errorf("%s confidence = %s, want high", class, got.Confidence)
+		}
+		if !strings.Contains(got.Reason, "outbound policy") {
+			t.Errorf("%s reason = %q, want the policy named", class, got.Reason)
+		}
+	}
+}

@@ -126,14 +126,16 @@ Baselines are per-resolver, per-target, rebuilt on every answer, and reset when 
 
 ### 3.3 TCP
 
-| Class | Condition |
-|---|---|
-| `tcp_refused` | RST on connect |
-| `tcp_timeout` | no SYN-ACK within timeout |
-| `tcp_reset` | RST mid-stream |
-| `tcp_unreachable` | ICMP unreachable |
+| Class | Condition | Candidate state |
+|---|---|---|
+| `tcp_refused` | RST on connect | DOWN |
+| `tcp_timeout` | no SYN-ACK within timeout | DOWN |
+| `tcp_reset` | RST mid-stream | DOWN |
+| `tcp_unreachable` | ICMP unreachable | DOWN |
+| `policy_blocked` | destination refused by this monitor's outbound policy | **UNMEASURABLE** |
+| `policy_blocked_port` | destination port refused by the outbound policy | **UNMEASURABLE** |
 
-All → DOWN.
+Everything except the two policy classes is DOWN. A policy refusal means the probe never left the host, so it measures the monitor, not the target; calling it DOWN would blame a site for an address the operator did not allow (`THREAT_MODEL.md` T16).
 
 ### 3.4 TLS
 
