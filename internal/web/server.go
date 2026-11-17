@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/board"
+	"github.com/Greg-2600/netweather/internal/ihi"
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/streamlimit"
@@ -72,6 +73,7 @@ func New(deps Deps) (http.Handler, error) {
 	mux.HandleFunc("/coverage", s.requireSession(http.HandlerFunc(s.handleCoverage)).ServeHTTP)
 	mux.HandleFunc("/world", s.requireSession(http.HandlerFunc(s.handleWorld)).ServeHTTP)
 	mux.HandleFunc("/corridors", s.requireSession(http.HandlerFunc(s.handleCorridors)).ServeHTTP)
+	mux.HandleFunc("/ihi", s.requireSession(http.HandlerFunc(s.handleIHI)).ServeHTTP)
 	mux.HandleFunc("/diagnostics", s.requireSession(http.HandlerFunc(s.handleDiagnostics)).ServeHTTP)
 	mux.HandleFunc("/icon/", s.requireSession(http.HandlerFunc(s.handleIcon)).ServeHTTP)
 	mux.HandleFunc("/pause", s.requireSession(http.HandlerFunc(s.handlePause)).ServeHTTP)
@@ -275,6 +277,55 @@ type boardView struct {
 	// hard stop, so the board names the reason rather than showing old tiles as
 	// if they were fresh (ACCEPTABLE_USE.md §4).
 	BudgetNote string
+	// Health is the Internet Health Index summary (DESIGN.md §11). OK is false
+	// when nothing could be scored, and the chip then states that instead of
+	// rendering a zero as health.
+	Health healthView
+}
+
+// healthView is the index as a page renders it. Weights are percentages and
+// timestamps are short, because the number is a summary and the detail belongs
+// on /ihi.
+type healthView struct {
+	OK      bool
+	Score   int
+	Parts   []healthPartView
+	Dropped []healthDroppedView
+	Note    string
+}
+
+type healthPartView struct {
+	Name   string
+	Score  int
+	Weight string
+	At     string
+}
+
+type healthDroppedView struct {
+	Name   string
+	Reason string
+}
+
+// toHealthView formats one index for both the board chip and the page.
+func toHealthView(index ihi.Index) healthView {
+	view := healthView{OK: len(index.Parts) > 0, Score: int(index.Score + 0.5)}
+	if !view.OK {
+		view.Note = "No component could be scored yet."
+	}
+	for _, part := range index.Parts {
+		view.Parts = append(view.Parts, healthPartView{
+			Name:   part.Name,
+			Score:  int(part.Score + 0.5),
+			Weight: fmt.Sprintf("%.0f%%", part.Weight*100),
+			At:     part.At.UTC().Format("15:04"),
+		})
+	}
+	for _, dropped := range index.Dropped {
+		view.Dropped = append(view.Dropped, healthDroppedView{
+			Name: dropped.Name, Reason: dropped.Reason,
+		})
+	}
+	return view
 }
 
 // feedView is one feed's health on the board. Status is text, not only colour.
@@ -842,6 +893,12 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 				})
 			}
 		}
+	}
+
+	// The index is a summary with its parts attached. A missing builder omits
+	// the chip; a builder with nothing scoreable says so instead of showing 0.
+	if s.deps.Health != nil {
+		view.Health = toHealthView(s.deps.Health.Build(r.Context()))
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -2104,6 +2161,39 @@ type diagnosticsRecord struct {
 	Level   string
 	Message string
 	Attrs   string
+}
+
+// ihiView is the /ihi page: the number, its parts, and what was left out.
+type ihiView struct {
+	Version string
+	CSRF    string
+	Health  healthView
+	Note    string
+}
+
+// handleIHI is the page behind the board's index chip. It carries the same
+// number plus the weights, timestamps, and dropped components, because
+// DESIGN.md §11 says the components are always one click away.
+func (s *server) handleIHI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	csrf, _ := s.auth.csrfFrom(r)
+	view := ihiView{Version: s.deps.Version, CSRF: csrf}
+
+	if s.deps.Health == nil {
+		view.Note = "The health index is not configured on this instance."
+	} else {
+		view.Health = toHealthView(s.deps.Health.Build(r.Context()))
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+	_ = s.tmpl.ExecuteTemplate(w, "ihi.html", view)
 }
 
 func (s *server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {

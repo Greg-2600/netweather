@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/board"
+	"github.com/Greg-2600/netweather/internal/ihi"
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/streamlimit"
@@ -47,6 +48,9 @@ type Deps struct {
 	CountryEvents CountryEvents
 	// Corridors supplies the corridor page. Nil shows a note, not an empty page.
 	Corridors CorridorStatus
+	// Health computes the Internet Health Index for the board chip and the
+	// /ihi page. Nil omits both rather than showing a zero.
+	Health HealthIndex
 	// DNSObservations supplies the board's collapsed DNS divergence strip.
 	DNSObservations DNSObservations
 	// Logs supplies the ring and logging setup for the diagnostics page and
@@ -159,6 +163,12 @@ type CountryEvents interface {
 type CorridorStatus interface {
 	CorridorStatus(ctx context.Context) ([]store.CorridorStatus, error)
 	CorridorSeries(ctx context.Context, since time.Time) (map[string][]store.CorridorSample, error)
+}
+
+// HealthIndex computes the Internet Health Index (DESIGN.md §11). Nil omits the
+// board chip and the page rather than rendering a zero as if it were health.
+type HealthIndex interface {
+	Build(ctx context.Context) ihi.Index
 }
 
 // DNSObservations supplies the board's collapsed DNS divergence strip. Nil

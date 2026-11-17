@@ -910,7 +910,7 @@ Reconnect is automatic: the server sends `retry: 3000`, and the badge distinguis
 
 ## 11. Internet Health Index (IHI)
 
-A single 0–100 number, with its components always shown underneath. Never the only thing on screen.
+A single 0-100 number, with its components always shown underneath. Never the only thing on screen.
 
 | Component | Weight | Source |
 |---|---|---|
@@ -923,11 +923,21 @@ A single 0–100 number, with its components always shown underneath. Never the 
 Rules:
 
 - Stale components are dropped and remaining weights renormalised
-- **The own-health component is weighted by `coverage`.** A scope below 50% measurable is dropped entirely, exactly like a stale feed; a scope at 60% measurable contributes at 60% weight. Without this, a bot-wall rollout silently raises the index — the tool reads *more* healthy as it sees *less*
+- **The own-health component is weighted by `coverage`.** A scope below 50% measurable is dropped entirely, exactly like a stale feed; a scope at 60% measurable contributes at 60% weight. Without this, a bot-wall rollout silently raises the index - the tool reads *more* healthy as it sees *less*
 - IHI never triggers anything on its own - it is a summary, not a detector
 - The components are always one click away, with their timestamps
 
----
+**Implemented:** `internal/ihi` computes the index per request, so it cannot go stale between ticks. The board carries an `IHI nn` chip linking to `/ihi`, which lists every scored component with its score, effective weight, and evidence time, then every dropped component with the reason it was dropped; `GET /api/v1/ihi` serves the same shape.
+
+- **Own health** is the share of judgeable targets that are up (`up` and `up_reachability` count 1, `degraded` counts 0.5, `down` counts 0; `blocked`, `unknown`, `config_error`, and `unmeasurable` are not evidence) times the measurable share of the fleet. It is a live health share, not a stored baseline comparison; the baseline detector remains `anomaly` (7.2) and this component deliberately does not duplicate it.
+- **External outage severity** is the highest severity among feed events in the last 24 hours, scored `100 x (1 - severity)`; no event is a current 100, because the feeds answered and had nothing to report.
+- **BGP stability** is the same computation restricted to events whose kind names a hijack or a leak.
+- **Corridor stability** is the share of configured corridors with no open step change. A deployment with no corridors drops the component rather than scoring 100.
+- **Tamper signals** starts at 100 and loses 20 per DNS divergence verdict (`TAMPER` or `DNS_ANOMALY`) in the last 24 hours, floored at 0.
+- The component timestamp is when its evidence was read, except the corridor component, which carries the newest sample so a dead sampler drops it as stale. The TTL is one hour.
+- **Deliberately not included: cert-issuer changes.** They are detected, pinned, and shown in the drawer, but they are stored as pins rather than as a dated signal series, so counting them over a window would be inventing a history the database does not keep. The tamper component measures DNS divergence only, and this paragraph is the reason.
+- The component weights live in `internal/ihi` and sum to 1; a change there changes the documented table too.
+
 
 ## 12. Storage and retention
 

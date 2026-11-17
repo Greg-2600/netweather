@@ -26,6 +26,7 @@ Honesty first, because a spec that implies more than the binary does is worse th
 | `GET /api/v1/targets/{id}/probes` | **implemented** - recent raw observations for one target |
 | `GET /api/v1/incidents`, `GET /api/v1/incidents/{id}` | **implemented** - the incident log and ranked attribution |
 | `GET /api/v1/corridors` | **implemented** - configured path pairs with their newest sample and open step change |
+| `GET /api/v1/ihi` | **implemented** - the Internet Health Index with its components and what was dropped (`DESIGN.md` §11) |
 | `GET /metrics` | **implemented** - aggregate Prometheus text; off unless `NETWEATHER_METRICS=true`; bearer auth when a token is set |
 | `GET /events` | **implemented** - the UI's SSE stream; session cookie auth, not bearer. The API-facing counterpart is `GET /api/v1/events` (§6.17) |
 | Everything else in §7 | **implemented** — the section is kept as the action/index surface, not a backlog |
@@ -202,7 +203,7 @@ Auth: bearer.
     "auth": "bearer",
     "schema_version": 20,
     "egress": {"used_bytes": 1048576, "limit_bytes": 2147483648, "exhausted": false},
-    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "annotations", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace", "corridors"],
+    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "annotations", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace", "corridors", "ihi"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -792,6 +793,32 @@ Auth: bearer. The configured corridors (DESIGN.md §9) with each one's newest sa
 - `ok: false` means the last sample got no reply from either endpoint; it is not a verdict about a target.
 - This is evidence about a path. It never changes a target's state and never opens a target incident.
 - `503` when no corridor reader is configured, rather than an empty list that reads as "all normal". A configured instance with no corridors returns `200` and an empty list.
+
+### 6.23 `GET /api/v1/ihi` - stable
+
+Auth: bearer. The Internet Health Index (`DESIGN.md` §11): one 0-100 number with every component that produced it, and every component that was left out and why.
+
+```json
+{
+  "data": {
+    "score": 82.4,
+    "parts": [
+      {"name": "Own health", "score": 90, "weight": 0.7, "at": "2026-11-17T12:00:00Z"},
+      {"name": "External outage severity", "score": 60, "weight": 0.3, "at": "2026-11-17T12:00:00Z"}
+    ],
+    "dropped": [
+      {"name": "BGP stability", "reason": "stale"},
+      {"name": "Corridor stability", "reason": "no corridors configured"}
+    ]
+  },
+  "meta": {"request_id": "…"}
+}
+```
+
+- `weight` is the effective share after coverage weighting and renormalisation, so `parts[].weight` sums to 1 whenever `parts` is non-empty.
+- `score: 0` with an empty `parts` means "nothing could be scored", not "the internet is down". A client must check `parts` before rendering the number as health.
+- A dropped component is always named with its reason: `stale`, `not available`, `no weight`, `no timestamp`, `no score`, `coverage below 50%`, `no corridors configured`, `no judgeable targets`, or `unavailable: <error>`.
+- `503` when the index is not configured. The index changes nothing: it is a summary, never a detector.
 
 ---
 

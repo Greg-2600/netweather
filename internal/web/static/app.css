@@ -602,3 +602,21 @@ table.probes td.detail { max-width: 18rem; overflow-wrap: anywhere; }
   border-color: rgba(255, 156, 151, 0.55);
   color: #ff9c97;
 }
+/* --- Internet Health Index (DESIGN.md 11) -------------------------------- */
+
+.ihi-chip {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent, #7ee2a8);
+}
+
+.ihi-score {
+  font-size: 1.15rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.ihi-score b {
+  font-size: 2rem;
+  font-variant-numeric: tabular-nums;
+}

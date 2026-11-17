@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Internet Health Index - netweather</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="/">netweather</a>
+    <a class="nav" href="/world">World</a>
+    <a class="nav" href="/corridors">Corridors</a>
+    <a class="nav" href="/coverage">Coverage</a>
+    <a class="nav" href="/incidents">Incidents</a>
+    <span class="muted small" data-testid="version">{{.Version}}</span>
+  </header>
+
+  <main>
+    <h1 class="page-title">Internet Health Index</h1>
+
+    {{if .Note}}
+    <p class="muted" data-testid="ihi-note">{{.Note}}</p>
+    {{else}}
+    <p class="ihi-score" data-testid="ihi-score" data-score="{{.Health.Score}}">
+      IHI <b>{{.Health.Score}}</b>
+      <span class="muted small">of 100, higher is healthier</span>
+    </p>
+    {{if not .Health.OK}}
+    <p class="muted" data-testid="ihi-empty">{{.Health.Note}}</p>
+    {{end}}
+
+    {{if .Health.Parts}}
+    <h2 class="section-title">Components</h2>
+    <table class="probes" data-testid="ihi-parts">
+      <thead><tr><th>Component</th><th>Score</th><th>Weight</th><th>Evidence</th></tr></thead>
+      <tbody>
+        {{range .Health.Parts}}
+        <tr data-testid="ihi-part">
+          <td>{{.Name}}</td>
+          <td class="mono">{{.Score}}</td>
+          <td class="mono">{{.Weight}}</td>
+          <td class="mono">{{.At}} UTC</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    <p class="muted small">
+      Weights are renormalised over the components that could be scored, and own
+      health is weighted by the share of the fleet that is measurable. A scope
+      below 50% measurable is dropped rather than scored for the part it cannot
+      see.
+    </p>
+    {{end}}
+
+    {{if .Health.Dropped}}
+    <h2 class="section-title">Left out</h2>
+    <table class="probes" data-testid="ihi-dropped">
+      <thead><tr><th>Component</th><th>Why</th></tr></thead>
+      <tbody>
+        {{range .Health.Dropped}}
+        <tr data-testid="ihi-dropped-row">
+          <td>{{.Name}}</td>
+          <td class="mono detail">{{.Reason}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{end}}
+
+    <p class="muted small">
+      The index is a summary, not a detector: it never opens an incident and
+      never changes a target's state.
+    </p>
+    {{end}}
+
+    <p><a href="/">Back to the board</a></p>
+  </main>
+</body>
+</html>

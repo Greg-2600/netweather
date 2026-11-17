@@ -14,6 +14,12 @@
     <a class="nav" href="/corridors">Corridors</a>
     <a class="nav" href="/coverage">Coverage</a>
     <a class="nav" href="/incidents">Incidents</a>
+    {{if .Health.OK}}
+    <a class="nav ihi-chip" href="/ihi" data-testid="ihi-chip" data-score="{{.Health.Score}}"
+       title="Internet Health Index: {{.Health.Score}} of 100">IHI {{.Health.Score}}</a>
+    {{else if .Health.Note}}
+    <a class="nav ihi-chip" href="/ihi" data-testid="ihi-chip" title="{{.Health.Note}}">IHI -</a>
+    {{end}}
     <span class="muted small" data-testid="version">{{.Version}}</span>
     {{if or .CSRF .Control}}
     <div class="controls">

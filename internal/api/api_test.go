@@ -21,6 +21,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/api"
 	"github.com/Greg-2600/netweather/internal/baseline"
 	"github.com/Greg-2600/netweather/internal/board"
+	"github.com/Greg-2600/netweather/internal/ihi"
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/probe"
 	"github.com/Greg-2600/netweather/internal/state"
@@ -3914,5 +3915,82 @@ func TestIncidentDetailCarriesArchivedProbes(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"probes":[]`) {
 		t.Fatalf("a broken archive invented samples: %s", rec.Body)
+	}
+}
+
+type fakeIHI struct {
+	index ihi.Index
+}
+
+func (f *fakeIHI) Build(context.Context) ihi.Index { return f.index }
+
+func TestIHIEndpointReportsPartsAndDrops(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	src := &fakeIHI{index: ihi.Index{
+		Score: 72.5,
+		Parts: []ihi.Part{
+			{Name: "Own health", Score: 90, Weight: 0.7, At: at},
+			{Name: "External outage severity", Score: 40, Weight: 0.3, At: at},
+		},
+		Dropped: []ihi.Dropped{{Name: "BGP stability", Reason: "stale"}},
+	}}
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			IHI:       src,
+			Version:   "test",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+
+	rec := do(h, http.MethodGet, "/api/v1/ihi", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+	}
+	var env struct {
+		Data struct {
+			Score float64 `json:"score"`
+			Parts []struct {
+				Name   string  `json:"name"`
+				Score  float64 `json:"score"`
+				Weight float64 `json:"weight"`
+				At     string  `json:"at"`
+			} `json:"parts"`
+			Dropped []struct {
+				Name   string `json:"name"`
+				Reason string `json:"reason"`
+			} `json:"dropped"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env.Data.Score != 72.5 || len(env.Data.Parts) != 2 {
+		t.Fatalf("index = %+v", env.Data)
+	}
+	if env.Data.Parts[0].Name != "Own health" || env.Data.Parts[0].At != "2026-11-17T12:00:00Z" {
+		t.Fatalf("first part = %+v", env.Data.Parts[0])
+	}
+	if len(env.Data.Dropped) != 1 || env.Data.Dropped[0].Reason != "stale" {
+		t.Fatalf("dropped = %+v", env.Data.Dropped)
+	}
+
+	// An unconfigured index is a stated 503, not a zero.
+	h, err = api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Version: "test", StartedAt: time.Now()},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	if rec := do(h, http.MethodGet, "/api/v1/ihi", testToken); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status without an index = %d, want 503", rec.Code)
 	}
 }

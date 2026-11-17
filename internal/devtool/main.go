@@ -258,6 +258,7 @@ func taskCover() error {
 		"/internal/enrich":       85,
 		"/internal/fakeinternet": 75,
 		"/internal/feeds":        85,
+		"/internal/ihi":          95,
 		"/internal/incidents":    85,
 		"/internal/logging":      80,
 		"/internal/metrics":      90,

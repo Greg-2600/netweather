@@ -31,6 +31,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/corridor"
 	"github.com/Greg-2600/netweather/internal/enrich"
 	"github.com/Greg-2600/netweather/internal/feeds"
+	"github.com/Greg-2600/netweather/internal/ihi"
 	"github.com/Greg-2600/netweather/internal/incidents"
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/metrics"
@@ -253,6 +254,10 @@ func serve(lg *logging.Logger) error {
 		metricsHandler = metrics.Handler(st, "local")
 	}
 
+	// The Internet Health Index is computed per request from live state, so it
+	// cannot go stale between ticks (DESIGN.md §11).
+	health := &ihi.Builder{Store: st, Vantage: "local"}
+
 	webDeps := web.Deps{
 		Logger:              lg.Logger,
 		Source:              source,
@@ -271,6 +276,7 @@ func serve(lg *logging.Logger) error {
 		CountryEvents:       st,
 		Corridors:           st,
 		DNSObservations:     st,
+		Health:              health,
 		// The ring and the measured logging setup back the diagnostics page
 		// and the drawer's Why panel (LOGGING.md §9).
 		Logs:            lg,
@@ -313,6 +319,7 @@ func serve(lg *logging.Logger) error {
 		IncidentProbes:  st,
 		Corroboration:   st,
 		Corridors:       st,
+		IHI:             health,
 		Scopes:          st,
 		Anomalies:       st,
 		Targets:         st,

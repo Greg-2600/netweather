@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/board"
+	"github.com/Greg-2600/netweather/internal/ihi"
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
@@ -3772,5 +3773,109 @@ func TestIncidentDetailWithoutArchiveStatesIt(t *testing.T) {
 	page = body(t, resp)
 	if !strings.Contains(page, "No probes were pinned around this incident") {
 		t.Fatalf("an empty archive was not stated:\n%s", page)
+	}
+}
+
+type fakeHealth struct {
+	index ihi.Index
+}
+
+func (f *fakeHealth) Build(context.Context) ihi.Index { return f.index }
+
+func newServerWithHealth(t *testing.T, token string, m *board.Memory, health web.HealthIndex) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		Health:    health,
+		Token:     token,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestBoardShowsIHIChip(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	health := &fakeHealth{index: ihi.Index{
+		Score: 82.4,
+		Parts: []ihi.Part{
+			{Name: "Own health", Score: 90, Weight: 0.7, At: at},
+			{Name: "External outage severity", Score: 60, Weight: 0.3, At: at},
+		},
+		Dropped: []ihi.Dropped{{Name: "BGP stability", Reason: "stale"}},
+	}}
+
+	ts := newServerWithHealth(t, testToken, fixture(), health)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="ihi-chip"`) || !strings.Contains(page, "IHI 82") {
+		t.Fatalf("board chip missing:\n%s", page)
+	}
+	if !strings.Contains(page, `href="/ihi"`) {
+		t.Error("the chip does not link to the components")
+	}
+
+	// The page carries the number, the weights, the evidence time, and what
+	// was left out.
+	resp, err = client.Get(ts.URL + "/ihi") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = body(t, resp)
+	for _, want := range []string{
+		`data-testid="ihi-score"`, "IHI <b>82</b>",
+		`data-testid="ihi-parts"`, "Own health", "90", "70%", "12:00 UTC",
+		`data-testid="ihi-dropped"`, "BGP stability", "stale",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("ihi page missing %q", want)
+		}
+	}
+}
+
+func TestBoardAndIHIPageWithoutAnIndex(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(body(t, resp), `data-testid="ihi-chip"`) {
+		t.Error("a chip rendered without an index")
+	}
+
+	// A configured index with nothing scoreable says so rather than showing 0.
+	empty := newServerWithHealth(t, testToken, fixture(), &fakeHealth{})
+	client2, _ := newClient(t)
+	login(t, empty, client2, testToken)
+	resp, err = client2.Get(empty.URL + "/ihi") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	if !strings.Contains(page, `data-testid="ihi-empty"`) || !strings.Contains(page, "No component could be scored") {
+		t.Fatalf("an empty index was not stated:\n%s", page)
 	}
 }
