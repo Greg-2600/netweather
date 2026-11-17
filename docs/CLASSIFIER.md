@@ -58,12 +58,14 @@ A lone failure from a corroborating vantage is not even a signal. Tor exits are 
 |---|---|---|---|
 | `dns_nxdomain` | RCODE 3 | DOWN | **Implemented.** Must be corroborated (§3.2) |
 | `dns_nodata` | RCODE 0, 0 answers | DOWN | **Implemented.** Apex exists but no A/AAAA |
-| `dns_servfail` | RCODE 2 | DOWN | Specified; the Go resolver surfaces it as `dns_error` today |
-| `dns_refused` | RCODE 5 | DOWN | Specified; likewise `dns_error` today |
+| `dns_servfail` | RCODE 2 | DOWN | **Implemented.** The wire client reads the RCODE instead of collapsing it |
+| `dns_refused` | RCODE 5 | DOWN | **Implemented.** The resolver answered, so the path works |
 | `dns_timeout` | no response in the target timeout | DOWN | **Implemented.** Default 5s. `UNMEASURABLE` instead while the `port53` self-check reports this vantage's egress port 53 blocked |
 | `dns_divergence` | answer outside that resolver's own baseline | **DNS_ANOMALY**; `TAMPER` only with a second signal | Specified; see §3.2 |
 
-The port-53 gate is a narrow, honest exception: a timeout or resolver error while our own `:53` is unreachable measures the vantage, not the destination. It never applies to `dns_nxdomain` or `dns_nodata`, because those are answers rather than silence — a resolver that replied has proven the path works. `dns_servfail` and `dns_refused` are still `dns_error` today, and the gate applies to them as well: without the gate they would be DOWN.
+The port-53 gate is a narrow, honest exception: a timeout or transport error while our own `:53` is unreachable measures the vantage, not the destination. It never applies to `dns_nxdomain`, `dns_nodata`, `dns_servfail`, or `dns_refused`, because those are answers rather than silence. A resolver that replied has proven the path works.
+
+The instrument speaks DNS on the wire rather than through `net.Resolver`, because the standard resolver collapses SERVFAIL, REFUSED, and NOERROR-with-no-answers into opaque errors, and those RCODEs are the difference between "the name is gone" and "the resolver declined". A truncated UDP answer is retried over TCP with the two-byte length framing, so a large answer is not misread as NODATA.
 
 ### 3.2 DNS divergence — the tamper detector
 
