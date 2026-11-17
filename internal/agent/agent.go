@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"net/http"
 	"net/netip"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -193,7 +195,12 @@ type Agent struct {
 	// lastProbe is the start time of the most recent probe, for the global rate
 	// ceiling. It is zero before the first probe of the process.
 	lastProbe time.Time
-	paused    atomic.Bool
+	// Adaptive politeness state (DESIGN.md §6.3): consecutive blocked results
+	// per target, and when a target first went down, so the recovery watch can
+	// end after five minutes.
+	blockedStreak map[string]int
+	downSince     map[string]time.Time
+	paused        atomic.Bool
 }
 
 // New builds an agent. Now and Rand default to the real clock and math/rand;
@@ -207,6 +214,10 @@ func New(targets []Target, runner Runner, sink Sink) *Agent {
 		Now:     time.Now,
 		Rand:    rand.Float64,
 		next:    make(map[string]time.Time, len(targets)),
+		// Adaptive politeness state; both are keyed by target and cleared when
+		// the condition ends.
+		blockedStreak: make(map[string]int),
+		downSince:     make(map[string]time.Time),
 	}
 }
 
@@ -359,9 +370,16 @@ func (a *Agent) Step(ctx context.Context) (int, error) {
 		a.logProbe(t, p)
 		batch = append(batch, p)
 
+		next, reason := a.nextScheduled(t, p.State, res, now)
 		a.mu.Lock()
-		a.next[t.ID] = now.Add(schedule.Next(t.Interval, schedule.DefaultJitter(t.Tier), a.Rand))
+		a.next[t.ID] = next
 		a.mu.Unlock()
+		if reason != "" {
+			a.logger().Info("probe interval adjusted",
+				"event", "interval_adjusted", "component", "agent",
+				"target", t.Host, "state", string(p.State),
+				"reason", reason, "next_in", next.Sub(now).String())
+		}
 		ran++
 
 		if a.Pace > 0 {
@@ -433,6 +451,103 @@ func sleepCtx(ctx context.Context, d time.Duration, sleep func(time.Duration)) e
 	case <-timer.C:
 		return nil
 	}
+}
+
+// nextScheduled applies the adaptive politeness rules from DESIGN.md §6.3 and
+// returns when the target should run next, plus a short reason when the
+// interval changed.
+func (a *Agent) nextScheduled(t Target, st state.State, res probe.Result, now time.Time) (time.Time, string) {
+	interval := t.Interval
+	reason := ""
+
+	// A server that says when to come back is obeyed exactly. Jitter here would
+	// be the monitor deciding it knows better than the header.
+	if st == state.Blocked {
+		if wait, ok := retryAfter(res.Header, now); ok {
+			return now.Add(wait), "retry-after"
+		}
+	}
+
+	switch st {
+	case state.Blocked:
+		a.mu.Lock()
+		a.blockedStreak[t.ID]++
+		streak := a.blockedStreak[t.ID]
+		a.mu.Unlock()
+		// The second consecutive block doubles, then x4, then x8. Past that the
+		// monitor is being ignored, and asking less often is the politeness.
+		if streak >= 2 {
+			factor := 1 << uint(min(streak-1, 3))
+			interval = t.Interval * time.Duration(factor)
+			reason = fmt.Sprintf("blocked %d times in a row", streak)
+		}
+	case state.Down:
+		a.mu.Lock()
+		since, ok := a.downSince[t.ID]
+		if !ok {
+			since = now
+			a.downSince[t.ID] = now
+		}
+		a.mu.Unlock()
+		// Keep the configured interval, but watch for recovery for the first
+		// five minutes: a service that came back should stop looking down.
+		if now.Sub(since) < 5*time.Minute && interval > 30*time.Second {
+			interval = 30 * time.Second
+			reason = "recovery watch"
+		}
+	case state.Unmeasurable:
+		// A target we cannot see is retried at the anchor cadence rather than
+		// its configured one, so visibility returning is noticed promptly
+		// without paying the target's normal cost.
+		interval = schedule.DefaultInterval(schedule.TierAnchor)
+		reason = "unmeasurable: anchor cadence"
+	case state.Up, state.UpReachability, state.Degraded, state.Unknown, state.ConfigError:
+		// The configured interval stands, and the blocked/down state is cleared
+		// below.
+	}
+
+	// Clear the state that no longer applies.
+	a.mu.Lock()
+	if st != state.Blocked {
+		delete(a.blockedStreak, t.ID)
+	}
+	if st != state.Down {
+		delete(a.downSince, t.ID)
+	}
+	a.mu.Unlock()
+
+	return now.Add(schedule.Next(interval, schedule.DefaultJitter(t.Tier), a.Rand)), reason
+}
+
+// retryAfter reads the header, in seconds or as an HTTP date, and caps it at an
+// hour so a hostile header cannot park a target forever.
+func retryAfter(h http.Header, now time.Time) (time.Duration, bool) {
+	if h == nil {
+		return 0, false
+	}
+	raw := strings.TrimSpace(h.Get("Retry-After"))
+	if raw == "" {
+		return 0, false
+	}
+
+	var wait time.Duration
+	if n, err := strconv.Atoi(raw); err == nil {
+		if n <= 0 {
+			return 0, false
+		}
+		wait = time.Duration(n) * time.Second
+	} else if at, err := http.ParseTime(raw); err == nil {
+		wait = at.Sub(now)
+	} else {
+		return 0, false
+	}
+	if wait <= 0 {
+		return 0, false
+	}
+	if wait > time.Hour {
+		wait = time.Hour
+	}
+	return wait, true
 }
 
 // NextRun reports when a target is next due. Zero means "never scheduled".

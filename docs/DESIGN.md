@@ -469,10 +469,10 @@ The floor is applied **after** jitter, as a final clamp.
 
 ### 6.3 Adaptive politeness
 
-- `BLOCKED` twice in a row → multiply that target's interval ×2, up to ×8, and log it
-- `DOWN` → keep interval, but schedule a **recovery watch** at 30s for the first 5 minutes
-- `UNMEASURABLE` → drop to tier 3 regardless of configured interval
-- Honour `Retry-After` on `429` exactly
+- `BLOCKED` twice in a row multiplies that target's interval x2, up to x8, and logs it. **Implemented:** `event=interval_adjusted` at INFO, and any other result resets the streak
+- `DOWN` keeps the interval, but schedules a **recovery watch** at 30s for the first 5 minutes. **Implemented:** the watch ends five minutes after the first down result
+- `UNMEASURABLE` drops to tier 3 regardless of configured interval. **Implemented:** the anchor cadence, 120s
+- Honour `Retry-After` on `429` exactly. **Implemented:** seconds or an HTTP date, no jitter, capped at one hour so a hostile header cannot park a target
 
 ### 6.4 Probe budget visibility
 

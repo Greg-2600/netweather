@@ -1276,3 +1276,141 @@ func TestNoRatePacingWithoutACeiling(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestBlockedBackoffDoublesUpToEight(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	tg := target("b1", "blocked.example")
+	p := newProber()
+	p.set(tg.URL, probe.Result{Status: 403})
+
+	a := agent.New([]agent.Target{tg}, p, &fakeSink{})
+	a.Rand = zeroRand
+	a.Now = func() time.Time { return now }
+
+	// The first block keeps the configured interval; only a repeat is a hint
+	// that the monitor is being ignored.
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.NextRun(tg.ID).Sub(now); got != tg.Interval {
+		t.Fatalf("first block next in %v, want %v", got, tg.Interval)
+	}
+
+	for _, factor := range []time.Duration{2, 4, 8, 8} {
+		now = a.NextRun(tg.ID)
+		if _, err := a.Step(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		want := tg.Interval * factor
+		if got := a.NextRun(tg.ID).Sub(now); got != want {
+			t.Fatalf("consecutive block next in %v, want %v", got, want)
+		}
+	}
+
+	// Any other result resets the streak.
+	p.set(tg.URL, probe.Result{Status: 200})
+	now = a.NextRun(tg.ID)
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.NextRun(tg.ID).Sub(now); got != tg.Interval {
+		t.Fatalf("after reset next in %v, want %v", got, tg.Interval)
+	}
+}
+
+func TestDownSchedulesRecoveryWatchForFiveMinutes(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	now := start
+	tg := target("d1", "down.example")
+	p := newProber()
+	p.set(tg.URL, probe.Result{Status: 503})
+
+	a := agent.New([]agent.Target{tg}, p, &fakeSink{})
+	a.Rand = zeroRand
+	a.Now = func() time.Time { return now }
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.NextRun(tg.ID).Sub(now); got != 30*time.Second {
+		t.Fatalf("down next in %v, want the 30s recovery watch", got)
+	}
+
+	// Still inside the five-minute window.
+	now = a.NextRun(tg.ID)
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.NextRun(tg.ID).Sub(now); got != 30*time.Second {
+		t.Fatalf("still down next in %v, want 30s", got)
+	}
+
+	// Past it, the configured interval returns.
+	now = start.Add(5*time.Minute + time.Second)
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.NextRun(tg.ID).Sub(now); got != tg.Interval {
+		t.Fatalf("past the watch next in %v, want %v", got, tg.Interval)
+	}
+}
+
+func TestUnmeasurableUsesAnchorCadence(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	tg := target("u1", "blocked.example")
+	tg.Interval = 10 * time.Minute // deliberately slower than the anchor cadence
+	p := newProber()
+	p.set(tg.URL, probe.Result{
+		ErrorClass: "policy_blocked", Err: errors.New("destination refused"),
+	})
+
+	a := agent.New([]agent.Target{tg}, p, &fakeSink{})
+	a.Rand = zeroRand
+	a.Now = func() time.Time { return now }
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	want := schedule.DefaultInterval(schedule.TierAnchor)
+	if got := a.NextRun(tg.ID).Sub(now); got != want {
+		t.Fatalf("unmeasurable next in %v, want the anchor cadence %v", got, want)
+	}
+}
+
+func TestRetryAfterIsObeyedExactly(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	tg := target("r1", "limited.example")
+	header := http.Header{}
+	header.Set("Retry-After", "7")
+	p := newProber()
+	p.set(tg.URL, probe.Result{Status: 429, Header: header})
+
+	a := agent.New([]agent.Target{tg}, p, &fakeSink{})
+	a.Rand = zeroRand
+	a.Now = func() time.Time { return now }
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.NextRun(tg.ID).Sub(now); got != 7*time.Second {
+		t.Fatalf("retry-after seconds next in %v, want 7s", got)
+	}
+
+	// An HTTP date is honoured too, relative to the agent's clock.
+	now = a.NextRun(tg.ID)
+	header.Set("Retry-After", now.Add(45*time.Second).UTC().Format(http.TimeFormat))
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.NextRun(tg.ID).Sub(now); got != 45*time.Second {
+		t.Fatalf("retry-after date next in %v, want 45s", got)
+	}
+}
