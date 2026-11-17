@@ -283,7 +283,7 @@ func serve(lg *logging.Logger) error {
 	// useful without database access; unknown is reported as absent.
 	schemaVersion, _ := st.SchemaVersion(ctx)
 
-	handler, err := api.New(cfg, api.Deps{
+	apiDeps := api.Deps{
 		Logger:          lg.Logger,
 		Ring:            lg.Ring,
 		Version:         version.Version,
@@ -313,7 +313,11 @@ func serve(lg *logging.Logger) error {
 		Metrics:         metricsHandler,
 		Vantage:         "local",
 		Fallback:        ui,
-	})
+	}
+	if directBudget != nil {
+		apiDeps.Budget = directBudget
+	}
+	handler, err := api.New(cfg, apiDeps)
 	if err != nil {
 		return err
 	}

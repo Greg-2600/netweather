@@ -201,6 +201,7 @@ Auth: bearer.
     "uptime_s": 812,
     "auth": "bearer",
     "schema_version": 19,
+    "egress": {"used_bytes": 1048576, "limit_bytes": 2147483648, "exhausted": false},
     "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "annotations", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace", "corridors"],
     "ring": {"records": 128, "capacity": 2000}
   },
@@ -208,7 +209,7 @@ Auth: bearer.
 }
 ```
 
-`capabilities` is the runtime truth: a client should feature-detect here rather than assume an endpoint exists. `auth` is `bearer` or `none` (loopback development only). `schema_version` is the applied migration number, absent when it cannot be read; it is what a support bundle needs and cannot get from a remote CLI otherwise.
+`capabilities` is the runtime truth: a client should feature-detect here rather than assume an endpoint exists. `auth` is `bearer` or `none` (loopback development only). `schema_version` is the applied migration number, absent when it cannot be read; it is what a support bundle needs and cannot get from a remote CLI otherwise. `egress` is the direct vantage's daily byte budget (`ACCEPTABLE_USE.md` §4): `used_bytes`, `limit_bytes`, and `exhausted`; it is absent when the budget is disabled, and `exhausted: true` means probing has stopped until 00:00 UTC, so an empty board is a budget stop rather than silence.
 
 No target data appears here. That is deliberate: `/meta` is the one endpoint a monitoring system may poll, and it must not become a target-list leak.
 

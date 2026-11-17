@@ -32,6 +32,15 @@ type Control interface {
 	Paused() bool
 }
 
+// BudgetState reports the direct vantage's daily egress allowance. It is the
+// same hard stop the board banners (ACCEPTABLE_USE.md §4); meta exposes it so
+// an API client can distinguish "quiet" from "stopped by its own budget".
+type BudgetState interface {
+	Used() int64
+	Allowance() int64
+	Exhausted() bool
+}
+
 // ProbeReader is the read side the API needs for target history.
 type ProbeReader interface {
 	RecentProbes(ctx context.Context, targetID, vantageID string, limit int) ([]store.ProbeRow, error)
@@ -132,6 +141,9 @@ type Deps struct {
 	// SchemaVersion is the applied migration number, reported by /meta so a
 	// support bundle can carry it without database access.
 	SchemaVersion int
+	// Budget reports the direct vantage's daily egress allowance. Nil means no
+	// budget is configured, and meta omits the block.
+	Budget BudgetState
 	// Source supplies the board. Nil means "not configured": the endpoint
 	// answers 503 rather than inventing an empty board.
 	Source board.Source
@@ -345,15 +357,25 @@ type ringInfo struct {
 }
 
 type metaResponse struct {
-	Version       string   `json:"version"`
-	Commit        string   `json:"commit"`
-	API           string   `json:"api"`
-	StartedAt     string   `json:"started_at"`
-	UptimeS       int64    `json:"uptime_s"`
-	Auth          string   `json:"auth"`
-	SchemaVersion int      `json:"schema_version,omitempty"`
-	Capabilities  []string `json:"capabilities"`
-	Ring          ringInfo `json:"ring"`
+	Version       string      `json:"version"`
+	Commit        string      `json:"commit"`
+	API           string      `json:"api"`
+	StartedAt     string      `json:"started_at"`
+	UptimeS       int64       `json:"uptime_s"`
+	Auth          string      `json:"auth"`
+	SchemaVersion int         `json:"schema_version,omitempty"`
+	Egress        *egressInfo `json:"egress,omitempty"`
+	Capabilities  []string    `json:"capabilities"`
+	Ring          ringInfo    `json:"ring"`
+}
+
+// egressInfo is the direct vantage's daily byte budget. It is omitted when no
+// budget is configured; a spent budget is otherwise invisible to a client that
+// only polls meta, and "quiet" would be indistinguishable from "stopped".
+type egressInfo struct {
+	UsedBytes  int64 `json:"used_bytes"`
+	LimitBytes int64 `json:"limit_bytes"`
+	Exhausted  bool  `json:"exhausted"`
 }
 
 // capabilities is the runtime truth. A client should feature-detect here rather
@@ -366,6 +388,15 @@ func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		info = ringInfo{Records: s.deps.Ring.Len(), Capacity: s.deps.Ring.Capacity()}
 	}
 
+	var egress *egressInfo
+	if s.deps.Budget != nil {
+		egress = &egressInfo{
+			UsedBytes:  s.deps.Budget.Used(),
+			LimitBytes: s.deps.Budget.Allowance(),
+			Exhausted:  s.deps.Budget.Exhausted(),
+		}
+	}
+
 	auth := s.authMode
 
 	writeData(w, r, metaResponse{
@@ -376,6 +407,7 @@ func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		UptimeS:       int64(time.Since(s.deps.StartedAt).Seconds()),
 		Auth:          auth,
 		SchemaVersion: s.deps.SchemaVersion,
+		Egress:        egress,
 		Capabilities:  capabilities,
 		Ring:          info,
 	}, nil)

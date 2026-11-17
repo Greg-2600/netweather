@@ -19,6 +19,10 @@ services:
       NETWEATHER_UI_TOKEN_FILE: /run/secrets/ui_token
       NETWEATHER_DATA: /data
       NETWEATHER_LOG: info
+      # Daily egress budget for the direct vantage. Counted on every probe and
+      # self-check connection; 2048 MB is the documented default and 0 disables
+      # it. When spent, probing stops until 00:00 UTC and the board says so.
+      # NETWEATHER_DAILY_MB: "2048"
       # Point this at /config/targets.yaml once you have one; otherwise the
       # shipped seed list is used.
       # NETWEATHER_CONFIG: /config/targets.yaml
