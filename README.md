@@ -180,9 +180,9 @@ Every environment variable the binary reads, including the ones that exist for a
 | `NETWEATHER_ENRICH` | on | `false` disables ASN, prefix, and CDN learning |
 | `NETWEATHER_PEERINGDB` / `NETWEATHER_PEERINGDB_URL` | on | exchange-membership labels; `false` disables them without disabling enrichment, and `_URL` points at a mirror |
 | `NETWEATHER_FEEDS` | none | comma list of `ioda`, `radar`, `statuspage`, `aws-status`, `gcp-status`, `azure-status`; empty means no external calls |
-| `NETWEATHER_STATUSPAGE_URLS` | none | status pages for the `statuspage` feed |
+| `NETWEATHER_STATUSPAGE_URLS` | none | status pages for the `statuspage` feed; **HTTPS only**, and a plaintext entry is dropped with `event=feed_url_insecure` |
 | `NETWEATHER_RADAR_TOKEN` | none | Cloudflare Radar API token; the `radar` feed is skipped with a warning without it |
-| `NETWEATHER_IODA_URL`, `NETWEATHER_RADAR_URL`, `NETWEATHER_AWS_STATUS_URL`, `NETWEATHER_GCP_STATUS_URL`, `NETWEATHER_AZURE_STATUS_URL` | upstream defaults | endpoint overrides, for a mirror or a test |
+| `NETWEATHER_IODA_URL`, `NETWEATHER_RADAR_URL`, `NETWEATHER_AWS_STATUS_URL`, `NETWEATHER_GCP_STATUS_URL`, `NETWEATHER_AZURE_STATUS_URL` | upstream defaults | endpoint overrides for a mirror or a test; **HTTPS only**, and a plaintext override is ignored with `event=feed_url_insecure` |
 | `NETWEATHER_TOR` | off | enables the Tor corroboration vantage |
 | `NETWEATHER_TOR_SOCKS` | `tor:9050` | SOCKS5 entry point; `socks5h` only |
 | `NETWEATHER_TOR_MAX` | `25` | maximum Tor targets |

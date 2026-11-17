@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/agent"
+	"github.com/Greg-2600/netweather/internal/feeds"
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/probe"
 	"github.com/Greg-2600/netweather/internal/seed"
@@ -1377,5 +1378,108 @@ targets:
 	if !strings.Contains(out.String(), "~ one-example-http") ||
 		!strings.Contains(out.String(), "1 change(s)") {
 		t.Fatalf("diff after a port change = %q", out.String())
+	}
+}
+
+func TestFeedURLsMustBeHTTPS(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []string{
+		"https://status.example.com",
+		"https://status.example.com/api/v2/summary.json",
+		"HTTPS://STATUS.EXAMPLE.COM",
+	} {
+		if !feedURLIsHTTPS(raw) {
+			t.Errorf("%q was rejected", raw)
+		}
+	}
+	for _, raw := range []string{
+		"http://status.example.com",
+		"",
+		"not a url",
+		"ftp://status.example.com",
+		"https://",
+	} {
+		if feedURLIsHTTPS(raw) {
+			t.Errorf("%q was accepted", raw)
+		}
+	}
+}
+
+func TestFeedClientRefusesNonHTTPSRedirects(t *testing.T) {
+	t.Parallel()
+
+	client := feedClient()
+	https, err := http.NewRequest(http.MethodGet, "https://status.example.com/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.CheckRedirect(https, nil); err != nil {
+		t.Fatalf("an HTTPS redirect was refused: %v", err)
+	}
+
+	plain, err := http.NewRequest(http.MethodGet, "http://status.example.com/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.CheckRedirect(plain, nil); err == nil {
+		t.Fatal("an HTTP redirect was followed")
+	}
+
+	via := make([]*http.Request, 5)
+	if err := client.CheckRedirect(https, via); err == nil {
+		t.Fatal("six hops were followed")
+	}
+}
+
+func TestBuildFeedPollersRejectsInsecureURLs(t *testing.T) {
+	// No t.Parallel: this test sets environment variables.
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "netweather.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	lg, err := logging.New(logging.DefaultConfig(), io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A plaintext-only statuspage list is skipped, not fetched.
+	t.Setenv("NETWEATHER_FEEDS", "statuspage")
+	t.Setenv("NETWEATHER_STATUSPAGE_URLS", "http://insecure.example")
+	if got := buildFeedPollers(st, lg); len(got) != 0 {
+		t.Fatalf("an HTTP-only statuspage list produced %d pollers", len(got))
+	}
+
+	// A mixed list keeps the HTTPS entries and drops the rest.
+	t.Setenv("NETWEATHER_STATUSPAGE_URLS", "https://ok.example,http://bad.example")
+	got := buildFeedPollers(st, lg)
+	if len(got) != 1 {
+		t.Fatalf("pollers = %+v, want one", got)
+	}
+	source, ok := got[0].Source.(*feeds.Statuspage)
+	if !ok {
+		t.Fatalf("source = %T", got[0].Source)
+	}
+	if len(source.URLs) != 1 || source.URLs[0] != "https://ok.example" {
+		t.Fatalf("statuspage URLs = %v, want only the HTTPS entry", source.URLs)
+	}
+
+	// A bad override keeps the compiled endpoint rather than sending the feed
+	// somewhere plaintext.
+	t.Setenv("NETWEATHER_FEEDS", "ioda")
+	t.Setenv("NETWEATHER_IODA_URL", "http://insecure.example/down")
+	got = buildFeedPollers(st, lg)
+	if len(got) != 1 {
+		t.Fatalf("ioda pollers = %+v", got)
+	}
+	ioda, ok := got[0].Source.(*feeds.IODA)
+	if !ok {
+		t.Fatalf("source = %T", got[0].Source)
+	}
+	if ioda.Endpoint == "http://insecure.example/down" {
+		t.Fatal("an HTTP IODA override was applied")
 	}
 }

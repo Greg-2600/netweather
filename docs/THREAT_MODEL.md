@@ -182,7 +182,7 @@ This is the highest-severity area, because a mistake here turns the operator's I
 | T29 | Traceroute abuse | On-demand only, ≤10/hour globally, no private ranges, never scheduled | Enforced |
 | T30 | Proxy chaining hides the source of abuse | Never chain proxies; a target has exactly one vantage; SOCKS5 is `socks5h` only, so DNS happens at the proxy | Enforced |
 | T31 | Environment proxy vars reroute traffic | `http.Transport.Proxy = nil` explicitly; `HTTP_PROXY` is not honored | Enforced |
-| T32 | Feed URL as an SSRF vector | Feed endpoints are compiled-in constants; a user-supplied feed URL is opt-in, must be HTTPS, and goes through the same dialer | Enforced |
+| T32 | Feed URL as an SSRF vector | Feed endpoints are compiled-in constants; a user-supplied feed URL is opt-in, must be HTTPS, and goes through the same dialer. A plaintext URL is dropped (or an override ignored) with `event=feed_url_insecure`, and every redirect is re-checked so a chain cannot downgrade to HTTP. | Enforced |
 
 Residual: a public host that later *becomes* a private address after the operator's DNS is compromised is caught at dial time, not before. A target that is genuinely public but hostile can still return 32 KB of garbage — that is bounded, not prevented.
 

@@ -1711,10 +1711,7 @@ func buildFeedPollers(st *store.Store, lg *logging.Logger) []*feeds.Poller {
 		return nil
 	}
 
-	client := &http.Client{
-		Transport: probe.Transport(netx.New()),
-		Timeout:   20 * time.Second,
-	}
+	client := feedClient()
 
 	var out []*feeds.Poller
 	for _, name := range strings.Split(enabled, ",") {
@@ -1722,7 +1719,13 @@ func buildFeedPollers(st *store.Store, lg *logging.Logger) []*feeds.Poller {
 		case "ioda":
 			ioda := feeds.NewIODA(client)
 			if endpoint := strings.TrimSpace(os.Getenv("NETWEATHER_IODA_URL")); endpoint != "" {
-				ioda.Endpoint = endpoint
+				if feedURLIsHTTPS(endpoint) {
+					ioda.Endpoint = endpoint
+				} else {
+					lg.Warn("feed URL override is not HTTPS; keeping the compiled endpoint",
+						"event", "feed_url_insecure", "component", "feeds",
+						"feed", "ioda", "url", endpoint)
+				}
 			}
 			out = append(out, &feeds.Poller{
 				Feed:   "ioda",
@@ -1744,7 +1747,13 @@ func buildFeedPollers(st *store.Store, lg *logging.Logger) []*feeds.Poller {
 			}
 			radar := feeds.NewRadar(client, token)
 			if base := strings.TrimSpace(os.Getenv("NETWEATHER_RADAR_URL")); base != "" {
-				radar.BaseURL = base
+				if feedURLIsHTTPS(base) {
+					radar.BaseURL = base
+				} else {
+					lg.Warn("feed URL override is not HTTPS; keeping the compiled endpoint",
+						"event", "feed_url_insecure", "component", "feeds",
+						"feed", "radar", "url", base)
+				}
 			}
 			out = append(out, &feeds.Poller{
 				Feed:   "radar",
@@ -1759,7 +1768,21 @@ func buildFeedPollers(st *store.Store, lg *logging.Logger) []*feeds.Poller {
 					"event", "feed_not_configured", "component", "feeds", "feed", "statuspage")
 				continue
 			}
-			urls := splitList(raw)
+			var urls []string
+			for _, candidate := range splitList(raw) {
+				if feedURLIsHTTPS(candidate) {
+					urls = append(urls, candidate)
+					continue
+				}
+				lg.Warn("statuspage URL is not HTTPS; dropping it",
+					"event", "feed_url_insecure", "component", "feeds",
+					"feed", "statuspage", "url", candidate)
+			}
+			if len(urls) == 0 {
+				lg.Warn("statuspage feed has no HTTPS URLs; skipping",
+					"event", "feed_not_configured", "component", "feeds", "feed", "statuspage")
+				continue
+			}
 			out = append(out, &feeds.Poller{
 				Feed:   "statuspage",
 				Source: feeds.NewStatuspage(client, urls),
@@ -1769,7 +1792,13 @@ func buildFeedPollers(st *store.Store, lg *logging.Logger) []*feeds.Poller {
 		case "aws-status":
 			aws := feeds.NewAWSStatus(client)
 			if endpoint := strings.TrimSpace(os.Getenv("NETWEATHER_AWS_STATUS_URL")); endpoint != "" {
-				aws.URL = endpoint
+				if feedURLIsHTTPS(endpoint) {
+					aws.URL = endpoint
+				} else {
+					lg.Warn("feed URL override is not HTTPS; keeping the compiled endpoint",
+						"event", "feed_url_insecure", "component", "feeds",
+						"feed", "aws-status", "url", endpoint)
+				}
 			}
 			out = append(out, &feeds.Poller{
 				Feed:   "aws-status",
@@ -1780,7 +1809,13 @@ func buildFeedPollers(st *store.Store, lg *logging.Logger) []*feeds.Poller {
 		case "gcp-status":
 			gcp := feeds.NewGCPStatus(client)
 			if endpoint := strings.TrimSpace(os.Getenv("NETWEATHER_GCP_STATUS_URL")); endpoint != "" {
-				gcp.URL = endpoint
+				if feedURLIsHTTPS(endpoint) {
+					gcp.URL = endpoint
+				} else {
+					lg.Warn("feed URL override is not HTTPS; keeping the compiled endpoint",
+						"event", "feed_url_insecure", "component", "feeds",
+						"feed", "gcp-status", "url", endpoint)
+				}
 			}
 			out = append(out, &feeds.Poller{
 				Feed:   "gcp-status",
@@ -1791,7 +1826,13 @@ func buildFeedPollers(st *store.Store, lg *logging.Logger) []*feeds.Poller {
 		case "azure-status":
 			azure := feeds.NewAzureStatus(client)
 			if endpoint := strings.TrimSpace(os.Getenv("NETWEATHER_AZURE_STATUS_URL")); endpoint != "" {
-				azure.URL = endpoint
+				if feedURLIsHTTPS(endpoint) {
+					azure.URL = endpoint
+				} else {
+					lg.Warn("feed URL override is not HTTPS; keeping the compiled endpoint",
+						"event", "feed_url_insecure", "component", "feeds",
+						"feed", "azure-status", "url", endpoint)
+				}
 			}
 			out = append(out, &feeds.Poller{
 				Feed:   "azure-status",
@@ -1802,6 +1843,34 @@ func buildFeedPollers(st *store.Store, lg *logging.Logger) []*feeds.Poller {
 		}
 	}
 	return out
+}
+
+// feedClient is the HTTP client every feed uses. TLS is required, not assumed:
+// a status page is evidence, and plaintext evidence can be rewritten in
+// transit (THREAT_MODEL.md T32). Redirects are re-checked because the scheme
+// can change mid-chain.
+func feedClient() *http.Client {
+	client := &http.Client{
+		Transport: probe.Transport(netx.New()),
+		Timeout:   20 * time.Second,
+	}
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if !strings.EqualFold(req.URL.Scheme, "https") {
+			return errors.New("feeds: refusing a non-HTTPS redirect")
+		}
+		if len(via) >= 5 {
+			return errors.New("feeds: too many redirects")
+		}
+		return nil
+	}
+	return client
+}
+
+// feedURLIsHTTPS reports whether an operator-supplied feed URL is usable. The
+// compiled endpoints are already HTTPS; an override must be too.
+func feedURLIsHTTPS(raw string) bool {
+	u, err := neturl.Parse(raw)
+	return err == nil && strings.EqualFold(u.Scheme, "https") && u.Host != ""
 }
 
 // splitList trims and drops empty entries from a comma-separated operator
