@@ -222,20 +222,21 @@ func taskCover() error {
 	}
 
 	thresholds := map[string]float64{
-		"/internal/agent":    85,
-		"/internal/api":      90,
-		"/internal/board":    90,
-		"/internal/classify": 95,
-		"/internal/logging":  78,
-		"/internal/netx":     95,
-		"/internal/probe":    90,
-		"/internal/schedule": 90,
-		"/internal/startup":  75,
-		"/internal/store":    80,
-		"/internal/web":      72,
-		"/cmd/netweather":    30, // serve is wiring; the container smoke test owns it
-		"/internal/version":  70,
-		"/internal/devtool":  15, // profile parser + ldflags tests
+		"/internal/agent":     85,
+		"/internal/api":       90,
+		"/internal/board":     90,
+		"/internal/classify":  95,
+		"/internal/correlate": 90,
+		"/internal/logging":   78,
+		"/internal/netx":      95,
+		"/internal/probe":     90,
+		"/internal/schedule":  90,
+		"/internal/startup":   75,
+		"/internal/store":     80,
+		"/internal/web":       72,
+		"/cmd/netweather":     30, // serve is wiring; the container smoke test owns it
+		"/internal/version":   70,
+		"/internal/devtool":   15, // profile parser + ldflags tests
 	}
 	// Packages the docs promise but that do not exist yet still get gates the
 	// moment they appear.
