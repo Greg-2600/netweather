@@ -194,6 +194,32 @@ func composeSelfChecks(t *testing.T, base string) map[string]composeSelfCheck {
 	return out
 }
 
+// composeWaitSelfChecks waits for the named checks to appear. The maintenance
+// loop runs the self-checks asynchronously after the listener is up, and one of
+// them makes an external request, so /healthz answering does not mean the
+// self-check table is populated yet.
+func composeWaitSelfChecks(t *testing.T, base string, want ...string) map[string]composeSelfCheck {
+	t.Helper()
+	deadline := time.Now().Add(60 * time.Second)
+	var last map[string]composeSelfCheck
+	for time.Now().Before(deadline) {
+		last = composeSelfChecks(t, base)
+		matched := true
+		for _, name := range want {
+			if _, ok := last[name]; !ok {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return last
+		}
+		time.Sleep(time.Second)
+	}
+	t.Fatalf("self-checks %v did not appear: %+v", want, last)
+	return last
+}
+
 // composeWaitTargets waits for every named target to reach its wanted state.
 func composeWaitTargets(t *testing.T, base string, want map[string]string) {
 	t.Helper()
@@ -430,7 +456,7 @@ targets:
 	})
 
 	t.Run("a low MTU is reported, not hidden", func(t *testing.T) {
-		checks := composeSelfChecks(t, base)
+		checks := composeWaitSelfChecks(t, base, "mtu")
 		mtu, ok := checks["mtu"]
 		if !ok {
 			t.Fatalf("no mtu self-check: %+v", checks)

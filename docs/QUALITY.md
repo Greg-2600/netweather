@@ -241,7 +241,7 @@ Fuzz targets, implemented:
 
 Each runs for a short time in CI (`.github/workflows/ci.yml`) and locally with `go test -run=^$ -fuzz=<name> ./<package>`.
 
-`rapid` (property-based) is worth it for the attribution scorer: generate random failure distributions and assert the chosen cluster always contains the most failures. `FuzzRank` covers the deterministic invariants today; the generator is the remaining step.
+`rapid` (property-based) is not needed for the attribution scorer: `TestRankRecountsEveryCluster` (`internal/correlate`) generates random failure distributions with the standard library and checks every candidate against an independent recount — `Failing`, `Total`, and `Share` are recomputed from the observations rather than trusted — and checks that a winner exists exactly when some candidate clears the gates and is the highest-scoring one that does. It deliberately does not assert that the winner contains the most failures, because that is false: a 5-of-5 cluster outscores a 6-of-10 cluster while containing fewer failures, and the documented score is the ranking.
 
 ### 5.3 Integration — the fake internet
 
