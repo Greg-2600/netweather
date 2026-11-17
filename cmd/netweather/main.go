@@ -83,6 +83,9 @@ func run(args []string, stdout io.Writer) error {
 	case "debug":
 		return debugCommand(args[1:], stdout)
 
+	case "doctor":
+		return doctorCommand(args[1:], stdout)
+
 	case "serve":
 		lg.Info("starting",
 			"event", "startup",

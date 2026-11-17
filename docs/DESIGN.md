@@ -283,7 +283,9 @@ Degradation is mandatory:
 
 `probe.Trace` walks IPv4 ICMP TTLs and reports each hop or a star. The API action `POST /api/v1/targets/{id}/trace` is capped at ten runs per hour across the instance and answers `503` with the socket error when the capability is missing - the process itself starts normally. `compose.trace.yaml` adds `CAP_NET_RAW` as an overlay; the default file grants no capabilities. A target not answering is `200` with `reached: false`, not an error.
 
-Still specified: `netweather doctor` and the `tcpping` fallback. Until tcpping lands, an `icmp` target on a host without raw sockets reports `UNKNOWN` with `icmp_unavailable`, which is honest rather than wrong.
+**Implemented:** `netweather doctor` reports data-directory writability, resolver reachability, TCP egress, TLS, HTTP, clock offset, and whether raw ICMP and traceroute sockets can be opened. Optional capabilities are warnings; only a fatal capability (unwritable data directory, no resolver, no TCP egress, a broken allowlist) exits non-zero.
+
+Still specified: the `tcpping` fallback. Until it lands, an `icmp` target on a host without raw sockets reports `UNKNOWN` with `icmp_unavailable`, which is honest rather than wrong.
 
 `tcpping` is the portable RTT instrument; `icmp` is an optimisation on hosts that allow it. Windows and macOS hosts differ enough that this must be documented rather than guessed.
 
