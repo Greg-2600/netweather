@@ -197,18 +197,18 @@ Either way: if neither is available, `icmp` falls back to `tcpping`, `trace` is 
 
 Cheap for a Go project, and expected of a tool that asks people to run it:
 
-| Item | Tooling |
-|---|---|
-| Multi-arch build | `docker buildx` — `linux/amd64`, `linux/arm64` |
-| Image signing | `cosign sign` on every release tag |
-| SBOM | `syft` → attached as an attestation |
-| Provenance | SLSA build provenance via GitHub Actions |
-| Vulnerability scan | `govulncheck` for the module graph, `grype` for the image |
-| Dependency updates | Dependabot, grouped weekly |
-| Pin by digest | `image@sha256:…` in the documented production compose |
-| Base image currency | Wolfi's daily rebuilds, pulled automatically |
+| Item | Tooling | Status |
+|---|---|---|
+| Multi-arch build | `docker buildx` — `linux/amd64`, `linux/arm64` | **Implemented:** `.github/workflows/release.yml`, on every `v*` tag |
+| Image signing | `cosign sign` on every release tag | **Implemented:** keyless, through GitHub OIDC |
+| SBOM | `syft` → attached as an attestation | **Implemented:** buildx attaches an SPDX SBOM, and the release job attests a syft SPDX file with `cosign attest` |
+| Provenance | SLSA build provenance via GitHub Actions | **Implemented:** `provenance: mode=max` on the pushed manifest list |
+| Vulnerability scan | `govulncheck` for the module graph, `grype` for the image | **Implemented:** `govulncheck` blocks CI; `grype` scans the release image, advisory, with SARIF uploaded |
+| Dependency updates | Dependabot, grouped weekly | **Implemented:** `.github/dependabot.yml`, one grouped PR per ecosystem |
+| Pin by digest | `image@sha256:…` in the documented production compose | **Documented:** the README verify snippet and `compose.yaml` both say to pin the digest |
+| Base image currency | Wolfi's daily rebuilds, pulled automatically | **Implemented:** the Dockerfile follows the moving `cgr.dev/chainguard/*:latest` tags, and Dependabot watches them |
 
-Document a `cosign verify` one-liner in the README so users can actually check.
+The README carries the `cosign verify` one-liner, so a user can check the signature instead of trusting a tag. A release that fails to sign does not finish: publishing an unverifiable image is worse than publishing nothing.
 
 ---
 

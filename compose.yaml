@@ -2,7 +2,12 @@ name: netweather
 
 services:
   netweather:
-    image: ghcr.io/${NETWEATHER_OWNER:-greg-2600}/netweather:${NETWEATHER_TAG:-latest}
+    # In production, pin the digest instead of a tag:
+#   image: ghcr.io/<owner>/netweather@sha256:<digest>
+# The release job prints the digest and the cosign verify command for each tag;
+# the signature is keyless and the image carries SBOM and provenance
+# attestations (docs/IMAGE.md 6).
+image: ghcr.io/${NETWEATHER_OWNER:-greg-2600}/netweather:${NETWEATHER_TAG:-latest}
     build: .
     networks: [ui, egress]
 

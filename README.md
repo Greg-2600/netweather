@@ -127,6 +127,16 @@ networks:
 
 Ships with ~14 targets across banking, airlines, cloud, social, developer, and reference. Scale is opt-in via `netweather seed`.
 
+**Verify the image before running it.** Releases are multi-arch, signed with cosign keyless, and carry SBOM and provenance attestations (`docs/IMAGE.md` §6). Pin the digest, not a tag:
+
+```sh
+cosign verify ghcr.io/Greg-2600/netweather@sha256:<digest> \
+  --certificate-identity-regexp 'https://github.com/Greg-2600/netweather/.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+The release notes and step summary print the exact digest and command for each tag.
+
 Everything optional is a compose profile, so the default file publishes one port and grants zero capabilities: `tor` (corroboration vantage), `tailscale` (tailnet access without publishing a port), `ripe-atlas` (RIPE's own probe, separate trust domain). Traceroute is a separate `compose.trace.yaml` because it needs `CAP_NET_RAW`.
 
 **Port 2600** — 2600 Hz, phreaking, *2600: The Hacker Quarterly*; unassigned by IANA and above 1024 so the non-root UID can bind it without `NET_BIND_SERVICE`. The cool options that lose: `179` (BGP — privileged, collides with real BGP daemons) and `6667` (IRC/botnet C2 — Chrome and Firefox refuse to load it as an unsafe port). Full comparison in [`docs/NETWORKING.md`](docs/NETWORKING.md) §7.1.

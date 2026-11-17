@@ -1,22 +1,29 @@
 version: 2
+
+# Grouped weekly updates: one pull request per ecosystem, so a security fix in a
+# transitive module does not arrive as twenty separate reviews. The release
+# workflow signs whatever is built from the merged revision.
 updates:
   - package-ecosystem: gomod
-    directory: "/"
+    directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
     groups:
-      go-toolchain:
-        patterns:
-          - "golang.org/x/*"
-      test-only:
-        patterns:
-          - "github.com/mxschmitt/playwright-go"
-          - "github.com/deckarep/*"
-          - "github.com/go-stack/*"
+      go-dependencies:
+        patterns: ["*"]
 
   - package-ecosystem: github-actions
-    directory: "/"
+    directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      base-images:
+        patterns: ["*"]
