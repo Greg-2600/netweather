@@ -327,9 +327,9 @@ Rules:
 
 **Implemented:** `internal/e2e/real_test.go` runs six public endpoints through the real HTTP instrument and classifier, retries once, and asserts set-membership (a bot wall is a successful measurement, not a failure). It also proves the resolver path works. It is double-gated: `//go:build e2e` and `NETWEATHER_E2E=1`, and `go run ./internal/devtool e2e` is the entry point. It is not part of `devtool verify`.
 
-The scheduled workflow exists as `.github/workflows/e2e.yml` (weekly and on demand, never on pull requests). Still specified: the Tor-vantage real test.
+The scheduled workflow exists as `.github/workflows/e2e.yml` (weekly and on demand, never on pull requests).
 
-A second real-endpoint test covers the **Tor vantage**: one target, `1 probe/2s`, asserting that `BLOCKED` is treated as a normal outcome rather than a failure. Runs weekly.
+A second real-endpoint test covers the **Tor vantage**: `internal/e2e/tor_real_test.go` builds a `socks5h` dialer against the configured proxy (default `127.0.0.1:9050`), proves the proxy answers, and then runs one TCP probe. It is double-gated on the `e2e` tag and `NETWEATHER_TOR_E2E=1`, and skips with a message when the proxy is absent. A blocked or slow exit is logged as a normal Tor outcome; only an unclassified failure fails the test.
 
 ### 5.5 Container smoke test — the network plane
 

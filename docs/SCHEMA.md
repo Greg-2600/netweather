@@ -182,7 +182,7 @@ CREATE INDEX probe_vantage_ts  ON probe(vantage_id, ts);
 CREATE INDEX probe_ts          ON probe(ts);
 ```
 
-**Migration `0011`** added `cert_issuer` and `cert_not_after` (unix ms, NULL when the observation was not TLS). They are per-observation facts from the TLS instrument, not target configuration, so they live on `probe` rather than `target`. The `cert_pin` table below remains a separate, specified feature.
+**Migration `0011`** added `cert_issuer` and `cert_not_after` (unix ms, NULL when the observation was not TLS). They are per-observation facts from the TLS instrument, not target configuration, so they live on `probe` rather than `target`. The `cert_pin` table below is separate and is implemented in migration `0013`.
 
 `probe_archive` is the same shape plus `pinned_at` and `incident_id`, with no `ts` index (it is always queried by target or incident):
 
