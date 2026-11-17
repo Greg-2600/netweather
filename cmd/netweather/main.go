@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/agent"
+	"github.com/Greg-2600/netweather/internal/anomaly"
 	"github.com/Greg-2600/netweather/internal/api"
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/config"
@@ -180,6 +181,7 @@ func serve(lg *logging.Logger) error {
 		Probes:    st,
 		Incidents: st,
 		Scopes:    st,
+		Anomalies: st,
 		Metrics:   metricsHandler,
 		Vantage:   "local",
 		Fallback:  ui,
@@ -213,6 +215,7 @@ func serve(lg *logging.Logger) error {
 		}
 	}
 	go incidents.Loop(ctx, st, st, st, "local", incidentInterval, lg.Logger)
+	go anomaly.Loop(ctx, st, st, "local", incidentInterval, lg.Logger)
 	go maintenanceLoop(ctx, st, lg)
 	go configLoop(ctx, st, ag, lg.Logger)
 

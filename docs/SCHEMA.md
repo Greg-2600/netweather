@@ -377,6 +377,8 @@ CREATE TABLE attribution (
 
 `annotation` is the ground-truth hook. One line from the operator ("AWS us-east-1, confirmed on status page") turns a stored incident into a labelled example for the backtest corpus.
 
+`anomaly` is written by `internal/anomaly` (migration `0005`), not by the probe path. One row is a detector event: the observed health, the baseline median, the MAD and derived sigma, and how many consecutive evaluations were below the band. It is deliberately separate from `incident`: most anomalies are advisory, and an incident is a later, stronger claim. `incident_id` stays null until something links the two.
+
 ---
 
 ## 8. DNS and certificates

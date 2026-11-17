@@ -197,7 +197,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
-    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes"],
+    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -440,6 +440,40 @@ Auth: bearer. `scope` is `global`, `sector`, `country`, or `asn`; `value` select
 - `judgeable` excludes targets marked permanently unmeasurable. Unprobed targets still count toward it, so a stalled scheduler lowers coverage instead of looking healthy.
 - `mode` is `learning` until 21 of 28 hour-of-week samples exist; `baseline.usable` is false until then. The baseline always reports `n`, `median`, `mad`, and `sigma`, so a client can show how far along learning is.
 
+### 6.12 `GET /api/v1/anomalies` — stable
+
+Auth: bearer. Detector output, newest first. An anomaly is an observation relative to a baseline, not a verdict; an incident may or may not follow.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `limit` | 50 | 1–200 |
+
+```json
+{
+  "data": [
+    {
+      "id": 41,
+      "ts": "2026-11-17T12:05:00Z",
+      "scope": "sector",
+      "scope_value": "airline",
+      "kind": "health_drop",
+      "observed": 0.62,
+      "baseline": 0.94,
+      "mad": 0.01,
+      "sigma": 0.0148,
+      "buckets": 2
+    }
+  ],
+  "meta": {"request_id": "…", "count": 1, "limit": 50}
+}
+```
+
+- `kind` is `health_drop` in v1: two consecutive evaluations below `baseline - 3σ` with at least a two-point drop.
+- `buckets` is how many consecutive low evaluations produced the event.
+- `incident_id` is absent until an incident links to the anomaly.
+- The detector only evaluates scopes that clear the coverage floors, because running it on an `UNKNOWN` scope would turn a visibility failure into a false incident.
+- Repeated detections for the same scope are suppressed for 30 minutes after one fires.
+
 ---
 
 ## 7. Specified, not implemented
@@ -451,7 +485,6 @@ Each of these is a promise about shape, not a claim that it works. `GET /api/v1/
 | Endpoint | Tier | Purpose |
 |---|---|---|
 | `GET /api/v1/targets/{id}` | stable | One target with its current state and measurement metadata |
-| `GET /api/v1/anomalies` | stable | Detector output, advisory included |
 | `GET /api/v1/coverage` | stable | The blind-spot panel: ASN/country spread, measurable share, stale anchors |
 | `GET /api/v1/feeds` | stable | Feed state: last success, staleness, consecutive failures |
 | `GET /api/v1/selfcheck` | internal | Self-health results (clock, egress, MTU, port 53, disk) |

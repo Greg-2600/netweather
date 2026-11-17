@@ -45,6 +45,11 @@ type ScopeReader interface {
 	ScopeHistory(ctx context.Context, scope, value string, at time.Time) ([]float64, error)
 }
 
+// AnomalyReader is the read side of the baseline-relative detector.
+type AnomalyReader interface {
+	Anomalies(ctx context.Context, limit int) ([]store.Anomaly, error)
+}
+
 // Deps is everything the HTTP layer needs. It is deliberately small: the API
 // reads state, it does not own it.
 type Deps struct {
@@ -64,6 +69,8 @@ type Deps struct {
 	Incidents IncidentReader
 	// Scopes reads scope health/coverage. Nil disables the route.
 	Scopes ScopeReader
+	// Anomalies reads detector output. Nil disables the route.
+	Anomalies AnomalyReader
 	// Metrics is the Prometheus handler. Nil keeps /metrics unmounted, which is
 	// the default: exposing it is an operator decision.
 	Metrics http.Handler
@@ -104,6 +111,7 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	apiMux.HandleFunc("/api/v1/logs", onlyGET(s.handleLogs))
 	apiMux.HandleFunc("/api/v1/targets/", onlyGET(s.handleTargetProbes))
 	apiMux.HandleFunc("/api/v1/scopes/", onlyGET(s.handleScope))
+	apiMux.HandleFunc("/api/v1/anomalies", onlyGET(s.handleAnomalies))
 	apiMux.HandleFunc("/api/v1/incidents", onlyGET(s.handleIncidents))
 	apiMux.HandleFunc("/api/v1/incidents/", onlyGET(s.handleIncidentByID))
 	apiMux.HandleFunc("/", s.handleNotFound)
@@ -200,7 +208,7 @@ type metaResponse struct {
 
 // capabilities is the runtime truth. A client should feature-detect here rather
 // than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes"}
+var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies"}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}
@@ -756,6 +764,61 @@ func (s *server) handleScope(w http.ResponseWriter, r *http.Request) {
 			Sigma: stats.Sigma(), Usable: stats.Usable(),
 		},
 	}, nil)
+}
+
+type anomalyItem struct {
+	ID         int64   `json:"id"`
+	TS         string  `json:"ts"`
+	Scope      string  `json:"scope"`
+	ScopeValue string  `json:"scope_value,omitempty"`
+	Kind       string  `json:"kind"`
+	Observed   float64 `json:"observed"`
+	Baseline   float64 `json:"baseline"`
+	MAD        float64 `json:"mad"`
+	Sigma      float64 `json:"sigma"`
+	Buckets    int     `json:"buckets"`
+	IncidentID string  `json:"incident_id,omitempty"`
+}
+
+// handleAnomalies lists detector output, newest first. An anomaly is an
+// observation against a baseline, not a verdict: an incident may follow from it.
+func (s *server) handleAnomalies(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Anomalies == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "anomalies are not configured")
+		return
+	}
+
+	limit, err := parseLimit(r.URL.Query().Get("limit"), 50, 200)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, err.Error())
+		return
+	}
+
+	rows, err := s.deps.Anomalies.Anomalies(r.Context(), limit)
+	if err != nil {
+		s.deps.Logger.Error("anomaly list failed", "event", "anomaly_list_failed", "component", "http", "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "anomalies unavailable")
+		return
+	}
+
+	out := make([]anomalyItem, 0, len(rows))
+	for _, a := range rows {
+		out = append(out, anomalyItem{
+			ID:         a.ID,
+			TS:         a.TS.UTC().Format(time.RFC3339),
+			Scope:      a.Scope,
+			ScopeValue: a.ScopeValue,
+			Kind:       a.Kind,
+			Observed:   a.Observed,
+			Baseline:   a.Baseline,
+			MAD:        a.MAD,
+			Sigma:      a.Sigma,
+			Buckets:    a.Buckets,
+			IncidentID: a.IncidentID,
+		})
+	}
+
+	writeData(w, r, out, &Meta{Count: len(out), Limit: limit})
 }
 
 type controlState struct {

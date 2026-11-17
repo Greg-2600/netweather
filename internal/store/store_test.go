@@ -65,8 +65,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 4 {
-		t.Errorf("schema version = %d, want 4", stats.SchemaVersion)
+	if stats.SchemaVersion != 5 {
+		t.Errorf("schema version = %d, want 5", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -94,7 +94,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 4 {
+	if err != nil || version != 5 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -1035,5 +1035,65 @@ func TestSeriesReadsRollups(t *testing.T) {
 
 	if _, err := s.Series(ctx, "t1", "local", "2w", now.Add(-time.Hour), now); err == nil {
 		t.Fatal("unknown resolution should be an error")
+	}
+}
+
+func TestRecordAnomalyAndList(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	first := store.Anomaly{
+		TS: base, Scope: "sector", ScopeValue: "airline", Kind: "health_drop",
+		Observed: 0.62, Baseline: 0.94, MAD: 0.01, Sigma: 0.0148, Buckets: 2,
+	}
+	if err := s.RecordAnomaly(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	second := first
+	second.TS = base.Add(5 * time.Minute)
+	second.Scope = "global"
+	second.ScopeValue = ""
+	second.IncidentID = "inc-1"
+	if err := s.RecordAnomaly(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.Anomalies(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("anomalies = %d, want 2", len(got))
+	}
+	// Newest first.
+	if got[0].Scope != "global" || got[0].IncidentID != "inc-1" {
+		t.Fatalf("first = %+v", got[0])
+	}
+	if got[1].Scope != "sector" || got[1].ScopeValue != "airline" {
+		t.Fatalf("second = %+v", got[1])
+	}
+	if got[1].Observed != 0.62 || got[1].Buckets != 2 {
+		t.Fatalf("values did not round-trip: %+v", got[1])
+	}
+
+	one, err := s.Anomalies(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(one) != 1 || one[0].Scope != "global" {
+		t.Fatalf("limit = %+v", one)
+	}
+
+	// A fresh database has no anomalies, which is not an error.
+	empty, _ := openTest(t)
+	none, err := empty.Anomalies(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(none) != 0 {
+		t.Fatalf("fresh database returned %d anomalies", len(none))
 	}
 }

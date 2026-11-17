@@ -1459,6 +1459,116 @@ func TestScopeUnavailableAndAuth(t *testing.T) {
 	}
 }
 
+type fakeAnomalies struct {
+	rows []store.Anomaly
+	err  error
+}
+
+func (f *fakeAnomalies) Anomalies(context.Context, int) ([]store.Anomaly, error) {
+	return f.rows, f.err
+}
+
+func newAnomaliesHandler(t *testing.T, reader api.AnomalyReader) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Anomalies: reader,
+			Version:   "test",
+			Commit:    "deadbeef",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func TestAnomaliesList(t *testing.T) {
+	t.Parallel()
+
+	ts := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	reader := &fakeAnomalies{rows: []store.Anomaly{
+		{
+			ID: 2, TS: ts, Scope: "global", Kind: "health_drop",
+			Observed: 0.62, Baseline: 0.94, MAD: 0.01, Sigma: 0.0148,
+			Buckets: 2, IncidentID: "inc-1",
+		},
+		{
+			ID: 1, TS: ts.Add(-5 * time.Minute), Scope: "sector", ScopeValue: "airline",
+			Kind: "health_drop", Observed: 0.7, Baseline: 0.95, MAD: 0.01,
+			Sigma: 0.0148, Buckets: 2,
+		},
+	}}
+
+	rec := do(newAnomaliesHandler(t, reader), http.MethodGet, "/api/v1/anomalies?limit=5", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var items []struct {
+		ID         int64   `json:"id"`
+		TS         string  `json:"ts"`
+		Scope      string  `json:"scope"`
+		ScopeValue string  `json:"scope_value"`
+		Kind       string  `json:"kind"`
+		Observed   float64 `json:"observed"`
+		IncidentID string  `json:"incident_id"`
+	}
+	if err := json.Unmarshal(env.Data, &items); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(items) != 2 {
+		t.Fatalf("items = %d", len(items))
+	}
+	if items[0].Scope != "global" || items[0].IncidentID != "inc-1" || items[0].TS != "2026-11-17T12:00:00Z" {
+		t.Fatalf("first = %+v", items[0])
+	}
+	if items[1].ScopeValue != "airline" || items[1].Observed != 0.7 {
+		t.Fatalf("second = %+v", items[1])
+	}
+	if env.Meta.Count != 2 || env.Meta.Limit != 5 {
+		t.Fatalf("meta = %+v", env.Meta)
+	}
+}
+
+func TestAnomaliesUnavailableAndAuth(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/api/v1/anomalies", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+
+	rec = do(newAnomaliesHandler(t, &fakeAnomalies{}), http.MethodGet, "/api/v1/anomalies", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+func TestAnomaliesRejectBadLimitAndSurfaceErrors(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newAnomaliesHandler(t, &fakeAnomalies{}), http.MethodGet, "/api/v1/anomalies?limit=0", testToken)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+
+	rec = do(newAnomaliesHandler(t, &fakeAnomalies{err: errors.New("db down")}),
+		http.MethodGet, "/api/v1/anomalies", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+}
+
 func TestSecurityHeaders(t *testing.T) {
 	t.Parallel()
 
