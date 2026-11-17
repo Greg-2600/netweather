@@ -2,13 +2,16 @@ package web
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
 	"log/slog"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/board"
@@ -52,6 +55,8 @@ func New(deps Deps) (http.Handler, error) {
 	mux.Handle("/static/", http.FileServer(http.FS(staticFS)))
 	mux.Handle("/events", s.requireSession(http.HandlerFunc(s.handleEvents)))
 	mux.HandleFunc("/targets/", s.requireSession(http.HandlerFunc(s.handleTarget)).ServeHTTP)
+	mux.HandleFunc("/incidents", s.requireSession(http.HandlerFunc(s.handleIncidents)).ServeHTTP)
+	mux.HandleFunc("/incidents/", s.requireSession(http.HandlerFunc(s.handleIncident)).ServeHTTP)
 	mux.Handle("/", s.requireSession(http.HandlerFunc(s.handleBoard)))
 	return mux, nil
 }
@@ -302,6 +307,139 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Error(w, "no such target", http.StatusNotFound)
+}
+
+// --- incidents -------------------------------------------------------------
+
+type incidentRow struct {
+	ID           string
+	OpenedAt     string
+	Scope        string
+	ScopeValue   string
+	Headline     string
+	Confidence   string
+	Open         bool
+	ClosedAt     string
+	ClosedReason string
+}
+
+type incidentListView struct {
+	Incidents []incidentRow
+}
+
+type attributionView struct {
+	Rank    int
+	Kind    string
+	Value   string
+	Failing int
+	Total   int
+	Share   string
+	Score   string
+}
+
+type incidentDetailView struct {
+	ID           string
+	Headline     string
+	Scope        string
+	ScopeValue   string
+	OpenedAt     string
+	Confidence   string
+	Closed       bool
+	ClosedAt     string
+	ClosedReason string
+	Attribution  []attributionView
+	Targets      []string
+}
+
+func (s *server) handleIncidents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.deps.Incidents == nil {
+		http.Error(w, "incident log is not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	rows, err := s.deps.Incidents.Incidents(r.Context(), false, 100)
+	if err != nil {
+		s.deps.Logger.Error("incident list failed", "event", "incident_list_failed", "component", "http", "error", err)
+		http.Error(w, "incident log unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	view := incidentListView{Incidents: make([]incidentRow, 0, len(rows))}
+	for _, inc := range rows {
+		row := incidentRow{
+			ID: inc.ID, OpenedAt: inc.OpenedAt.UTC().Format("2006-01-02 15:04"),
+			Scope: inc.Scope, ScopeValue: inc.ScopeValue, Headline: inc.Headline,
+			Confidence: inc.Confidence, Open: inc.ClosedAt.IsZero(),
+		}
+		if !inc.ClosedAt.IsZero() {
+			row.ClosedAt = inc.ClosedAt.UTC().Format("2006-01-02 15:04")
+			row.ClosedReason = inc.ClosedReason
+		}
+		view.Incidents = append(view.Incidents, row)
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+	_ = s.tmpl.ExecuteTemplate(w, "incidents.html", view)
+}
+
+func (s *server) handleIncident(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.deps.Incidents == nil {
+		http.Error(w, "incident log is not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	id := strings.TrimPrefix(r.URL.Path, "/incidents/")
+	if id == "" || strings.Contains(id, "/") {
+		http.Error(w, "no such incident", http.StatusNotFound)
+		return
+	}
+
+	inc, attrs, targets, err := s.deps.Incidents.IncidentByID(r.Context(), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "no such incident", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.deps.Logger.Error("incident load failed", "event", "incident_load_failed", "component", "http", "error", err)
+		http.Error(w, "incident unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	view := incidentDetailView{
+		ID: inc.ID, Headline: inc.Headline, Scope: inc.Scope, ScopeValue: inc.ScopeValue,
+		OpenedAt:   inc.OpenedAt.UTC().Format("2006-01-02 15:04"),
+		Confidence: inc.Confidence, Closed: !inc.ClosedAt.IsZero(),
+		Targets: targets,
+	}
+	if !inc.ClosedAt.IsZero() {
+		view.ClosedAt = inc.ClosedAt.UTC().Format("2006-01-02 15:04")
+		view.ClosedReason = inc.ClosedReason
+	}
+	for _, a := range attrs {
+		view.Attribution = append(view.Attribution, attributionView{
+			Rank: a.Rank, Kind: a.Kind, Value: a.Value,
+			Failing: a.Failing, Total: a.Total,
+			Share: fmt.Sprintf("%.0f%%", a.Share*100),
+			Score: fmt.Sprintf("%.3f", a.Score),
+		})
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+	_ = s.tmpl.ExecuteTemplate(w, "incident.html", view)
 }
 
 // --- events ----------------------------------------------------------------

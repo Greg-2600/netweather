@@ -25,6 +25,7 @@ type Deps struct {
 	Source        board.Source
 	Watcher       board.Watcher
 	History       History
+	Incidents     IncidentHistory
 	Vantage       string
 	Token         string
 	SecureCookies bool
@@ -36,6 +37,12 @@ type Deps struct {
 // instead of pretending the target has never been probed.
 type History interface {
 	RecentProbes(ctx context.Context, targetID, vantageID string, limit int) ([]store.ProbeRow, error)
+}
+
+// IncidentHistory supplies the incident screens.
+type IncidentHistory interface {
+	Incidents(ctx context.Context, openOnly bool, limit int) ([]store.Incident, error)
+	IncidentByID(ctx context.Context, id string) (store.Incident, []store.Attribution, []string, error)
 }
 
 func loadTemplates() (*template.Template, error) {

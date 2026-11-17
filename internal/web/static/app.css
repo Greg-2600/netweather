@@ -47,6 +47,18 @@ a { color: var(--accent); }
 .small { font-size: 0.82rem; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
+.nav {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.88rem;
+}
+.nav:hover { color: var(--text); }
+
+.page-title { font-size: 1.35rem; margin: 0 0 1rem; }
+
+ul.targets { margin: 0.25rem 0 1rem; padding-left: 1.1rem; }
+ul.targets li { margin: 0.1rem 0; }
+
 button, input {
   font: inherit;
   color: inherit;

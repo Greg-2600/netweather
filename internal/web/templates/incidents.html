@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Incidents · netweather</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="/">netweather</a>
+    <a class="nav" href="/">Board</a>
+  </header>
+
+  <main>
+    <h1 class="page-title">Incidents</h1>
+
+    {{if .Incidents}}
+    <table class="probes" data-testid="incident-list">
+      <thead>
+        <tr><th>Opened</th><th>Scope</th><th>Headline</th><th>Confidence</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {{range .Incidents}}
+        <tr data-testid="incident-row" data-open="{{.Open}}">
+          <td class="mono">{{.OpenedAt}}</td>
+          <td class="mono">{{.Scope}}{{if .ScopeValue}}={{.ScopeValue}}{{end}}</td>
+          <td><a href="/incidents/{{.ID}}">{{.Headline}}</a></td>
+          <td>{{.Confidence}}</td>
+          <td>{{if .Open}}open{{else}}closed {{.ClosedAt}}{{if .ClosedReason}} — {{.ClosedReason}}{{end}}{{end}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="muted" data-testid="no-incidents">
+      No incidents recorded. Detection runs every five minutes, and a cluster
+      needs at least three failing targets and 60% of its scope.
+    </p>
+    {{end}}
+  </main>
+</body>
+</html>

@@ -148,6 +148,7 @@ func serve(lg *logging.Logger) error {
 		Version:       version.Version,
 		StartedAt:     time.Now(),
 		History:       st,
+		Incidents:     st,
 		Vantage:       "local",
 	})
 	if err != nil {

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Headline}} · netweather</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="/">netweather</a>
+    <a class="nav" href="/incidents">Incidents</a>
+  </header>
+
+  <main>
+    <article class="card" data-testid="incident-detail">
+      <h1>{{.Headline}}</h1>
+      <p class="mono muted">
+        {{.Scope}}{{if .ScopeValue}}={{.ScopeValue}}{{end}} · opened {{.OpenedAt}} · {{.Confidence}} confidence
+      </p>
+      {{if .Closed}}
+      <p class="muted" data-testid="incident-closed">Closed {{.ClosedAt}} — {{.ClosedReason}}</p>
+      {{end}}
+
+      <h2 class="section-title">Attribution</h2>
+      {{if .Attribution}}
+      <table class="probes" data-testid="attribution">
+        <thead>
+          <tr><th>#</th><th>Kind</th><th>Value</th><th>Failing</th><th>Share</th><th>Score</th></tr>
+        </thead>
+        <tbody>
+          {{range .Attribution}}
+          <tr data-testid="attribution-row">
+            <td>{{.Rank}}</td>
+            <td>{{.Kind}}</td>
+            <td class="mono">{{.Value}}</td>
+            <td>{{.Failing}}/{{.Total}}</td>
+            <td>{{.Share}}</td>
+            <td class="mono">{{.Score}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="muted">No attribution stored for this incident.</p>
+      {{end}}
+
+      <h2 class="section-title">Affected targets</h2>
+      {{if .Targets}}
+      <ul class="targets mono" data-testid="incident-targets">
+        {{range .Targets}}<li>{{.}}</li>{{end}}
+      </ul>
+      {{else}}
+      <p class="muted">No targets recorded.</p>
+      {{end}}
+
+      <p><a href="/incidents">← Back to incidents</a></p>
+    </article>
+  </main>
+</body>
+</html>

@@ -3,6 +3,7 @@ package web_test
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"io"
 	"log/slog"
 	"net/http"
@@ -545,5 +546,169 @@ func waitForLine(t *testing.T, lines <-chan string, needle string, timeout time.
 		case <-deadline:
 			t.Fatalf("timed out waiting for %q", needle)
 		}
+	}
+}
+
+type fakeIncidentHistory struct {
+	items   []store.Incident
+	attrs   []store.Attribution
+	targets []string
+	err     error
+}
+
+func (f *fakeIncidentHistory) Incidents(context.Context, bool, int) ([]store.Incident, error) {
+	return f.items, f.err
+}
+
+func (f *fakeIncidentHistory) IncidentByID(_ context.Context, id string) (store.Incident, []store.Attribution, []string, error) {
+	if f.err != nil {
+		return store.Incident{}, nil, nil, f.err
+	}
+	for _, inc := range f.items {
+		if inc.ID == id {
+			return inc, f.attrs, f.targets, nil
+		}
+	}
+	return store.Incident{}, nil, nil, sql.ErrNoRows
+}
+
+func newServerWithIncidents(t *testing.T, token string, m *board.Memory, history web.IncidentHistory) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		Incidents: history,
+		Token:     token,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func incidentsFixture() *fakeIncidentHistory {
+	opened := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	return &fakeIncidentHistory{
+		items: []store.Incident{
+			{
+				ID: "inc-open", OpenedAt: opened, Verdict: "INCIDENT",
+				Scope: "sector", ScopeValue: "airline",
+				Headline: "5 of 6 targets failing on sector=airline", Confidence: "high",
+			},
+			{
+				ID: "inc-closed", OpenedAt: opened.Add(-time.Hour), ClosedAt: opened,
+				Verdict: "INCIDENT", Scope: "cdn", ScopeValue: "akamai",
+				Headline: "17 of 21 targets failing on cdn=akamai", Confidence: "medium",
+				ClosedReason: "cluster cleared",
+			},
+		},
+		attrs: []store.Attribution{
+			{Rank: 1, Kind: "sector", Value: "airline", Failing: 5, Total: 6, Share: 5.0 / 6.0, Score: 1.5},
+		},
+		targets: []string{"svc-united", "svc-delta"},
+	}
+}
+
+func TestIncidentsPage(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithIncidents(t, testToken, fixture(), incidentsFixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/incidents") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if strings.Count(page, `data-testid="incident-row"`) != 2 {
+		t.Fatalf("rows missing:\n%s", page)
+	}
+	for _, want := range []string{
+		`href="/incidents/inc-open"`,
+		"5 of 6 targets failing on sector=airline",
+		"open",
+		"closed",
+		"cluster cleared",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page missing %q", want)
+		}
+	}
+}
+
+func TestIncidentsPageEmptyState(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithIncidents(t, testToken, fixture(), &fakeIncidentHistory{})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/incidents") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="no-incidents"`) {
+		t.Fatal("empty incident log should say so")
+	}
+}
+
+func TestIncidentDetailPage(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithIncidents(t, testToken, fixture(), incidentsFixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/incidents/inc-open") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	for _, want := range []string{
+		`data-testid="attribution-row"`,
+		"airline",
+		"83%",
+		"svc-united",
+		"svc-delta",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("detail missing %q", want)
+		}
+	}
+}
+
+func TestIncidentDetailMissing(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithIncidents(t, testToken, fixture(), incidentsFixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/incidents/nope") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = body(t, resp)
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", resp.StatusCode)
 	}
 }
