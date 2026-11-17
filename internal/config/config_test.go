@@ -325,3 +325,76 @@ func TestClassifyCompilesRegex(t *testing.T) {
 		t.Fatal("regex was not compiled")
 	}
 }
+
+func TestLoadAcceptsCorridors(t *testing.T) {
+	t.Parallel()
+
+	f, err := config.Load(write(t, `version: 1
+targets:
+  - name: A
+    host: a.example
+    port: 443
+    probe: tls
+    class: service
+corridors:
+  - id: nyc-lon
+    from: NYC
+    to: LON
+    endpoints: ["Anchor.One.Example:443", "anchor.two.example:80"]
+`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	got := f.Corridors[0]
+	if got.ID != "nyc-lon" || got.From != "NYC" || got.To != "LON" {
+		t.Fatalf("corridor = %+v", got)
+	}
+	if len(got.Endpoints) != 2 {
+		t.Fatalf("endpoints = %+v", got.Endpoints)
+	}
+	// Hosts are normalised, so the same endpoint cannot be spelled twice.
+	if got.Endpoints[0] != "anchor.one.example:443" || got.Endpoints[1] != "anchor.two.example:80" {
+		t.Fatalf("endpoints = %+v", got.Endpoints)
+	}
+}
+
+func TestCorridorValidation(t *testing.T) {
+	t.Parallel()
+
+	base := `version: 1
+targets:
+  - name: A
+    host: a.example
+    port: 443
+    probe: tls
+    class: service
+corridors:
+`
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"missing id", base + "  - from: A\n    to: B\n    endpoints: [\"a.example:443\", \"b.example:443\"]\n", "id is required"},
+		{"bad id", base + "  - id: Bad_ID\n    from: A\n    to: B\n    endpoints: [\"a.example:443\", \"b.example:443\"]\n", "lower-case"},
+		{"missing from", base + "  - id: x\n    to: B\n    endpoints: [\"a.example:443\", \"b.example:443\"]\n", "from and to"},
+		{"one endpoint", base + "  - id: x\n    from: A\n    to: B\n    endpoints: [\"a.example:443\"]\n", "exactly two"},
+		{"bad port", base + "  - id: x\n    from: A\n    to: B\n    endpoints: [\"a.example:22\", \"b.example:443\"]\n", "must be 80 or 443"},
+		{"not a port", base + "  - id: x\n    from: A\n    to: B\n    endpoints: [\"a.example:https\", \"b.example:443\"]\n", "not a number"},
+		{"duplicate endpoint", base + "  - id: x\n    from: A\n    to: B\n    endpoints: [\"a.example:443\", \"A.Example:443\"]\n", "duplicates"},
+		{"duplicate id", base + "  - id: x\n    from: A\n    to: B\n    endpoints: [\"a.example:443\", \"b.example:443\"]\n  - id: x\n    from: C\n    to: D\n    endpoints: [\"c.example:443\", \"d.example:443\"]\n", "already used"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := config.Load(write(t, tc.body))
+			if err == nil {
+				t.Fatalf("Load accepted %s", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want it to mention %q", err, tc.want)
+			}
+		})
+	}
+}

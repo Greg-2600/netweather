@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,14 +26,29 @@ const (
 	CurrentVersion = 1
 	// MaxTargets bounds the list (DESIGN.md §14).
 	MaxTargets = 2000
+	// MaxCorridors bounds the corridor list. Ten is the documented working
+	// set; fifty leaves room for an operator who wants more without letting a
+	// typo turn into thousands of probes.
+	MaxCorridors = 50
 	// MaxFileBytes bounds a config file before it is parsed.
 	MaxFileBytes = 1 << 20
 )
 
 // File is the on-disk schema.
 type File struct {
-	Version int      `yaml:"version"`
-	Targets []Target `yaml:"targets"`
+	Version   int        `yaml:"version"`
+	Targets   []Target   `yaml:"targets"`
+	Corridors []Corridor `yaml:"corridors"`
+}
+
+// Corridor is one operator-defined path pair (DESIGN.md §9). Endpoints are
+// host:port strings; the corridor samples them with TCP, which works in a
+// container without raw sockets.
+type Corridor struct {
+	ID        string   `yaml:"id"`
+	From      string   `yaml:"from"`
+	To        string   `yaml:"to"`
+	Endpoints []string `yaml:"endpoints"`
 }
 
 // Target is one configured probe.
@@ -139,7 +155,10 @@ func Load(path string) (*File, error) {
 var (
 	hostLabelRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 	idCleanRE   = regexp.MustCompile(`[^a-z0-9]+`)
-	validProbes = map[string]map[int]struct{}{
+	// corridorIDRE is stricter than a derived target id: a corridor id is a
+	// stable operator-chosen key, so it is never silently rewritten.
+	corridorIDRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+	validProbes  = map[string]map[int]struct{}{
 		"http":    {80: {}, 443: {}},
 		"tcp":     {80: {}, 443: {}},
 		"tcpping": {80: {}, 443: {}},
@@ -183,13 +202,27 @@ func (f *File) Validate() error {
 		}
 		seenID[t.ID] = i
 	}
+
+	if len(f.Corridors) > MaxCorridors {
+		return fmt.Errorf("config: %d corridors exceeds the %d limit", len(f.Corridors), MaxCorridors)
+	}
+	seenCorridor := make(map[string]int, len(f.Corridors))
+	for i := range f.Corridors {
+		c := &f.Corridors[i]
+		if err := validateCorridor(c); err != nil {
+			return fmt.Errorf("config: corridor %d (%s): %w", i, c.ID, err)
+		}
+		if other, dup := seenCorridor[c.ID]; dup {
+			return fmt.Errorf("config: corridor %d uses id %q already used by corridor %d", i, c.ID, other)
+		}
+		seenCorridor[c.ID] = i
+	}
 	return nil
 }
 
 func validateTarget(t *Target) error {
 	t.Host = strings.ToLower(strings.TrimSpace(t.Host))
 	t.Name = strings.TrimSpace(t.Name)
-
 	if t.Name == "" {
 		return errors.New("name is required")
 	}
@@ -268,6 +301,58 @@ func validateTarget(t *Target) error {
 	}
 	if t.ID == "" {
 		return errors.New("could not derive an id")
+	}
+	return nil
+}
+
+// validateCorridor normalises and checks one corridor definition. Endpoints are
+// normalised to lowercase host:port so the same endpoint cannot be listed twice
+// in different spellings.
+func validateCorridor(c *Corridor) error {
+	c.ID = strings.ToLower(strings.TrimSpace(c.ID))
+	c.From = strings.TrimSpace(c.From)
+	c.To = strings.TrimSpace(c.To)
+
+	if c.ID == "" {
+		return errors.New("id is required")
+	}
+	if !corridorIDRE.MatchString(c.ID) {
+		return fmt.Errorf("id %q must be lower-case letters, digits, or dashes", c.ID)
+	}
+	if c.From == "" || c.To == "" {
+		return errors.New("from and to are required")
+	}
+	if len(c.Endpoints) != 2 {
+		return fmt.Errorf("needs exactly two endpoints, got %d", len(c.Endpoints))
+	}
+
+	seen := make(map[string]struct{}, len(c.Endpoints))
+	for i, raw := range c.Endpoints {
+		host, portText, err := net.SplitHostPort(strings.TrimSpace(raw))
+		if err != nil {
+			return fmt.Errorf("endpoint %d: %w", i+1, err)
+		}
+		host = strings.ToLower(strings.TrimSpace(host))
+		if net.ParseIP(host) == nil && !validHostname(host) {
+			return fmt.Errorf("endpoint %d: invalid host %q", i+1, host)
+		}
+		port, err := strconv.Atoi(portText)
+		if err != nil {
+			return fmt.Errorf("endpoint %d: port %q is not a number", i+1, portText)
+		}
+		if port != 80 && port != 443 {
+			return fmt.Errorf("endpoint %d: port %d must be 80 or 443", i+1, port)
+		}
+		if !netx.DefaultPolicy().PortAllowed(port) {
+			return fmt.Errorf("endpoint %d: port %d is not in the outbound allowlist", i+1, port)
+		}
+
+		addr := net.JoinHostPort(host, strconv.Itoa(port))
+		if _, dup := seen[addr]; dup {
+			return fmt.Errorf("endpoint %d duplicates %q", i+1, addr)
+		}
+		seen[addr] = struct{}{}
+		c.Endpoints[i] = addr
 	}
 	return nil
 }

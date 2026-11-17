@@ -90,3 +90,14 @@ targets:
   #   class: network
   #   tier: 3
   #   interval_s: 120
+# Corridors (DESIGN.md §9) are an operator-defined pair of in-region endpoints,
+# sampled with TCP every five minutes. A step change is judged against the
+# corridor's own six-hour baseline and must persist for two samples.
+#
+# There is no shipped default list: inventing endpoints would fabricate the
+# measurement. Provide two hosts you can reach on 80 or 443, one at each end.
+# corridors:
+#   - id: nyc-lon
+#     from: NYC
+#     to: LON
+#     endpoints: ["anchor.us.example:443", "anchor.uk.example:443"]

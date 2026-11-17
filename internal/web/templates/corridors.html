@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Corridors · netweather</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="/">netweather</a>
+    <a class="nav" href="/world">World</a>
+    <a class="nav" href="/corridors">Corridors</a>
+    <a class="nav" href="/coverage">Coverage</a>
+    <a class="nav" href="/incidents">Incidents</a>
+  </header>
+
+  <main>
+    <h1 class="page-title">Corridors</h1>
+    <p class="muted" data-testid="corridors-summary">
+      One row per configured path pair. A step change is judged against the
+      corridor's own six-hour baseline and must persist for two samples; a
+      single spike is noise.
+    </p>
+
+    {{if .Rows}}
+    <table class="probes" data-testid="corridors">
+      <thead>
+        <tr>
+          <th>Corridor</th><th>Path</th><th>RTT</th><th>Loss</th>
+          <th>Sampled</th><th>State</th><th>Since</th><th>Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Rows}}
+        <tr data-testid="corridor-row" data-corridor="{{.ID}}" data-state="{{.State}}">
+          <td class="mono">{{.ID}}</td>
+          <td>{{.From}} → {{.To}}</td>
+          <td class="mono">{{.RTT}}</td>
+          <td class="mono">{{.Loss}}</td>
+          <td class="mono">{{.SampledAt}}</td>
+          <td class="{{.StateCls}}">{{.State}}{{if .Kind}} ({{.Kind}}){{end}}</td>
+          <td class="mono">{{.Since}}</td>
+          <td class="detail">{{.Detail}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="muted" data-testid="no-corridors">{{.Note}}</p>
+    {{end}}
+
+    <p class="muted small">
+      A corridor is evidence about a path, never a target state. It never opens
+      a target incident, and no traceroute is scheduled: a walk touches roughly
+      thirty third-party routers, so the drawer's on-demand trace is the
+      documented way to localise a step.
+    </p>
+  </main>
+</body>
+</html>

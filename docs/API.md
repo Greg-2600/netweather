@@ -25,6 +25,7 @@ Honesty first, because a spec that implies more than the binary does is worse th
 | `GET /api/v1/control`, `POST /api/v1/pause`, `POST /api/v1/resume` | **implemented** - the probe kill switch |
 | `GET /api/v1/targets/{id}/probes` | **implemented** - recent raw observations for one target |
 | `GET /api/v1/incidents`, `GET /api/v1/incidents/{id}` | **implemented** - the incident log and ranked attribution |
+| `GET /api/v1/corridors` | **implemented** - configured path pairs with their newest sample and open step change |
 | `GET /metrics` | **implemented** - aggregate Prometheus text; off unless `NETWEATHER_METRICS=true`; bearer auth when a token is set |
 | `GET /events` | **implemented** - the UI's SSE stream; session cookie auth, not bearer. The API-facing counterpart is `GET /api/v1/events` (§6.17) |
 | Everything else in §7 | **implemented** — the section is kept as the action/index surface, not a backlog |
@@ -737,6 +738,32 @@ Auth: bearer. One on-demand IPv4 ICMP traceroute. The result is a hint about whe
 - The destination not answering is `200` with `reached: false`, not an error.
 - Traceroute needs `CAP_NET_RAW`. Without it the endpoint is `503` with the socket error in the message, and the rest of the monitor is unaffected (`compose.trace.yaml` grants the capability). IPv6 destinations are `400` in this release.
 - Every run logs `event=traceroute` with the request id, destination, hop count, and whether the destination answered.
+
+### 6.22 `GET /api/v1/corridors` - stable
+
+Auth: bearer. The configured corridors (DESIGN.md §9) with each one's newest sample and any open step change.
+
+```json
+{
+  "data": [
+    {
+      "id": "nyc-lon",
+      "from": "NYC",
+      "to": "LON",
+      "latest": {"ts": "2026-11-17T11:00:00Z", "rtt_ms": 83, "loss": 0, "ok": true},
+      "open_event": {"kind": "rtt_step", "started_at": "2026-11-17T10:00:00Z",
+                     "detail": "rtt 190ms for two samples against a 82ms baseline (±3ms)"}
+    },
+    {"id": "lon-sin", "from": "LON", "to": "SIN"}
+  ],
+  "meta": {"request_id": "…", "count": 2}
+}
+```
+
+- `latest` is absent until the first five-minute sample lands. `open_event` is absent while the corridor is normal.
+- `ok: false` means the last sample got no reply from either endpoint; it is not a verdict about a target.
+- This is evidence about a path. It never changes a target's state and never opens a target incident.
+- `503` when no corridor reader is configured, rather than an empty list that reads as "all normal". A configured instance with no corridors returns `200` and an empty list.
 
 ---
 

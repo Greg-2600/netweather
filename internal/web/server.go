@@ -69,6 +69,7 @@ func New(deps Deps) (http.Handler, error) {
 	mux.HandleFunc("/incidents/", s.requireSession(http.HandlerFunc(s.handleIncident)).ServeHTTP)
 	mux.HandleFunc("/coverage", s.requireSession(http.HandlerFunc(s.handleCoverage)).ServeHTTP)
 	mux.HandleFunc("/world", s.requireSession(http.HandlerFunc(s.handleWorld)).ServeHTTP)
+	mux.HandleFunc("/corridors", s.requireSession(http.HandlerFunc(s.handleCorridors)).ServeHTTP)
 	mux.HandleFunc("/icon/", s.requireSession(http.HandlerFunc(s.handleIcon)).ServeHTTP)
 	mux.HandleFunc("/pause", s.requireSession(http.HandlerFunc(s.handlePause)).ServeHTTP)
 	mux.HandleFunc("/resume", s.requireSession(http.HandlerFunc(s.handleResume)).ServeHTTP)
@@ -1540,6 +1541,90 @@ func worstStateFromClass(class string) board.State {
 		}
 	}
 	return board.StateUnknown
+}
+
+// --- corridors -------------------------------------------------------------
+
+// corridorsView is the corridor table (DESIGN.md §9/§10.4). It shows the newest
+// sample and the open step change, not a sparkline: the detection rule is the
+// product, and a sparkline without a baseline would invite the wrong question.
+type corridorsView struct {
+	Version string
+	CSRF    string
+	Rows    []corridorRow
+	Note    string
+}
+
+type corridorRow struct {
+	ID        string
+	From      string
+	To        string
+	RTT       string
+	Loss      string
+	SampledAt string
+	State     string
+	StateCls  string
+	Kind      string
+	Detail    string
+	Since     string
+}
+
+func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	csrf, _ := s.auth.csrfFrom(r)
+	view := corridorsView{Version: s.deps.Version, CSRF: csrf}
+
+	if s.deps.Corridors == nil {
+		view.Note = "Corridors are not configured on this instance."
+	} else {
+		statuses, err := s.deps.Corridors.CorridorStatus(r.Context())
+		switch {
+		case err != nil:
+			s.deps.Logger.Warn("corridor page failed",
+				"event", "corridor_page_failed", "component", "http", "error", err)
+			view.Note = "Corridors are temporarily unavailable."
+		case len(statuses) == 0:
+			view.Note = "No corridors are configured. Add a `corridors:` section to the target file."
+		default:
+			for _, status := range statuses {
+				row := corridorRow{
+					ID: status.Corridor.ID, From: status.Corridor.From, To: status.Corridor.To,
+					State: "waiting for a sample", StateCls: "state-unknown",
+					RTT: "-", Loss: "-",
+				}
+				if status.Latest != nil {
+					row.SampledAt = status.Latest.TS.UTC().Format("2006-01-02 15:04")
+					row.RTT = fmt.Sprintf("%.0f ms", status.Latest.RTTMS)
+					row.Loss = fmt.Sprintf("%.0f%%", status.Latest.Loss)
+					if status.Latest.OK {
+						row.State = "normal"
+						row.StateCls = "state-up"
+					} else {
+						row.State = "no reply"
+						row.StateCls = "state-down"
+					}
+				}
+				if status.Open != nil {
+					row.State = "step change"
+					row.StateCls = "state-down"
+					row.Kind = status.Open.Kind
+					row.Detail = status.Open.Detail
+					row.Since = status.Open.StartedAt.UTC().Format("2006-01-02 15:04")
+				}
+				view.Rows = append(view.Rows, row)
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+	_ = s.tmpl.ExecuteTemplate(w, "corridors.html", view)
 }
 
 // --- events ----------------------------------------------------------------

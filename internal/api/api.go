@@ -57,6 +57,12 @@ type CorroborationReader interface {
 	Corroboration(ctx context.Context, inc store.Incident, now time.Time, limit int) ([]store.ExternalEvent, error)
 }
 
+// CorridorReader returns the corridor list with each corridor's latest sample
+// and open event (DESIGN.md §9).
+type CorridorReader interface {
+	CorridorStatus(ctx context.Context) ([]store.CorridorStatus, error)
+}
+
 // IncidentAnnotator records the operator's ground truth for an incident. It is
 // the hook that turns a stored incident into a labelled example.
 type IncidentAnnotator interface {
@@ -140,6 +146,9 @@ type Deps struct {
 	// Corroboration reads external feed events for an incident. Nil omits the
 	// section rather than pretending no earlier event existed.
 	Corroboration CorroborationReader
+	// Corridors reads the corridor status for the API and the UI. Nil disables
+	// the route rather than showing an empty corridor list.
+	Corridors CorridorReader
 	// Annotator records the operator's ground truth. Nil disables the route.
 	Annotator IncidentAnnotator
 	// Scopes reads scope health/coverage. Nil disables the route.
@@ -242,6 +251,7 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	apiMux.HandleFunc("/api/v1/anomalies", onlyGET(s.handleAnomalies))
 	apiMux.HandleFunc("/api/v1/coverage", onlyGET(s.handleCoverage))
 	apiMux.HandleFunc("/api/v1/coverage/history", onlyGET(s.handleCoverageHistory))
+	apiMux.HandleFunc("/api/v1/corridors", onlyGET(s.handleCorridors))
 	apiMux.HandleFunc("/api/v1/selfcheck", onlyGET(s.handleSelfCheck))
 	apiMux.HandleFunc("/api/v1/export", onlyGET(s.handleExport))
 	apiMux.HandleFunc("/api/v1/events", onlyGET(s.handleEvents))
@@ -344,7 +354,7 @@ type metaResponse struct {
 
 // capabilities is the runtime truth. A client should feature-detect here rather
 // than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace"}
+var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace", "corridors"}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}

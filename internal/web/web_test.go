@@ -2695,3 +2695,113 @@ func TestBoardDensityToggle(t *testing.T) {
 		t.Fatal("an unknown density did not fall back to compact")
 	}
 }
+
+type fakeCorridorStatus struct {
+	statuses []store.CorridorStatus
+	err      error
+}
+
+func (f *fakeCorridorStatus) CorridorStatus(context.Context) ([]store.CorridorStatus, error) {
+	return f.statuses, f.err
+}
+
+func newServerWithCorridors(t *testing.T, token string, m *board.Memory, corridors web.CorridorStatus) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		Corridors: corridors,
+		Vantage:   "local",
+		Token:     token,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestCorridorPage(t *testing.T) {
+	t.Parallel()
+
+	started := time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC)
+	latest := store.CorridorSample{
+		CorridorID: "nyc-lon", TS: started.Add(time.Hour),
+		RTTMS: 83, Loss: 0, OK: true,
+	}
+	open := store.CorridorEvent{
+		ID: "ce-1", CorridorID: "nyc-lon", Kind: "rtt_step",
+		StartedAt: started, Detail: "rtt 190ms against 82ms",
+	}
+	corridors := &fakeCorridorStatus{statuses: []store.CorridorStatus{
+		{Corridor: store.Corridor{ID: "nyc-lon", From: "NYC", To: "LON"}, Latest: &latest, Open: &open},
+		{Corridor: store.Corridor{ID: "lon-sin", From: "LON", To: "SIN"}},
+	}}
+
+	ts := newServerWithCorridors(t, testToken, fixture(), corridors)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/corridors") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if !strings.Contains(page, `data-testid="corridors"`) {
+		t.Fatalf("corridor table missing:\n%s", page)
+	}
+	for _, want := range []string{
+		"nyc-lon", "NYC → LON", "83 ms", "0%",
+		"step change", "rtt_step", "rtt 190ms against 82ms",
+		"waiting for a sample", "LON → SIN",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("corridor page missing %q", want)
+		}
+	}
+}
+
+func TestCorridorPageNotes(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		corridors web.CorridorStatus
+		want      string
+	}{
+		{"unconfigured", nil, "not configured"},
+		{"empty", &fakeCorridorStatus{}, "No corridors are configured"},
+		{"failed", &fakeCorridorStatus{err: errors.New("db down")}, "temporarily unavailable"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ts := newServerWithCorridors(t, testToken, fixture(), tc.corridors)
+			client, _ := newClient(t)
+			login(t, ts, client, testToken)
+
+			resp, err := client.Get(ts.URL + "/corridors") //nolint:bodyclose // body() closes it
+			if err != nil {
+				t.Fatal(err)
+			}
+			page := body(t, resp)
+			if !strings.Contains(page, `data-testid="no-corridors"`) || !strings.Contains(page, tc.want) {
+				t.Fatalf("note missing %q:\n%s", tc.want, page)
+			}
+			if strings.Contains(page, `data-testid="corridor-row"`) {
+				t.Error("a row rendered without a corridor")
+			}
+		})
+	}
+}

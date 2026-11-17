@@ -67,8 +67,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 13 {
-		t.Errorf("schema version = %d, want 13", stats.SchemaVersion)
+	if stats.SchemaVersion != 14 {
+		t.Errorf("schema version = %d, want 14", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -96,7 +96,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 13 {
+	if err != nil || version != 14 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -2089,5 +2089,116 @@ func TestIncidentsPageUsesTheKeyNotAnOffset(t *testing.T) {
 	page, err = s.IncidentsPage(ctx, true, time.Time{}, "", 0)
 	if err != nil || len(page) == 0 {
 		t.Fatalf("default limit = %d rows, %v", len(page), err)
+	}
+}
+
+func TestCorridorsUpsertSamplesAndEvents(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	ctx := context.Background()
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+
+	if err := s.UpsertCorridors(ctx, []store.Corridor{
+		{ID: "nyc-lon", From: "NYC", To: "LON"},
+		{ID: "lon-sin", From: "LON", To: "SIN"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.Corridors(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ID != "lon-sin" || got[1].ID != "nyc-lon" {
+		t.Fatalf("corridors = %+v", got)
+	}
+
+	// Two samples, oldest first, with the failure preserved as loss.
+	if err := s.RecordCorridorSample(ctx, store.CorridorSample{
+		CorridorID: "nyc-lon", TS: base, RTTMS: 80, Loss: 0, OK: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCorridorSample(ctx, store.CorridorSample{
+		CorridorID: "nyc-lon", TS: base.Add(5 * time.Minute), RTTMS: 120, Loss: 20, OK: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	samples, err := s.CorridorSamples(ctx, "nyc-lon", base.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(samples) != 2 || !samples[0].TS.Equal(base) || samples[1].RTTMS != 120 || samples[1].Loss != 20 {
+		t.Fatalf("samples = %+v", samples)
+	}
+
+	// A sample outside the window is not returned.
+	if samples, err := s.CorridorSamples(ctx, "nyc-lon", base.Add(time.Minute)); err != nil || len(samples) != 1 {
+		t.Fatalf("windowed samples = %+v, %v", samples, err)
+	}
+
+	// Status reports the newest sample and no open event yet.
+	status, err := s.CorridorStatus(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(status) != 2 {
+		t.Fatalf("status = %+v", status)
+	}
+	lonSin, nycLon := status[0], status[1]
+	if nycLon.Latest == nil || nycLon.Latest.RTTMS != 120 || nycLon.Open != nil {
+		t.Fatalf("nyc-lon status = %+v", nycLon)
+	}
+	if lonSin.Latest != nil {
+		t.Fatalf("lon-sin has a sample it never recorded: %+v", lonSin.Latest)
+	}
+
+	// Opening an event is visible and closing it clears the open flag.
+	if err := s.OpenCorridorEvent(ctx, store.CorridorEvent{
+		ID: "ev-1", CorridorID: "nyc-lon", Kind: "rtt_step",
+		StartedAt: base, Detail: "rtt 120ms against 80ms",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	status, err = s.CorridorStatus(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status[1].Open == nil || status[1].Open.Kind != "rtt_step" {
+		t.Fatalf("open event not reported: %+v", status[1])
+	}
+
+	if err := s.CloseCorridorEvent(ctx, "nyc-lon", base.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	status, err = s.CorridorStatus(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status[1].Open != nil {
+		t.Fatalf("closed event still open: %+v", status[1].Open)
+	}
+
+	events, err := s.CorridorEvents(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || !events[0].EndedAt.Equal(base.Add(time.Hour)) {
+		t.Fatalf("events = %+v", events)
+	}
+
+	// A corridor removed from the config is disabled, not deleted: its history
+	// survives, but it is no longer in the enabled list.
+	if err := s.UpsertCorridors(ctx, []store.Corridor{{ID: "nyc-lon", From: "NYC", To: "LON"}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.Corridors(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "nyc-lon" {
+		t.Fatalf("after removal = %+v", got)
 	}
 }

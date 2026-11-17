@@ -801,6 +801,8 @@ A cut shows as one corridor stepping while neighbours stay flat — that localis
 
 Endpoints: prefer RIPE Atlas anchors (stable, distributed). Fallback: country anchor NS hosts, or public looking-glass targets.
 
+**Implemented, configuration-driven:** a `corridors:` section in the target file defines the pairs (`id`, `from`, `to`, and exactly two `host:port` endpoints on 80/443). The runner samples each endpoint five times with TCP every five minutes — no raw sockets, so it works in the shipped container — and records the median RTT per endpoint, their mean, and the failure rate. Detection is the documented rule: a six-hour rolling baseline, a move beyond 3σ **and** a material 20 ms / 25% change, or loss moving from ~0 to ≥5%, and it must persist for two consecutive samples. A step opens one `corridor_event`; recovery closes it. Corridors never open target incidents and never schedule traces; the drawer's on-demand trace is the localisation path. Still specified: the shipped ten-city default list (there is no honest endpoint list to ship without inventing measurements), per-corridor sparklines, and automatic trace attachment.
+
 ---
 
 ## 10. UI
@@ -857,6 +859,8 @@ One tile per country: ccTLD code + flag, coloured by reachability, with an IODA 
 ### 10.4 Corridors
 
 Ten rows: RTT sparkline, loss bar, baseline band, step-change highlight.
+
+**Implemented:** `/corridors` lists one row per configured corridor with its current RTT, loss, sample time, state (`normal`, `no reply`, `step change`, or `waiting for a sample`), event kind, detail, and when the change started. It is a table rather than a sparkline chart because the detection rule is the product: a line without its six-hour baseline invites reading an absolute RTT as a verdict. Still specified: the per-corridor RTT sparkline and loss bar.
 
 ### 10.5 Target drawer
 

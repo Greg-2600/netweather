@@ -27,6 +27,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/api"
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/config"
+	"github.com/Greg-2600/netweather/internal/corridor"
 	"github.com/Greg-2600/netweather/internal/enrich"
 	"github.com/Greg-2600/netweather/internal/feeds"
 	"github.com/Greg-2600/netweather/internal/incidents"
@@ -225,6 +226,7 @@ func serve(lg *logging.Logger) error {
 		Feeds:               st,
 		TargetCorroboration: st,
 		CountryEvents:       st,
+		Corridors:           st,
 		IncidentWatcher:     incidentChanges,
 		Coverage:            st,
 		CoverageTrend:       st,
@@ -250,6 +252,7 @@ func serve(lg *logging.Logger) error {
 		Probes:          st,
 		Incidents:       st,
 		Corroboration:   st,
+		Corridors:       st,
 		Scopes:          st,
 		Anomalies:       st,
 		Targets:         st,
@@ -302,6 +305,7 @@ func serve(lg *logging.Logger) error {
 	go maintenanceLoop(ctx, st, lg, selfRunner, healthGate, scopes)
 	go configLoop(ctx, st, ag, lg.Logger)
 	go enrichmentLoop(ctx, st, lg)
+	go corridorLoop(ctx, st, ag.Paused, lg)
 
 	go func() {
 		<-ctx.Done()
@@ -784,6 +788,164 @@ func enrichmentLoop(ctx context.Context, st *store.Store, lg *logging.Logger) {
 			run()
 		}
 	}
+}
+
+// corridorLoop samples the configured corridors every five minutes
+// (DESIGN.md §9). Corridors are configuration-driven: without a `corridors:`
+// section nothing runs, so the feature cannot invent endpoints.
+//
+// A step change opens one event; recovery closes it. Traces are deliberately
+// not automated here: a walk touches ~30 third-party routers and the manual
+// trace action is the documented way to localise a step.
+func corridorLoop(ctx context.Context, st *store.Store, paused func() bool, lg *logging.Logger) {
+	provider := func() ([]config.Corridor, error) {
+		path := strings.TrimSpace(os.Getenv("NETWEATHER_CONFIG"))
+		if path == "" {
+			return nil, nil
+		}
+		f, err := config.Load(path)
+		if err != nil {
+			return nil, err
+		}
+		return f.Corridors, nil
+	}
+
+	prober := &tcpProber{tcp: probe.NewTCP(netx.New())}
+
+	run := func() {
+		if paused != nil && paused() {
+			return
+		}
+
+		corridors, err := provider()
+		if err != nil {
+			lg.Warn("corridor config unavailable",
+				"event", "corridor_config_failed", "component", "corridor", "error", err)
+			return
+		}
+
+		stored := make([]store.Corridor, 0, len(corridors))
+		for _, c := range corridors {
+			stored = append(stored, store.Corridor{ID: c.ID, From: c.From, To: c.To})
+		}
+		if err := st.UpsertCorridors(ctx, stored); err != nil {
+			lg.Warn("corridor sync failed",
+				"event", "corridor_sync_failed", "component", "corridor", "error", err)
+			return
+		}
+		if len(corridors) == 0 {
+			return
+		}
+
+		statuses, err := st.CorridorStatus(ctx)
+		if err != nil {
+			lg.Warn("corridor status failed",
+				"event", "corridor_status_failed", "component", "corridor", "error", err)
+			return
+		}
+		open := make(map[string]store.CorridorEvent, len(statuses))
+		for _, status := range statuses {
+			if status.Open != nil {
+				open[status.Corridor.ID] = *status.Open
+			}
+		}
+
+		now := time.Now().UTC()
+		for _, c := range corridors {
+			if ctx.Err() != nil {
+				return
+			}
+
+			sample := corridor.Measure(ctx, c.Endpoints, prober)
+			if err := st.RecordCorridorSample(ctx, store.CorridorSample{
+				CorridorID: c.ID, TS: sample.TS, RTTMS: sample.RTTMS,
+				Loss: sample.Loss, OK: sample.OK,
+			}); err != nil {
+				lg.Warn("corridor sample write failed",
+					"event", "corridor_sample_failed", "component", "corridor",
+					"corridor", c.ID, "error", err)
+				continue
+			}
+
+			stored, err := st.CorridorSamples(ctx, c.ID, now.Add(-corridor.Window))
+			if err != nil {
+				lg.Warn("corridor history read failed",
+					"event", "corridor_history_failed", "component", "corridor",
+					"corridor", c.ID, "error", err)
+				continue
+			}
+			history := make([]corridor.Sample, 0, len(stored))
+			for _, s := range stored {
+				history = append(history, corridor.Sample{
+					TS: s.TS, RTTMS: s.RTTMS, Loss: s.Loss, OK: s.OK,
+				})
+			}
+
+			verdict := corridor.Evaluate(history)
+			openEvent, wasOpen := open[c.ID]
+
+			switch {
+			case verdict.Step && !wasOpen:
+				event := store.CorridorEvent{
+					ID:         fmt.Sprintf("ce-%d-%s", now.UnixMilli(), c.ID),
+					CorridorID: c.ID, Kind: verdict.Kind,
+					StartedAt: now, Detail: verdict.Detail,
+				}
+				if err := st.OpenCorridorEvent(ctx, event); err != nil {
+					lg.Warn("corridor event write failed",
+						"event", "corridor_event_failed", "component", "corridor",
+						"corridor", c.ID, "error", err)
+					continue
+				}
+				open[c.ID] = event
+				lg.Warn("corridor step change",
+					"event", "corridor_step", "component", "corridor",
+					"corridor", c.ID, "from", c.From, "to", c.To,
+					"kind", verdict.Kind, "detail", verdict.Detail)
+			case !verdict.Step && wasOpen:
+				if err := st.CloseCorridorEvent(ctx, c.ID, now); err != nil {
+					lg.Warn("corridor event close failed",
+						"event", "corridor_event_close_failed", "component", "corridor",
+						"corridor", c.ID, "error", err)
+					continue
+				}
+				delete(open, c.ID)
+				lg.Info("corridor recovered",
+					"event", "corridor_recovered", "component", "corridor",
+					"corridor", c.ID, "kind", openEvent.Kind)
+			}
+		}
+	}
+
+	run()
+
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			run()
+		}
+	}
+}
+
+// tcpProber adapts the TCP instrument to the corridor Prober seam, so the
+// detection package needs no probe dependency.
+type tcpProber struct {
+	tcp *probe.TCP
+}
+
+func (p *tcpProber) Probe(ctx context.Context, address string) (time.Duration, bool) {
+	if p == nil || p.tcp == nil {
+		return 0, false
+	}
+	res := p.tcp.Do(ctx, address)
+	if res.Failed() {
+		return 0, false
+	}
+	return res.Latency, true
 }
 
 // Tor caps from ACCEPTABLE_USE.md §8: at most 25 targets, at least 2s between

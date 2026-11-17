@@ -3530,3 +3530,100 @@ func encodeTestCursor(t *testing.T) string {
 	}
 	return base64.RawURLEncoding.EncodeToString(payload)
 }
+
+type fakeCorridors struct {
+	statuses []store.CorridorStatus
+	err      error
+}
+
+func (f *fakeCorridors) CorridorStatus(context.Context) ([]store.CorridorStatus, error) {
+	return f.statuses, f.err
+}
+
+func newCorridorsHandler(t *testing.T, reader api.CorridorReader) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Corridors: reader,
+			Version:   "test",
+			Commit:    "deadbeef",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func TestCorridorsAPI(t *testing.T) {
+	t.Parallel()
+
+	started := time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC)
+	latest := store.CorridorSample{
+		CorridorID: "nyc-lon", TS: started.Add(time.Hour),
+		RTTMS: 82.5, Loss: 0, OK: true,
+	}
+	open := store.CorridorEvent{
+		ID: "ce-1", CorridorID: "nyc-lon", Kind: "rtt_step",
+		StartedAt: started, Detail: "rtt 190ms against 82ms",
+	}
+	reader := &fakeCorridors{statuses: []store.CorridorStatus{
+		{Corridor: store.Corridor{ID: "nyc-lon", From: "NYC", To: "LON"}, Latest: &latest, Open: &open},
+		{Corridor: store.Corridor{ID: "lon-sin", From: "LON", To: "SIN"}},
+	}}
+
+	rec := do(newCorridorsHandler(t, reader), http.MethodGet, "/api/v1/corridors", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var items []struct {
+		ID     string `json:"id"`
+		From   string `json:"from"`
+		To     string `json:"to"`
+		Latest *struct {
+			TS    string  `json:"ts"`
+			RTTMS float64 `json:"rtt_ms"`
+			Loss  float64 `json:"loss"`
+			OK    bool    `json:"ok"`
+		} `json:"latest"`
+		OpenEvent *struct {
+			Kind      string `json:"kind"`
+			StartedAt string `json:"started_at"`
+			Detail    string `json:"detail"`
+		} `json:"open_event"`
+	}
+	if err := json.Unmarshal(env.Data, &items); err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("items = %d", len(items))
+	}
+	first := items[0]
+	if first.ID != "nyc-lon" || first.From != "NYC" || first.To != "LON" {
+		t.Fatalf("first = %+v", first)
+	}
+	if first.Latest == nil || first.Latest.RTTMS != 82.5 || first.Latest.TS != "2026-11-17T11:00:00Z" {
+		t.Fatalf("latest = %+v", first.Latest)
+	}
+	if first.OpenEvent == nil || first.OpenEvent.Kind != "rtt_step" || first.OpenEvent.Detail == "" {
+		t.Fatalf("open_event = %+v", first.OpenEvent)
+	}
+	if items[1].Latest != nil || items[1].OpenEvent != nil {
+		t.Fatalf("a corridor with no sample reported one: %+v", items[1])
+	}
+
+	// No reader is a visible 503, not an empty list that reads as "all normal".
+	rec = do(newCorridorsHandler(t, nil), http.MethodGet, "/api/v1/corridors", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unconfigured status = %d, want 503", rec.Code)
+	}
+}

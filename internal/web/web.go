@@ -39,6 +39,8 @@ type Deps struct {
 	TargetCorroboration TargetCorroboration
 	// CountryEvents supplies the world-view feed overlay.
 	CountryEvents CountryEvents
+	// Corridors supplies the corridor page. Nil shows a note, not an empty page.
+	Corridors CorridorStatus
 	// IncidentWatcher wakes the UI stream when an incident opens or closes.
 	IncidentWatcher board.Watcher
 	Coverage        Coverage
@@ -112,6 +114,12 @@ type TargetCorroboration interface {
 // Nil means the tiles render without an overlay rather than with a fake one.
 type CountryEvents interface {
 	RecentCountryEvents(ctx context.Context, since time.Time) (map[string]store.ExternalEvent, error)
+}
+
+// CorridorStatus supplies the corridor page: each corridor's latest sample and
+// open step change (DESIGN.md §9).
+type CorridorStatus interface {
+	CorridorStatus(ctx context.Context) ([]store.CorridorStatus, error)
 }
 
 // IncidentAnnotator records the operator's ground truth for an incident.
