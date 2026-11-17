@@ -200,7 +200,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
-    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace"],
+    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "annotations", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace", "corridors"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -781,9 +781,9 @@ Auth: bearer. The configured corridors (DESIGN.md §9) with each one's newest sa
 
 ---
 
-## 7. Specified, not implemented
+## 7. Implementation status
 
-Each of these is a promise about shape, not a claim that it works. `GET /api/v1/meta` will list them in `capabilities` only when they do.
+This section used to list promises. Every read endpoint, both event streams, and every action endpoint in this document is now implemented, so it is kept as a status record rather than a gap list; the subsection numbers are stable because other documents cross-reference them.
 
 ### 7.1 Read surface
 
