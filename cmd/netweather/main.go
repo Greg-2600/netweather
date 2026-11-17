@@ -224,9 +224,19 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 
 	out := make([]agent.Target, 0, len(f.Targets))
 	for _, t := range f.Targets {
-		if t.Probe != "http" {
-			return nil, fmt.Errorf("target %s: probe %q is not implemented yet (http only)", t.Host, t.Probe)
+		var (
+			url     string
+			address string
+		)
+		switch t.Probe {
+		case "http":
+			url = targetURL(t.Host, t.Port)
+		case "tls", "tcp":
+			address = net.JoinHostPort(t.Host, strconv.Itoa(t.Port))
+		default:
+			return nil, fmt.Errorf("target %s: probe %q is not implemented yet", t.Host, t.Probe)
 		}
+
 		expect, err := t.Expect.Classify()
 		if err != nil {
 			return nil, fmt.Errorf("target %s: %w", t.Host, err)
@@ -250,7 +260,9 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 			ID:         t.ID,
 			Name:       t.Name,
 			Host:       t.Host,
-			URL:        targetURL(t.Host, t.Port),
+			URL:        url,
+			Address:    address,
+			Instrument: t.Probe,
 			Vantage:    "local",
 			Tier:       schedule.Tier(t.Tier),
 			Interval:   t.Interval(),
@@ -363,7 +375,13 @@ func healthcheck() error {
 }
 
 func newAgent(targets []agent.Target, st *store.Store, lg *logging.Logger) *agent.Agent {
-	ag := agent.New(targets, probe.NewHTTP(netx.New()), st)
+	dialer := netx.New()
+	runner := agent.Instruments{
+		HTTP: probe.NewHTTP(dialer),
+		TLS:  probe.NewTLS(dialer),
+		TCP:  probe.NewTCP(dialer),
+	}
+	ag := agent.New(targets, runner, st)
 	ag.Logger = lg.Logger
 	return ag
 }

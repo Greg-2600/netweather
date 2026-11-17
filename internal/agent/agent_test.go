@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -36,11 +37,11 @@ func (f *fakeProber) set(url string, r probe.Result) {
 	f.results[url] = r
 }
 
-func (f *fakeProber) Do(_ context.Context, url string) probe.Result {
+func (f *fakeProber) Run(_ context.Context, t agent.Target) probe.Result {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.calls[url]++
-	return f.results[url]
+	f.calls[t.URL]++
+	return f.results[t.URL]
 }
 
 func (f *fakeProber) count(url string) int {
@@ -295,6 +296,94 @@ func TestClassifierExpectationsAreCarried(t *testing.T) {
 	}
 	if got := sink.batch()[0].State; got != state.Degraded {
 		t.Fatalf("state = %s, want degraded", got)
+	}
+}
+
+func TestNonHTTPSuccessIsReachability(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	p := newProber()
+	p.set("", probe.Result{Latency: 5 * time.Millisecond})
+
+	tg := target("tls1", "example.com")
+	tg.Instrument = "tls"
+	tg.Address = "example.com:443"
+	tg.URL = ""
+	tg.Tier = schedule.TierAnchor
+
+	sink := &fakeSink{}
+	a := agent.New([]agent.Target{tg}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	got := sink.batch()[0]
+	if got.State != state.UpReachability {
+		t.Fatalf("state = %s, want up_reachability", got.State)
+	}
+	if got.Stage != "tls" {
+		t.Fatalf("stage = %q, want tls", got.Stage)
+	}
+}
+
+func TestNonHTTPFailureUsesTheTransportClass(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	p := newProber()
+	p.set("", probe.Result{ErrorClass: "tls_cert_expired", Err: errors.New("expired")})
+
+	tg := target("tls1", "example.com")
+	tg.Instrument = "tls"
+	tg.Address = "example.com:443"
+	tg.URL = ""
+
+	sink := &fakeSink{}
+	a := agent.New([]agent.Target{tg}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	got := sink.batch()[0]
+	if got.State != state.Down {
+		t.Fatalf("state = %s, want down", got.State)
+	}
+	if got.ErrorClass != "tls_cert_expired" {
+		t.Fatalf("class = %q", got.ErrorClass)
+	}
+}
+
+func TestInstrumentsDispatch(t *testing.T) {
+	t.Parallel()
+
+	boom := func(context.Context, string, string) (net.Conn, error) {
+		return nil, &net.OpError{Op: "dial", Err: errors.New("refused")}
+	}
+
+	inst := agent.Instruments{
+		TLS: &probe.TLS{Dial: boom},
+		TCP: &probe.TCP{Dial: boom},
+	}
+
+	if got := inst.Run(context.Background(), agent.Target{Instrument: "tcp", Address: "x.example:443"}); got.ErrorClass != "tcp_refused" {
+		t.Errorf("tcp dispatch: class = %q", got.ErrorClass)
+	}
+	if got := inst.Run(context.Background(), agent.Target{Instrument: "tls", Address: "x.example:443"}); got.ErrorClass != "tcp_refused" {
+		t.Errorf("tls dispatch: class = %q", got.ErrorClass)
+	}
+
+	empty := agent.Instruments{}
+	for _, instrument := range []string{"tcp", "tls", "http"} {
+		if got := empty.Run(context.Background(), agent.Target{Instrument: instrument}); got.Err == nil {
+			t.Errorf("%s: a missing instrument must be an error, not a silent success", instrument)
+		}
 	}
 }
 

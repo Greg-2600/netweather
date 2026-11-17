@@ -175,6 +175,13 @@ func ClassifyError(err error) string {
 		return "tls_cert_invalid"
 	}
 
+	// crypto/tls wraps verification failures in this type (Go 1.20+); unwrap it
+	// so the x509 cases below can classify the real cause.
+	var verification *tls.CertificateVerificationError
+	if errors.As(err, &verification) {
+		return ClassifyError(verification.Err)
+	}
+
 	var hostname x509.HostnameError
 	if errors.As(err, &hostname) {
 		return "tls_cert_mismatch"

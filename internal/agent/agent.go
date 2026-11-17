@@ -18,6 +18,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/classify"
 	"github.com/Greg-2600/netweather/internal/probe"
 	"github.com/Greg-2600/netweather/internal/schedule"
+	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
 )
 
@@ -27,6 +28,8 @@ type Target struct {
 	Name       string
 	Host       string
 	URL        string
+	Address    string // host:port for tls/tcp
+	Instrument string // http, tls, tcp
 	Vantage    string
 	Tier       schedule.Tier
 	Interval   time.Duration
@@ -34,9 +37,41 @@ type Target struct {
 	ICMPAnchor bool
 }
 
-// Prober is the instrument the agent drives. probe.HTTP satisfies it.
-type Prober interface {
-	Do(ctx context.Context, target string) probe.Result
+// Runner executes one target with the right instrument. agent.Instruments is the
+// production implementation; tests inject a fake.
+type Runner interface {
+	Run(ctx context.Context, t Target) probe.Result
+}
+
+// Instruments dispatches by target type. A nil instrument is a configuration
+// error, not a silent success.
+type Instruments struct {
+	HTTP *probe.HTTP
+	TLS  *probe.TLS
+	TCP  *probe.TCP
+}
+
+// Run executes the instrument named by the target.
+func (i Instruments) Run(ctx context.Context, t Target) probe.Result {
+	switch t.Instrument {
+	case "tls":
+		if i.TLS == nil {
+			return probe.Result{Err: fmt.Errorf("agent: tls instrument not configured")}
+		}
+		r := i.TLS.Do(ctx, t.Address)
+		return probe.Result{Latency: r.Latency, ErrorClass: r.ErrorClass, Err: r.Err}
+	case "tcp":
+		if i.TCP == nil {
+			return probe.Result{Err: fmt.Errorf("agent: tcp instrument not configured")}
+		}
+		r := i.TCP.Do(ctx, t.Address)
+		return probe.Result{Latency: r.Latency, ErrorClass: r.ErrorClass, Err: r.Err}
+	default:
+		if i.HTTP == nil {
+			return probe.Result{Err: fmt.Errorf("agent: http instrument not configured")}
+		}
+		return i.HTTP.Do(ctx, t.URL)
+	}
 }
 
 // Sink persists a batch. store.Store satisfies it.
@@ -47,7 +82,7 @@ type Sink interface {
 // Agent runs due targets and records the results.
 type Agent struct {
 	Targets []Target
-	Prober  Prober
+	Runner  Runner
 	Sink    Sink
 	Limiter *schedule.Limiter
 	Now     func() time.Time
@@ -61,10 +96,10 @@ type Agent struct {
 
 // New builds an agent. Now and Rand default to the real clock and math/rand;
 // tests override them before the first Step.
-func New(targets []Target, prober Prober, sink Sink) *Agent {
+func New(targets []Target, runner Runner, sink Sink) *Agent {
 	return &Agent{
 		Targets: targets,
-		Prober:  prober,
+		Runner:  runner,
 		Sink:    sink,
 		Limiter: schedule.NewLimiter(),
 		Now:     time.Now,
@@ -100,7 +135,7 @@ func (a *Agent) Step(ctx context.Context) (int, error) {
 			continue
 		}
 
-		res := a.Prober.Do(ctx, t.URL)
+		res := a.Runner.Run(ctx, t)
 		release()
 
 		p := a.toProbe(t, res, now)
@@ -191,14 +226,7 @@ func (a *Agent) due(t Target, now time.Time) bool {
 }
 
 func (a *Agent) toProbe(t Target, res probe.Result, now time.Time) store.Probe {
-	decision := classify.Decide(t.Expect, classify.Response{
-		Err:        res.Err,
-		ErrorClass: res.ErrorClass,
-		Status:     res.Status,
-		Header:     res.Header,
-		Body:       res.Body,
-		FinalURL:   res.FinalURL,
-	})
+	decision := decisionFor(t, res)
 
 	detail := decision.Reason
 	if res.Err != nil {
@@ -210,7 +238,7 @@ func (a *Agent) toProbe(t Target, res probe.Result, now time.Time) store.Probe {
 		VantageID:  t.Vantage,
 		TS:         now,
 		State:      decision.State,
-		Stage:      stageFor(res.ErrorClass),
+		Stage:      stageFor(t, res.ErrorClass),
 		ErrorClass: res.ErrorClass,
 		HTTPStatus: res.Status,
 		LatencyMS:  int(res.Latency / time.Millisecond),
@@ -220,7 +248,27 @@ func (a *Agent) toProbe(t Target, res probe.Result, now time.Time) store.Probe {
 	}
 }
 
-func stageFor(class string) string {
+// decisionFor gives non-HTTP success its own answer. A completed TCP or TLS
+// handshake is reachability, not a missing HTTP status.
+func decisionFor(t Target, res probe.Result) classify.Result {
+	if t.Instrument != "" && t.Instrument != "http" && res.Err == nil && res.ErrorClass == "" {
+		return classify.Result{
+			State:      state.UpReachability,
+			Confidence: classify.Low,
+			Reason:     "reachability only",
+		}
+	}
+	return classify.Decide(t.Expect, classify.Response{
+		Err:        res.Err,
+		ErrorClass: res.ErrorClass,
+		Status:     res.Status,
+		Header:     res.Header,
+		Body:       res.Body,
+		FinalURL:   res.FinalURL,
+	})
+}
+
+func stageFor(t Target, class string) string {
 	switch {
 	case strings.HasPrefix(class, "dns_"):
 		return "dns"
@@ -228,6 +276,12 @@ func stageFor(class string) string {
 		return "tcp"
 	case strings.HasPrefix(class, "tls_"):
 		return "tls"
+	}
+	switch t.Instrument {
+	case "tls":
+		return "tls"
+	case "tcp":
+		return "tcp"
 	default:
 		return "http"
 	}
