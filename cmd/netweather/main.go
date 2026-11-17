@@ -1992,6 +1992,18 @@ func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger, s
 			}
 		}
 
+		// The rolling blocked share decides which targets are measurable at
+		// all (DESIGN.md §3.2). It runs before scope sampling so the sample
+		// and the detector see the same denominator.
+		if change, err := st.RefreshMeasurability(ctx, "local", now); err != nil {
+			lg.Warn("measurability refresh failed",
+				"event", "measurability_failed", "component", "maintenance", "error", err)
+		} else if change.Marked > 0 || change.Cleared > 0 {
+			lg.Info("measurability changed",
+				"event", "measurability_changed", "component", "maintenance",
+				"marked", change.Marked, "cleared", change.Cleared)
+		}
+
 		if err := st.SampleScopes(ctx, "local", now); err != nil {
 			lg.Warn("scope sampling failed",
 				"event", "scope_sampling_failed", "component", "maintenance", "error", err)

@@ -87,6 +87,8 @@ Six values. No more.
 
 **UNMEASURABLE targets are excluded from the health index and collapsed into their own board section.** This is the single most important calibration decision: it prevents 200 permanently-bot-walled banks and airlines from making the dashboard look permanently on fire.
 
+**Implemented:** `store.RefreshMeasurability` recomputes the rolling share every maintenance tick. It reads `rollup_5m` rather than raw probes, because raw rows are pruned at 72 hours and a "seven-day" share computed from them would silently be a three-day share. A target with at least 10 probes in the window and a BLOCKED share above 80% is set to `measurability = unmeasurable`; when the rolling share falls back to 80% or below it returns to `ok`, so a lifted wall is not permanent. The board moves a target whose measurability is `unmeasurable` into the quiet section even while its last confirmed state is `BLOCKED`, and the scope, coverage, and verdict queries already excluded that value from health and from the judgeable denominator.
+
 ### 3.3 Global verdict
 
 Exactly one, shown in the top bar.

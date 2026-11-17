@@ -805,7 +805,11 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	measurable := make([]board.Target, 0, len(targets))
 	var unmeasurable []board.Target
 	for _, t := range targets {
-		if t.State == board.StateUnmeasurable {
+		// The confirmed state says what the last probe saw; measurability says
+		// whether the target can be measured at all. A permanently bot-walled
+		// target is collapsed even while its last state is BLOCKED
+		// (DESIGN.md §3.2).
+		if t.State == board.StateUnmeasurable || t.Measurability == "unmeasurable" {
 			unmeasurable = append(unmeasurable, t)
 			continue
 		}

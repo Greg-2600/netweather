@@ -3640,3 +3640,87 @@ func TestCoverageConcentration(t *testing.T) {
 		t.Fatalf("thin sectors = %d, want 1", c.ThinSectors)
 	}
 }
+
+func TestRefreshMeasurability(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	ctx := context.Background()
+	if err := s.EnsureVantage(ctx, "local", "direct", "primary"); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	for _, id := range []string{"a", "b", "c", "d"} {
+		if err := s.UpsertTarget(ctx, store.Target{
+			ID: id, Host: id + ".example", Port: 443, Probe: "http",
+			Name: id, Class: "service", Sector: "banking", Tier: 2, IntervalS: 300,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	record := func(id string, at time.Time, st state.State, n int) {
+		t.Helper()
+		probes := make([]store.Probe, 0, n)
+		for i := 0; i < n; i++ {
+			p := probeFor(id, at, st)
+			p.Detail = "challenge: wall"
+			probes = append(probes, p)
+		}
+		if err := s.Record(ctx, probes); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// a: 90% blocked, enough samples. b: 70%. c: too few samples. d: the
+	// blocked probes are outside the seven-day window.
+	record("a", now, state.Blocked, 9)
+	record("a", now, state.Up, 1)
+	record("b", now, state.Blocked, 7)
+	record("b", now, state.Up, 3)
+	record("c", now, state.Blocked, 2)
+	record("d", now.Add(-8*24*time.Hour), state.Blocked, 10)
+
+	change, err := s.RefreshMeasurability(ctx, "local", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if change.Marked != 1 || change.Cleared != 0 {
+		t.Fatalf("change = %+v, want one marked", change)
+	}
+
+	rows, err := s.TargetsWithState(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	measurability := map[string]string{}
+	for _, row := range rows {
+		measurability[row.ID] = row.Measurability
+	}
+	if measurability["a"] != "unmeasurable" {
+		t.Fatalf("a = %q, want unmeasurable", measurability["a"])
+	}
+	for _, id := range []string{"b", "c", "d"} {
+		if measurability[id] != "ok" {
+			t.Errorf("%s = %q, want ok", id, measurability[id])
+		}
+	}
+
+	// Ten healthy probes bring a back under the threshold, and the rolling
+	// window is what lets it recover.
+	record("a", now, state.Up, 10)
+	change, err = s.RefreshMeasurability(ctx, "local", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if change.Cleared != 1 || change.Marked != 0 {
+		t.Fatalf("change after recovery = %+v", change)
+	}
+	rows, _ = s.TargetsWithState(ctx, "local")
+	for _, row := range rows {
+		if row.ID == "a" && row.Measurability != "ok" {
+			t.Fatalf("a after recovery = %q, want ok", row.Measurability)
+		}
+	}
+}

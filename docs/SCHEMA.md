@@ -111,7 +111,7 @@ CREATE TABLE target (
     as_country   TEXT,                        -- ISO-3166-1 alpha-2 from asn.cymru.com
     as_name      TEXT,                        -- registered organisation name
     ix_names     TEXT,                        -- PeeringDB exchanges, comma-separated, capped
-    measurability TEXT NOT NULL DEFAULT 'ok'
+    measurability TEXT NOT NULL DEFAULT 'ok'   -- refreshed from the 7-day rollup; see DESIGN.md §3.2
                  CHECK (measurability IN ('ok','mostly_blocked','unmeasurable')),
     last_validated_at INTEGER,
 

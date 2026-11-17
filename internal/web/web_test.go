@@ -4528,3 +4528,33 @@ func TestLoginHasAGlobalAttemptCap(t *testing.T) {
 		t.Error("the global cap had no Retry-After")
 	}
 }
+
+func TestBoardCollapsesTargetsMarkedUnmeasurable(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(
+		board.Target{
+			ID: "1", Name: "Wall", Host: "wall.example", Sector: "banking",
+			State: board.StateBlocked, Measurability: "unmeasurable",
+		},
+	)
+	ts := newServer(t, testToken, m)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-sector="unmeasurable"`) {
+		t.Fatalf("a bot-walled target stayed in its sector:\n%s", page)
+	}
+	if !strings.Contains(page, `data-target="wall.example"`) {
+		t.Fatal("the target disappeared from the board")
+	}
+	if strings.Contains(page, `data-sector="banking"`) {
+		t.Fatal("the banking sector still holds a permanently unmeasurable target")
+	}
+}
