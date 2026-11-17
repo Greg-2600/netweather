@@ -77,4 +77,30 @@
       location.reload();
     }
   });
+
+  // WARN and above arrive on the same stream (LOGGING.md §9). They are advisory
+  // and transient, so the board keeps the newest three quietly and lets each
+  // expire; the full ring is on /diagnostics.
+  const logBox = document.createElement("div");
+  logBox.className = "log-notice";
+  logBox.dataset.testid = "log-notice";
+  logBox.setAttribute("role", "status");
+  logBox.setAttribute("aria-live", "polite");
+  document.body.appendChild(logBox);
+
+  es.addEventListener("log", (ev) => {
+    let d;
+    try {
+      d = JSON.parse(ev.data);
+    } catch {
+      return;
+    }
+    const line = document.createElement("p");
+    line.className = "log-line level-" + String(d.level || "").toLowerCase();
+    line.dataset.testid = "log-line";
+    line.textContent = `${d.time} ${d.level} ${d.message}`;
+    logBox.appendChild(line);
+    while (logBox.children.length > 3) logBox.firstElementChild.remove();
+    setTimeout(() => line.remove(), 20000);
+  });
 })();

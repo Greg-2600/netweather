@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/board"
+	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/web"
 	"github.com/mxschmitt/playwright-go"
 )
@@ -69,7 +70,20 @@ type harness struct {
 	page    playwright.Page
 	board   *board.Memory
 	baseURL string
+	logs    *fakeLogs
 }
+
+// fakeLogs is a controllable log ring: the UI test pushes one record and
+// asserts what the browser does with it. It holds no history, because the
+// board only cares about what arrives live.
+type fakeLogs struct {
+	ch chan logging.Record
+}
+
+func (f *fakeLogs) LogRecords(slog.Level, string, int) []logging.Record { return nil }
+func (f *fakeLogs) Diagnostics() logging.Diagnostics                    { return logging.Diagnostics{} }
+func (f *fakeLogs) ActiveScopes() []logging.Scope                       { return nil }
+func (f *fakeLogs) Subscribe() (<-chan logging.Record, func())          { return f.ch, func() {} }
 
 // newHarness starts the real handler on a random port and opens a page with a
 // console-error collector attached. Screenshots land in testdata/out on failure.
@@ -77,10 +91,12 @@ func newHarness(t *testing.T) *harness {
 	t.Helper()
 
 	m := fixture()
+	logs := &fakeLogs{ch: make(chan logging.Record, 8)}
 	h, err := web.New(web.Deps{
 		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Source:    m,
 		Watcher:   m,
+		Logs:      logs,
 		Token:     testToken,
 		Version:   "test",
 		StartedAt: time.Now(),
@@ -142,7 +158,7 @@ func newHarness(t *testing.T) *harness {
 		}
 	})
 
-	return &harness{page: page, board: m, baseURL: ts.URL}
+	return &harness{page: page, board: m, baseURL: ts.URL, logs: logs}
 }
 
 func (h *harness) login(t *testing.T) {
@@ -261,6 +277,37 @@ func TestLiveUpdateArrivesOverSSE(t *testing.T) {
 	upChip := h.page.Locator(`[data-count-state="up"] b`)
 	if err := expect.Locator(upChip).ToHaveText("2"); err != nil {
 		t.Fatalf("up count did not update: %v", err)
+	}
+}
+
+// TestWarnLogLineAppearsOnTheBoard proves the SSE log stream has a consumer:
+// a WARN record pushed by the server shows up as a quiet, accessible notice,
+// and the page does not need a reload to show it.
+func TestWarnLogLineAppearsOnTheBoard(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.login(t)
+
+	expect := playwright.NewPlaywrightAssertions(5000)
+	if err := expect.Locator(h.page.Locator(`[data-testid="connection"]`)).ToHaveAttribute("data-state", "live"); err != nil {
+		t.Fatalf("SSE did not connect: %v", err)
+	}
+
+	h.logs.ch <- logging.Record{
+		Time: time.Now(), Level: slog.LevelWarn, LevelName: "WARN",
+		Message: "self-check failed",
+	}
+
+	line := h.page.Locator(`[data-testid="log-line"]`)
+	text, err := line.TextContent()
+	if err != nil {
+		t.Fatalf("log notice did not appear: %v", err)
+	}
+	if !strings.Contains(text, "WARN") || !strings.Contains(text, "self-check failed") {
+		t.Fatalf("log notice text = %q", text)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="log-notice"]`)).ToHaveAttribute("role", "status"); err != nil {
+		t.Fatalf("the notice is not announced: %v", err)
 	}
 }
 

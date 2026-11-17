@@ -566,3 +566,35 @@ table.probes td.detail { max-width: 18rem; overflow-wrap: anywhere; }
 
 .log-table tr[data-level="ERROR"] td { color: #ff9c97; }
 .log-table tr[data-level="WARN"] td { color: #f0b849; }
+/* --- advisory log lines on the board (LOGGING.md 9) ----------------------- */
+
+/* WARN+ records from the SSE stream. Bottom-left so they never cover the
+   connection chip, and non-interactive because they expire on their own. */
+.log-notice {
+  position: fixed;
+  left: 1rem;
+  bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-width: min(38rem, calc(100vw - 8rem));
+  z-index: 30;
+  pointer-events: none;
+}
+
+.log-line {
+  margin: 0;
+  padding: 0.35rem 0.55rem;
+  border-radius: 6px;
+  background: rgba(20, 24, 31, 0.94);
+  border: 1px solid rgba(240, 184, 73, 0.45);
+  color: #f0b849;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.log-line.level-error {
+  border-color: rgba(255, 156, 151, 0.55);
+  color: #ff9c97;
+}
