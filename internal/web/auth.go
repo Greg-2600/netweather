@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"net/http"
+	neturl "net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -229,7 +230,14 @@ func (s *server) requireSession(next http.Handler) http.Handler {
 		}
 		_, claims, ok := s.auth.sessionFrom(r)
 		if !ok {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			dest := "/login"
+			// Carry the page the browser asked for, but only a page: a
+			// subresource or the stream has no useful post-login destination,
+			// and a redirect to login for those is already enough.
+			if r.Method == http.MethodGet && r.URL.RequestURI() != "/" && wantsPageAfterLogin(r.URL.Path) {
+				dest += "?next=" + neturl.QueryEscape(r.URL.RequestURI())
+			}
+			http.Redirect(w, r, dest, http.StatusSeeOther)
 			return
 		}
 		now := s.now()
@@ -238,4 +246,16 @@ func (s *server) requireSession(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// wantsPageAfterLogin reports whether a request is a page a browser could
+// usefully return to after signing in. The event stream, icons, and static
+// assets are subresources: sending their path as a post-login destination
+// would land the browser on an SVG or an endless stream, so they get the bare
+// login page instead.
+func wantsPageAfterLogin(path string) bool {
+	if path == "/events" || path == "/robots.txt" {
+		return false
+	}
+	return !strings.HasPrefix(path, "/icon/") && !strings.HasPrefix(path, "/static/")
 }

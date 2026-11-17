@@ -96,12 +96,44 @@ type loginView struct {
 	NoAuth bool
 	Error  string
 	CSRF   string
+	// Next is the same-origin page to return to after a successful login. It
+	// is validated by safeNext on the way in and on the way out
+	// (THREAT_MODEL.md T9).
+	Next string
 }
 
 // maxActionBody caps a UI POST body. A login form, an annotation, or a trace
 // request is a few hundred bytes; anything larger is not a form this handler
 // understands, and parsing it costs memory for no benefit (THREAT_MODEL.md T10).
 const maxActionBody = 8 << 10
+
+// safeNext returns the same-origin path a login should return to, or "/". The
+// login form carries the destination in a hidden field, so it is attacker
+// controlled: an absolute URL, a protocol-relative "//host", a backslash that
+// browsers normalise, or a control character all fall back to the board rather
+// than turning the login page into an open redirect (THREAT_MODEL.md T9).
+func safeNext(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") {
+		return "/"
+	}
+	if strings.ContainsAny(raw, "\\\r\n\x00") {
+		return "/"
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.IsAbs() || u.Host != "" {
+		return "/"
+	}
+	if u.Path == "" || !strings.HasPrefix(u.Path, "/") {
+		return "/"
+	}
+	// Never bounce back into the auth machinery.
+	switch u.Path {
+	case "/login", "/logout":
+		return "/"
+	}
+	return u.RequestURI()
+}
 
 // errorView is the browser surface's only error page. It carries a short
 // statement and the request id, never the internal error: the detail is in the
@@ -141,7 +173,10 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 		csrf := randomToken()
 		s.auth.setCSRFCookie(w, csrf, now)
-		s.renderLogin(w, r, http.StatusOK, loginView{CSRF: csrf})
+		s.renderLogin(w, r, http.StatusOK, loginView{
+			CSRF: csrf,
+			Next: safeNext(r.URL.Query().Get("next")),
+		})
 
 	case http.MethodPost:
 		// A login form is a few hundred bytes. Cap the body so a large POST
@@ -149,18 +184,25 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		// API action bodies use applies here (THREAT_MODEL.md T10).
 		r.Body = http.MaxBytesReader(w, r.Body, maxActionBody)
 		if err := r.ParseForm(); err != nil {
-			s.renderLogin(w, r, http.StatusBadRequest, loginView{Error: "Malformed form."})
+			s.renderLogin(w, r, http.StatusBadRequest,
+				loginView{Error: "Malformed form.", Next: safeNext(r.PostFormValue("next"))})
 			return
 		}
+		// The destination travels with the form so a failed attempt does not
+		// lose it; safeNext is the only thing that decides whether it is
+		// usable (THREAT_MODEL.md T9).
+		next := safeNext(r.PostFormValue("next"))
 		if !s.auth.limit.Allow(s.clientIP(r)) || !s.auth.global.Allow("login") {
 			w.Header().Set("Retry-After", "60")
-			s.renderLogin(w, r, http.StatusTooManyRequests, loginView{Error: "Too many attempts. Wait a minute."})
+			s.renderLogin(w, r, http.StatusTooManyRequests,
+				loginView{Error: "Too many attempts. Wait a minute.", Next: next})
 			return
 		}
 		if !s.auth.csrfMatches(r, r.PostFormValue("csrf")) {
 			csrf := randomToken()
 			s.auth.setCSRFCookie(w, csrf, now)
-			s.renderLogin(w, r, http.StatusBadRequest, loginView{Error: "Session expired. Try again.", CSRF: csrf})
+			s.renderLogin(w, r, http.StatusBadRequest,
+				loginView{Error: "Session expired. Try again.", CSRF: csrf, Next: next})
 			return
 		}
 		if !s.auth.checkToken(r.PostFormValue("token")) {
@@ -169,12 +211,15 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			s.renderLogin(w, r, http.StatusUnauthorized, loginView{
 				Error: "That token is not correct.",
 				CSRF:  r.PostFormValue("csrf"),
+				Next:  next,
 			})
 			return
 		}
 		s.auth.setSessionCookie(w, s.auth.issueSession(now, now), now)
 		s.deps.Logger.Info("login ok", "event", "login_ok", "component", "http", "client", s.clientIP(r))
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		// #nosec G710 -- next is the output of safeNext, which admits only a
+		// same-origin path; the taint analyzer cannot see through that helper.
+		http.Redirect(w, r, next, http.StatusSeeOther)
 
 	default:
 		w.Header().Set("Allow", "GET, POST")
