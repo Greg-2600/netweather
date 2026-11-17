@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -28,6 +30,12 @@ type ProbeReader interface {
 	TargetExists(ctx context.Context, targetID string) (bool, error)
 }
 
+// IncidentReader is the read side of the incident log.
+type IncidentReader interface {
+	Incidents(ctx context.Context, openOnly bool, limit int) ([]store.Incident, error)
+	IncidentByID(ctx context.Context, id string) (store.Incident, []store.Attribution, []string, error)
+}
+
 // Deps is everything the HTTP layer needs. It is deliberately small: the API
 // reads state, it does not own it.
 type Deps struct {
@@ -43,6 +51,8 @@ type Deps struct {
 	Control Control
 	// Probes reads recent observations for one target. Nil disables the route.
 	Probes ProbeReader
+	// Incidents reads the incident log. Nil disables the routes.
+	Incidents IncidentReader
 	// Vantage is the vantage the read endpoints report on.
 	Vantage string
 	// Fallback serves everything that is not /healthz or /api/. It is the UI.
@@ -78,6 +88,8 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	apiMux.HandleFunc("/api/v1/meta", onlyGET(s.handleMeta))
 	apiMux.HandleFunc("/api/v1/logs", onlyGET(s.handleLogs))
 	apiMux.HandleFunc("/api/v1/targets/", onlyGET(s.handleTargetProbes))
+	apiMux.HandleFunc("/api/v1/incidents", onlyGET(s.handleIncidents))
+	apiMux.HandleFunc("/api/v1/incidents/", onlyGET(s.handleIncidentByID))
 	apiMux.HandleFunc("/", s.handleNotFound)
 
 	// 60 requests/minute sustained, 20 burst (docs/API.md §8).
@@ -167,7 +179,7 @@ type metaResponse struct {
 
 // capabilities is the runtime truth. A client should feature-detect here rather
 // than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs", "board", "control", "probes"}
+var capabilities = []string{"health", "meta", "logs", "board", "control", "probes", "incidents"}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}
@@ -305,6 +317,118 @@ func (s *server) handleTargetProbes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, r, out, &Meta{Count: len(out), Limit: limit})
+}
+
+type incidentItem struct {
+	ID         string `json:"id"`
+	OpenedAt   string `json:"opened_at"`
+	ClosedAt   string `json:"closed_at,omitempty"`
+	Verdict    string `json:"verdict"`
+	Scope      string `json:"scope"`
+	ScopeValue string `json:"scope_value,omitempty"`
+	Headline   string `json:"headline"`
+	Confidence string `json:"confidence"`
+}
+
+type attributionItem struct {
+	Rank    int     `json:"rank"`
+	Kind    string  `json:"kind"`
+	Value   string  `json:"value"`
+	Failing int     `json:"failing"`
+	Total   int     `json:"total"`
+	Share   float64 `json:"share"`
+	Score   float64 `json:"score"`
+}
+
+type incidentDetail struct {
+	Incident    incidentItem      `json:"incident"`
+	Attribution []attributionItem `json:"attribution"`
+	Targets     []string          `json:"targets"`
+}
+
+func toIncidentItem(inc store.Incident) incidentItem {
+	item := incidentItem{
+		ID:         inc.ID,
+		OpenedAt:   inc.OpenedAt.UTC().Format(time.RFC3339),
+		Verdict:    inc.Verdict,
+		Scope:      inc.Scope,
+		ScopeValue: inc.ScopeValue,
+		Headline:   inc.Headline,
+		Confidence: inc.Confidence,
+	}
+	if !inc.ClosedAt.IsZero() {
+		item.ClosedAt = inc.ClosedAt.UTC().Format(time.RFC3339)
+	}
+	return item
+}
+
+// handleIncidents lists incidents newest first, optionally only open ones.
+func (s *server) handleIncidents(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Incidents == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "incidents are not configured")
+		return
+	}
+
+	q := r.URL.Query()
+	limit, err := parseLimit(q.Get("limit"), 50, 200)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, err.Error())
+		return
+	}
+	openOnly := q.Get("open") == "true"
+
+	rows, err := s.deps.Incidents.Incidents(r.Context(), openOnly, limit)
+	if err != nil {
+		s.deps.Logger.Error("incident list failed", "event", "incident_list_failed", "component", "http", "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "incidents unavailable")
+		return
+	}
+
+	out := make([]incidentItem, 0, len(rows))
+	for _, inc := range rows {
+		out = append(out, toIncidentItem(inc))
+	}
+	writeData(w, r, out, &Meta{Count: len(out), Limit: limit})
+}
+
+// handleIncidentByID returns one incident with its ranked attribution and the
+// targets it covers.
+func (s *server) handleIncidentByID(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Incidents == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "incidents are not configured")
+		return
+	}
+
+	id := strings.TrimPrefix(r.URL.Path, "/api/v1/incidents/")
+	if id == "" || strings.Contains(id, "/") {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such incident")
+		return
+	}
+
+	inc, attrs, targets, err := s.deps.Incidents.IncidentByID(r.Context(), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such incident")
+		return
+	}
+	if err != nil {
+		s.deps.Logger.Error("incident load failed", "event", "incident_load_failed", "component", "http", "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "incident unavailable")
+		return
+	}
+
+	detail := incidentDetail{
+		Incident:    toIncidentItem(inc),
+		Attribution: make([]attributionItem, 0, len(attrs)),
+		Targets:     targets,
+	}
+	for _, a := range attrs {
+		detail.Attribution = append(detail.Attribution, attributionItem{
+			Rank: a.Rank, Kind: a.Kind, Value: a.Value,
+			Failing: a.Failing, Total: a.Total, Share: a.Share, Score: a.Score,
+		})
+	}
+
+	writeData(w, r, detail, nil)
 }
 
 type controlState struct {

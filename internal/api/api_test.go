@@ -2,7 +2,9 @@ package api_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -597,10 +599,15 @@ func TestPauseRejectsGET(t *testing.T) {
 }
 
 type fakeProbes struct {
-	rows map[string][]store.ProbeRow
+	rows      map[string][]store.ProbeRow
+	existsErr error
+	rowsErr   error
 }
 
 func (f *fakeProbes) RecentProbes(_ context.Context, id, _ string, limit int) ([]store.ProbeRow, error) {
+	if f.rowsErr != nil {
+		return nil, f.rowsErr
+	}
 	rows := f.rows[id]
 	if limit > 0 && len(rows) > limit {
 		rows = rows[:limit]
@@ -609,6 +616,9 @@ func (f *fakeProbes) RecentProbes(_ context.Context, id, _ string, limit int) ([
 }
 
 func (f *fakeProbes) TargetExists(_ context.Context, id string) (bool, error) {
+	if f.existsErr != nil {
+		return false, f.existsErr
+	}
 	_, ok := f.rows[id]
 	return ok, nil
 }
@@ -751,6 +761,241 @@ func TestTargetProbesRequiresAuth(t *testing.T) {
 	rec := do(newProbesHandler(t, probeFixture()), http.MethodGet, "/api/v1/targets/t1/probes", "")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+type fakeIncidents struct {
+	items    []store.Incident
+	attrs    []store.Attribution
+	targets  []string
+	lastOpen bool
+	err      error
+}
+
+func (f *fakeIncidents) Incidents(_ context.Context, openOnly bool, _ int) ([]store.Incident, error) {
+	f.lastOpen = openOnly
+	return f.items, f.err
+}
+
+func (f *fakeIncidents) IncidentByID(_ context.Context, id string) (store.Incident, []store.Attribution, []string, error) {
+	if f.err != nil {
+		return store.Incident{}, nil, nil, f.err
+	}
+	for _, inc := range f.items {
+		if inc.ID == id {
+			return inc, f.attrs, f.targets, nil
+		}
+	}
+	return store.Incident{}, nil, nil, sql.ErrNoRows
+}
+
+func newIncidentsHandler(t *testing.T, reader api.IncidentReader) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Incidents: reader,
+			Version:   "test",
+			Commit:    "deadbeef",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func incidentFixture() *fakeIncidents {
+	opened := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	return &fakeIncidents{
+		items: []store.Incident{
+			{
+				ID: "inc-1", OpenedAt: opened, Verdict: "INCIDENT",
+				Scope: "sector", ScopeValue: "airline",
+				Headline: "5 of 6 targets failing on sector=airline", Confidence: "high",
+			},
+		},
+		attrs: []store.Attribution{
+			{Rank: 1, Kind: "sector", Value: "airline", Failing: 5, Total: 6, Share: 5.0 / 6.0, Score: 1.5},
+		},
+		targets: []string{"t1", "t2"},
+	}
+}
+
+func TestIncidentsList(t *testing.T) {
+	t.Parallel()
+
+	reader := incidentFixture()
+	rec := do(newIncidentsHandler(t, reader), http.MethodGet, "/api/v1/incidents?open=true", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+	if !reader.lastOpen {
+		t.Error("open=true was not passed through")
+	}
+
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var items []struct {
+		ID         string `json:"id"`
+		Scope      string `json:"scope"`
+		ScopeValue string `json:"scope_value"`
+		Headline   string `json:"headline"`
+		OpenedAt   string `json:"opened_at"`
+	}
+	if err := json.Unmarshal(env.Data, &items); err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items = %d", len(items))
+	}
+	if items[0].ID != "inc-1" || items[0].Scope != "sector" || items[0].ScopeValue != "airline" {
+		t.Fatalf("item = %+v", items[0])
+	}
+	if items[0].OpenedAt == "" {
+		t.Error("opened_at missing")
+	}
+	if env.Meta.Count != 1 {
+		t.Errorf("meta.count = %d", env.Meta.Count)
+	}
+}
+
+func TestIncidentByID(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newIncidentsHandler(t, incidentFixture()), http.MethodGet, "/api/v1/incidents/inc-1", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var detail struct {
+		Incident struct {
+			ID string `json:"id"`
+		} `json:"incident"`
+		Attribution []struct {
+			Kind  string  `json:"kind"`
+			Value string  `json:"value"`
+			Share float64 `json:"share"`
+		} `json:"attribution"`
+		Targets []string `json:"targets"`
+	}
+	if err := json.Unmarshal(env.Data, &detail); err != nil {
+		t.Fatal(err)
+	}
+
+	if detail.Incident.ID != "inc-1" {
+		t.Fatalf("incident = %+v", detail.Incident)
+	}
+	if len(detail.Attribution) != 1 || detail.Attribution[0].Value != "airline" {
+		t.Fatalf("attribution = %+v", detail.Attribution)
+	}
+	if len(detail.Targets) != 2 {
+		t.Fatalf("targets = %v", detail.Targets)
+	}
+}
+
+func TestIncidentByIDMissing(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newIncidentsHandler(t, incidentFixture()), http.MethodGet, "/api/v1/incidents/nope", testToken)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestIncidentsRejectBadLimit(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newIncidentsHandler(t, incidentFixture()), http.MethodGet, "/api/v1/incidents?limit=0", testToken)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestIncidentsUnavailableWithoutReader(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/api/v1/incidents", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+}
+
+func TestIncidentsRequireAuth(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newIncidentsHandler(t, incidentFixture()), http.MethodGet, "/api/v1/incidents", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+type failingSource struct{}
+
+func (failingSource) Snapshot(context.Context) ([]board.Target, error) {
+	return nil, errors.New("boom")
+}
+
+func TestBoardSourceFailureIsUnavailable(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newBoardHandler(t, failingSource{}), http.MethodGet, "/api/v1/board", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+}
+
+func TestIncidentsReaderFailureIsUnavailable(t *testing.T) {
+	t.Parallel()
+
+	reader := incidentFixture()
+	reader.err = errors.New("db down")
+
+	rec := do(newIncidentsHandler(t, reader), http.MethodGet, "/api/v1/incidents", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("list status = %d, want 503", rec.Code)
+	}
+
+	rec = do(newIncidentsHandler(t, reader), http.MethodGet, "/api/v1/incidents/inc-1", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("detail status = %d, want 503", rec.Code)
+	}
+}
+
+func TestIncidentPathRejectsNestedAndEmptyIDs(t *testing.T) {
+	t.Parallel()
+
+	reader := incidentFixture()
+	for _, path := range []string{"/api/v1/incidents/", "/api/v1/incidents/a/b"} {
+		rec := do(newIncidentsHandler(t, reader), http.MethodGet, path, testToken)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s: status = %d, want 404", path, rec.Code)
+		}
+	}
+}
+
+func TestTargetProbesReaderErrorsAreUnavailable(t *testing.T) {
+	t.Parallel()
+
+	reader := &fakeProbes{rows: map[string][]store.ProbeRow{"t1": nil}, existsErr: errors.New("boom")}
+	rec := do(newProbesHandler(t, reader), http.MethodGet, "/api/v1/targets/t1/probes", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("exists status = %d, want 503", rec.Code)
+	}
+
+	reader = &fakeProbes{rows: map[string][]store.ProbeRow{"t1": nil}, rowsErr: errors.New("boom")}
+	rec = do(newProbesHandler(t, reader), http.MethodGet, "/api/v1/targets/t1/probes", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("rows status = %d, want 503", rec.Code)
 	}
 }
 

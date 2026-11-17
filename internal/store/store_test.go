@@ -65,8 +65,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 1 {
-		t.Errorf("schema version = %d, want 1", stats.SchemaVersion)
+	if stats.SchemaVersion != 2 {
+		t.Errorf("schema version = %d, want 2", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -94,7 +94,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 1 {
+	if err != nil || version != 2 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -475,5 +475,111 @@ func TestTargetExists(t *testing.T) {
 	exists, err = s.TargetExists(ctx, "nope")
 	if err != nil || exists {
 		t.Fatalf("nope exists = %v, err = %v", exists, err)
+	}
+}
+
+func TestObservationsIncludeOnlyProbedTargets(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	if err := s.UpsertTarget(ctx, store.Target{
+		ID: "t2", Host: "united.com", Port: 443, Probe: "http",
+		Name: "United", Class: "service", Tier: 2, IntervalS: 300,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	down := probeAt(now, state.Down)
+	down.Stage = "tls"
+	up := probeAt(now, state.Up)
+	up.TargetID = "t2"
+
+	if err := s.Record(ctx, []store.Probe{down, up}); err != nil {
+		t.Fatal(err)
+	}
+
+	obs, err := s.Observations(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(obs) != 2 {
+		t.Fatalf("observations = %d, want 2", len(obs))
+	}
+	for _, o := range obs {
+		switch o.TargetID {
+		case "t1":
+			if !o.Failing || o.Stage != "tls" {
+				t.Errorf("t1 observation = %+v", o)
+			}
+		case "t2":
+			if o.Failing || o.Stage != "http" {
+				t.Errorf("t2 observation = %+v", o)
+			}
+		}
+	}
+}
+
+func TestOpenIncidentRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	inc := store.Incident{
+		ID: "inc-test", OpenedAt: now, Verdict: "INCIDENT",
+		Scope: "sector", ScopeValue: "airline",
+		Headline: "5 of 6 targets failing on sector=airline", Confidence: "high",
+	}
+	attrs := []store.Attribution{
+		{Rank: 1, Kind: "sector", Value: "airline", Failing: 5, Total: 6, Share: 5.0 / 6.0, Score: 1.2},
+	}
+
+	if err := s.OpenIncident(ctx, inc, []string{"t1"}, attrs); err != nil {
+		t.Fatal(err)
+	}
+
+	open, err := s.HasOpenIncident(ctx, "sector", "airline")
+	if err != nil || !open {
+		t.Fatalf("open = %v, err = %v", open, err)
+	}
+	if open, _ := s.HasOpenIncident(ctx, "sector", "cloud"); open {
+		t.Fatal("a different cluster reported open")
+	}
+
+	list, err := s.Incidents(ctx, true, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].ID != "inc-test" {
+		t.Fatalf("incidents = %+v", list)
+	}
+
+	got, gotAttrs, targets, err := s.IncidentByID(ctx, "inc-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Scope != "sector" || got.ScopeValue != "airline" {
+		t.Fatalf("incident = %+v", got)
+	}
+	if len(gotAttrs) != 1 || gotAttrs[0].Value != "airline" {
+		t.Fatalf("attributions = %+v", gotAttrs)
+	}
+	if len(targets) != 1 || targets[0] != "t1" {
+		t.Fatalf("targets = %v", targets)
+	}
+}
+
+func TestIncidentByIDMissing(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	if _, _, _, err := s.IncidentByID(context.Background(), "nope"); err == nil {
+		t.Fatal("missing incident should be an error")
 	}
 }

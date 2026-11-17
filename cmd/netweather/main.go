@@ -22,6 +22,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/api"
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/config"
+	"github.com/Greg-2600/netweather/internal/incidents"
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/netx"
 	"github.com/Greg-2600/netweather/internal/probe"
@@ -162,6 +163,7 @@ func serve(lg *logging.Logger) error {
 		Source:    source,
 		Control:   ag,
 		Probes:    st,
+		Incidents: st,
 		Vantage:   "local",
 		Fallback:  ui,
 	})
@@ -186,6 +188,14 @@ func serve(lg *logging.Logger) error {
 	}
 
 	go probeLoop(ctx, lg, ag, changes)
+
+	incidentInterval := 5 * time.Minute
+	if v := os.Getenv("NETWEATHER_INCIDENT_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			incidentInterval = d
+		}
+	}
+	go incidents.Loop(ctx, st, st, "local", incidentInterval, lg.Logger)
 
 	go func() {
 		<-ctx.Done()

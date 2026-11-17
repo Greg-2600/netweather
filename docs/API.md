@@ -18,6 +18,7 @@ Honesty first, because a spec that implies more than the binary does is worse th
 | `GET /api/v1/board` | **implemented** - the grid's data from the store |
 | `GET /api/v1/control`, `POST /api/v1/pause`, `POST /api/v1/resume` | **implemented** - the probe kill switch |
 | `GET /api/v1/targets/{id}/probes` | **implemented** - recent raw observations for one target |
+| `GET /api/v1/incidents`, `GET /api/v1/incidents/{id}` | **implemented** - the incident log and ranked attribution |
 | `GET /events` | **implemented** - the UI's SSE stream; session cookie auth, not bearer. The API-facing counterpart is specified in §7.2 |
 | Everything else in §7 | **specified, not implemented** |
 | `/metrics` (`DESIGN.md` §6.4) | **specified, not implemented** — see §7.4 for why it is separate from `/api/v1` |
@@ -192,7 +193,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
-    "capabilities": ["health", "meta", "logs", "board", "control", "probes"],
+    "capabilities": ["health", "meta", "logs", "board", "control", "probes", "incidents"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -308,6 +309,55 @@ Auth: bearer. The newest observations for one target, newest first. This is the 
 - Raw probes are retained for 72h (`SCHEMA.md` §11); for longer ranges use `/series` when it lands.
 - `since` is not a parameter here: this endpoint is "the last N", not a range scan.
 
+### 6.7 `GET /api/v1/incidents` — stable
+
+Auth: bearer. Newest first.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `open` | `false` | `true` returns only unclosed incidents |
+| `limit` | 50 | 1–200 |
+
+```json
+{
+  "data": [
+    {
+      "id": "inc-9f2c1a7b4e8d0356",
+      "opened_at": "2026-11-17T12:00:00Z",
+      "verdict": "INCIDENT",
+      "scope": "sector",
+      "scope_value": "airline",
+      "headline": "5 of 6 targets failing on sector=airline",
+      "confidence": "high"
+    }
+  ],
+  "meta": {"request_id": "…", "count": 1, "limit": 50}
+}
+```
+
+- An empty list means "no incidents", not "cannot answer"; the latter is `503`.
+- `closed_at` is absent while the incident is open.
+
+### 6.8 `GET /api/v1/incidents/{id}` — stable
+
+The incident plus every ranked attribution candidate, not only the winner — when the winner is later shown to be wrong, the second-best explanation is already on disk.
+
+```json
+{
+  "data": {
+    "incident": {"id": "inc-…", "verdict": "INCIDENT", "scope": "sector", "…": "…"},
+    "attribution": [
+      {"rank": 1, "kind": "sector", "value": "airline", "failing": 5, "total": 6,
+       "share": 0.833, "score": 1.5}
+    ],
+    "targets": ["svc-united", "svc-delta"]
+  },
+  "meta": {"request_id": "…"}
+}
+```
+
+`404` for an unknown id. Attribution is stored at open time and is not recomputed on read, so the incident keeps the evidence that produced it.
+
 ---
 
 ## 7. Specified, not implemented
@@ -323,8 +373,6 @@ Each of these is a promise about shape, not a claim that it works. `GET /api/v1/
 | `GET /api/v1/targets/{id}/series` | stable | Rollups; `step=5m\|1h\|1d` |
 | `GET /api/v1/scopes/{scope}` | stable | Health, coverage, and baseline for `global`, `sector`, `country`, `asn`; `?value=` selects |
 | `GET /api/v1/anomalies` | stable | Detector output, advisory included |
-| `GET /api/v1/incidents` | stable | `?open=true` or a `from`/`to` window |
-| `GET /api/v1/incidents/{id}` | stable | Incident, attribution candidates ranked, affected targets, pinned probes |
 | `GET /api/v1/coverage` | stable | The blind-spot panel: ASN/country spread, measurable share, stale anchors |
 | `GET /api/v1/feeds` | stable | Feed state: last success, staleness, consecutive failures |
 | `GET /api/v1/selfcheck` | internal | Self-health results (clock, egress, MTU, port 53, disk) |
