@@ -54,8 +54,15 @@ func (s *Store) FleetHealth(ctx context.Context, vantageID string, now time.Time
 	var judgeable int
 	if err := s.reader.QueryRowContext(ctx, `
 		SELECT COUNT(*),
-		       COALESCE(SUM(CASE WHEN measurability <> 'unmeasurable' THEN 1 ELSE 0 END), 0)
-		FROM target WHERE enabled = 1`).Scan(&out.Total, &judgeable); err != nil {
+		       COALESCE(SUM(CASE WHEN t.measurability <> 'unmeasurable'
+		                          AND COALESCE(ts.state, '') <> 'unmeasurable'
+		                         THEN 1 ELSE 0 END), 0),
+		       COALESCE(SUM(CASE WHEN t.measurability = 'unmeasurable'
+		                           OR ts.state = 'unmeasurable'
+		                         THEN 1 ELSE 0 END), 0)
+		FROM target t
+		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
+		WHERE t.enabled = 1`, vantageID).Scan(&out.Total, &judgeable, &out.Unmeasurable); err != nil {
 		return out, fmt.Errorf("store: fleet totals: %w", err)
 	}
 
@@ -63,7 +70,6 @@ func (s *Store) FleetHealth(ctx context.Context, vantageID string, now time.Time
 		counts[state.Degraded] + counts[state.Down]
 	healthy := counts[state.Up] + counts[state.UpReachability] + counts[state.Degraded]
 	out.Judged = measurable
-	out.Unmeasurable = counts[state.Unmeasurable]
 	if measurable > 0 {
 		out.Healthy = float64(healthy) / float64(measurable)
 	}

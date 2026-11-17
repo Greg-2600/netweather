@@ -478,6 +478,10 @@ type targetItem struct {
 	Country string `json:"country,omitempty"`
 	State   string `json:"state"`
 	Since   string `json:"since,omitempty"`
+	// Measurability is the rolling calibration from DESIGN.md §3.2, and it is
+	// what tells a client that a BLOCKED state is structural rather than
+	// momentary.
+	Measurability string `json:"measurability,omitempty"`
 	// Certificate observations from the last TLS probe. Absent for non-TLS
 	// targets, never guessed.
 	CertIssuer   string `json:"cert_issuer,omitempty"`
@@ -558,7 +562,8 @@ func (s *server) handleTargets(w http.ResponseWriter, r *http.Request) {
 		item := targetItem{
 			ID: t.ID, Name: t.Name, Host: t.Host, Class: t.Class,
 			Sector: t.Sector, Country: t.Country, State: string(t.State),
-			CertIssuer: t.CertIssuer, CertNotAfter: certNotAfterJSON(t.CertNotAfter),
+			Measurability: t.Measurability,
+			CertIssuer:    t.CertIssuer, CertNotAfter: certNotAfterJSON(t.CertNotAfter),
 			CertChainLen: t.CertChainLen, CertIntermediateSPKI: t.CertIntermediateSPKI,
 			CertLeafFingerprint: t.CertLeafFingerprint,
 			DNSVerdict:          t.DNSVerdict, DNSConfidence: t.DNSConfidence,
@@ -593,6 +598,11 @@ type boardItem struct {
 	Country string `json:"country,omitempty"`
 	State   string `json:"state"`
 	Since   string `json:"since,omitempty"`
+	// Measurability is the rolling calibration from DESIGN.md §3.2. A target
+	// marked unmeasurable keeps its state but is excluded from health, and a
+	// client needs the flag to distinguish "blocked right now" from
+	// "permanently bot-walled".
+	Measurability string `json:"measurability,omitempty"`
 }
 
 // handleBoard is the machine-readable grid: one entry per enabled target, in the
@@ -615,12 +625,13 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	out := make([]boardItem, 0, len(targets))
 	for _, t := range targets {
 		item := boardItem{
-			ID:      t.ID,
-			Name:    t.Name,
-			Host:    t.Host,
-			Sector:  t.Sector,
-			Country: t.Country,
-			State:   string(t.State),
+			ID:            t.ID,
+			Name:          t.Name,
+			Host:          t.Host,
+			Sector:        t.Sector,
+			Country:       t.Country,
+			State:         string(t.State),
+			Measurability: t.Measurability,
 		}
 		if !t.Since.IsZero() {
 			item.Since = t.Since.UTC().Format(time.RFC3339)
@@ -757,7 +768,8 @@ func (s *server) serveTarget(w http.ResponseWriter, r *http.Request, id string) 
 	item := targetItem{
 		ID: row.ID, Name: row.Name, Host: row.Host, Class: row.Class,
 		Sector: row.Sector, Country: row.Country, State: string(row.State),
-		CertIssuer: row.CertIssuer, CertNotAfter: certNotAfterJSON(row.CertNotAfter),
+		Measurability: row.Measurability,
+		CertIssuer:    row.CertIssuer, CertNotAfter: certNotAfterJSON(row.CertNotAfter),
 		CertChainLen: row.CertChainLen, CertIntermediateSPKI: row.CertIntermediateSPKI,
 		CertLeafFingerprint: row.CertLeafFingerprint,
 		DNSVerdict:          row.DNSVerdict, DNSConfidence: row.DNSConfidence,

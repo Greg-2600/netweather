@@ -266,7 +266,8 @@ Auth: bearer. The grid's data, straight from the store, in source order.
       "sector": "financial/banking",
       "country": "US",
       "state": "up",
-      "since": "2026-11-16T03:14:15Z"
+      "since": "2026-11-16T03:14:15Z",
+      "measurability": "ok"
     }
   ],
   "meta": {"request_id": "…", "count": 1,
@@ -276,6 +277,7 @@ Auth: bearer. The grid's data, straight from the store, in source order.
 
 - `state` is one of the eight target states, lower-cased (`DESIGN.md` §3.2).
 - `since` is the start of the current state. It is absent for a target that has never been probed, which is different from "up since the epoch".
+- `measurability` is the rolling calibration from `DESIGN.md` §3.2: `ok`, or `unmeasurable` when more than 80% of the last seven days' probes were `BLOCKED`. `unmeasurable` targets keep their state but are excluded from health and coverage, so a client should not read a `blocked` state alone as a service outage.
 - `meta.verdict` is the one global verdict from `DESIGN.md` §3.3, with its sentence. `value` is one of `OK`, `INCIDENT`, `LOCAL`, `REGIONAL`, `TAMPER`, `STALE`, `STARTING`, or `LEARNING`. It is omitted when no verdict source is configured, and `STALE` means probing has stopped rather than that the internet is quiet.
 - No server-side filtering in v1: the list is capped at 2000, and a client that wants only failures can filter locally. Filters arrive with `/api/v1/targets` if they prove necessary.
 - `503 unavailable` when the store is not readable. An empty `data` means "no targets", not "cannot answer".
@@ -544,6 +546,7 @@ Auth: bearer. One target with its current state and metadata.
     "country": "US",
     "state": "down",
     "since": "2026-11-17T12:00:00Z",
+    "measurability": "ok",
     "cert_issuer": "CN=R11,O=Let's Encrypt,C=US",
     "cert_not_after": "2027-01-16T12:00:00Z",
     "cert_chain_len": 2,
@@ -568,6 +571,7 @@ Auth: bearer. One target with its current state and metadata.
 
 - `404` for an unknown or disabled target.
 - `since` is absent for a target that has never been probed; the state is then `unknown`.
+- `measurability` is `ok`, or `unmeasurable` when the target has been `BLOCKED` more than 80% of the time over the last seven days (`DESIGN.md` §3.2). An `unmeasurable` target keeps its last state but is excluded from health and coverage.
 - `vantages` is every vantage's confirmed state for this target, primary first. It is how a client sees a regional split: one vantage `down` and another `up` means the path, not the service (`DESIGN.md` §7.1). The block is absent when no vantage reader is configured.
 - Certificate fields come from the last TLS observation and are absent when the last probe was not TLS. They describe the leaf certificate.
 - `cert_chain_len` and `cert_intermediate_spki` are the *learned* chain shape from the pin baseline (migration `0015`), not the last observation. A chain-shape change is informational and never changes `state`.

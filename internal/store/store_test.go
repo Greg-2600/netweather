@@ -3767,3 +3767,41 @@ func TestStateCountsExcludesDisabledTargets(t *testing.T) {
 		t.Fatalf("counts after disable = %v, want only the enabled target", counts)
 	}
 }
+
+func TestFleetHealthCountsTheMeasurabilityCalibration(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	ctx := context.Background()
+	if err := s.EnsureVantage(ctx, "local", "direct", "primary"); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	if err := s.UpsertTarget(ctx, store.Target{
+		ID: "wall", Host: "wall.example", Port: 443, Probe: "http",
+		Name: "Wall", Class: "service", Tier: 2, IntervalS: 300,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 10; i++ {
+		p := probeFor("wall", now, state.Blocked)
+		p.Detail = "challenge: wall"
+		if err := s.Record(ctx, []store.Probe{p}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if change, err := s.RefreshMeasurability(ctx, "local", now); err != nil || change.Marked != 1 {
+		t.Fatalf("refresh = %+v, err = %v", change, err)
+	}
+
+	fleet, err := s.FleetHealth(ctx, "local", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The state is BLOCKED, so nothing is judged; the unmeasurable count comes
+	// from the calibration column, not from a state that may never appear.
+	if fleet.Total != 1 || fleet.Unmeasurable != 1 || fleet.Judged != 0 {
+		t.Fatalf("fleet = %+v, want one unmeasurable target and nothing judged", fleet)
+	}
+}

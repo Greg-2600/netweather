@@ -4267,3 +4267,58 @@ func TestTraceIsOffUntilEnabled(t *testing.T) {
 		t.Fatalf("the refusal does not name the switch: %s", rec.Body)
 	}
 }
+
+func TestAPICarriesMeasurability(t *testing.T) {
+	t.Parallel()
+
+	// The board flags a structural blind target without changing its state.
+	m := board.NewMemory(board.Target{
+		ID: "1", Name: "Wall", Host: "wall.example",
+		State: board.StateBlocked, Measurability: "unmeasurable",
+	})
+	rec := do(newBoardHandler(t, m), http.MethodGet, "/api/v1/board", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("board status = %d", rec.Code)
+	}
+	var boardEnv struct {
+		Data []struct {
+			State         string `json:"state"`
+			Measurability string `json:"measurability"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &boardEnv); err != nil {
+		t.Fatal(err)
+	}
+	if len(boardEnv.Data) != 1 || boardEnv.Data[0].State != "blocked" ||
+		boardEnv.Data[0].Measurability != "unmeasurable" {
+		t.Fatalf("board item = %+v", boardEnv.Data)
+	}
+
+	// The target detail carries the same flag beside the state.
+	targets := &fakeTargets{rows: map[string]store.TargetRow{
+		"t1": {
+			Target: store.Target{
+				ID: "t1", Host: "wall.example", Port: 443, Probe: "http",
+				Name: "Wall", Class: "service", Tier: 2, IntervalS: 300,
+				Measurability: "unmeasurable",
+			},
+			State: state.Blocked,
+		},
+	}}
+	rec = do(newTargetDetailHandler(t, targets, nil), http.MethodGet, "/api/v1/targets/t1", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("detail status = %d", rec.Code)
+	}
+	var detailEnv struct {
+		Data struct {
+			State         string `json:"state"`
+			Measurability string `json:"measurability"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &detailEnv); err != nil {
+		t.Fatal(err)
+	}
+	if detailEnv.Data.State != "blocked" || detailEnv.Data.Measurability != "unmeasurable" {
+		t.Fatalf("detail = %+v", detailEnv.Data)
+	}
+}
