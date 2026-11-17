@@ -1,0 +1,28 @@
+name: e2e-real
+
+# Real-endpoint E2E is never blocking on a pull request: the internet is not a
+# fixture, and a third party being down must not stop a merge. It runs on a
+# schedule and on demand (QUALITY.md §5.4).
+on:
+  schedule:
+    - cron: "0 3 * * 2"   # weekly, Tuesday 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-endpoints:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: six public endpoints and the resolver
+        env:
+          NETWEATHER_E2E: "1"
+        run: go run ./internal/devtool e2e

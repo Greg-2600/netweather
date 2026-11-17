@@ -327,7 +327,7 @@ Rules:
 
 **Implemented:** `internal/e2e/real_test.go` runs six public endpoints through the real HTTP instrument and classifier, retries once, and asserts set-membership (a bot wall is a successful measurement, not a failure). It also proves the resolver path works. It is double-gated: `//go:build e2e` and `NETWEATHER_E2E=1`, and `go run ./internal/devtool e2e` is the entry point. It is not part of `devtool verify`.
 
-Still specified: the Tor-vantage real test and the scheduled workflow that runs this suite. The binary is not in that path yet; the goroutine today is a manual `devtool e2e`.
+The scheduled workflow exists as `.github/workflows/e2e.yml` (weekly and on demand, never on pull requests). Still specified: the Tor-vantage real test.
 
 A second real-endpoint test covers the **Tor vantage**: one target, `1 probe/2s`, asserting that `BLOCKED` is treated as a normal outcome rather than a failure. Runs weekly.
 
