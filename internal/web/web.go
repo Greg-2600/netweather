@@ -37,6 +37,8 @@ type Deps struct {
 	Feeds FeedHealth
 	// TargetCorroboration supplies feed events for a target's country or ASN.
 	TargetCorroboration TargetCorroboration
+	// Provider supplies events from a target's declared status page.
+	Provider ProviderStatus
 	// CountryEvents supplies the world-view feed overlay.
 	CountryEvents CountryEvents
 	// Corridors supplies the corridor page. Nil shows a note, not an empty page.
@@ -118,6 +120,14 @@ type FeedHealth interface {
 // means the drawer says so rather than implying nothing is happening.
 type TargetCorroboration interface {
 	ScopeCorroboration(ctx context.Context, country string, asn int, since time.Time, limit int) ([]store.ExternalEvent, error)
+}
+
+// ProviderStatus supplies events from a target's declared status page. It is a
+// provider match, unlike TargetCorroboration's country/ASN match (DESIGN.md
+// §10.5). Nil means the drawer says so rather than implying the provider is
+// healthy.
+type ProviderStatus interface {
+	ProviderCorroboration(ctx context.Context, statusURL string, since time.Time, limit int) ([]store.ExternalEvent, error)
 }
 
 // CountryEvents supplies one feed event per country for the world view overlay.

@@ -154,6 +154,8 @@ A changed `(host, port, probe)` produces a new row by construction. That is inte
 
 **Migration `0012`** added `ix_names`, the PeeringDB exchange membership for the target's ASN, joined with `, ` and capped by the client. It follows the same ownership rule as the other enrichment columns.
 
+**Migration `0019`** added `status_url`, the operator's status page for a target (DESIGN.md §10.5). It is config-owned like the name, so `UpsertTarget` writes it; its host is the match key against stored statuspage events.
+
 ---
 
 ## 5. Probes and state
@@ -389,6 +391,43 @@ CREATE TABLE attribution (
 `annotation` is the ground-truth hook. One line from the operator ("AWS us-east-1, confirmed on status page") turns a stored incident into a labelled example for the backtest corpus.
 
 `anomaly` is written by `internal/anomaly` (migration `0005`), not by the probe path. One row is a detector event: the observed health, the baseline median, the MAD and derived sigma, and how many consecutive evaluations were below the band. It is deliberately separate from `incident`: most anomalies are advisory, and an incident is a later, stronger claim. `incident_id` stays null until something links the two.
+
+Corridors are their own small family (migration `0014`): configuration-driven path pairs, the five-minute samples the step rule reads, and the events a step opens.
+
+```sql
+CREATE TABLE corridor (
+    id          TEXT PRIMARY KEY,
+    from_label  TEXT NOT NULL,
+    to_label    TEXT NOT NULL,
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    updated_at  INTEGER NOT NULL
+);
+
+CREATE TABLE corridor_sample (
+    id           INTEGER PRIMARY KEY,
+    corridor_id  TEXT NOT NULL REFERENCES corridor(id),
+    ts           INTEGER NOT NULL,
+    rtt_ms       REAL,
+    loss         REAL NOT NULL,
+    ok           INTEGER NOT NULL
+);
+
+CREATE INDEX corridor_sample_recent ON corridor_sample(corridor_id, ts DESC);
+
+CREATE TABLE corridor_event (
+    id           TEXT PRIMARY KEY,
+    corridor_id  TEXT NOT NULL REFERENCES corridor(id),
+    kind         TEXT NOT NULL,               -- 'rtt_step' or 'loss_step'
+    started_at   INTEGER NOT NULL,
+    ended_at     INTEGER,
+    detail       TEXT NOT NULL DEFAULT '',
+    trace        TEXT NOT NULL DEFAULT ''     -- migration 0018: one captured walk
+);
+
+CREATE INDEX corridor_event_recent ON corridor_event(corridor_id, started_at DESC);
+```
+
+A corridor removed from the config is disabled, never deleted: its samples and events are history, and a later re-add should not start from nothing. **Migration `0018`** added `corridor_event.trace`, the one traceroute captured when the event opened; it is empty when the walk could not start, never "the path was short".
 
 ---
 

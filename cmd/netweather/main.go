@@ -231,6 +231,7 @@ func serve(lg *logging.Logger) error {
 		Corroboration:       st,
 		Feeds:               st,
 		TargetCorroboration: st,
+		Provider:            st,
 		CountryEvents:       st,
 		Corridors:           st,
 		DNSObservations:     st,
@@ -400,6 +401,7 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 			Class:     t.Class,
 			Sector:    t.Sector,
 			Country:   t.Country,
+			StatusURL: t.StatusURL,
 			Tier:      t.Tier,
 			IntervalS: t.IntervalS,
 		}); err != nil {

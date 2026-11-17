@@ -28,6 +28,10 @@ targets:
     class: service
     sector: cloud
     country: US
+    # status_url is the operator's own status page, in the same shape the
+    # Statuspage feed accepts. When set, the target drawer lists that page's
+    # incidents as the provider's report. netweather never guesses it.
+    # status_url: "https://www.cloudflarestatus.com/"
     tier: 1
     interval_s: 120
     expect:

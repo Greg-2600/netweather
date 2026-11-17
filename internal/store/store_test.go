@@ -68,8 +68,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 18 {
-		t.Errorf("schema version = %d, want 18", stats.SchemaVersion)
+	if stats.SchemaVersion != 19 {
+		t.Errorf("schema version = %d, want 19", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -97,7 +97,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 18 {
+	if err != nil || version != 19 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -2537,5 +2537,54 @@ func TestRecentDNSDivergencesIsNewestFirst(t *testing.T) {
 	}
 	if none, err := s.RecentDNSDivergences(ctx, 0); err != nil || len(none) != 2 {
 		t.Fatalf("zero limit = %+v, %v", none, err)
+	}
+}
+
+func TestProviderCorroborationMatchesTheDeclaredPage(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	events := []store.ExternalEvent{
+		{
+			Feed: "statuspage", ExternalID: "status.example.com:inc-1", Kind: "statuspage",
+			Severity: 0.8, StartedAt: base, ObservedAt: base,
+		},
+		{
+			Feed: "statuspage", ExternalID: "other.example:inc-2", Kind: "statuspage",
+			Severity: 0.9, StartedAt: base, ObservedAt: base,
+		},
+		{
+			Feed: "statuspage", ExternalID: "status.example.com:old", Kind: "statuspage",
+			Severity: 1.0, StartedAt: base.Add(-48 * time.Hour), ObservedAt: base,
+		},
+	}
+	if err := s.UpsertExternalEvents(ctx, events); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.ProviderCorroboration(ctx, "https://status.example.com",
+		base.Add(-24*time.Hour), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ExternalID != "status.example.com:inc-1" {
+		t.Fatalf("provider corroboration = %+v", got)
+	}
+
+	// A full summary URL still matches by host, which is the key the
+	// statuspage adapter stores.
+	got, err = s.ProviderCorroboration(ctx, "https://status.example.com/api/v2/summary.json",
+		base.Add(-24*time.Hour), 10)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("normalised URL = %+v, %v", got, err)
+	}
+
+	// No host is a programming error, not an empty result.
+	if _, err := s.ProviderCorroboration(ctx, "", base, 10); err == nil {
+		t.Fatal("an empty status URL was accepted")
 	}
 }

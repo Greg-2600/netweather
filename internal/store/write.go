@@ -37,14 +37,17 @@ type Probe struct {
 
 // Target is the persisted materialisation of a config entry.
 type Target struct {
-	ID        string
-	Host      string
-	Port      int
-	Probe     string
-	Name      string
-	Class     string
-	Sector    string
-	Country   string
+	ID      string
+	Host    string
+	Port    int
+	Probe   string
+	Name    string
+	Class   string
+	Sector  string
+	Country string
+	// StatusURL is the operator's status page for this target. It is
+	// config-owned, like the name, so UpsertTarget writes it.
+	StatusURL string
 	Tier      int
 	IntervalS int
 	// Enrichment, learned after the target exists. It is not part of the
@@ -77,19 +80,20 @@ func (s *Store) UpsertTarget(ctx context.Context, t Target) error {
 	now := time.Now().UnixMilli()
 	_, err := s.writer.ExecContext(ctx, `
 		INSERT INTO target (
-			id, host, port, probe, name, class, sector, country, tier, interval_s,
+			id, host, port, probe, name, class, sector, country, status_url, tier, interval_s,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			name = excluded.name,
 			class = excluded.class,
 			sector = excluded.sector,
 			country = excluded.country,
+			status_url = excluded.status_url,
 			tier = excluded.tier,
 			interval_s = excluded.interval_s,
 			updated_at = excluded.updated_at`,
 		t.ID, t.Host, t.Port, t.Probe, t.Name, t.Class, t.Sector, t.Country,
-		t.Tier, t.IntervalS, now, now)
+		t.StatusURL, t.Tier, t.IntervalS, now, now)
 	if err != nil {
 		return fmt.Errorf("store: target %q: %w", t.ID, err)
 	}

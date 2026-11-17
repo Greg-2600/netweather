@@ -1060,6 +1060,12 @@ type targetView struct {
 	// never presented as the provider's own status (DESIGN.md §10.5).
 	Corroboration     []targetCorroborationView
 	CorroborationNote string
+	// Provider is evidence from the operator's declared status page for this
+	// target, and StatusURL is that page. Empty ProviderNote means the target
+	// declared no page, so the panel is omitted rather than guessed.
+	Provider     []targetCorroborationView
+	ProviderNote string
+	StatusURL    string
 }
 
 // targetCorroborationView is one feed event near the target's scope.
@@ -1070,6 +1076,32 @@ type targetCorroborationView struct {
 	Place     string
 	StartedAt string
 	EndedAt   string
+}
+
+// toCorroborationRows renders feed events for the drawer. The place is the
+// country or ASN the event names, never a guess.
+func toCorroborationRows(events []store.ExternalEvent) []targetCorroborationView {
+	out := make([]targetCorroborationView, 0, len(events))
+	for _, e := range events {
+		row := targetCorroborationView{
+			Feed: e.Feed, Kind: e.Kind,
+			Severity:  fmt.Sprintf("%.2f", e.Severity),
+			StartedAt: e.StartedAt.UTC().Format("2006-01-02 15:04"),
+		}
+		switch {
+		case e.Country != "":
+			row.Place = e.Country
+		case e.ASN > 0:
+			row.Place = fmt.Sprintf("AS%d", e.ASN)
+		default:
+			row.Place = "-"
+		}
+		if !e.EndedAt.IsZero() {
+			row.EndedAt = e.EndedAt.UTC().Format("2006-01-02 15:04")
+		}
+		out = append(out, row)
+	}
+	return out
 }
 
 // stripCell is one hour of the 24-hour strip. The bar is characters because the
@@ -1174,24 +1206,30 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 			case len(events) == 0:
 				view.CorroborationNote = "No feed event in this target's country or ASN in the last 24 hours."
 			default:
-				for _, e := range events {
-					row := targetCorroborationView{
-						Feed: e.Feed, Kind: e.Kind,
-						Severity:  fmt.Sprintf("%.2f", e.Severity),
-						StartedAt: e.StartedAt.UTC().Format("2006-01-02 15:04"),
-					}
-					switch {
-					case e.Country != "":
-						row.Place = e.Country
-					case e.ASN > 0:
-						row.Place = fmt.Sprintf("AS%d", e.ASN)
-					default:
-						row.Place = "-"
-					}
-					if !e.EndedAt.IsZero() {
-						row.EndedAt = e.EndedAt.UTC().Format("2006-01-02 15:04")
-					}
-					view.Corroboration = append(view.Corroboration, row)
+				view.Corroboration = toCorroborationRows(events)
+			}
+		}
+
+		// Provider status: only when the operator declared a page. A target
+		// with no declared provider has no provider claim, so the panel is
+		// omitted rather than guessed (DESIGN.md §10.5).
+		view.StatusURL = t.StatusURL
+		if t.StatusURL != "" {
+			if s.deps.Provider == nil {
+				view.ProviderNote = "Provider status is not configured on this instance."
+			} else {
+				events, err := s.deps.Provider.ProviderCorroboration(
+					r.Context(), t.StatusURL, time.Now().UTC().Add(-24*time.Hour), 10)
+				switch {
+				case err != nil:
+					s.deps.Logger.Warn("provider corroboration failed",
+						"event", "provider_corroboration_failed", "component", "http",
+						"target", t.Host, "error", err)
+					view.ProviderNote = "Provider status is temporarily unavailable."
+				case len(events) == 0:
+					view.ProviderNote = "The provider's status page reports no incident in the last 24 hours."
+				default:
+					view.Provider = toCorroborationRows(events)
 				}
 			}
 		}

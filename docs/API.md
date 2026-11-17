@@ -526,7 +526,8 @@ Auth: bearer. One target with its current state and metadata.
     "dns_confidence": "medium",
     "dns_detail": "one resolver disagrees with its own baseline (1.1.1.1:53: NXDOMAIN where this resolver answered before)",
     "dns_at": "2026-11-17T12:00:00Z",
-    "ix_names": "AMS-IX, DE-CIX Frankfurt"
+    "ix_names": "AMS-IX, DE-CIX Frankfurt",
+    "status_url": "https://status.chase.com/"
   },
   "meta": {"request_id": "…"}
 }
@@ -539,6 +540,7 @@ Auth: bearer. One target with its current state and metadata.
 - `cert_leaf_fingerprint` is the learned leaf fingerprint (migration `0016`). It is absent until a TLS probe has been seen; a rotation is informational.
 - `dns_verdict`, `dns_confidence`, `dns_detail`, and `dns_at` are the newest per-resolver divergence advisory (migration `0017`, §3.2 of `CLASSIFIER.md`). They are absent until one has been observed, and they never change `state`: `DNS_ANOMALY` is advisory and `TAMPER` is a ladder verdict that still leaves the recorded probe as its own measurement.
 - `ix_names` is PeeringDB exchange membership for the target's ASN: enrichment only, never a signal. It is absent until enrichment has learned it.
+- `status_url` is the operator's declared status page for this target: config data, not an observation. When present, the drawer's **Provider status** panel lists that page's incidents from the last 24 hours, matched by the page's host (`DESIGN.md` §10.5). It is absent when the target declares no page.
 
 ### 6.14 `GET /api/v1/coverage` — stable
 

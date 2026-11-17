@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -105,4 +107,38 @@ func (s *Store) ScopeCorroboration(ctx context.Context, country string, asn int,
 	defer func() { _ = rows.Close() }()
 
 	return collectExternalEvents(rows, "scope corroboration")
+}
+
+// ProviderCorroboration returns statuspage events from the operator's declared
+// status page for a target (DESIGN.md §10.5).
+//
+// This is a provider match, unlike ScopeCorroboration's country/ASN match: it
+// answers "what does this target's operator say?" and is what separates their
+// outage from your path. The statuspage adapter stores ExternalID as
+// "<host>:<incident id>", so the host is the stable key. substr() is used
+// instead of LIKE so a hostname containing "%" cannot become a wildcard.
+func (s *Store) ProviderCorroboration(ctx context.Context, statusURL string, since time.Time, limit int) ([]ExternalEvent, error) {
+	u, err := url.Parse(strings.TrimSpace(statusURL))
+	if err != nil || u.Host == "" {
+		return nil, fmt.Errorf("store: provider corroboration needs a status URL")
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	prefix := u.Host + ":"
+
+	rows, err := s.reader.QueryContext(ctx, `
+		SELECT id, feed, external_id, kind, COALESCE(severity, 0),
+		       COALESCE(country, ''), COALESCE(asn, 0),
+		       started_at, COALESCE(ended_at, 0), observed_at, payload
+		FROM external_event
+		WHERE substr(external_id, 1, ?) = ? AND started_at >= ?
+		ORDER BY COALESCE(severity, 0) DESC, started_at DESC LIMIT ?`,
+		len(prefix), prefix, since.UnixMilli(), limit)
+	if err != nil {
+		return nil, fmt.Errorf("store: provider corroboration: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	return collectExternalEvents(rows, "provider corroboration")
 }

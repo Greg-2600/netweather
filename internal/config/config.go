@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -61,14 +62,18 @@ type Target struct {
 	QName string `yaml:"qname"`
 	// Resolvers is the optional set of DNS servers a dns target asks. Empty
 	// means "just the target's own address". Each entry is host:port on 53.
-	Resolvers  []string `yaml:"resolvers"`
-	Class      string   `yaml:"class"`
-	Sector     string   `yaml:"sector"`
-	Country    string   `yaml:"country"`
-	Tier       int      `yaml:"tier"`
-	IntervalS  int      `yaml:"interval_s"`
-	ICMPAnchor bool     `yaml:"icmp_anchor"`
-	Expect     Expect   `yaml:"expect"`
+	Resolvers []string `yaml:"resolvers"`
+	// StatusURL is the operator's status page for this target, in the same
+	// shape the Statuspage feed accepts. Empty means "no provider mapping",
+	// which the drawer states rather than guessing.
+	StatusURL  string `yaml:"status_url"`
+	Class      string `yaml:"class"`
+	Sector     string `yaml:"sector"`
+	Country    string `yaml:"country"`
+	Tier       int    `yaml:"tier"`
+	IntervalS  int    `yaml:"interval_s"`
+	ICMPAnchor bool   `yaml:"icmp_anchor"`
+	Expect     Expect `yaml:"expect"`
 }
 
 // Expect is the semantic contract, mirroring classify.Expected.
@@ -314,6 +319,20 @@ func validateTarget(t *Target) error {
 			seen[addr] = struct{}{}
 			t.Resolvers[i] = addr
 		}
+	}
+
+	// status_url is the operator's status page for this target. Its host is the
+	// match key against stored statuspage events, so it is validated and
+	// normalised here rather than parsed again in the query.
+	if raw := strings.TrimSpace(t.StatusURL); raw != "" {
+		u, err := url.Parse(raw)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("status_url %q is not an http(s) URL", t.StatusURL)
+		}
+		if u.User != nil {
+			return fmt.Errorf("status_url %q must not carry credentials", t.StatusURL)
+		}
+		t.StatusURL = u.String()
 	}
 
 	interval := t.Interval()

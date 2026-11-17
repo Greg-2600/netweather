@@ -402,6 +402,9 @@ type targetItem struct {
 	DNSAt         string `json:"dns_at,omitempty"`
 	// IXNames is PeeringDB exchange membership: enrichment only.
 	IXNames string `json:"ix_names,omitempty"`
+	// StatusURL is the operator's declared status page for this target. It is
+	// config data, not an observation.
+	StatusURL string `json:"status_url,omitempty"`
 }
 
 // handleTargets is the filtered list. Unknown class/sector/country values are
@@ -453,7 +456,8 @@ func (s *server) handleTargets(w http.ResponseWriter, r *http.Request) {
 			CertLeafFingerprint: t.CertLeafFingerprint,
 			DNSVerdict:          t.DNSVerdict, DNSConfidence: t.DNSConfidence,
 			DNSDetail: t.DNSDetail, DNSAt: certNotAfterJSON(t.DNSAt),
-			IXNames: t.IXNames,
+			IXNames:   t.IXNames,
+			StatusURL: t.StatusURL,
 		}
 		if !t.Since.IsZero() {
 			item.Since = t.Since.UTC().Format(time.RFC3339)
@@ -604,7 +608,8 @@ func (s *server) serveTarget(w http.ResponseWriter, r *http.Request, id string) 
 		CertLeafFingerprint: row.CertLeafFingerprint,
 		DNSVerdict:          row.DNSVerdict, DNSConfidence: row.DNSConfidence,
 		DNSDetail: row.DNSDetail, DNSAt: certNotAfterJSON(row.DNSAt),
-		IXNames: row.IXNames,
+		IXNames:   row.IXNames,
+		StatusURL: row.StatusURL,
 	}
 	if !row.Since.IsZero() {
 		item.Since = row.Since.UTC().Format(time.RFC3339)

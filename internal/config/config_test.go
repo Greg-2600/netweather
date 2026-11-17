@@ -475,3 +475,59 @@ targets:
 		})
 	}
 }
+
+func TestStatusURLAcceptedAndNormalised(t *testing.T) {
+	t.Parallel()
+
+	f, err := config.Load(write(t, `version: 1
+targets:
+  - name: Chase
+    host: chase.com
+    port: 443
+    probe: tls
+    class: service
+    status_url: "https://status.chase.com/"
+`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := f.Targets[0].StatusURL; got != "https://status.chase.com/" {
+		t.Fatalf("status_url = %q", got)
+	}
+}
+
+func TestStatusURLValidation(t *testing.T) {
+	t.Parallel()
+
+	base := `version: 1
+targets:
+  - name: Chase
+    host: chase.com
+    port: 443
+    probe: tls
+    class: service
+`
+	cases := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{"not a url", "status.chase.com", "not an http"},
+		{"wrong scheme", "ftp://status.chase.com", "not an http"},
+		{"no host", "https://", "not an http"},
+		{"credentials", "https://user:pass@status.chase.com", "credentials"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := config.Load(write(t, base+"    status_url: \""+tc.url+"\"\n"))
+			if err == nil {
+				t.Fatalf("%s was accepted", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want it to mention %q", err, tc.want)
+			}
+		})
+	}
+}

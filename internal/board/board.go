@@ -53,6 +53,8 @@ type Target struct {
 	ASName        string
 	IXNames       string
 	Measurability string
+	// StatusURL is the operator's status page for this target, config-owned.
+	StatusURL string
 	// Leaf certificate from the last TLS observation.
 	CertIssuer   string
 	CertNotAfter time.Time

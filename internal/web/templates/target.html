@@ -80,6 +80,32 @@
       <p class="muted" data-testid="no-target-corroboration">{{.CorroborationNote}}</p>
       {{end}}
 
+      {{if .StatusURL}}
+      <h2 class="section-title">Provider status</h2>
+      <p class="muted small">Declared page: <span class="mono">{{.StatusURL}}</span></p>
+      {{if .Provider}}
+      <table class="probes" data-testid="provider-corroboration">
+        <thead><tr><th>Feed</th><th>Kind</th><th>Place</th><th>Severity</th><th>Started</th><th>Ended</th></tr></thead>
+        <tbody>
+          {{range .Provider}}
+          <tr data-testid="provider-corroboration-row">
+            <td>{{.Feed}}</td>
+            <td>{{.Kind}}</td>
+            <td class="mono">{{.Place}}</td>
+            <td class="mono">{{.Severity}}</td>
+            <td class="mono">{{.StartedAt}}</td>
+            <td class="mono">{{if .EndedAt}}{{.EndedAt}}{{else}}ongoing{{end}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      <p class="muted small">Matched by the operator's declared status page, so an
+        incident here is the provider's own report.</p>
+      {{else}}
+      <p class="muted" data-testid="no-provider-corroboration">{{.ProviderNote}}</p>
+      {{end}}
+      {{end}}
+
       <h2 class="section-title">Recent probes</h2>
       {{if .Probes}}
       <table class="probes" data-testid="probe-history">

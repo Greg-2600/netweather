@@ -1891,7 +1891,8 @@ func TestTargetDetail(t *testing.T) {
 				ID: "t1", Host: "chase.com", Port: 443, Probe: "http",
 				Name: "Chase", Class: "service", Sector: "financial/banking",
 				Country: "US", Tier: 2, IntervalS: 300,
-				IXNames: "AMS-IX, DE-CIX Frankfurt",
+				IXNames:   "AMS-IX, DE-CIX Frankfurt",
+				StatusURL: "https://status.chase.com",
 			},
 			State:         state.Down,
 			Since:         since,
@@ -1927,6 +1928,7 @@ func TestTargetDetail(t *testing.T) {
 		DNSDetail     string `json:"dns_detail"`
 		DNSAt         string `json:"dns_at"`
 		IXNames       string `json:"ix_names"`
+		StatusURL     string `json:"status_url"`
 	}
 	if err := json.Unmarshal(env.Data, &item); err != nil {
 		t.Fatal(err)
@@ -1951,6 +1953,9 @@ func TestTargetDetail(t *testing.T) {
 	}
 	if item.IXNames != "AMS-IX, DE-CIX Frankfurt" {
 		t.Fatalf("ix_names = %q", item.IXNames)
+	}
+	if item.StatusURL != "https://status.chase.com" {
+		t.Fatalf("status_url = %q", item.StatusURL)
 	}
 }
 

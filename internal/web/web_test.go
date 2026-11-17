@@ -3245,3 +3245,128 @@ func TestBoardDNSObservationFailureIsStated(t *testing.T) {
 		t.Error("a failed strip removed the tiles")
 	}
 }
+
+type fakeProvider struct {
+	events []store.ExternalEvent
+	err    error
+	gotURL string
+}
+
+func (f *fakeProvider) ProviderCorroboration(_ context.Context, statusURL string, _ time.Time, _ int) ([]store.ExternalEvent, error) {
+	f.gotURL = statusURL
+	return f.events, f.err
+}
+
+func newServerWithProvider(t *testing.T, token string, m *board.Memory, provider web.ProviderStatus) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		Provider:  provider,
+		Vantage:   "local",
+		Token:     token,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestTargetDrawerShowsProviderStatus(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	m := board.NewMemory(
+		board.Target{
+			ID: "2", Name: "Chase", Host: "chase.com", State: board.StateDown,
+			StatusURL: "https://status.chase.com",
+		},
+		board.Target{ID: "3", Name: "Loose", Host: "loose.example", State: board.StateUp},
+	)
+	provider := &fakeProvider{events: []store.ExternalEvent{{
+		ID: 1, Feed: "statuspage", ExternalID: "status.chase.com:inc-1",
+		Kind: "statuspage", Severity: 0.8, StartedAt: at, ObservedAt: at,
+	}}}
+
+	ts := newServerWithProvider(t, testToken, m, provider)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	get := func(id string) string {
+		t.Helper()
+		resp, err := client.Get(ts.URL + "/targets/" + id) //nolint:bodyclose // body() closes it
+		if err != nil {
+			t.Fatal(err)
+		}
+		return body(t, resp)
+	}
+
+	page := get("2")
+	if !strings.Contains(page, `data-testid="provider-corroboration"`) {
+		t.Fatalf("provider panel missing:\n%s", page)
+	}
+	for _, want := range []string{
+		">Provider status<", "https://status.chase.com",
+		"statuspage", "0.80", "ongoing", "own report",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("provider panel missing %q", want)
+		}
+	}
+	if provider.gotURL != "https://status.chase.com" {
+		t.Fatalf("queried URL = %q", provider.gotURL)
+	}
+
+	// A target with no declared page has no provider claim at all.
+	page = get("3")
+	if strings.Contains(page, ">Provider status<") {
+		t.Error("a target without a status URL rendered a provider panel")
+	}
+}
+
+func TestTargetDrawerProviderNotes(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name     string
+		provider web.ProviderStatus
+		want     string
+	}{
+		{"unconfigured", nil, "not configured"},
+		{"empty", &fakeProvider{}, "reports no incident"},
+		{"failed", &fakeProvider{err: errors.New("db down")}, "temporarily unavailable"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			m := board.NewMemory(board.Target{
+				ID: "2", Name: "Chase", Host: "chase.com", State: board.StateDown,
+				StatusURL: "https://status.chase.com", DNSAt: at,
+			})
+			ts := newServerWithProvider(t, testToken, m, tc.provider)
+			client, _ := newClient(t)
+			login(t, ts, client, testToken)
+
+			resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+			if err != nil {
+				t.Fatal(err)
+			}
+			page := body(t, resp)
+			if !strings.Contains(page, `data-testid="no-provider-corroboration"`) || !strings.Contains(page, tc.want) {
+				t.Fatalf("note missing %q:\n%s", tc.want, page)
+			}
+			if strings.Contains(page, `data-testid="provider-corroboration-row"`) {
+				t.Error("a row rendered without an event")
+			}
+		})
+	}
+}
