@@ -1197,13 +1197,19 @@ ad.			172800	IN	NS	ns1.nic.ad.
 uk.			172800	IN	NS	nsa.nic.uk.
 com.			172800	IN	NS	a.gtld-servers.net.
 `
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("User-Agent") == "" {
 			t.Error("the root-zone fetch carried no User-Agent")
 		}
 		_, _ = io.WriteString(w, zone)
 	}))
 	t.Cleanup(srv.Close)
+	// The production client trusts the system roots and refuses plaintext; the
+	// test server has its own certificate, so the fetch uses this one. The
+	// redirect policy has its own test.
+	restore := rootZoneClient
+	rootZoneClient = func() *http.Client { return srv.Client() }
+	t.Cleanup(func() { rootZoneClient = restore })
 
 	t.Setenv("NETWEATHER_CONFIG", "")
 	t.Setenv("NETWEATHER_DATA", filepath.Join(dir, "data"))
@@ -1261,10 +1267,13 @@ com.			172800	IN	NS	a.gtld-servers.net.
 
 func TestSeedCommandCountryAnchorsRejectsAnEmptyZone(t *testing.T) {
 	dir := t.TempDir()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "; no delegations\ncom.\t172800\tIN\tNS\ta.gtld-servers.net.\n")
 	}))
 	t.Cleanup(srv.Close)
+	restore := rootZoneClient
+	rootZoneClient = func() *http.Client { return srv.Client() }
+	t.Cleanup(func() { rootZoneClient = restore })
 
 	t.Setenv("NETWEATHER_CONFIG", "")
 	t.Setenv("NETWEATHER_DATA", filepath.Join(dir, "data"))

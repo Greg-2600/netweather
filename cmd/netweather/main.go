@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -1059,32 +1060,114 @@ func rootZoneURL() string {
 	return seed.RootZoneURL
 }
 
-// fetchRootZone downloads the zone with the operator contact, a timeout, and a
-// size cap. The root zone is a couple of megabytes; 8 MiB is generous and still
-// refuses a response that is not a zone file.
-func fetchRootZone(ctx context.Context, url string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+// rootZoneClient builds the HTTP client for the fetch. It is a variable so a
+// test can trust its own TLS server; production keeps the timeout and the
+// redirect policy that refuses a hop to plaintext.
+var rootZoneClient = func() *http.Client {
+	return &http.Client{Timeout: 60 * time.Second, CheckRedirect: rootZoneRedirectPolicy}
+}
+
+// maxRootZoneBytes bounds the seed payload. The root zone is a couple of
+// megabytes; 8 MiB is generous, and a larger payload is refused rather than
+// truncated into a silent partial seed.
+const maxRootZoneBytes int64 = 8 << 20
+
+// rootZoneRedirectPolicy revalidates every redirect hop. T40 requires the seed
+// over HTTPS, and a redirect is just another request: following one to plain
+// HTTP would undo the rule on the second hop.
+func rootZoneRedirectPolicy(req *http.Request, via []*http.Request) error {
+	if len(via) >= 5 {
+		return fmt.Errorf("root zone fetch: too many redirects")
+	}
+	if !strings.EqualFold(req.URL.Scheme, "https") {
+		return fmt.Errorf("root zone fetch: redirect to %q refused, HTTPS is required", req.URL.Redacted())
+	}
+	return nil
+}
+
+// fetchRootZone reads the zone from HTTPS, or from a local file:// mirror. The
+// two schemes are the documented ones (THREAT_MODEL.md T40): anything else,
+// including plaintext HTTP and a file on another host, is refused. The payload
+// is capped and an oversized one is an error, not a truncated seed.
+func fetchRootZone(ctx context.Context, rawURL string) (string, error) {
+	u, err := neturl.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return "", fmt.Errorf("root zone URL %q: %w", rawURL, err)
+	}
+	if u.User != nil {
+		// A credential in the URL ends up in logs and in the request's own
+		// error strings; the fetch has no use for one.
+		return "", fmt.Errorf("root zone URL %q carries userinfo; remove it", rawURL)
+	}
+
+	switch strings.ToLower(u.Scheme) {
+	case "file":
+		if u.Host != "" && !strings.EqualFold(u.Host, "localhost") {
+			return "", fmt.Errorf("root zone URL %q must name a local file (file:///path)", rawURL)
+		}
+		path := u.Path
+		// A Windows file URL looks like file:///C:/path; url.Parse keeps the
+		// leading slash, and os.Open does not want it.
+		if runtime.GOOS == "windows" && len(path) >= 3 && path[0] == '/' && path[2] == ':' {
+			path = path[1:]
+		}
+		f, err := os.Open(filepath.FromSlash(path)) // #nosec G304 -- operator-supplied NETWEATHER_ROOT_ZONE_URL.
+		if err != nil {
+			return "", fmt.Errorf("root zone file: %w", err)
+		}
+		defer func() { _ = f.Close() }()
+		body, err := readRootZone(f)
+		if err != nil {
+			return "", err
+		}
+		return string(body), nil
+
+	case "https":
+		if u.Host == "" {
+			return "", fmt.Errorf("root zone URL %q has no host", rawURL)
+		}
+
+	default:
+		return "", fmt.Errorf("root zone URL %q must be https, or file:// for a local mirror (THREAT_MODEL.md T40)", rawURL)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("User-Agent",
 		probe.BuildUserAgent(version.Version, os.Getenv("NETWEATHER_CONTACT")))
 
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := rootZoneClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("%s returned %s", url, resp.Status)
+		return "", fmt.Errorf("%s returned %s", u.Redacted(), resp.Status)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	body, err := readRootZone(resp.Body)
 	if err != nil {
 		return "", err
 	}
 	return string(body), nil
+}
+
+// readRootZone enforces the cap. Reading limit+1 is what distinguishes "exactly
+// at the cap" from "larger": a bare LimitReader would silently return a
+// truncated zone, and a truncated zone parses into a smaller anchor list that
+// looks like success.
+func readRootZone(r io.Reader) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r, maxRootZoneBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > maxRootZoneBytes {
+		return nil, fmt.Errorf("root zone is larger than %d bytes", maxRootZoneBytes)
+	}
+	return body, nil
 }
 
 // versionCommand prints build identity. The plain form is one line for a human
