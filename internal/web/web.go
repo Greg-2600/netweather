@@ -21,20 +21,22 @@ var staticFS embed.FS
 // Deps is what the UI needs. Source is required; Watcher is optional, and
 // without it the page simply does not receive live deltas.
 type Deps struct {
-	Logger        *slog.Logger
-	Source        board.Source
-	Watcher       board.Watcher
-	History       History
-	Incidents     IncidentHistory
-	Coverage      Coverage
-	CoverageTrend CoverageHistory
-	Series        Series
-	Control       Control
-	Vantage       string
-	Token         string
-	SecureCookies bool
-	Version       string
-	StartedAt     time.Time
+	Logger    *slog.Logger
+	Source    board.Source
+	Watcher   board.Watcher
+	History   History
+	Incidents IncidentHistory
+	// IncidentWatcher wakes the UI stream when an incident opens or closes.
+	IncidentWatcher board.Watcher
+	Coverage        Coverage
+	CoverageTrend   CoverageHistory
+	Series          Series
+	Control         Control
+	Vantage         string
+	Token           string
+	SecureCookies   bool
+	Version         string
+	StartedAt       time.Time
 }
 
 // Coverage supplies the blind-spot panel. Nil means the page says so rather

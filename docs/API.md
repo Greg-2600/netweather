@@ -597,7 +597,7 @@ data: {"id":"inc-9f2c","verdict":"INCIDENT","scope":"sector","scope_value":"airl
 - `Last-Event-ID` is **not** implemented: neither broadcast has a replay buffer. A reconnecting client refetches `/api/v1/board` and `/api/v1/incidents`.
 - The initial `snapshot` is an addition to the original delta-only sketch; it removes the connect-then-fetch race without sending a full page twice.
 - `incident` events carry **open** incidents, re-sent whole when the incident log changes; a client upserts by `id`. A close is not pushed as a diff — refetch `/api/v1/incidents` to see closures. This is a stated limit, not an omission.
-- The UI's `/events` stream still sends state deltas only; incident events are API-only until the page is wired for them.
+- The UI's `/events` stream emits the same `incident` event; the incident pages listen for it and reload, because a reload cannot show a stale attribution or close reason.
 - `503` when no board source is configured, rather than a connection that can only heartbeat.
 
 For browser `EventSource`, which cannot set an `Authorization` header, use the UI's cookie-authenticated `/events`; an API client should use a `fetch`-based SSE reader instead.
@@ -699,7 +699,7 @@ Nothing remains on the read surface. Every read endpoint in this document is imp
 | `/events` | session cookie | the browser UI | **implemented** |
 | `/api/v1/events` | bearer | API clients | **implemented** |
 
-Two limitations are stated rather than hidden: `Last-Event-ID` replay is not implemented (neither broadcast has a ring), and the UI's `/events` stream still sends state deltas only. The API stream emits `incident` events for open incidents; the page uses polling until it is wired. Connection caps and a per-IP limit remain specified (`THREAT_MODEL.md` T10).
+Two limitations are stated rather than hidden: `Last-Event-ID` replay is not implemented (neither broadcast has a ring), and a closed incident is not pushed as a diff. Both streams emit `incident` events; the UI reloads the incident pages, and an API client upserts open incidents by id or refetches for closures. Connection caps and a per-IP limit remain specified (`THREAT_MODEL.md` T10).
 
 ### 7.3 Actions (POST)
 

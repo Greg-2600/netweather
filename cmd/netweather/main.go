@@ -200,20 +200,21 @@ func serve(lg *logging.Logger) error {
 	}
 
 	ui, err := web.New(web.Deps{
-		Logger:        lg.Logger,
-		Source:        source,
-		Watcher:       source,
-		Token:         cfg.Token,
-		SecureCookies: os.Getenv("NETWEATHER_UI_SECURE_COOKIES") == "true",
-		Version:       version.Version,
-		StartedAt:     time.Now(),
-		History:       st,
-		Incidents:     st,
-		Coverage:      st,
-		CoverageTrend: st,
-		Series:        st,
-		Control:       ag,
-		Vantage:       "local",
+		Logger:          lg.Logger,
+		Source:          source,
+		Watcher:         source,
+		Token:           cfg.Token,
+		SecureCookies:   os.Getenv("NETWEATHER_UI_SECURE_COOKIES") == "true",
+		Version:         version.Version,
+		StartedAt:       time.Now(),
+		History:         st,
+		Incidents:       st,
+		IncidentWatcher: incidentChanges,
+		Coverage:        st,
+		CoverageTrend:   st,
+		Series:          st,
+		Control:         ag,
+		Vantage:         "local",
 	})
 	if err != nil {
 		return err

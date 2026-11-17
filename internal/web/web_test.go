@@ -741,6 +741,60 @@ func TestSSEDeliversStateDelta(t *testing.T) {
 	waitForLine(t, lines, `"state":"up"`, 3*time.Second)
 }
 
+func newServerWithIncidentWatcher(t *testing.T, token string, m *board.Memory, incidents board.Watcher) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:          m,
+		Watcher:         m,
+		IncidentWatcher: incidents,
+		Token:           token,
+		Version:         "test",
+		StartedAt:       time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestSSEDeliversIncidentEvents(t *testing.T) {
+	t.Parallel()
+
+	m := fixture()
+	incidentChanges := board.NewBroadcast()
+	ts := newServerWithIncidentWatcher(t, testToken, m, incidentChanges)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	streamClient := &http.Client{Jar: client.Jar} // no timeout: the stream stays open
+	resp, err := streamClient.Get(ts.URL + "/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	lines := make(chan string, 64)
+	go func() {
+		defer close(lines)
+		sc := bufio.NewScanner(resp.Body)
+		for sc.Scan() {
+			lines <- sc.Text()
+		}
+	}()
+
+	waitForLine(t, lines, "retry:", 2*time.Second)
+
+	incidentChanges.Notify()
+
+	waitForLine(t, lines, "event: incident", 3*time.Second)
+	waitForLine(t, lines, `"updated_at"`, 3*time.Second)
+}
+
 func TestSSERequiresSession(t *testing.T) {
 	t.Parallel()
 

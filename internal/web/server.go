@@ -917,6 +917,13 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	ch, cancel := watcher.Subscribe()
 	defer cancel()
 
+	var incidentCh <-chan struct{}
+	if s.deps.IncidentWatcher != nil {
+		incCh, incCancel := s.deps.IncidentWatcher.Subscribe()
+		defer incCancel()
+		incidentCh = incCh
+	}
+
 	last := s.stateMap(r.Context())
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
@@ -927,6 +934,20 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-ticker.C:
 			if _, err := io.WriteString(w, ": heartbeat\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-incidentCh:
+			// The incident pages reload on this event rather than patching rows
+			// client-side: the table is small, and a reload cannot show a stale
+			// attribution or close reason.
+			data, err := json.Marshal(map[string]string{
+				"updated_at": time.Now().UTC().Format(time.RFC3339),
+			})
+			if err != nil {
+				continue
+			}
+			if _, err := fmt.Fprintf(w, "event: incident\ndata: %s\n\n", data); err != nil {
 				return
 			}
 			flusher.Flush()

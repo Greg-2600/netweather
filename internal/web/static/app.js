@@ -69,4 +69,12 @@
     }
     if (applyState(d)) recount();
   });
+
+  // The incident pages are small and attribution is stored at open time, so a
+  // reload is safer than patching rows and risking a stale reason.
+  es.addEventListener("incident", () => {
+    if (location.pathname === "/incidents" || location.pathname.startsWith("/incidents/")) {
+      location.reload();
+    }
+  });
 })();
