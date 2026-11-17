@@ -351,19 +351,24 @@ func classify(t Target, r Response) (State, Confidence, Reason) {
         return Up, High, "semantic ok"
     }
 
-    // 4. config errors, never outages
+    // 4. auth / bot wall without a signature (§5.2)
+    if r.Status == 401 || r.Status == 403 {
+        return Blocked, High, fmt.Sprintf("blocked: %d", r.Status)
+    }
+
+    // 5. config errors, never outages
     if r.Status == 404 || r.Status == 410 || r.Status == 405 ||
        (r.Status >= 400 && r.Status < 500 &&
         r.Status != 408 && r.Status != 429 && r.Status != 451) {
         return ConfigError, High, fmt.Sprintf("%d on probe path", r.Status)
     }
 
-    // 5. rate limit / legal
+    // 6. rate limit / legal
     if r.Status == 429 || r.Status == 451 || r.Status == 999 {
         return Blocked, High, fmt.Sprintf("blocked: %d", r.Status)
     }
 
-    // 6. origin failure
+    // 7. origin failure
     if r.Status >= 500 {
         return Down, High, fmt.Sprintf("origin %d", r.Status)
     }
@@ -379,8 +384,8 @@ func classify(t Target, r Response) (State, Confidence, Reason) {
 | Level | When |
 |---|---|
 | **high** | Transport resolved and semantic passed; or unambiguous challenge / origin 5xx |
-| **medium** | Reachability only with an expected status; single-signature challenge; semantic mismatch |
-| **low** | No semantic check, JS shell, flapping (>6 transitions/24h), single observation |
+| **medium** | Single-signature challenge; semantic mismatch; a DNS-derived `DOWN` (needs corroboration) |
+| **low** | No semantic check (reachability only), JS shell, flapping (>6 transitions/24h), single observation |
 
 Confidence propagates: a `DOWN` derived from a `low`-confidence probe is not promoted to `INCIDENT` on its own — it needs a second observation.
 

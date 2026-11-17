@@ -8,70 +8,24 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/Greg-2600/netweather/internal/state"
 )
 
-// State is the per-target state from DESIGN.md §3.2, lower-cased for CSS and
-// wire use.
-type State string
+// State is the shared state vocabulary, re-exported so existing callers,
+// templates and tests keep their names.
+type State = state.State
 
 const (
-	StateUp             State = "up"
-	StateUpReachability State = "up_reachability"
-	StateDegraded       State = "degraded"
-	StateDown           State = "down"
-	StateBlocked        State = "blocked"
-	StateUnknown        State = "unknown"
-	StateConfigError    State = "config_error"
-	StateUnmeasurable   State = "unmeasurable"
+	StateUp             = state.Up
+	StateUpReachability = state.UpReachability
+	StateDegraded       = state.Degraded
+	StateDown           = state.Down
+	StateBlocked        = state.Blocked
+	StateUnknown        = state.Unknown
+	StateConfigError    = state.ConfigError
+	StateUnmeasurable   = state.Unmeasurable
 )
-
-// Text is the human label. It is also the aria-label suffix, so colour is never
-// the only carrier of meaning.
-func (s State) Text() string {
-	switch s {
-	case StateUp:
-		return "Up"
-	case StateUpReachability:
-		return "Up (reachability only)"
-	case StateDegraded:
-		return "Degraded"
-	case StateDown:
-		return "Down"
-	case StateBlocked:
-		return "Blocked"
-	case StateConfigError:
-		return "Config error"
-	case StateUnmeasurable:
-		return "Unmeasurable"
-	default:
-		return "Unknown"
-	}
-}
-
-// Glyph is the non-colour marker required by DESIGN.md §10.7.
-func (s State) Glyph() string {
-	switch s {
-	case StateUp:
-		return "●"
-	case StateUpReachability:
-		return "◍"
-	case StateDegraded:
-		return "◐"
-	case StateDown:
-		return "✕"
-	case StateBlocked:
-		return "▨"
-	case StateConfigError:
-		return "!"
-	case StateUnmeasurable:
-		return "–"
-	default:
-		return "?"
-	}
-}
-
-// CSSClass is the class suffix used by the stylesheet.
-func (s State) CSSClass() string { return "state-" + string(s) }
 
 // Target is one tile.
 type Target struct {

@@ -222,15 +222,16 @@ func taskCover() error {
 	}
 
 	thresholds := map[string]float64{
-		"/internal/api":     90,
-		"/internal/board":   90,
-		"/internal/logging": 78,
-		"/internal/netx":    95,
-		"/internal/startup": 75,
-		"/internal/web":     72,
-		"/cmd/netweather":   40,
-		"/internal/version": 70,
-		"/internal/devtool": 15, // profile parser + ldflags tests
+		"/internal/api":      90,
+		"/internal/board":    90,
+		"/internal/classify": 95,
+		"/internal/logging":  78,
+		"/internal/netx":     95,
+		"/internal/startup":  75,
+		"/internal/web":      72,
+		"/cmd/netweather":    40,
+		"/internal/version":  70,
+		"/internal/devtool":  15, // profile parser + ldflags tests
 	}
 	// Packages the docs promise but that do not exist yet still get gates the
 	// moment they appear.
