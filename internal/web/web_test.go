@@ -2795,6 +2795,8 @@ func TestCorridorPage(t *testing.T) {
 		"▱▱▱▱▱",
 		// The trace captured with the step change.
 		`data-testid="corridor-trace"`, "destination 198.51.100.9 reached=true",
+		// The band under the shape: every bucket is inside the six-hour band.
+		`data-testid="corridor-band"`, "···",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("corridor page missing %q", want)
@@ -3368,5 +3370,54 @@ func TestTargetDrawerProviderNotes(t *testing.T) {
 				t.Error("a row rendered without an event")
 			}
 		})
+	}
+}
+
+func TestCorridorPageMarksOutOfBandBuckets(t *testing.T) {
+	t.Parallel()
+
+	started := time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC)
+	samples := make([]store.CorridorSample, 0, 31)
+	for i := 0; i < 30; i++ {
+		samples = append(samples, store.CorridorSample{
+			CorridorID: "nyc-lon", TS: started.Add(time.Duration(i) * 5 * time.Minute),
+			RTTMS: 80, OK: true,
+		})
+	}
+	// A single late spike: outside the six-hour band the detector compares
+	// against, and outside the newest bucket's own band because the bucket is
+	// excluded from it.
+	samples = append(samples, store.CorridorSample{
+		CorridorID: "nyc-lon", TS: started.Add(30 * 5 * time.Minute),
+		RTTMS: 200, OK: true,
+	})
+	latest := samples[len(samples)-1]
+
+	corridors := &fakeCorridorStatus{
+		statuses: []store.CorridorStatus{{
+			Corridor: store.Corridor{ID: "nyc-lon", From: "NYC", To: "LON"},
+			Latest:   &latest,
+		}},
+		series: map[string][]store.CorridorSample{"nyc-lon": samples},
+	}
+
+	ts := newServerWithCorridors(t, testToken, fixture(), corridors)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/corridors") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="corridor-band"`) {
+		t.Fatalf("band markers missing:\n%s", page)
+	}
+	if !strings.Contains(page, "▲") {
+		t.Error("the out-of-band bucket was not marked above the band")
+	}
+	if !strings.Contains(page, "·") {
+		t.Error("an in-band bucket was not marked inside the band")
 	}
 }

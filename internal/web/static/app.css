@@ -544,3 +544,10 @@ table.probes td.detail { max-width: 18rem; overflow-wrap: anywhere; }
   border-radius: 6px;
   color: var(--muted);
 }
+/* The baseline band markers under a corridor sparkline (DESIGN.md §10.4).
+   Text glyphs again: · inside the six-hour band, ▲ above, ▼ below. */
+.band {
+  letter-spacing: -0.05em;
+  color: var(--muted);
+  font-size: 0.72rem;
+}

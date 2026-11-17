@@ -41,7 +41,9 @@
           <td class="mono">{{.RTT}}</td>
           <td class="mono">{{.Baseline}}</td>
           <td>{{if .Spark}}<span class="spark mono" data-testid="corridor-spark"
-              aria-label="24-hour RTT shape">{{.Spark}}</span>{{else}}<span class="muted small">-</span>{{end}}</td>
+              aria-label="24-hour RTT shape">{{.Spark}}</span>{{else}}<span class="muted small">-</span>{{end}}{{if .Band}}<br><span
+              class="band mono" data-testid="corridor-band"
+              title="baseline band: · inside, ▲ above, ▼ below">{{.Band}}</span>{{end}}</td>
           <td class="mono">{{.Loss}}
             <span class="loss-bar" data-testid="corridor-loss-bar"
                   aria-label="loss {{.Loss}}">{{.LossBar}}</span></td>

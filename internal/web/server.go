@@ -1891,12 +1891,15 @@ type corridorsView struct {
 }
 
 type corridorRow struct {
-	ID        string
-	From      string
-	To        string
-	RTT       string
-	Baseline  string
-	Spark     string
+	ID       string
+	From     string
+	To       string
+	RTT      string
+	Baseline string
+	Spark    string
+	// Band marks each spark bucket against the six-hour baseline: · inside,
+	// ▲ above, ▼ below (DESIGN.md §10.4).
+	Band      string
 	Loss      string
 	LossBar   string
 	SampledAt string
@@ -1942,10 +1945,11 @@ func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
 
 			for _, status := range statuses {
 				samples := series[status.Corridor.ID]
+				spark, band := corridorShape(samples)
 				row := corridorRow{
 					ID: status.Corridor.ID, From: status.Corridor.From, To: status.Corridor.To,
 					State: "waiting for a sample", StateCls: "state-unknown",
-					RTT: "-", Baseline: baselineOf(samples), Spark: sparklineOf(samples),
+					RTT: "-", Baseline: baselineOf(samples), Spark: spark, Band: band,
 					Loss: "-", LossBar: lossBarOf(0),
 				}
 				if status.Latest != nil {
@@ -2034,44 +2038,59 @@ func rollupSpark(points []store.Rollup) string {
 	return out.String()
 }
 
-// sparklineOf renders up to 24 RTT buckets as block characters. Fewer than two
-// successful samples have no shape to draw, and a fabricated one would be worse
-// than an empty cell.
-func sparklineOf(samples []store.CorridorSample) string {
+// corridorBaselineWindow is the six-hour window the corridor detection rule
+// compares against (DESIGN.md §9).
+const corridorBaselineWindow = 6 * time.Hour
+
+// sparkColumns is how many buckets a corridor shape may draw.
+const sparkColumns = 24
+
+// successfulRTTs keeps the samples that measured something. A failure has no
+// RTT, and pretending it had one would bend the shape.
+func successfulRTTs(samples []store.CorridorSample) []float64 {
 	rtts := make([]float64, 0, len(samples))
 	for _, s := range samples {
 		if s.OK {
 			rtts = append(rtts, s.RTTMS)
 		}
 	}
-	if len(rtts) < 2 {
+	return rtts
+}
+
+// downsample averages values into at most columns buckets.
+func downsample(values []float64, columns int) []float64 {
+	if len(values) <= columns {
+		return values
+	}
+	out := make([]float64, 0, columns)
+	size := float64(len(values)) / float64(columns)
+	for i := 0; i < columns; i++ {
+		start := int(float64(i) * size)
+		end := int(float64(i+1) * size)
+		if end <= start {
+			end = start + 1
+		}
+		if end > len(values) {
+			end = len(values)
+		}
+		sum := 0.0
+		for _, v := range values[start:end] {
+			sum += v
+		}
+		out = append(out, sum/float64(end-start))
+	}
+	return out
+}
+
+// sparkFromBuckets renders buckets as block characters. Fewer than two have no
+// shape to draw, and a fabricated one would be worse than an empty cell.
+func sparkFromBuckets(buckets []float64) string {
+	if len(buckets) < 2 {
 		return ""
 	}
 
-	const columns = 24
-	if len(rtts) > columns {
-		buckets := make([]float64, 0, columns)
-		size := float64(len(rtts)) / columns
-		for i := 0; i < columns; i++ {
-			start := int(float64(i) * size)
-			end := int(float64(i+1) * size)
-			if end <= start {
-				end = start + 1
-			}
-			if end > len(rtts) {
-				end = len(rtts)
-			}
-			sum := 0.0
-			for _, v := range rtts[start:end] {
-				sum += v
-			}
-			buckets = append(buckets, sum/float64(end-start))
-		}
-		rtts = buckets
-	}
-
-	low, high := rtts[0], rtts[0]
-	for _, v := range rtts {
+	low, high := buckets[0], buckets[0]
+	for _, v := range buckets {
 		if v < low {
 			low = v
 		}
@@ -2082,7 +2101,7 @@ func sparklineOf(samples []store.CorridorSample) string {
 
 	blocks := []rune("▁▂▃▄▅▆▇█")
 	var out strings.Builder
-	for _, v := range rtts {
+	for _, v := range buckets {
 		if high == low {
 			out.WriteRune(blocks[len(blocks)/2])
 			continue
@@ -2097,6 +2116,79 @@ func sparklineOf(samples []store.CorridorSample) string {
 		out.WriteRune(blocks[index])
 	}
 	return out.String()
+}
+
+// medianAndSigma returns the median and the sample standard deviation.
+func medianAndSigma(values []float64) (median, sigma float64) {
+	if len(values) < 2 {
+		return 0, 0
+	}
+	sorted := append([]float64(nil), values...)
+	sort.Float64s(sorted)
+	mid := len(sorted) / 2
+	median = sorted[mid]
+	if len(sorted)%2 == 0 {
+		median = (sorted[mid-1] + sorted[mid]) / 2
+	}
+	sum := 0.0
+	for _, v := range values {
+		d := v - median
+		sum += d * d
+	}
+	return median, math.Sqrt(sum / float64(len(values)-1))
+}
+
+// corridorShape renders the 24-hour RTT shape and the baseline band markers.
+//
+// The band is the six-hour window the detection rule compares against, with the
+// same material floor the rule uses, drawn on the same buckets as the
+// sparkline: '·' inside, '▲' above, '▼' below. The newest bucket is excluded
+// from its own band, mirroring the detector's two-sample persistence: a spike
+// must not widen the band that is supposed to catch it.
+func corridorShape(samples []store.CorridorSample) (spark, band string) {
+	buckets := downsample(successfulRTTs(samples), sparkColumns)
+	if len(buckets) < 2 {
+		return "", ""
+	}
+	spark = sparkFromBuckets(buckets)
+
+	ref := samples[len(samples)-1].TS
+	cutoff := ref.Add(-corridorBaselineWindow)
+	newest := len(samples) / sparkColumns
+	if newest < 1 {
+		newest = 1
+	}
+	limit := len(samples) - newest
+
+	window := make([]float64, 0, len(samples))
+	for i := 0; i < limit; i++ {
+		s := samples[i]
+		if s.OK && !s.TS.Before(cutoff) {
+			window = append(window, s.RTTMS)
+		}
+	}
+	if len(window) < 2 {
+		return spark, ""
+	}
+
+	median, sigma := medianAndSigma(window)
+	margin := 3 * sigma
+	if floor := 0.10 * median; floor > margin {
+		margin = floor
+	}
+
+	var out strings.Builder
+	for _, v := range buckets {
+		switch {
+		case v > median+margin:
+			out.WriteRune('▲')
+		case v < median-margin:
+			out.WriteRune('▼')
+		default:
+			out.WriteRune('·')
+		}
+	}
+	return spark, out.String()
 }
 
 // lossBarOf renders a five-cell bar; the percentage beside it is the text, so
