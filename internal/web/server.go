@@ -1901,16 +1901,29 @@ type staleRow struct {
 }
 
 type coverageView struct {
-	Total        int
-	Measurable   int
-	Unmeasurable int
-	Coverage     string
-	Classes      []coverageRow
-	Sectors      []coverageRow
-	BlindSpots   []coverageRow
-	Stale        []staleRow
-	Trend        []trendRow
-	TrendNote    string
+	Total         int
+	Measurable    int
+	Unmeasurable  int
+	Coverage      string
+	Concentration concentrationView
+	Classes       []coverageRow
+	Sectors       []coverageRow
+	BlindSpots    []coverageRow
+	Stale         []staleRow
+	Trend         []trendRow
+	TrendNote     string
+}
+
+// concentrationView is the network-spread block from DESIGN.md §10.6. The
+// percentages are strings so the template does no arithmetic.
+type concentrationView struct {
+	ASNs         int
+	Countries    int
+	TopASN       string
+	TopASNShare  string
+	Top10Share   string
+	SingleAnchor int
+	ThinSectors  int
 }
 
 // trendRow is one day of coverage drawn as a block bar. It uses characters
@@ -2001,10 +2014,24 @@ func (s *server) handleCoverage(w http.ResponseWriter, r *http.Request) {
 		Total:        cov.Totals.Total,
 		Measurable:   cov.Totals.Measurable,
 		Unmeasurable: cov.Totals.Unmeasurable,
-		Classes:      toCoverageRows(cov.Classes),
-		Sectors:      toCoverageRows(cov.Sectors),
-		BlindSpots:   toCoverageRows(cov.BlindSpots),
-		Stale:        make([]staleRow, 0, len(cov.Stale)),
+		Concentration: concentrationView{
+			ASNs:         cov.Concentration.ASNCount,
+			Countries:    cov.Concentration.CountryCount,
+			TopASNShare:  fmt.Sprintf("%.1f%%", cov.Concentration.TopASNShare*100),
+			Top10Share:   fmt.Sprintf("%.1f%%", cov.Concentration.Top10Share*100),
+			SingleAnchor: cov.Concentration.SingleAnchor,
+			ThinSectors:  cov.Concentration.ThinSectors,
+		},
+		Classes:    toCoverageRows(cov.Classes),
+		Sectors:    toCoverageRows(cov.Sectors),
+		BlindSpots: toCoverageRows(cov.BlindSpots),
+		Stale:      make([]staleRow, 0, len(cov.Stale)),
+	}
+	if cov.Concentration.TopASN > 0 {
+		view.Concentration.TopASN = fmt.Sprintf("AS%d", cov.Concentration.TopASN)
+		if cov.Concentration.TopASNName != "" {
+			view.Concentration.TopASN += " " + cov.Concentration.TopASNName
+		}
 	}
 	if cov.Totals.Total > 0 {
 		view.Coverage = fmt.Sprintf("%.0f%%", 100*float64(cov.Totals.Measurable)/float64(cov.Totals.Total))

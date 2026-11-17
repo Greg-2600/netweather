@@ -731,3 +731,16 @@ tr.low-coverage {
 .fleet b {
   font-variant-numeric: tabular-nums;
 }
+/* --- coverage concentration (DESIGN.md 10.6) ------------------------------ */
+
+.concentration {
+  margin: 0 0 0.8rem;
+}
+
+.concentration p {
+  margin: 0.15rem 0;
+}
+
+.concentration .warn {
+  color: #f0b849;
+}

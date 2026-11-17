@@ -1495,13 +1495,27 @@ type staleTargetItem struct {
 }
 
 type coverageResponse struct {
-	Total      int                  `json:"total"`
-	Measurable int                  `json:"measurable"`
-	Coverage   float64              `json:"coverage"`
-	Classes    []coverageBucketItem `json:"classes"`
-	Sectors    []coverageBucketItem `json:"sectors"`
-	BlindSpots []coverageBucketItem `json:"blind_spots"`
-	Stale      []staleTargetItem    `json:"stale"`
+	Total         int                       `json:"total"`
+	Measurable    int                       `json:"measurable"`
+	Coverage      float64                   `json:"coverage"`
+	Concentration coverageConcentrationItem `json:"concentration"`
+	Classes       []coverageBucketItem      `json:"classes"`
+	Sectors       []coverageBucketItem      `json:"sectors"`
+	BlindSpots    []coverageBucketItem      `json:"blind_spots"`
+	Stale         []staleTargetItem         `json:"stale"`
+}
+
+// coverageConcentrationItem is the network spread from DESIGN.md §10.6. The
+// shares are over enabled targets, so they agree with the overview line.
+type coverageConcentrationItem struct {
+	ASNCount     int     `json:"asn_count"`
+	CountryCount int     `json:"country_count"`
+	TopASN       int     `json:"top_asn,omitempty"`
+	TopASNName   string  `json:"top_asn_name,omitempty"`
+	TopASNShare  float64 `json:"top_asn_share"`
+	Top10Share   float64 `json:"top10_share"`
+	SingleAnchor int     `json:"single_anchor_countries"`
+	ThinSectors  int     `json:"thin_sectors"`
 }
 
 func toCoverageBuckets(buckets []store.CoverageBucket) []coverageBucketItem {
@@ -1545,6 +1559,16 @@ func (s *server) handleCoverage(w http.ResponseWriter, r *http.Request) {
 	out := coverageResponse{
 		Total:      cov.Totals.Total,
 		Measurable: cov.Totals.Measurable,
+		Concentration: coverageConcentrationItem{
+			ASNCount:     cov.Concentration.ASNCount,
+			CountryCount: cov.Concentration.CountryCount,
+			TopASN:       cov.Concentration.TopASN,
+			TopASNName:   cov.Concentration.TopASNName,
+			TopASNShare:  cov.Concentration.TopASNShare,
+			Top10Share:   cov.Concentration.Top10Share,
+			SingleAnchor: cov.Concentration.SingleAnchor,
+			ThinSectors:  cov.Concentration.ThinSectors,
+		},
 		Classes:    toCoverageBuckets(cov.Classes),
 		Sectors:    toCoverageBuckets(cov.Sectors),
 		BlindSpots: toCoverageBuckets(cov.BlindSpots),

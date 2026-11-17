@@ -4367,3 +4367,40 @@ func TestBoardFleetLineAbsentOrEmpty(t *testing.T) {
 		t.Fatalf("an empty fleet was not stated:\n%s", page)
 	}
 }
+
+func TestCoveragePanelShowsTheConcentrationBlock(t *testing.T) {
+	t.Parallel()
+
+	cov := &fakeCoverage{cov: store.Coverage{
+		Totals: store.CoverageTotals{Total: 35, Measurable: 24, Unmeasurable: 11},
+		Concentration: store.CoverageConcentration{
+			ASNCount: 12, CountryCount: 7,
+			TopASN: 13335, TopASNName: "Cloudflare", TopASNShare: 0.143, Top10Share: 0.412,
+			SingleAnchor: 3, ThinSectors: 2,
+		},
+	}}
+	ts := newServerWithCoverage(t, testToken, fixture(), cov)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	for _, want := range []string{
+		`data-testid="coverage-concentration"`,
+		`data-testid="concentration-asns"`, "ASNs: 12",
+		`data-testid="concentration-countries"`, "Countries: 7",
+		`data-testid="top-asn-share"`, "14.3%", "AS13335 Cloudflare",
+		`data-testid="top10-share"`, "41.2%",
+		`data-testid="single-anchor"`, "3 countries have a single anchor",
+		`data-testid="thin-sectors"`, "2 sectors below 50% measurable",
+		`data-testid="coverage-unmeasurable"`, "11 targets are unmeasurable",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("coverage block missing %q", want)
+		}
+	}
+}

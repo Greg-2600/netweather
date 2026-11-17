@@ -920,6 +920,8 @@ Measurable:    94.9% (712/750)     ✓
 ⚠ 2 sectors below 50% measurable — health UNKNOWN
 ```
 
+**Implemented:** `/coverage` carries the concentration block above the tables: distinct ASNs and countries, the top ASN with its share and the top-10 share, a count of countries with exactly one country anchor, a count of sectors below 50% measurable, and the unmeasurable total. `store.Coverage` computes it in the same read as the rest of the panel (one query for the distinct counts, one for the ten largest ASNs, one for single-anchor countries), so the page cannot show a total that disagrees with the concentration beside it. `GET /api/v1/coverage` exposes the same block as `concentration`.
+
 ### 10.7 Accessibility
 
 Every state carries a **shape or glyph** as well as colour: ring style (solid/dashed/hollow), corner badge, and a pattern in compact mode. Colour alone is not sufficient.

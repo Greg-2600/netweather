@@ -586,6 +586,12 @@ Auth: bearer. The blind-spot panel. It reports **measurement**, not health: a do
     "total": 120,
     "measurable": 96,
     "coverage": 0.8,
+    "concentration": {
+      "asn_count": 42, "country_count": 18,
+      "top_asn": 13335, "top_asn_name": "Cloudflare",
+      "top_asn_share": 0.183, "top10_share": 0.55,
+      "single_anchor_countries": 3, "thin_sectors": 2
+    },
     "classes": [
       {"kind": "class", "value": "service", "total": 90, "measurable": 84, "unmeasurable": 2, "coverage": 0.933}
     ],
@@ -607,6 +613,7 @@ Auth: bearer. The blind-spot panel. It reports **measurement**, not health: a do
 - `measurable` counts states that carry a usable signal: `up`, `up_reachability`, `degraded`, `down`. Everything else is a blind spot.
 - `blind_spots` is every ASN or country with at least five targets and less than 50% measurable, biggest first. `kind` is `country` or `asn`, because both are in the same list and "NL" and "1103" would otherwise be indistinguishable.
 - `stale` lists enabled targets the scheduler has not reached within three of their own intervals (minimum 15 minutes), including targets that have never been probed. A never-probed target has no `last_probe` and no `age_seconds`.
+- `concentration` is the network spread from `DESIGN.md` §10.6: distinct learned ASNs and countries, the largest ASN and its share of enabled targets, the share behind the ten largest ASNs, countries with exactly one country anchor (no redundancy), and sectors below 50% measurable. Shares are over enabled targets, the same denominator the overview line uses.
 - The panel is per-vantage: it says "this vantage cannot see these", not "these are broken".
 
 ### 6.15 `GET /api/v1/selfcheck` — internal

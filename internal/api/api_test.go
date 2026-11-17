@@ -2038,6 +2038,11 @@ func TestCoveragePanel(t *testing.T) {
 
 	cov := &fakeCoverage{cov: store.Coverage{
 		Totals: store.CoverageTotals{Total: 100, Measurable: 80, Unmeasurable: 10},
+		Concentration: store.CoverageConcentration{
+			ASNCount: 341, CountryCount: 96,
+			TopASN: 13335, TopASNName: "Cloudflare", TopASNShare: 0.143, Top10Share: 0.412,
+			SingleAnchor: 12, ThinSectors: 2,
+		},
 		Classes: []store.CoverageBucket{
 			{Kind: "class", Value: "service", Total: 90, Measurable: 80},
 		},
@@ -2063,9 +2068,19 @@ func TestCoveragePanel(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got struct {
-		Total      int              `json:"total"`
-		Measurable int              `json:"measurable"`
-		Coverage   float64          `json:"coverage"`
+		Total         int     `json:"total"`
+		Measurable    int     `json:"measurable"`
+		Coverage      float64 `json:"coverage"`
+		Concentration struct {
+			ASNCount     int     `json:"asn_count"`
+			CountryCount int     `json:"country_count"`
+			TopASN       int     `json:"top_asn"`
+			TopASNName   string  `json:"top_asn_name"`
+			TopASNShare  float64 `json:"top_asn_share"`
+			Top10Share   float64 `json:"top10_share"`
+			SingleAnchor int     `json:"single_anchor_countries"`
+			ThinSectors  int     `json:"thin_sectors"`
+		} `json:"concentration"`
 		BlindSpots []map[string]any `json:"blind_spots"`
 		Stale      []map[string]any `json:"stale"`
 	}
@@ -2078,6 +2093,12 @@ func TestCoveragePanel(t *testing.T) {
 	}
 	if len(got.BlindSpots) != 1 || got.BlindSpots[0]["value"] != "NL" {
 		t.Fatalf("blind spots = %+v", got.BlindSpots)
+	}
+	c := got.Concentration
+	if c.ASNCount != 341 || c.CountryCount != 96 || c.TopASN != 13335 ||
+		c.TopASNName != "Cloudflare" || c.TopASNShare != 0.143 || c.Top10Share != 0.412 ||
+		c.SingleAnchor != 12 || c.ThinSectors != 2 {
+		t.Fatalf("concentration = %+v", c)
 	}
 	if len(got.Stale) != 2 {
 		t.Fatalf("stale = %+v", got.Stale)

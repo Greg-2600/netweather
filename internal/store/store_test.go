@@ -3579,3 +3579,64 @@ func TestFleetHealthStaysLearningUntilTheBaselineIsUsable(t *testing.T) {
 		t.Fatalf("samples = %d/%d, want 3/28", got.Samples, got.Window)
 	}
 }
+
+func TestCoverageConcentration(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	ctx := context.Background()
+	if err := s.EnsureVantage(ctx, "local", "direct", "primary"); err != nil {
+		t.Fatal(err)
+	}
+
+	targets := []store.Target{
+		{ID: "a", Host: "a.example", Port: 443, Probe: "http", Class: "service", Sector: "banking", Country: "US", Tier: 2, IntervalS: 300},
+		{ID: "b", Host: "b.example", Port: 443, Probe: "http", Class: "service", Sector: "banking", Country: "US", Tier: 2, IntervalS: 300},
+		{ID: "c", Host: "c.example", Port: 443, Probe: "http", Class: "service", Sector: "banking", Country: "DE", Tier: 2, IntervalS: 300},
+		{ID: "d", Host: "d.example", Port: 443, Probe: "http", Class: "service", Sector: "banking", Country: "DE", Tier: 2, IntervalS: 300},
+		// Two FR anchors are redundant; the JP anchor is not.
+		{ID: "e", Host: "e.example", Port: 443, Probe: "http", Class: "country", Sector: "banking", Country: "FR", Tier: 3, IntervalS: 120},
+		{ID: "f", Host: "f.example", Port: 443, Probe: "http", Class: "country", Sector: "banking", Country: "FR", Tier: 3, IntervalS: 120},
+		{ID: "g", Host: "g.example", Port: 443, Probe: "http", Class: "country", Sector: "banking", Country: "JP", Tier: 3, IntervalS: 120},
+	}
+	asns := map[string]int{"a": 64500, "b": 64500, "c": 64501, "d": 64502}
+	for _, target := range targets {
+		if err := s.UpsertTarget(ctx, target); err != nil {
+			t.Fatal(err)
+		}
+		if asn, ok := asns[target.ID]; ok {
+			if err := s.UpdateEnrichment(ctx, target.ID, store.Enrichment{
+				ASN: asn, ASName: "Example " + target.ID,
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	cov, err := s.Coverage(ctx, "local", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := cov.Concentration
+	if c.ASNCount != 3 || c.CountryCount != 4 {
+		t.Fatalf("concentration = %+v, want 3 ASNs and 4 countries", c)
+	}
+	if c.TopASN != 64500 || c.TopASNName != "Example a" {
+		t.Fatalf("top ASN = %d %q", c.TopASN, c.TopASNName)
+	}
+	if diff := c.TopASNShare - 2.0/7.0; diff > 1e-9 || diff < -1e-9 {
+		t.Fatalf("top ASN share = %v, want 2/7", c.TopASNShare)
+	}
+	// Four targets carry an ASN; all four are inside the top ten.
+	if diff := c.Top10Share - 4.0/7.0; diff > 1e-9 || diff < -1e-9 {
+		t.Fatalf("top-10 share = %v, want 4/7", c.Top10Share)
+	}
+	if c.SingleAnchor != 1 {
+		t.Fatalf("single-anchor countries = %d, want 1 (JP)", c.SingleAnchor)
+	}
+	// Nothing has been probed, so the only sector is below 50% measurable.
+	if c.ThinSectors != 1 {
+		t.Fatalf("thin sectors = %d, want 1", c.ThinSectors)
+	}
+}
