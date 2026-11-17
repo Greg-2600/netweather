@@ -72,6 +72,9 @@ type Deps struct {
 	// VantageChanges supplies the newest egress move, so the board can explain
 	// why its baselines reset. Nil omits the note.
 	VantageChanges VantageChangeReader
+	// ConfigReload reports the last rejected config edit, so the board can say
+	// that an edit did not take effect (THREAT_MODEL.md T36). Nil omits it.
+	ConfigReload ConfigReloadStatus
 	// DNSObservations supplies the board's collapsed DNS divergence strip.
 	DNSObservations DNSObservations
 	// Logs supplies the ring and logging setup for the diagnostics page and
@@ -237,6 +240,12 @@ type FleetReader interface {
 // say why its baselines reset (DESIGN.md §7.5). Nil omits the note.
 type VantageChangeReader interface {
 	LatestVantageChange(ctx context.Context) (store.VantageChange, bool, error)
+}
+
+// ConfigReloadStatus reports the last rejected config reload. It exists so a
+// typo is visible on the board and not only in the log (THREAT_MODEL.md T36).
+type ConfigReloadStatus interface {
+	LastReloadFailure() (time.Time, string, bool)
 }
 
 // DNSObservations supplies the board's collapsed DNS divergence strip. Nil

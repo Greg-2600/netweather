@@ -335,6 +335,10 @@ type boardView struct {
 	// baselines (DESIGN.md §7.5). Empty means no change in the last day or no
 	// reader configured.
 	VantageNote string
+	// ConfigNote states the last rejected config edit. The previous target
+	// set stays live; the note is how the operator learns the edit did not
+	// take effect (THREAT_MODEL.md T36).
+	ConfigNote string
 	// BudgetNote is set only while the daily egress budget is spent. It is a
 	// hard stop, so the board names the reason rather than showing old tiles as
 	// if they were fresh (ACCEPTABLE_USE.md §4).
@@ -1168,6 +1172,17 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 				"event", "vantage_change_read_failed", "component", "http", "error", err)
 		case ok && s.now().Sub(change.At) <= 24*time.Hour:
 			view.VantageNote = vantageSentence(change)
+		}
+	}
+
+	// A rejected config edit keeps the previous target set live; the board says
+	// so rather than leaving the operator to wonder why the new host is absent
+	// (THREAT_MODEL.md T36).
+	if s.deps.ConfigReload != nil {
+		if at, detail, failed := s.deps.ConfigReload.LastReloadFailure(); failed {
+			view.ConfigNote = fmt.Sprintf(
+				"The last config reload was rejected at %s, so the previous targets are still live: %s",
+				at.UTC().Format("2006-01-02 15:04 MST"), detail)
 		}
 	}
 

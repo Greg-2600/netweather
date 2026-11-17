@@ -372,6 +372,11 @@ func serve(lg *logging.Logger) error {
 	// page already reads and say which one wins (DESIGN.md §3.3).
 	globalVerdict := &verdict.Builder{Store: st, Vantage: "local", StartedAt: time.Now()}
 
+	// The last config-reload outcome is shown on the board: a rejected edit
+	// keeps the old target set live, and it must not vanish into the log
+	// (THREAT_MODEL.md T36).
+	reloadState := &config.ReloadState{}
+
 	webDeps := web.Deps{
 		Logger:              lg.Logger,
 		Source:              source,
@@ -398,6 +403,7 @@ func serve(lg *logging.Logger) error {
 		Provenance:          st,
 		Fleet:               st,
 		VantageChanges:      st,
+		ConfigReload:        reloadState,
 		// The ring and the measured logging setup back the diagnostics page
 		// and the drawer's Why panel (LOGGING.md §9).
 		Logs:            lg,
@@ -551,7 +557,7 @@ func serve(lg *logging.Logger) error {
 			"event", "atypical_day", "component", "anomaly", "day", day)
 	})
 	go maintenanceLoop(ctx, st, lg, selfRunner, healthGate, scopes)
-	go configLoop(ctx, st, ag, lg.Logger)
+	go configLoop(ctx, st, ag, lg.Logger, reloadState)
 	go enrichmentLoop(ctx, st, lg)
 	go corridorLoop(ctx, st, ag.Paused, lg, corridorTraceStep(lg))
 

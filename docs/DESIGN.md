@@ -1087,6 +1087,8 @@ config/
 
 The path under `sites/`, without the extension, **is** the sector/sub-sector: `financial/banking.txt` produces sector `financial/banking`.
 
+**Implemented, reload failures:** the config loop polls the path every 30 seconds and reconciles on a change. A rejected edit leaves the previous target set live and records the rejection in a shared state; the board then shows a `config-reload` banner naming the time and the reason, so the typo is visible where the operator is looking rather than only in the log (`THREAT_MODEL.md` T36). A later successful reload clears it.
+
 `sites/*.txt` defaults: `http` probe on 443, `interval: 300s`, any 2xx/3xx status (`expect.status_min: 200`, `expect.status_max: 399`), or reachability only (no content assertion). Blank lines and `#` comments are ignored. The single-file `targets.yaml` form in the README stays the default; the directory form is loaded by the same `config.Load`, so the existing file schema keeps working.
 
 `netweather.yaml` may carry `targets:` and `corridors:` that do not belong to a sector file. It does **not** carry the listen address, auth, log settings, or feed tokens: those stay environment variables, because a second source of truth for them is how two configs drift.

@@ -151,6 +151,10 @@
     <p class="banner" data-testid="vantage-change" role="status">{{.VantageNote}}</p>
     {{end}}
 
+    {{if .ConfigNote}}
+    <p class="banner warn" data-testid="config-reload" role="status">{{.ConfigNote}}</p>
+    {{end}}
+
     {{if .CoverageNote}}
     <p class="banner" data-testid="coverage-advisory" role="status">{{.CoverageNote}}</p>
     {{end}}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/agent"
+	"github.com/Greg-2600/netweather/internal/config"
 	"github.com/Greg-2600/netweather/internal/store"
 )
 
@@ -89,7 +90,11 @@ func configStamp(path string) (string, error) {
 // configLoop polls the target file or directory and reloads on change. Polling
 // rather than a filesystem watcher because config edits are rare, the check is
 // one walk, and inotify does not follow into every bind mount.
-func configLoop(ctx context.Context, st *store.Store, ag *agent.Agent, lg *slog.Logger) {
+//
+// reload records the outcome so a rejected edit is shown on the board, not only
+// written to the log (THREAT_MODEL.md T36). The previous target set stays live
+// either way.
+func configLoop(ctx context.Context, st *store.Store, ag *agent.Agent, lg *slog.Logger, reload *config.ReloadState) {
 	path := os.Getenv("NETWEATHER_CONFIG")
 	if path == "" {
 		return
@@ -118,8 +123,10 @@ func configLoop(ctx context.Context, st *store.Store, ag *agent.Agent, lg *slog.
 				// The old target set stays live: a typo must not stop monitoring.
 				lg.Warn("config reload rejected; previous targets stay live",
 					"event", "config_reload_failed", "component", "config", "error", err)
+				reload.Failed(err, time.Now())
 				continue
 			}
+			reload.Succeeded()
 			lg.Info("config reloaded",
 				"event", "config_reloaded", "component", "config", "targets", ag.TargetCount())
 		}
