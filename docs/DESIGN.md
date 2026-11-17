@@ -701,7 +701,7 @@ Free with a Cloudflare account token. The BGP feeds are the cyberwar signal.
 - `/radar/annotations/outages` - curated outage annotations
 - Bring your own token. Ship no shared key. Poll every 5-15 minutes.
 
-**Implemented:** `internal/feeds.Radar` polls hijacks, leaks, and traffic anomalies with the operator's `NETWEATHER_RADAR_TOKEN`, normalises their three severity vocabularies, and stores them as `hijack`, `leak`, and `traffic_anomaly` evidence. Rows without an id get a stable synthetic key so re-polls stay idempotent. A missing token disables the feed with a startup warning rather than polling unauthenticated. Still specified: `/radar/annotations/outages`, which needs a different result shape and is curated rather than automatic.
+**Implemented:** `internal/feeds.Radar` polls hijacks, leaks, traffic anomalies, and curated outage annotations with the operator's `NETWEATHER_RADAR_TOKEN`, normalises their severity vocabularies, and stores them as `hijack`, `leak`, `traffic_anomaly`, and `outage_annotation` evidence. Annotations map `outage_type` (nationwide/regional/local) to severity and take the first location code from their `locations` list. Rows without an id get a stable synthetic key so re-polls stay idempotent. A missing token disables the feed with a startup warning rather than polling unauthenticated. All four documented endpoints are implemented.
 
 ### 8.3 RIPE RIS Live - phase 3, not v1
 

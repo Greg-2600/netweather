@@ -59,6 +59,7 @@ var radarQueries = []radarQuery{
 	{"/bgp/hijacks/events", "hijack"},
 	{"/bgp/leaks/events", "leak"},
 	{"/traffic_anomalies", "traffic_anomaly"},
+	{"/annotations/outages", "outage_annotation"},
 }
 
 // Fetch polls every Radar summary endpoint. A feed that cannot answer one of
@@ -187,7 +188,7 @@ func firstArray(m map[string]any, keys ...string) []map[string]any {
 }
 
 func parseRadarEvent(raw map[string]any, kind string, observed time.Time) (Event, bool) {
-	start, ok := timeField(raw, "start_time", "startDate", "startTime", "start")
+	start, ok := timeField(raw, "start_time", "start_date", "startDate", "startTime", "start")
 	if !ok {
 		return Event{}, false
 	}
@@ -205,13 +206,24 @@ func parseRadarEvent(raw map[string]any, kind string, observed time.Time) (Event
 		event.ExternalID = kind + ":" + start.UTC().Format(time.RFC3339) + ":" + subject
 	}
 
-	if end, ok := timeField(raw, "end_time", "endDate", "endTime", "end"); ok {
+	if end, ok := timeField(raw, "end_time", "end_date", "endDate", "endTime", "end"); ok {
 		event.EndedAt = end
 	}
 
 	event.Country = strings.ToUpper(stringField(raw, "location", "country", "country_code"))
 	if country := strings.ToUpper(stringField(raw, "location_code")); country != "" {
 		event.Country = country
+	}
+	// Curated annotations carry a list of locations rather than one code.
+	if event.Country == "" {
+		if locations, ok := raw["locations"].([]any); ok {
+			for _, loc := range locations {
+				if code, ok := loc.(string); ok && len(strings.TrimSpace(code)) == 2 {
+					event.Country = strings.ToUpper(strings.TrimSpace(code))
+					break
+				}
+			}
+		}
 	}
 	if event.Country != "" && len(event.Country) > 2 {
 		// Radar sometimes returns a country name; keep ISO codes only, because
@@ -248,6 +260,16 @@ func radarSeverity(raw map[string]any) float64 {
 		return 0.6
 	case "low":
 		return 0.3
+	}
+
+	// Curated outage annotations describe scope rather than confidence.
+	switch strings.ToLower(stringField(raw, "outage_type", "scope")) {
+	case "nationwide":
+		return 1.0
+	case "regional":
+		return 0.7
+	case "local":
+		return 0.4
 	}
 	return 0
 }

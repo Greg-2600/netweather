@@ -55,6 +55,8 @@ func main() {
 		err = taskCover()
 	case "ui":
 		err = runGo("test", "-tags=uitest", "-count=1", "./internal/web/uitest")
+	case "e2e":
+		err = runGo("test", "-tags=e2e", "-count=1", "./internal/e2e")
 	case "build":
 		err = taskBuild()
 	case "repro":
@@ -85,6 +87,7 @@ func usage() {
   go run ./internal/devtool test           race (when available) + shuffle + count=1
   go run ./internal/devtool cover          coverage profile + per-package gates
   go run ./internal/devtool ui             Playwright suite (needs a browser)
+  go run ./internal/devtool e2e            real-endpoint E2E (needs NETWEATHER_E2E=1)
   go run ./internal/devtool build          static binary with version metadata
   go run ./internal/devtool repro          build twice, compare hashes
   go run ./internal/devtool snapshot       cross-platform build matrix + SHA256SUMS

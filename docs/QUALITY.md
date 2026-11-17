@@ -290,6 +290,10 @@ Then run the **real binary** against it, drive it through its HTTP API, and asse
 
 This catches the bugs unit tests cannot: config → scheduler → probe → classify → store → correlate → SSE → template.
 
+**Implemented now:** `internal/e2e` wires the real store, agent, classifier, board source, and HTTP API together with a scripted runner at the probe seam. It asserts that a scripted Cloudflare challenge reaches the board as `BLOCKED`, a 503 as `DOWN`, a 200 as `UP_REACHABILITY`, that coverage counts `DOWN` but treats `BLOCKED` as a blind spot, and that `/targets/{id}` and `/targets/{id}/probes` agree with the tile. It runs in `devtool verify` and in CI.
+
+Still specified: the full `testdata/internet` harness (per-host YAML, a local CA, a UDP DNS responder, a SOCKS5 forwarder, a controllable clock and egress IP). That harness would exercise the real dialer and TLS stack; the current stub deliberately stops at the runner seam, and the docs should not claim more than that.
+
 ### 5.4 E2E — real endpoints, as small as possible
 
 Six targets. Not 750. Runtime under ~10 seconds. Loose assertions, because the internet is not deterministic.
@@ -321,13 +325,19 @@ Rules:
 - One retry, then report. A second failure is worth investigating, not retrying again.
 - Assertions on *behaviour*, not on third parties being healthy.
 
+**Implemented:** `internal/e2e/real_test.go` runs six public endpoints through the real HTTP instrument and classifier, retries once, and asserts set-membership (a bot wall is a successful measurement, not a failure). It also proves the resolver path works. It is double-gated: `//go:build e2e` and `NETWEATHER_E2E=1`, and `go run ./internal/devtool e2e` is the entry point. It is not part of `devtool verify`.
+
+Still specified: the Tor-vantage real test and the scheduled workflow that runs this suite. The binary is not in that path yet; the goroutine today is a manual `devtool e2e`.
+
 A second real-endpoint test covers the **Tor vantage**: one target, `1 probe/2s`, asserting that `BLOCKED` is treated as a normal outcome rather than a failure. Runs weekly.
 
 ### 5.5 Container smoke test — the network plane
 
 The stub E2E above runs in-process and therefore proves nothing about Docker. A separate compose-based suite runs the real image in the real topology and asserts only the things a container can break: DNS bypass to authoritative servers, MTU black-holing classified as `UNKNOWN`, Tor reachable at `tor:9050` and not at `127.0.0.1:9050`, no published 9050, SSRF refusal of `172.17.0.1` and `169.254.169.254`, read-only rootfs, and port-53 blocking producing `UNMEASURABLE` rather than `DOWN`.
 
-Seven tests, ~40s total, blocking on PRs that touch `internal/netguard`, `internal/probe`, or the Dockerfile. The full table and compose file are in [`NETWORKING.md`](NETWORKING.md) §12.
+**Implemented now:** the CI `container` job builds the real image and asserts the container-level invariants: `/healthz` answers, the process runs as `65532:65532`, the rootfs is read-only, and there is no shell in the image. The same sequence was run locally against the release image. `netweather doctor` additionally reports what the container can and cannot do (raw ICMP/traceroute are warnings without `CAP_NET_RAW`).
+
+Still specified: the seven-test compose network suite above. It is a different harness from the image smoke test, and the docs should not conflate them.
 
 ### 5.6 Contract tests for external feeds
 

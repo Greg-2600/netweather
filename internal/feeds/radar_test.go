@@ -53,10 +53,21 @@ func radarFixture(t *testing.T) *httptest.Server {
 		}`))
 	})
 
+	mux.HandleFunc("/annotations/outages", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+		  "result": {"annotations": [
+		    {"id": "ann-1", "start_date": "2026-11-17T07:00:00Z",
+		     "end_date": "2026-11-17T09:00:00Z", "asn": 64500,
+		     "locations": ["IR"], "outage_type": "nationwide",
+		     "description": "country-wide disruption"}
+		  ]}
+		}`))
+	})
+
 	return httptest.NewServer(mux)
 }
 
-func TestRadarFetchParsesAllThreeSources(t *testing.T) {
+func TestRadarFetchParsesAllFourSources(t *testing.T) {
 	t.Parallel()
 
 	srv := radarFixture(t)
@@ -71,8 +82,8 @@ func TestRadarFetchParsesAllThreeSources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
-	if len(events) != 3 {
-		t.Fatalf("events = %d, want the three well-formed rows: %+v", len(events), events)
+	if len(events) != 4 {
+		t.Fatalf("events = %d, want the four well-formed rows: %+v", len(events), events)
 	}
 
 	byKind := map[string]feeds.Event{}
@@ -108,6 +119,17 @@ func TestRadarFetchParsesAllThreeSources(t *testing.T) {
 	}
 	if anomaly.Severity != 0.6 {
 		t.Fatalf("anomaly severity = %v, want MEDIUM", anomaly.Severity)
+	}
+
+	annotation := byKind["outage_annotation"]
+	if annotation.ExternalID != "ann-1" || annotation.Country != "IR" || annotation.ASN != 64500 {
+		t.Fatalf("annotation = %+v", annotation)
+	}
+	if annotation.Severity != 1.0 {
+		t.Fatalf("annotation severity = %v, want nationwide", annotation.Severity)
+	}
+	if annotation.EndedAt.IsZero() {
+		t.Fatalf("annotation end missing: %+v", annotation)
 	}
 }
 
