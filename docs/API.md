@@ -17,6 +17,7 @@ Honesty first, because a spec that implies more than the binary does is worse th
 | `GET /api/v1/logs` | **implemented** - reads the in-memory ring (`LOGGING.md` §9) |
 | `GET /api/v1/board` | **implemented** - the grid's data from the store |
 | `GET /api/v1/targets` | **implemented** - the target list with class/sector/country/state filters |
+| `POST /api/v1/targets/{id}/disable` | **implemented** - stops probing one target at runtime; the row and history stay |
 | `GET /api/v1/targets/{id}` | **implemented** - one target with its current state |
 | `GET /api/v1/targets/{id}/series` | **implemented** - rollup buckets at 5m/1h/1d |
 | `GET /api/v1/scopes/{scope}` | **implemented** - health, coverage, and the UNKNOWN floors |
@@ -203,7 +204,7 @@ Auth: bearer.
     "auth": "bearer",
     "schema_version": 20,
     "egress": {"used_bytes": 1048576, "limit_bytes": 2147483648, "exhausted": false},
-    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "annotations", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace", "corridors", "ihi"],
+    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "annotations", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace", "corridors", "ihi", "target_control"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -428,7 +429,20 @@ Auth: bearer. The same rows as the board, with filters. All filters combine with
 - Unknown `class`, `sector`, or `country` values are data and simply match nothing.
 - No pagination in v1. The list is capped at 2000 targets and returned whole; the board has the same bound.
 
-### 6.10 `GET /api/v1/targets/{id}/series` — stable
+### 6.9.1 `POST /api/v1/targets/{id}/disable` - stable
+
+Auth: bearer. Stops probing one target without a restart. It is the abuse-response path from `ACCEPTABLE_USE.md` §7: the target row and its history stay, the live scheduler drops the target on the next tick, and a later config reload can bring it back. It is not a delete.
+
+```json
+{"data": {"target": "svc-chase", "state": "disabled"}, "meta": {"request_id": "…"}}
+```
+
+- The path id is the target id, not the host. `netweather disable <host-or-id>` resolves a host through `GET /api/v1/targets` first, so an operator does not have to know the derived id.
+- `404` for an unknown id. `405` with `Allow: POST` for any other method. `503` when runtime target control is not configured, rather than a silent success.
+- The action is logged at `WARN` with the request id and whether the live agent actually removed the target.
+- Disabling is idempotent in effect: a second call on an already-disabled target returns `404`, because the target is no longer in the enabled set.
+
+### 6.10 `GET /api/v1/targets/{id}/series` - stable
 
 Auth: bearer. Rollup buckets over a window.
 
@@ -896,6 +910,7 @@ The binary is also scriptable, and its contract matters as much as HTTP:
 | `netweather serve` | 0 clean shutdown, 1 startup or runtime failure | logs to stdout |
 | `netweather seed` | 0 applied, 1 rejected | summary |
 | `netweather export` | 0 success, 1 error | data to stdout, logs to stderr |
+| `netweather disable <host-or-id>` | 0 success, 1 error | one line, or an envelope with `-json` |
 | `netweather debug enable\|status\|disable` | 0 success, 1 error | one line per scope |
 | `netweather debug bundle -o FILE` | 0 success, 1 error | one summary line, or an envelope with `-json` |
 | `netweather doctor` | 0 all fatal checks pass, 1 a fatal check failed | capability table |

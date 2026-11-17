@@ -87,6 +87,9 @@ func run(args []string, stdout io.Writer) error {
 	case "debug":
 		return debugCommand(args[1:], stdout)
 
+	case "disable":
+		return disableCommand(args[1:], stdout)
+
 	case "doctor":
 		return doctorCommand(args[1:], stdout)
 
@@ -336,6 +339,28 @@ func serve(lg *logging.Logger) error {
 	// useful without database access; unknown is reported as absent.
 	schemaVersion, _ := st.SchemaVersion(ctx)
 
+	// Stopping one host is the abuse-response path (ACCEPTABLE_USE.md §7).
+	// The row and its history stay; the live schedulers drop it immediately,
+	// and a config reload can bring it back.
+	disableTarget := func(ctx context.Context, id string) (bool, error) {
+		exists, err := st.TargetExists(ctx, id)
+		if err != nil || !exists {
+			return exists, err
+		}
+		if err := st.DisableTarget(ctx, id); err != nil {
+			return false, err
+		}
+		removed := ag.RemoveTarget(id)
+		if torAgent != nil {
+			torAgent.RemoveTarget(id)
+		}
+		changes.Notify()
+		lg.Warn("target disabled at runtime",
+			"event", "target_disabled", "component", "api",
+			"target_id", id, "removed_from_agent", removed)
+		return true, nil
+	}
+
 	apiDeps := api.Deps{
 		Logger:          lg.Logger,
 		Ring:            lg.Ring,
@@ -347,6 +372,7 @@ func serve(lg *logging.Logger) error {
 		Watcher:         changes,
 		RunContext:      ctx,
 		Control:         ag,
+		TargetControl:   targetDisabler(disableTarget),
 		Probes:          st,
 		Incidents:       st,
 		IncidentProbes:  st,

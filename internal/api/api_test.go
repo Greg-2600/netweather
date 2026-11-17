@@ -4057,3 +4057,83 @@ func TestBoardMetaCarriesTheGlobalVerdict(t *testing.T) {
 		t.Fatalf("an unconfigured verdict was reported: %s", rec.Body)
 	}
 }
+
+type fakeTargetControl struct {
+	found bool
+	err   error
+	got   string
+}
+
+func (f *fakeTargetControl) DisableTarget(_ context.Context, id string) (bool, error) {
+	f.got = id
+	return f.found, f.err
+}
+
+func newTargetControlHandler(t *testing.T, tc api.TargetControl) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+			TargetControl: tc,
+			Version:       "test",
+			StartedAt:     time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func TestTargetDisable(t *testing.T) {
+	t.Parallel()
+
+	tc := &fakeTargetControl{found: true}
+	h := newTargetControlHandler(t, tc)
+
+	rec := do(h, http.MethodPost, "/api/v1/targets/svc-chase/disable", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+	}
+	if tc.got != "svc-chase" {
+		t.Fatalf("control got %q, want the path id", tc.got)
+	}
+	var env struct {
+		Data struct {
+			Target string `json:"target"`
+			State  string `json:"state"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env.Data.Target != "svc-chase" || env.Data.State != "disabled" {
+		t.Fatalf("data = %+v", env.Data)
+	}
+
+	// The action is POST-only; a read of the same path is a method error that
+	// names the allowed method.
+	rec = do(h, http.MethodGet, "/api/v1/targets/svc-chase/disable", testToken)
+	if rec.Code != http.StatusMethodNotAllowed || rec.Header().Get("Allow") != "POST" {
+		t.Fatalf("GET status = %d, Allow = %q", rec.Code, rec.Header().Get("Allow"))
+	}
+
+	// An unknown target is a 404, not a silent success.
+	tc.found = false
+	if rec := do(h, http.MethodPost, "/api/v1/targets/nope/disable", testToken); rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown target status = %d", rec.Code)
+	}
+
+	// An unwired controller says so rather than pretending the action ran.
+	empty := newTargetControlHandler(t, nil)
+	if rec := do(empty, http.MethodPost, "/api/v1/targets/svc-chase/disable", testToken); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unwired status = %d", rec.Code)
+	}
+
+	// The action is authenticated like every other write.
+	if rec := do(h, http.MethodPost, "/api/v1/targets/svc-chase/disable", ""); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status = %d", rec.Code)
+	}
+}

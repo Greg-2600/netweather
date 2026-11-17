@@ -171,7 +171,7 @@ The contact must be set by the operator (`NETWEATHER_CONTACT`). **Implemented:**
 
 ### If someone complains
 
-1. Stop probing that host immediately: `netweather disable <target>` (takes effect on the next tick; no restart).
+1. Stop probing that host immediately: `netweather disable <target>` (takes effect on the next tick; no restart). **Implemented:** `netweather disable <host-or-id>` resolves the target through the API, calls `POST /api/v1/targets/{id}/disable`, and the running scheduler drops it; the row and its history stay, and a config reload can bring it back.
 2. Reply with the configured contact and the request pattern from the logs: method, path, interval, source IP/ASN, and the instrument used.
 3. If the complaint is about volume rather than existence, widen that target's interval or move it to `UNMEASURABLE` and note why.
 4. If the complaint is about a target that was added by a seed, remove it from the seed and record the removal.

@@ -252,6 +252,32 @@ func (a *Agent) SetTargets(targets []Target) {
 	}
 }
 
+// RemoveTarget stops probing one target without touching the others. The row
+// and its history stay: this is the abuse-response path (ACCEPTABLE_USE.md §7),
+// not a delete, and a later config reload can bring it back.
+func (a *Agent) RemoveTarget(id string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	kept := make([]Target, 0, len(a.targets))
+	removed := false
+	for _, t := range a.targets {
+		if t.ID == id {
+			removed = true
+			continue
+		}
+		kept = append(kept, t)
+	}
+	if !removed {
+		return false
+	}
+	a.targets = kept
+	delete(a.next, id)
+	delete(a.blockedStreak, id)
+	delete(a.downSince, id)
+	return true
+}
+
 // TargetCount reports the current target set size.
 func (a *Agent) TargetCount() int {
 	a.mu.RLock()

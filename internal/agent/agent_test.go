@@ -1414,3 +1414,33 @@ func TestRetryAfterIsObeyedExactly(t *testing.T) {
 		t.Fatalf("retry-after date next in %v, want 45s", got)
 	}
 }
+
+func TestRemoveTargetStopsScheduling(t *testing.T) {
+	t.Parallel()
+
+	targets := []agent.Target{
+		target("a1", "a.example"),
+		target("a2", "b.example"),
+	}
+	a := agent.New(targets, newProber(), &fakeSink{})
+	a.Rand = zeroRand
+
+	if got := a.TargetCount(); got != 2 {
+		t.Fatalf("target count = %d, want 2", got)
+	}
+	if !a.RemoveTarget("a1") {
+		t.Fatal("removing a live target reported no removal")
+	}
+	if got := a.TargetCount(); got != 1 {
+		t.Fatalf("target count after removal = %d, want 1", got)
+	}
+	if !a.NextRun("a1").IsZero() {
+		t.Fatalf("a removed target is still scheduled at %v", a.NextRun("a1"))
+	}
+	if a.RemoveTarget("a1") {
+		t.Fatal("removing the same target twice reported a removal")
+	}
+	if a.RemoveTarget("missing") {
+		t.Fatal("removing an unknown target reported a removal")
+	}
+}

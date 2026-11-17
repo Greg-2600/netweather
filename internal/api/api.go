@@ -34,6 +34,14 @@ type Control interface {
 	Paused() bool
 }
 
+// TargetControl stops probing one target at runtime. The boolean reports
+// whether the target exists, so the handler can answer 404 instead of claiming
+// success for a typo. It is the abuse-response path from ACCEPTABLE_USE.md §7:
+// the row and its history stay, and the next config reload can bring it back.
+type TargetControl interface {
+	DisableTarget(ctx context.Context, id string) (bool, error)
+}
+
 // BudgetState reports the direct vantage's daily egress allowance. It is the
 // same hard stop the board banners (ACCEPTABLE_USE.md §4); meta exposes it so
 // an API client can distinguish "quiet" from "stopped by its own budget".
@@ -176,6 +184,9 @@ type Deps struct {
 	IncidentWatcher board.Watcher
 	// Control is the pause/resume switch.
 	Control Control
+	// TargetControl stops probing one target at runtime. Nil disables the
+	// action; the abuse-response path must not silently succeed.
+	TargetControl TargetControl
 	// Probes reads recent observations for one target. Nil disables the route.
 	Probes ProbeReader
 	// Incidents reads the incident log. Nil disables the routes.
@@ -411,7 +422,7 @@ type egressInfo struct {
 
 // capabilities is the runtime truth. A client should feature-detect here rather
 // than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "annotations", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace", "corridors", "ihi"}
+var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "annotations", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace", "corridors", "ihi", "target_control"}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}
@@ -617,7 +628,49 @@ func (s *server) handleTargetSubtree(w http.ResponseWriter, r *http.Request) {
 		s.handleTrace(w, r)
 		return
 	}
+	if strings.HasSuffix(r.URL.Path, "/disable") {
+		s.handleTargetDisable(w, r)
+		return
+	}
 	onlyGET(s.handleTargetProbes)(w, r)
+}
+
+// handleTargetDisable stops probing one target. It is the abuse-response path
+// from ACCEPTABLE_USE.md §7: the row and its history stay, the live scheduler
+// drops it on the next tick, and a later config reload can bring it back.
+func (s *server) handleTargetDisable(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		writeError(w, r, http.StatusMethodNotAllowed, CodeMethodNotAllowed,
+			r.Method+" is not allowed on "+r.URL.Path)
+		return
+	}
+	if s.deps.TargetControl == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable,
+			"runtime target control is not configured")
+		return
+	}
+
+	rest := strings.TrimPrefix(r.URL.Path, "/api/v1/targets/")
+	id := strings.TrimSuffix(rest, "/disable")
+	if id == "" || strings.Contains(id, "/") {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such target")
+		return
+	}
+
+	found, err := s.deps.TargetControl.DisableTarget(r.Context(), id)
+	if err != nil {
+		s.deps.Logger.Error("target disable failed",
+			"event", "target_disable_failed", "component", "http", "target_id", id, "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "target could not be disabled")
+		return
+	}
+	if !found {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such target")
+		return
+	}
+
+	writeData(w, r, map[string]string{"target": id, "state": "disabled"}, nil)
 }
 
 func (s *server) handleTargetProbes(w http.ResponseWriter, r *http.Request) {
