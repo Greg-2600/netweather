@@ -58,6 +58,20 @@
   {{end}}
 
   <main>
+    {{if .Fleet.OK}}
+    <p class="fleet" data-testid="fleet-health">
+      Health <b class="mono">{{.Fleet.Health}}</b>
+      {{if .Fleet.Band}}
+      <span class="muted small">(normal <span data-testid="fleet-band">{{.Fleet.Band}}</span>{{if .Fleet.Widened}}, widened for low coverage{{end}})</span>
+      {{else}}
+      <span class="muted small" data-testid="fleet-learning">{{.Fleet.Note}}</span>
+      {{end}}
+      <span class="muted small" data-testid="fleet-detail">{{.Fleet.Detail}}</span>
+    </p>
+    {{else if .Fleet.Note}}
+    <p class="muted small" data-testid="fleet-note">{{.Fleet.Note}}</p>
+    {{end}}
+
     <section class="summary" aria-label="State summary">
       {{range .Counts}}
       <span class="chip {{.Class}}" data-count-state="{{.State}}" data-testid="count-{{.State}}">

@@ -323,6 +323,7 @@ func serve(lg *logging.Logger) error {
 		Verdict:             globalVerdict,
 		Anomalies:           st,
 		Vantages:            st,
+		Fleet:               st,
 		// The ring and the measured logging setup back the diagnostics page
 		// and the drawer's Why panel (LOGGING.md §9).
 		Logs:            lg,

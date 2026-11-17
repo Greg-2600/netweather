@@ -3476,3 +3476,106 @@ func TestPruneDropsOldAdvisoriesAndFeedEvents(t *testing.T) {
 		t.Fatalf("events = %+v, want the recently observed one", events)
 	}
 }
+
+func TestFleetHealth(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	ctx := context.Background()
+	if err := s.EnsureVantage(ctx, "local", "direct", "primary"); err != nil {
+		t.Fatal(err)
+	}
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	states := map[string]state.State{
+		"a": state.Up,
+		"b": state.Up,
+		"c": state.Degraded,
+		"d": state.Down,
+		"e": state.Unmeasurable,
+	}
+	var probes []store.Probe
+	for id, st := range states {
+		if err := s.UpsertTarget(ctx, store.Target{
+			ID: id, Host: id + ".example", Port: 443, Probe: "http",
+			Name: id, Class: "service", Tier: 2, IntervalS: 300,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		probes = append(probes, store.Probe{
+			TargetID: id, VantageID: "local", TS: base,
+			State: st, Stage: "http", Confidence: "high",
+		})
+	}
+	if err := s.Record(ctx, probes); err != nil {
+		t.Fatal(err)
+	}
+
+	// 28 samples at the same hour-of-week, one per week, so the history is
+	// usable. Health is constant: (2 up + 1 degraded) / 4 measurable.
+	for i := 0; i < 28; i++ {
+		if err := s.SampleScopes(ctx, "local", base.AddDate(0, 0, -7*i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := s.FleetHealth(ctx, "local", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Judged != 4 || got.Total != 5 || got.Unmeasurable != 1 {
+		t.Fatalf("fleet = %+v, want 4 judged of 5 with 1 unmeasurable", got)
+	}
+	if diff := got.Healthy - 0.75; diff > 1e-9 || diff < -1e-9 {
+		t.Fatalf("healthy = %v, want 0.75 (degraded counts as healthy)", got.Healthy)
+	}
+	if !got.LastProbe.Equal(base) {
+		t.Fatalf("last probe = %v, want %v", got.LastProbe, base)
+	}
+	if !got.Band || got.Samples != 28 || got.Window != 28 {
+		t.Fatalf("band = %+v, want a usable 28-sample band", got)
+	}
+	// Four measurable targets is under the absolute floor, so the band is
+	// widened exactly as the detector widens it.
+	if !got.Widened {
+		t.Fatalf("widened = false, want true for a small scope: %+v", got)
+	}
+	if diff := got.Lower - 0.75; diff > 1e-9 || diff < -1e-9 {
+		t.Fatalf("lower = %v, want 0.75", got.Lower)
+	}
+	if diff := got.Upper - 0.75; diff > 1e-9 || diff < -1e-9 {
+		t.Fatalf("upper = %v, want 0.75", got.Upper)
+	}
+}
+
+func TestFleetHealthStaysLearningUntilTheBaselineIsUsable(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	if err := s.Record(ctx, []store.Probe{probeAt(base, state.Up)}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if err := s.SampleScopes(ctx, "local", base.AddDate(0, 0, -7*i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := s.FleetHealth(ctx, "local", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Healthy != 1 || got.Judged != 1 {
+		t.Fatalf("fleet = %+v, want one healthy target", got)
+	}
+	if got.Band {
+		t.Fatalf("band = true with %d samples, want learning", got.Samples)
+	}
+	if got.Samples != 3 || got.Window != 28 {
+		t.Fatalf("samples = %d/%d, want 3/28", got.Samples, got.Window)
+	}
+}

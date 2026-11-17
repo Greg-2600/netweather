@@ -100,7 +100,7 @@ Exactly one, shown in the top bar.
 | `TAMPER` | DNS anomaly **plus** a second independent signal, or a certificate anomaly confirmed | Distinct, high-severity styling |
 | `STALE` | No probe cycle completed in 3× the reference interval | Prominent warning |
 | `STARTING` | < 1 full cycle completed | Skeleton UI |
-| `LEARNING` | < 28 days of baseline for the current hour-of-week bucket | Health shown, no `INCIDENT`; "learning 12/28 days" |
+| `LEARNING` | < 28 weekly samples for the current hour-of-week bucket | Health shown, no `INCIDENT`; "learning 12/28 samples" |
 
 `DNS_ANOMALY` is deliberately **not** a global verdict. A single resolver disagreeing with its own history is advisory: it appears in the drawer and a collapsed observations strip, never on the top bar. Promoting it to `TAMPER` requires a second signal (`CLASSIFIER.md` §3.2).
 
@@ -511,13 +511,13 @@ first_run(t) = now + rand(0, 0.95 * interval(t))
 
 The global token bucket additionally ramps from 2 req/s to the configured ceiling over the first 10 minutes. A restart does not repeat the ramp - only a cold database does. **Implemented:** the ramp is measured from `MIN(target.created_at)`, so a restart resumes at the current rate; the cold-start reference is read once at startup and an empty database uses the process start.
 
-**No false confidence.** An hour-of-week bucket needs 28 samples, which is 28 days. Until then the baseline does not exist, and pretending it does is how a monitor earns its first false alarm:
+**No false confidence.** An hour-of-week bucket needs 28 samples, and since one week contributes exactly one sample to a given hour-of-week bucket, that is **28 weeks**. Until then the baseline does not exist, and pretending it does is how a monitor earns its first false alarm:
 
 | Age | Mode | Detection | UI |
 |---|---|---|---|
 | < 1 full cycle | `STARTING` | none | skeleton |
 | 1 cycle – 28 days | `LEARNING` | absolute floor only: global health < 90%, sector < 75%, 2 consecutive buckets | "learning — 12/28 days, no incidents yet" |
-| ≥ 28 days | normal | baseline-relative (§7.2) | normal |
+| 28 weeks | normal | baseline-relative (7.2) | normal |
 
 `LEARNING` never emits `INCIDENT`. It can still emit `STALE`, `LOCAL`, and `TAMPER`, because none of those depend on a baseline. The mode is tracked **per scope**, not globally: a newly added sector is in `LEARNING` while the rest of the board is not, and the confidence badge follows the scope, not the process.
 
@@ -580,7 +580,7 @@ A collapse in coverage is itself an event: if `coverage` for a scope falls below
 
 **Implemented:** `internal/anomaly` runs a second detector over the coverage series with its own detectors, day-widening, and cooldown, so a visibility drop and a health drop cannot suppress each other. It runs **before** the health floors, because the case that matters — a scope that has become mostly unmeasurable — is exactly where health detection must stay silent. The row is `anomaly.kind = 'coverage_drop'` with the observed coverage and its baseline, it never opens an incident, `/api/v1/anomalies` lists it, and the board shows the newest one inside six hours as an advisory banner that says the loss is visibility rather than an outage. `store.ScopeCoverageHistory` reads the `coverage` column from the same hour-of-week `scope_sample` window as the health history.
 
-Baseline: same **hour-of-week**, rolling 4 weeks (28 samples), robust statistics.
+Baseline: same **hour-of-week**, rolling 28 weeks (28 samples, one per week at that hour), robust statistics. **Implemented:** the lookback is `7 * baseline.Window` days for exactly that reason: a 28-day lookback held about four points per bucket, below the 21-sample floor, so the detector could never leave `LEARNING`.
 
 ```
 trigger when:  health < median - 3 * 1.4826 * MAD
@@ -834,6 +834,7 @@ Endpoints: prefer RIPE Atlas anchors (stable, distributed). Fallback: country an
 
 ## 10. UI
 
+
 Four screens plus a drawer. Server-rendered HTML + SSE; a small `EventSource` script applies deltas. No JS framework, no build step. Served on `:2600` - port and bind rationale in `NETWORKING.md` §7.1. HTMX is optional and has not earned its place yet: the board needs one stream and no partial swaps.
 
 The same state is exposed machine-readably under `/api/v1`; the contract, envelope, error codes, and stability tiers are in [`API.md`](API.md). The UI is a client of the store, not of its own API - but the two must never disagree about a state, so both read the same rows.
@@ -859,6 +860,8 @@ The same state is exposed machine-readably under `/api/v1`; the contract, envelo
 │ ✓ DNS answers consistent across 3 resolvers                  │
 └──────────────────────────────────────────────────────────────┘
 ```
+
+**Implemented, the overview line:** the board's summary carries `Health 98.7% (normal 97.9-99.2%)`, the age of the newest confirmed probe, the enabled target count, and the `UNMEASURABLE` count. Health is `(up + up_reachability + degraded) / (up + up_reachability + degraded + down)`, the same definition the hourly scope sample uses, so the band and the number are comparable. The band is the global hour-of-week baseline at 3 sigma; while it has fewer than 21 of 28 weekly samples the line says "learning n/28" rather than drawing a range, and when the measurable share is below 0.80 or the scope is under 20 targets the band is widened 1.5x exactly as the detector widens it, with the page saying so. A fleet with no judgeable targets states that instead of rendering 0%.
 
 ### 10.2 Board
 

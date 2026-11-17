@@ -129,8 +129,8 @@ func (e *Evaluator) Evaluate(ctx context.Context) (int, error) {
 		// widens 1.5x (DESIGN.md §7.2). The floors below stop detection
 		// entirely; this keeps a scope of 15 at full coverage from producing a
 		// confident alarm on a three-point wobble.
-		if measurable < 20 || coverage < 0.80 {
-			band.MAD *= 1.5
+		if measurable < baseline.MinMeasurable || coverage < baseline.LowCoverageShare {
+			band.MAD *= baseline.LowCoverageWidening
 		}
 
 		detector := e.detector(key)

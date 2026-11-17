@@ -294,6 +294,52 @@ type boardView struct {
 	// an advisory, not a tile colour: a mass bot-wall rollout must not read as
 	// a mass outage (DESIGN.md §7.2).
 	CoverageNote string
+	// Fleet is the overview line: judged health, its learned band, and the
+	// counters that make the denominator visible (DESIGN.md §10.1).
+	Fleet fleetView
+}
+
+// fleetView is the overview line as the board renders it. The percentages are
+// strings so the template does no arithmetic.
+type fleetView struct {
+	OK      bool
+	Health  string
+	Band    string
+	Widened bool
+	Note    string
+	Detail  string
+}
+
+// toFleetView formats one fleet reading. A scope with no judged targets says so
+// rather than rendering 0%; a short baseline says "learning" rather than
+// drawing an invented band.
+func toFleetView(f store.FleetHealth, now time.Time) fleetView {
+	view := fleetView{}
+	if f.Judged == 0 {
+		view.Note = "No judgeable targets yet."
+		return view
+	}
+	view.OK = true
+	view.Health = fmt.Sprintf("%.1f%%", f.Healthy*100)
+
+	if f.Band {
+		view.Band = fmt.Sprintf("%.1f-%.1f%%", f.Lower*100, f.Upper*100)
+		view.Widened = f.Widened
+	} else {
+		view.Note = fmt.Sprintf("learning %d/%d baseline samples", f.Samples, f.Window)
+	}
+
+	last := "no probe yet"
+	if !f.LastProbe.IsZero() {
+		age := now.Sub(f.LastProbe)
+		if age < 0 {
+			age = 0
+		}
+		last = "last cycle " + age.Round(time.Second).String() + " ago"
+	}
+	view.Detail = fmt.Sprintf("%s · %d targets · %d unmeasurable",
+		last, f.Total, f.Unmeasurable)
+	return view
 }
 
 // healthView is the index as a page renders it. Weights are percentages and
@@ -942,6 +988,25 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	// are already on the page, so it is computed after they are read.
 	if s.deps.Verdict != nil {
 		view.Verdict = s.deps.Verdict.Build(r.Context())
+	}
+
+	// The overview line (DESIGN.md §10.1): judged health, its learned band, and
+	// the counters that explain the denominator. A failed read is a stated
+	// line, not a blank that reads as calm.
+	if s.deps.Fleet != nil {
+		fleetVantage := s.deps.Vantage
+		if fleetVantage == "" {
+			fleetVantage = "local"
+		}
+		now := s.now()
+		fleet, err := s.deps.Fleet.FleetHealth(r.Context(), fleetVantage, now)
+		if err != nil {
+			s.deps.Logger.Warn("fleet health failed",
+				"event", "fleet_health_failed", "component", "http", "error", err)
+			view.Fleet = fleetView{Note: "Fleet health is temporarily unavailable."}
+		} else {
+			view.Fleet = toFleetView(fleet, now)
+		}
 	}
 
 	// LOCAL suppresses per-target red (DESIGN.md §3.3): the targets keep their

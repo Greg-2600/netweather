@@ -173,10 +173,21 @@ func (s *Store) SampleScopes(ctx context.Context, vantageID string, now time.Tim
 	return nil
 }
 
+// coverageBaselineFrom is the start of the history window.
+//
+// The bucket is an hour-of-week, so one week contributes exactly one sample per
+// bucket. A 28-sample baseline is therefore 28 weeks, not 28 days: with a
+// 28-day lookback the same bucket held about four points, which is below the
+// 21-sample floor and made the detector permanently "learning".
+func coverageBaselineFrom(at time.Time) int64 {
+	weeks := int64(7 * baseline.Window)
+	return at.UTC().AddDate(0, 0, int(-weeks)).Truncate(time.Hour).UnixMilli() / 3600000
+}
+
 // ScopeHistory returns the last 28 hourly health samples whose hour-of-week
 // matches at. That is the baseline the detector compares against.
 func (s *Store) ScopeHistory(ctx context.Context, scope, value string, at time.Time) ([]float64, error) {
-	from := at.UTC().AddDate(0, 0, -baseline.Window).Truncate(time.Hour).UnixMilli() / 3600000
+	from := coverageBaselineFrom(at)
 
 	rows, err := s.reader.QueryContext(ctx, `
 		SELECT bucket, health FROM scope_sample
@@ -216,7 +227,7 @@ func (s *Store) ScopeHistory(ctx context.Context, scope, value string, at time.T
 // so a health drop and a visibility drop are two advisories rather than one
 // ambiguous number (DESIGN.md §7.2).
 func (s *Store) ScopeCoverageHistory(ctx context.Context, scope, value string, at time.Time) ([]float64, error) {
-	from := at.UTC().AddDate(0, 0, -baseline.Window).Truncate(time.Hour).UnixMilli() / 3600000
+	from := coverageBaselineFrom(at)
 
 	rows, err := s.reader.QueryContext(ctx, `
 		SELECT bucket, coverage FROM scope_sample

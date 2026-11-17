@@ -13,7 +13,9 @@ import (
 )
 
 const (
-	// Window is the rolling history per hour-of-week bucket: four weeks.
+	// Window is the rolling history per hour-of-week bucket: 28 weekly
+	// samples. One week contributes one sample to a given bucket, so the
+	// lookback is 28 weeks.
 	Window = 28
 	// MinSamples is the smallest usable history (21 of 28).
 	MinSamples = 21
@@ -21,6 +23,15 @@ const (
 	DefaultK = 3.0
 	// MADToSigma converts a median absolute deviation into a robust sigma.
 	MADToSigma = 1.4826
+
+	// The low-coverage band from DESIGN.md §7.2. A scope with fewer than
+	// MinMeasurable targets, or less than LowCoverageShare of its scope
+	// measurable, is computed but noisy, so its band widens by
+	// LowCoverageWidening before a trigger is judged. The constants live here
+	// so the detector and the board's overview line cannot disagree.
+	LowCoverageShare    = 0.80
+	MinMeasurable       = 20
+	LowCoverageWidening = 1.5
 )
 
 // Key maps an instant to its hour-of-week bucket: Monday 00:00 UTC is 0 and

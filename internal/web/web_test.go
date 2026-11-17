@@ -4248,3 +4248,122 @@ func TestTargetDrawerShowsAgreeingVantagesQuietly(t *testing.T) {
 		t.Fatal("agreeing vantages were called regional")
 	}
 }
+
+type fakeFleet struct {
+	health store.FleetHealth
+	err    error
+}
+
+func (f *fakeFleet) FleetHealth(context.Context, string, time.Time) (store.FleetHealth, error) {
+	return f.health, f.err
+}
+
+func newServerWithFleet(t *testing.T, token string, m *board.Memory, fleet web.FleetReader) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		Fleet:     fleet,
+		Token:     token,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestBoardShowsTheFleetHealthLine(t *testing.T) {
+	t.Parallel()
+
+	fleet := &fakeFleet{health: store.FleetHealth{
+		Healthy: 0.75, Judged: 4, Total: 5, Unmeasurable: 1,
+		LastProbe: time.Now().Add(-12 * time.Second),
+		Band:      true, Lower: 0.70, Upper: 0.80,
+		Samples: 28, Window: 28, Widened: true,
+	}}
+	ts := newServerWithFleet(t, testToken, fixture(), fleet)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="fleet-health"`) {
+		t.Fatalf("fleet line missing:\n%s", page)
+	}
+	for _, want := range []string{
+		"Health", "75.0%", `data-testid="fleet-band"`, "70.0-80.0%",
+		"widened for low coverage", "5 targets", "1 unmeasurable", "last cycle",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("fleet line missing %q", want)
+		}
+	}
+}
+
+func TestBoardFleetLineSaysLearningInteraction(t *testing.T) {
+	t.Parallel()
+
+	fleet := &fakeFleet{health: store.FleetHealth{
+		Healthy: 1, Judged: 1, Total: 1,
+		LastProbe: time.Now().Add(-5 * time.Second),
+		Samples:   3, Window: 28,
+	}}
+	ts := newServerWithFleet(t, testToken, fixture(), fleet)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	if !strings.Contains(page, `data-testid="fleet-learning"`) ||
+		!strings.Contains(page, "learning 3/28 baseline samples") {
+		t.Fatalf("a young baseline did not say learning:\n%s", page)
+	}
+	if strings.Contains(page, `data-testid="fleet-band"`) {
+		t.Error("a learning baseline drew a band")
+	}
+}
+
+func TestBoardFleetLineAbsentOrEmpty(t *testing.T) {
+	t.Parallel()
+
+	// No reader: no line at all, and no note pretending one exists.
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	if strings.Contains(page, `data-testid="fleet-health"`) || strings.Contains(page, `data-testid="fleet-note"`) {
+		t.Fatal("an unwired fleet reader rendered a line")
+	}
+
+	// A configured reader with nothing judgeable states it rather than 0%.
+	empty := newServerWithFleet(t, testToken, fixture(), &fakeFleet{})
+	client2, _ := newClient(t)
+	login(t, empty, client2, testToken)
+	resp, err = client2.Get(empty.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = body(t, resp)
+	if !strings.Contains(page, `data-testid="fleet-note"`) ||
+		!strings.Contains(page, "No judgeable targets yet") {
+		t.Fatalf("an empty fleet was not stated:\n%s", page)
+	}
+}

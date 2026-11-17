@@ -61,6 +61,9 @@ type Deps struct {
 	// Vantages supplies every vantage's state for a target, so the drawer can
 	// show a regional disagreement rather than calling it global.
 	Vantages VantageStates
+	// Fleet supplies the overview line's judged health and learned band. Nil
+	// omits the line rather than inventing a band.
+	Fleet FleetReader
 	// DNSObservations supplies the board's collapsed DNS divergence strip.
 	DNSObservations DNSObservations
 	// Logs supplies the ring and logging setup for the diagnostics page and
@@ -199,6 +202,12 @@ type AnomalyReader interface {
 // §7.1). Nil omits the panel rather than implying one path.
 type VantageStates interface {
 	TargetVantages(ctx context.Context, targetID string) ([]store.VantageState, error)
+}
+
+// FleetReader supplies the overview line from DESIGN.md §10.1. Nil omits the
+// line; a nil band is shown as "learning n/28" rather than a guessed range.
+type FleetReader interface {
+	FleetHealth(ctx context.Context, vantageID string, now time.Time) (store.FleetHealth, error)
 }
 
 // DNSObservations supplies the board's collapsed DNS divergence strip. Nil
