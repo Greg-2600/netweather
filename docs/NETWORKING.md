@@ -247,6 +247,8 @@ Three things to know:
 - **ICMP time-exceeded traverses conntrack** because it is "related" to a tracked flow. Some iptables/nftables configurations still drop it, and rootless/slirp4netns setups differ again. A trace that stops after hop 1 is a **container artifact**, not a path failure.
 - Because of the above, `trace` is the least trustworthy instrument in a container. That is a second, independent reason for the policy already in `DESIGN.md` §9.1: **prefer a second vantage over a trace.**
 
+**Implemented:** the API's `note` on `POST /api/v1/targets/{id}/trace` states both caveats when they apply: a private first hop is "likely the local gateway rather than a wide-area hop", and a walk that stops after that hop is "a NAT/conntrack artifact, not a path failure". The corridor event's captured trace appends the same artifact note. The board does not render traces, so the label lives where the walk is returned rather than on a tile.
+
 If honest traces matter more than isolation, that is exactly what the opt-in host-networking profile is for. Then §6's guard list becomes mandatory rather than defensive.
 
 ---

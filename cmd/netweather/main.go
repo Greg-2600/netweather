@@ -1582,6 +1582,11 @@ func formatTraceHops(res probe.TraceResult) string {
 		destination = res.Destination.String()
 	}
 	fmt.Fprintf(&b, "destination %s reached=%t\n", destination, res.Reached)
+	if !res.Reached && len(res.Hops) <= 1 {
+		// NETWORKING.md §8: a walk that stops at the bridge gateway is a
+		// container artifact, not a path failure.
+		_, _ = fmt.Fprintln(&b, "note: the walk stopped after the first hop; in a container this is a NAT/conntrack artifact, not a path failure")
+	}
 	return b.String()
 }
 

@@ -76,6 +76,10 @@ type traceResponse struct {
 	Destination string         `json:"destination"`
 	Reached     bool           `json:"reached"`
 	Hops        []traceHopItem `json:"hops"`
+	// Note states the container/NAT caveats from NETWORKING.md §8: a private
+	// first hop is the local gateway, and a walk that stops after it is an
+	// artifact rather than a path failure.
+	Note string `json:"note,omitempty"`
 }
 
 // handleTrace runs an on-demand traceroute for one target.
@@ -173,6 +177,22 @@ func (s *server) handleTrace(w http.ResponseWriter, r *http.Request) {
 			item.RTTMS = hop.RTT.Milliseconds()
 		}
 		out.Hops = append(out.Hops, item)
+	}
+
+	// NETWORKING.md §8: a trace from a container shows the bridge gateway as
+	// hop 1, and a walk that stops there is a conntrack/rootless artifact, not
+	// a path failure. Say so rather than leaving a reader to file it as one.
+	if len(out.Hops) > 0 && !out.Hops[0].Timeout {
+		if addr, err := netip.ParseAddr(out.Hops[0].Addr); err == nil &&
+			(addr.IsPrivate() || addr.IsLoopback() || addr.IsLinkLocalUnicast()) {
+			out.Note = "hop 1 is a private address, likely the local gateway rather than a wide-area hop"
+		}
+	}
+	if !out.Reached && len(out.Hops) <= 1 {
+		if out.Note != "" {
+			out.Note += "; "
+		}
+		out.Note += "the walk stopped after the first hop; in a container this is a NAT/conntrack artifact, not a path failure"
 	}
 
 	s.deps.Logger.Info("traceroute",

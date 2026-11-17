@@ -3222,6 +3222,7 @@ func TestTraceAction(t *testing.T) {
 		Host        string `json:"host"`
 		Destination string `json:"destination"`
 		Reached     bool   `json:"reached"`
+		Note        string `json:"note"`
 		Hops        []struct {
 			TTL     int    `json:"ttl"`
 			Addr    string `json:"addr"`
@@ -3239,11 +3240,55 @@ func TestTraceAction(t *testing.T) {
 	if len(got.Hops) != 2 || got.Hops[0].Addr != "10.0.0.1" || got.Hops[0].RTTMS != 4 {
 		t.Fatalf("hops = %+v", got.Hops)
 	}
+	if !strings.Contains(got.Note, "hop 1 is a private address") {
+		t.Fatalf("note = %q, want the gateway caveat", got.Note)
+	}
 	if tracer.got != netip.MustParseAddr("203.0.113.10") {
 		t.Fatalf("traced %v, want the resolved address", tracer.got)
 	}
 	if len(resolver.hosts) != 1 || resolver.hosts[0] != "chase.com" {
 		t.Fatalf("resolved hosts = %v", resolver.hosts)
+	}
+}
+
+func TestTraceNotesAContainerArtifact(t *testing.T) {
+	t.Parallel()
+
+	// A walk that stops at the private first hop is the documented container
+	// artifact, not a path failure (NETWORKING.md §8).
+	tracer := &fakeTracer{result: probe.TraceResult{
+		Destination: netip.MustParseAddr("203.0.113.10"),
+		Reached:     false,
+		Hops: []probe.TraceHop{
+			{TTL: 1, Addr: netip.MustParseAddr("10.0.0.1"), RTT: 4 * time.Millisecond},
+		},
+	}}
+	resolver := &fakeResolver{addrs: []netip.Addr{netip.MustParseAddr("203.0.113.10")}}
+
+	rec := do(newTraceHandler(t, traceTargets(), tracer, resolver),
+		http.MethodPost, "/api/v1/targets/t1/trace", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Reached bool   `json:"reached"`
+		Note    string `json:"note"`
+	}
+	if err := json.Unmarshal(env.Data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Reached {
+		t.Fatal("the walk reported reached")
+	}
+	for _, want := range []string{"local gateway", "NAT/conntrack artifact"} {
+		if !strings.Contains(got.Note, want) {
+			t.Errorf("note = %q, want %q", got.Note, want)
+		}
 	}
 }
 

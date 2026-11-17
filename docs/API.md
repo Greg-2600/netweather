@@ -789,7 +789,8 @@ Auth: bearer. One on-demand IPv4 ICMP traceroute. The result is a hint about whe
       {"ttl": 1, "addr": "10.0.0.1", "rtt_ms": 4},
       {"ttl": 2, "timeout": true},
       {"ttl": 3, "addr": "203.0.113.10", "rtt_ms": 11}
-    ]
+    ],
+    "note": "hop 1 is a private address, likely the local gateway rather than a wide-area hop"
   },
   "meta": {"request_id": "…"}
 }
@@ -798,6 +799,7 @@ Auth: bearer. One on-demand IPv4 ICMP traceroute. The result is a hint about whe
 - `POST` only. A trace is an action, not a read.
 - Global budget: **10 runs per hour**, shared by every client, because a target's abuse desk sees the operator's egress address rather than a user. Exhaustion is `429` with `Retry-After`.
 - `timeout: true` marks a hop that never answered. Routers rate-limit TTL-exceeded, so a star is not loss. Three consecutive silent hops end the walk early.
+- `note` states the container caveats from `NETWORKING.md` §8 when they apply: a private first hop is likely the local gateway rather than a wide-area hop, and a walk that stops after that hop is a NAT/conntrack artifact rather than a path failure. It is absent when neither applies.
 - The destination not answering is `200` with `reached: false`, not an error.
 - Traceroute needs `CAP_NET_RAW`. Without it the endpoint is `503` with the socket error in the message, and the rest of the monitor is unaffected (`compose.trace.yaml` grants the capability).
 - The capability is not consent: the endpoint is also `503` unless `NETWEATHER_TRACE_ENABLED=true`, with that variable named in the refusal. The documented override sets both, so enabling raw sockets is a visible second file rather than a line someone uncomments.
