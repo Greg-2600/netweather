@@ -1537,6 +1537,11 @@ func TestEnrichmentRoundTrip(t *testing.T) {
 		t.Fatalf("needs = %+v", needs)
 	}
 
+	// A zero limit falls back to the documented batch size.
+	if all, err := s.TargetsNeedingEnrichment(ctx, 0); err != nil || len(all) != 1 {
+		t.Fatalf("zero-limit needs = %+v, %v", all, err)
+	}
+
 	if err := s.UpdateEnrichment(ctx, "t1", store.Enrichment{
 		ASN: 64500, Prefix: "203.0.113.0/24", CDN: "akamai",
 		ASCountry: "US", ASName: "EXAMPLE-AS, US",
@@ -1566,6 +1571,61 @@ func TestEnrichmentRoundTrip(t *testing.T) {
 
 	// Updating an unknown target is a no-op, not an error.
 	if err := s.UpdateEnrichment(ctx, "nope", store.Enrichment{ASN: 1, Prefix: "x", CDN: "y"}); err != nil {
+		t.Fatalf("unknown target: %v", err)
+	}
+}
+
+func TestEnrichmentRefreshAndTouch(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	if err := s.UpdateEnrichment(ctx, "t1", store.Enrichment{
+		ASN: 64500, Prefix: "203.0.113.0/24", CDN: "akamai",
+		ASCountry: "US", ASName: "EXAMPLE-AS, US",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// A recent enrichment is not due for a recheck.
+	recent, err := s.TargetsNeedingRefresh(ctx, time.Now().Add(-time.Hour), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recent) != 0 {
+		t.Fatalf("recent target was queued for refresh: %+v", recent)
+	}
+
+	// A zero limit falls back to the documented batch size.
+	if _, err := s.TargetsNeedingRefresh(ctx, time.Now().Add(time.Minute), 0); err != nil {
+		t.Fatalf("zero-limit refresh: %v", err)
+	}
+
+	// A cutoff in the future makes it due, with the learned prefix attached.
+	due, err := s.TargetsNeedingRefresh(ctx, time.Now().Add(time.Minute), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(due) != 1 || due[0].ID != "t1" || due[0].Prefix != "203.0.113.0/24" || due[0].ASN != 64500 {
+		t.Fatalf("due = %+v", due)
+	}
+
+	// Touching must not blank the labels it did not change.
+	if err := s.TouchEnrichment(ctx, "t1"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.TargetsWithState(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows[0].ASN != 64500 || rows[0].CDN != "akamai" || rows[0].ASName != "EXAMPLE-AS, US" {
+		t.Fatalf("touch erased enrichment: %+v", rows[0])
+	}
+
+	// Touching an unknown target is a no-op.
+	if err := s.TouchEnrichment(ctx, "nope"); err != nil {
 		t.Fatalf("unknown target: %v", err)
 	}
 }

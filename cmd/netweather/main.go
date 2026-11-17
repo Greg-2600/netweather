@@ -616,6 +616,64 @@ func enrichmentLoop(ctx context.Context, st *store.Store, lg *logging.Logger) {
 			case <-time.After(150 * time.Millisecond):
 			}
 		}
+
+		// A hostname's address can move. Recheck a bounded batch daily: if the
+		// address is still inside the learned prefix the row is only touched, so
+		// CDN and AS labels are not blanked by a no-op update.
+		refresh, err := st.TargetsNeedingRefresh(ctx, time.Now().Add(-24*time.Hour), 50)
+		if err != nil {
+			lg.Warn("enrichment refresh scan failed",
+				"event", "enrichment_refresh_scan_failed", "component", "enrich", "error", err)
+			return
+		}
+		for _, t := range refresh {
+			if ctx.Err() != nil {
+				return
+			}
+
+			addrs, err := dialer.CheckHost(ctx, t.Host)
+			if err != nil {
+				lg.Debug("enrichment refresh resolve failed",
+					"event", "enrichment_refresh_resolve_failed", "component", "enrich",
+					"target", t.Host, "error", err)
+				continue
+			}
+			if enrich.PrefixContains(t.Prefix, addrs[0]) {
+				if err := st.TouchEnrichment(ctx, t.ID); err != nil {
+					lg.Warn("enrichment touch failed",
+						"event", "enrichment_touch_failed", "component", "enrich",
+						"target", t.Host, "error", err)
+				}
+				continue
+			}
+
+			res, err := enrich.Host(ctx, resolver, t.Host, addrs)
+			if err != nil {
+				lg.Debug("enrichment refresh lookup failed",
+					"event", "enrichment_refresh_lookup_failed", "component", "enrich",
+					"target", t.Host, "error", err)
+				continue
+			}
+			if err := st.UpdateEnrichment(ctx, t.ID, store.Enrichment{
+				ASN: res.ASN, Prefix: res.Prefix, CDN: res.CDN,
+				ASCountry: res.ASCountry, ASName: res.ASName,
+			}); err != nil {
+				lg.Warn("enrichment refresh write failed",
+					"event", "enrichment_refresh_write_failed", "component", "enrich",
+					"target", t.Host, "error", err)
+				continue
+			}
+			lg.Info("target re-enriched after address change",
+				"event", "target_reenriched", "component", "enrich",
+				"target", t.Host, "asn", res.ASN, "prefix", res.Prefix,
+				"as_name", res.ASName, "as_country", res.ASCountry)
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(150 * time.Millisecond):
+			}
+		}
 	}
 
 	run()

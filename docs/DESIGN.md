@@ -189,7 +189,7 @@ Every target gets `asn`, `as_country`, `prefix` via **Team Cymru DNS** (`origin.
 
 **Implemented (migration-era phase 0):** `internal/enrich` resolves the target through the guarded dialer, asks `origin.asn.cymru.com` / `origin6.asn.cymru.com` over DNS to `1.1.1.1:53`, and records the ASN and covering prefix. It also asks `AS<n>.asn.cymru.com` for the registered organisation name and country (`as_name`, `as_country`), and maps the CNAME chain to a known CDN suffix (Cloudflare, Akamai, CloudFront, Fastly, Azure, Google, CDN77). A direct answer leaves `cdn` empty rather than guessing, and a missing organisation answer leaves the labels empty rather than inventing them. `NETWEATHER_ENRICH=false` disables the loop; it runs once at startup and every six hours, paced at 150 ms per target.
 
-Still specified: daily refresh tied to address changes (the loop re-tries unlearned targets but does not yet re-check a learned ASN when the address changes) and PeeringDB labels (§8.5). Empty enrichment in the drawer reads "not learned yet", so the gap is visible instead of fabricated.
+Implemented, including the daily recheck: a learned target older than 24 hours is re-resolved, and if its address leaves the learned prefix the ASN, prefix, CDN, and AS labels are refreshed. If it is still inside the prefix, the row is only touched, so a no-op update cannot blank the labels. Still specified: PeeringDB labels (§8.5). Empty enrichment in the drawer reads "not learned yet", so the gap is visible instead of fabricated.
 
 This powers the coverage panel (§10.6) and the attribution engine (§7.3).
 

@@ -242,3 +242,25 @@ func TestHostRequiresAddresses(t *testing.T) {
 		t.Fatal("no addresses should be an error")
 	}
 }
+
+func TestPrefixContains(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		prefix string
+		addr   string
+		want   bool
+	}{
+		{"203.0.113.0/24", "203.0.113.9", true},
+		{"203.0.113.0/24", "203.0.114.9", false},
+		{"203.0.113.0/24", "2001:db8::1", false},
+		{"", "203.0.113.9", false},
+		{"not-a-prefix", "203.0.113.9", false},
+		{"2606:4700::/32", "2606:4700::1111", true},
+	}
+	for _, tc := range tests {
+		if got := enrich.PrefixContains(tc.prefix, netip.MustParseAddr(tc.addr)); got != tc.want {
+			t.Errorf("PrefixContains(%q, %q) = %v, want %v", tc.prefix, tc.addr, got, tc.want)
+		}
+	}
+}

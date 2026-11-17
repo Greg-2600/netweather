@@ -115,6 +115,16 @@ func CDN(cname string) string {
 	return ""
 }
 
+// PrefixContains reports whether addr is inside prefix. An unparseable or empty
+// prefix is false: "unknown" must not be treated as "still the same".
+func PrefixContains(prefix string, addr netip.Addr) bool {
+	p, err := netip.ParsePrefix(strings.TrimSpace(prefix))
+	if err != nil {
+		return false
+	}
+	return p.Contains(addr.Unmap())
+}
+
 var cdnSuffixes = map[string]string{
 	"cloudflare.net":         "cloudflare",
 	"cloudflare.com":         "cloudflare",
