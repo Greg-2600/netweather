@@ -817,7 +817,7 @@ Commands that exist in the binary today: `serve`, `version`, `healthcheck`, `see
 Rules:
 
 - **stdout is data, stderr is diagnostics.** A pipeline must never receive a log line.
-- `--json` is available on read commands and emits the same envelope as the HTTP API, so a script can use either.
+- `--json` is available on `version`, `healthcheck`, `doctor`, and `debug status`. It emits the same envelope as the HTTP API (`data` on success, `error` on failure), so a script can parse either surface with one decoder. A failed command still returns a non-zero exit code and still writes its human line to stderr.
 - Exit codes are stable and documented; unknown command is `2`.
 
 ---

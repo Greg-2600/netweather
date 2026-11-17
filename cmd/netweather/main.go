@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -68,11 +69,10 @@ func run(args []string, stdout io.Writer) error {
 
 	switch command {
 	case "version", "-v", "--version":
-		_, _ = fmt.Fprintln(stdout, version.String())
-		return nil
+		return versionCommand(args[1:], stdout)
 
 	case "healthcheck":
-		return healthcheck()
+		return healthcheckCommand(args[1:], stdout)
 
 	case "seed":
 		return seedCommand(stdout)
@@ -474,6 +474,55 @@ func seedCommand(out io.Writer) error {
 
 	_, err = fmt.Fprintf(out, "seeded %d targets into %s\n", len(targets), st.Path())
 	return err
+}
+
+// versionCommand prints build identity. The plain form is one line for a human
+// and a log grep; --json is the same data in the API envelope.
+func versionCommand(args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("version", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	asJSON := fs.Bool("json", false, "emit the API envelope")
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("version: %w", err)
+	}
+	if len(fs.Args()) > 0 {
+		return fmt.Errorf("version: unexpected argument %q", fs.Args()[0])
+	}
+
+	if !*asJSON {
+		_, err := fmt.Fprintln(out, version.String())
+		return err
+	}
+	return writeJSON(out, map[string]string{
+		"version": version.Version,
+		"commit":  version.Commit,
+		"built":   version.Date,
+	})
+}
+
+// healthcheckCommand is the container liveness probe. Its contract is silence
+// on success, which is why --json is explicit rather than the default.
+func healthcheckCommand(args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("healthcheck", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	asJSON := fs.Bool("json", false, "emit the API envelope")
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("healthcheck: %w", err)
+	}
+	if len(fs.Args()) > 0 {
+		return fmt.Errorf("healthcheck: unexpected argument %q", fs.Args()[0])
+	}
+
+	if err := healthcheck(); err != nil {
+		if *asJSON {
+			_ = writeJSONError(out, "unhealthy", err)
+		}
+		return err
+	}
+	if *asJSON {
+		return writeJSON(out, map[string]string{"status": "ok"})
+	}
+	return nil
 }
 
 // healthcheck is the container liveness probe. It asks the local listener for

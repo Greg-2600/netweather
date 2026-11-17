@@ -45,6 +45,88 @@ func TestRunHealthcheck(t *testing.T) {
 	}
 }
 
+func TestRunVersionJSON(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	if err := run([]string{"version", "--json"}, &out); err != nil {
+		t.Fatalf("run(version --json) = %v", err)
+	}
+
+	var env struct {
+		Data struct {
+			Version string `json:"version"`
+			Commit  string `json:"commit"`
+			Built   string `json:"built"`
+		} `json:"data"`
+		Error any `json:"error"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("output is not JSON: %v: %s", err, out.String())
+	}
+	if env.Error != nil {
+		t.Fatalf("envelope carried an error: %s", out.String())
+	}
+	if env.Data.Version == "" || env.Data.Commit == "" || env.Data.Built == "" {
+		t.Fatalf("envelope = %+v", env.Data)
+	}
+}
+
+func TestRunHealthcheckJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	t.Setenv("NETWEATHER_HEALTHCHECK_URL", srv.URL+"/healthz")
+
+	var out bytes.Buffer
+	if err := run([]string{"healthcheck", "--json"}, &out); err != nil {
+		t.Fatalf("run(healthcheck --json) = %v", err)
+	}
+	var ok struct {
+		Data struct {
+			Status string `json:"status"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &ok); err != nil {
+		t.Fatalf("output is not JSON: %v: %s", err, out.String())
+	}
+	if ok.Data.Status != "ok" {
+		t.Fatalf("status = %q", ok.Data.Status)
+	}
+
+	// A failed probe still writes the error envelope to stdout, because stdout
+	// is data; the exit code and the stderr line are unchanged.
+	t.Setenv("NETWEATHER_HEALTHCHECK_URL", "http://127.0.0.1:1/healthz")
+	out.Reset()
+	if err := run([]string{"healthcheck", "--json"}, &out); err == nil {
+		t.Fatal("a failed healthcheck returned nil")
+	}
+	var bad struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &bad); err != nil {
+		t.Fatalf("failure output is not JSON: %v: %s", err, out.String())
+	}
+	if bad.Error.Code != "unhealthy" || bad.Error.Message == "" {
+		t.Fatalf("error envelope = %+v", bad.Error)
+	}
+}
+
+func TestVersionRejectsAnUnknownFlag(t *testing.T) {
+	t.Parallel()
+
+	if err := run([]string{"version", "--nope"}, io.Discard); err == nil {
+		t.Fatal("an unknown flag was accepted")
+	}
+	if err := run([]string{"version", "extra"}, io.Discard); err == nil {
+		t.Fatal("a positional argument was accepted")
+	}
+}
+
 func TestRunUnknownCommandIsAnError(t *testing.T) {
 	t.Parallel()
 

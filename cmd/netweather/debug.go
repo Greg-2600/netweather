@@ -158,8 +158,14 @@ func debugEnable(args []string, out io.Writer) error {
 }
 
 func debugStatus(args []string, out io.Writer) error {
-	if len(args) > 0 {
-		return errors.New("debug status: takes no arguments")
+	fs := flag.NewFlagSet("debug status", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	asJSON := fs.Bool("json", false, "emit the API envelope")
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("debug status: %w", err)
+	}
+	if len(fs.Args()) > 0 {
+		return fmt.Errorf("debug status: unexpected argument %q", fs.Args()[0])
 	}
 
 	client, err := newDebugClient()
@@ -185,6 +191,13 @@ func debugStatus(args []string, out io.Writer) error {
 	}
 	if err := json.Unmarshal(body, &env); err != nil {
 		return fmt.Errorf("debug status: %w", err)
+	}
+
+	if *asJSON {
+		if env.Data == nil {
+			env.Data = []debugScope{}
+		}
+		return writeJSON(out, env.Data)
 	}
 
 	if len(env.Data) == 0 {

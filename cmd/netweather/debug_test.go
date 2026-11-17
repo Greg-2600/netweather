@@ -166,6 +166,50 @@ func TestDebugCLIEnableStatusDisable(t *testing.T) {
 	}
 }
 
+func TestDebugCLIStatusJSON(t *testing.T) {
+	api, srv := newFakeDebugAPI(t)
+	defer srv.Close()
+	setupDebugCLI(t, srv, api.token)
+
+	// Empty is a valid answer in both forms: an empty array, not null.
+	out := &bytes.Buffer{}
+	if err := run([]string{"debug", "status", "--json"}, out); err != nil {
+		t.Fatalf("status --json: %v", err)
+	}
+	var empty struct {
+		Data []debugScope `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &empty); err != nil {
+		t.Fatalf("output is not JSON: %v: %s", err, out.String())
+	}
+	if empty.Data == nil || len(empty.Data) != 0 {
+		t.Fatalf("empty status data = %#v, want an empty array", empty.Data)
+	}
+
+	if err := run([]string{
+		"debug", "enable", "--target", "chase.com", "--component", "agent", "--for", "5m",
+	}, io.Discard); err != nil {
+		t.Fatalf("enable: %v", err)
+	}
+
+	out.Reset()
+	if err := run([]string{"debug", "status", "--json"}, out); err != nil {
+		t.Fatalf("status --json: %v", err)
+	}
+	var env struct {
+		Data []debugScope `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("output is not JSON: %v: %s", err, out.String())
+	}
+	if len(env.Data) != 1 {
+		t.Fatalf("scopes = %+v", env.Data)
+	}
+	if env.Data[0].Target != "chase.com" || env.Data[0].Component != "agent" {
+		t.Fatalf("scope = %+v", env.Data[0])
+	}
+}
+
 func TestDebugCLIDisableAll(t *testing.T) {
 	api, srv := newFakeDebugAPI(t)
 	defer srv.Close()

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -20,8 +21,14 @@ import (
 // missing: a host without CAP_NET_RAW can still monitor HTTP, TLS, and DNS.
 // The table is data on stdout; the summary error is what main reports on stderr.
 func doctorCommand(args []string, out io.Writer) error {
-	if len(args) > 0 {
-		return fmt.Errorf("doctor: takes no arguments")
+	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	asJSON := fs.Bool("json", false, "emit the API envelope")
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("doctor: %w", err)
+	}
+	if len(fs.Args()) > 0 {
+		return fmt.Errorf("doctor: unexpected argument %q", fs.Args()[0])
 	}
 
 	dataDir := strings.TrimSpace(os.Getenv("NETWEATHER_DATA"))
@@ -60,7 +67,25 @@ func doctorCommand(args []string, out io.Writer) error {
 	runner := &doctor.Runner{Checks: checks}
 	results := runner.Run(context.Background())
 
-	if err := doctor.Write(out, results); err != nil {
+	if *asJSON {
+		type item struct {
+			Name     string `json:"name"`
+			Status   string `json:"status"`
+			Detail   string `json:"detail,omitempty"`
+			Fatal    bool   `json:"fatal"`
+			Duration string `json:"duration"`
+		}
+		items := make([]item, 0, len(results))
+		for _, res := range results {
+			items = append(items, item{
+				Name: res.Name, Status: string(res.Status), Detail: res.Detail,
+				Fatal: res.Fatal, Duration: res.Dur.Round(time.Millisecond).String(),
+			})
+		}
+		if err := writeJSON(out, items); err != nil {
+			return fmt.Errorf("doctor: write report: %w", err)
+		}
+	} else if err := doctor.Write(out, results); err != nil {
 		return fmt.Errorf("doctor: write report: %w", err)
 	}
 
@@ -73,7 +98,7 @@ func doctorCommand(args []string, out io.Writer) error {
 	if doctor.Failed(results) {
 		return fmt.Errorf("doctor: %d fatal check(s) failed", countFailed(results))
 	}
-	if warnings > 0 {
+	if warnings > 0 && !*asJSON {
 		// A summary line belongs on stdout with the table, not stderr: this is
 		// the command's output, not a log record.
 		_, _ = fmt.Fprintf(out, "\n%d optional capability(ies) unavailable; probes continue with reduced fidelity\n", warnings)
