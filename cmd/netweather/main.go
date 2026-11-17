@@ -71,6 +71,9 @@ func run(args []string, stdout io.Writer) error {
 	case "seed":
 		return seedCommand(stdout)
 
+	case "export":
+		return exportCommand(args[1:], stdout)
+
 	case "serve":
 		lg.Info("starting",
 			"event", "startup",

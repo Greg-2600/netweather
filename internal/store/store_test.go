@@ -690,3 +690,45 @@ func TestCloseIncident(t *testing.T) {
 		t.Fatalf("second close: %v", err)
 	}
 }
+
+func TestExportProbesRange(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	if err := s.Record(ctx, []store.Probe{probeAt(base, state.Up)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Record(ctx, []store.Probe{probeAt(base.Add(time.Minute), state.Down)}); err != nil {
+		t.Fatal(err)
+	}
+
+	var rows []store.ExportRow
+	err := s.ExportProbes(ctx, base.Add(-time.Second), base.Add(30*time.Second), func(r store.ExportRow) error {
+		rows = append(rows, r)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want the one inside the range", len(rows))
+	}
+	if rows[0].State != state.Up || rows[0].Host != "chase.com" {
+		t.Fatalf("row = %+v", rows[0])
+	}
+
+	empty := 0
+	if err := s.ExportProbes(ctx, base.Add(time.Hour), base.Add(2*time.Hour), func(store.ExportRow) error {
+		empty++
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if empty != 0 {
+		t.Fatalf("empty window returned %d rows", empty)
+	}
+}

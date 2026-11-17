@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
@@ -281,6 +283,109 @@ func TestSeedCommandRejectsBadConfig(t *testing.T) {
 
 	if err := run([]string{"seed"}, io.Discard); err == nil {
 		t.Fatal("seed should reject an invalid target file")
+	}
+}
+
+func seedForExport(t *testing.T, dataDir string, base time.Time) {
+	t.Helper()
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(dataDir, "netweather.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+
+	if err := st.EnsureVantage(ctx, "local", "direct", "primary"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertTarget(ctx, store.Target{
+		ID: "t1", Host: "chase.com", Port: 443, Probe: "http",
+		Name: "Chase", Class: "service", Tier: 2, IntervalS: 300,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Record(ctx, []store.Probe{{
+		TargetID: "t1", VantageID: "local", TS: base,
+		State: state.Up, Stage: "http", Confidence: "high",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExportCommandCSV(t *testing.T) {
+	dir := t.TempDir()
+	dataDir := filepath.Join(dir, "data")
+	t.Setenv("NETWEATHER_DATA", dataDir)
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	seedForExport(t, dataDir, base)
+
+	var out bytes.Buffer
+	err := run([]string{
+		"export",
+		"--from", base.Add(-time.Minute).Format(time.RFC3339),
+		"--to", base.Add(time.Minute).Format(time.RFC3339),
+	}, &out)
+	if err != nil {
+		t.Fatalf("run(export): %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("lines = %d, want header + one row:\n%s", len(lines), out.String())
+	}
+	if !strings.Contains(lines[0], "target_id") || !strings.Contains(lines[1], "chase.com") {
+		t.Fatalf("csv = %q", out.String())
+	}
+}
+
+func TestExportCommandJSONL(t *testing.T) {
+	dir := t.TempDir()
+	dataDir := filepath.Join(dir, "data")
+	t.Setenv("NETWEATHER_DATA", dataDir)
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	seedForExport(t, dataDir, base)
+
+	var out bytes.Buffer
+	err := run([]string{
+		"export", "--format", "jsonl",
+		"--from", base.Add(-time.Minute).Format(time.RFC3339),
+		"--to", base.Add(time.Minute).Format(time.RFC3339),
+	}, &out)
+	if err != nil {
+		t.Fatalf("run(export): %v", err)
+	}
+
+	line := strings.TrimSpace(out.String())
+	var row map[string]any
+	if err := json.Unmarshal([]byte(line), &row); err != nil {
+		t.Fatalf("jsonl is not one object: %v\n%s", err, line)
+	}
+	if row["host"] != "chase.com" || row["state"] != "up" {
+		t.Fatalf("row = %v", row)
+	}
+}
+
+func TestExportCommandRejectsBadRange(t *testing.T) {
+	t.Setenv("NETWEATHER_DATA", t.TempDir())
+
+	err := run([]string{
+		"export",
+		"--from", "2026-11-17T13:00:00Z",
+		"--to", "2026-11-17T12:00:00Z",
+	}, io.Discard)
+	if err == nil {
+		t.Fatal("a reversed range must be rejected")
+	}
+}
+
+func TestExportCommandRejectsBadFormat(t *testing.T) {
+	t.Setenv("NETWEATHER_DATA", t.TempDir())
+
+	if err := run([]string{"export", "--format", "xml"}, io.Discard); err == nil {
+		t.Fatal("an unknown format must be rejected")
 	}
 }
 

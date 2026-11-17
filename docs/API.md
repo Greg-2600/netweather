@@ -481,9 +481,9 @@ The binary is also scriptable, and its contract matters as much as HTTP:
 | `netweather healthcheck` | 0 healthy, 1 unhealthy | silent |
 | `netweather serve` | 0 clean shutdown, 1 startup or runtime failure | logs to stdout |
 | `netweather seed` | 0 applied, 1 rejected | summary |
-| `netweather export` | 0 success, 1 error | data to stdout, logs to stderr *(specified)* |
+| `netweather export` | 0 success, 1 error | data to stdout, logs to stderr |
 
-Commands that exist in the binary today: `serve`, `version`, `healthcheck`, `seed`. `export`, `debug`, and the `pause` verb are specified; pause/resume are available over HTTP.
+Commands that exist in the binary today: `serve`, `version`, `healthcheck`, `seed`, `export`. `debug` and the `pause` verb are specified; pause/resume are available over HTTP.
 
 Rules:
 
