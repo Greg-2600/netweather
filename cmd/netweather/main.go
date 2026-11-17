@@ -783,6 +783,12 @@ func applySeedEntries(ctx context.Context, st *store.Store, entries []seed.Entry
 	if len(entries) > config.MaxTargets {
 		return nil, fmt.Errorf("seed: %d entries exceeds the %d target limit", len(entries), config.MaxTargets)
 	}
+	// A seed is untrusted input (THREAT_MODEL.md T33): the ccTLD anchors come
+	// from a fetched root zone, and a malformed entry must fail the apply
+	// rather than become a probe.
+	if err := seed.Validate(entries); err != nil {
+		return nil, err
+	}
 	loadedAt := time.Now().UTC()
 	out := make([]agent.Target, 0, len(entries))
 	for _, e := range entries {
