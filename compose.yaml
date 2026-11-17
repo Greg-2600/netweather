@@ -66,6 +66,50 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
 
+  # Optional tailnet access. Sidecar, never a namespace share: coupling the
+  # access plane to the measurement plane means an exit node silently changes
+  # every probe's egress (docs/NETWORKING.md §7.2). The default file still
+  # publishes 2600; remove that line when using this profile.
+  #
+  #   docker compose --profile tailscale up -d
+  #   docker compose exec tailscale tailscale serve --bg http://netweather:2600
+  tailscale:
+    image: ghcr.io/tailscale/tailscale:latest
+    profiles: [tailscale]
+    networks: [ui]
+    restart: unless-stopped
+    environment:
+      TS_AUTHKEY_FILE: /run/secrets/ts_authkey
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true" # no /dev/net/tun, no host device mount
+    volumes:
+      - ./data/tailscale:/var/lib/tailscale
+      - ./secrets/ts_authkey:/run/secrets/ts_authkey:ro
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN]
+    security_opt: ["no-new-privileges:true"]
+
+  # RIPE Atlas is RIPE's daemon measuring for RIPE's network, from this host,
+  # under RIPE's terms. It is a separate trust domain and a separate
+  # agreement (docs/ACCEPTABLE_USE.md, docs/THREAT_MODEL.md §5.7). netweather
+  # never talks to its socket and never wraps it.
+  #
+  #   docker compose --profile ripe-atlas up -d
+  #
+  # Verify the image tag against RIPE's current instructions before enabling:
+  # the probe needs CAP_NET_RAW and a probe key issued by RIPE.
+  ripe-atlas:
+    image: ghcr.io/ripe-atlas/ripe-atlas-probe:latest
+    profiles: [ripe-atlas]
+    networks: [egress]
+    restart: unless-stopped
+    cap_drop: [ALL]
+    cap_add: [NET_RAW]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - ./data/ripe-atlas:/var/atlas-probe
+    tmpfs: [/tmp]
+
 networks:
   ui:
   egress:
