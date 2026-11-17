@@ -4849,3 +4849,32 @@ func TestLoginRejectsAnOversizedBody(t *testing.T) {
 		t.Fatalf("the oversized body was not stated as malformed:\n%s", rec.Body)
 	}
 }
+
+func TestBoardShowsTheNoAuthBanner(t *testing.T) {
+	t.Parallel()
+
+	// No token is anonymous mode: the page must say that anyone who can reach
+	// it can read and act on the board (NETWORKING.md §7.1).
+	open := newServer(t, "", fixture())
+	client, _ := newClient(t)
+	resp, err := client.Get(open.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	if !strings.Contains(page, `data-testid="no-auth"`) {
+		t.Fatalf("an unauthenticated board did not say so:\n%s", page)
+	}
+
+	// A token removes the banner; the same page is then behind a login.
+	locked := newServer(t, testToken, fixture())
+	client2, _ := newClient(t)
+	login(t, locked, client2, testToken)
+	resp, err = client2.Get(locked.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page := body(t, resp); strings.Contains(page, `data-testid="no-auth"`) {
+		t.Fatal("an authenticated board drew the no-auth banner")
+	}
+}

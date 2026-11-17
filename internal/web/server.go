@@ -90,8 +90,12 @@ type loginView struct {
 	// Insecure marks a plaintext browser connection so the page can say so
 	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
 	Insecure bool
-	Error    string
-	CSRF     string
+	// NoAuth marks an instance running without a token. The page says so on
+	// every render: an unauthenticated board is readable and actionable by
+	// anyone who can reach it (NETWORKING.md 7.1).
+	NoAuth bool
+	Error  string
+	CSRF   string
 }
 
 // maxActionBody caps a UI POST body. A login form, an annotation, or a trace
@@ -154,6 +158,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 func (s *server) renderLogin(w http.ResponseWriter, r *http.Request, status int, view loginView) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	view.Insecure = s.insecure(r)
+	view.NoAuth = s.auth.disabled()
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	w.WriteHeader(status)
@@ -266,12 +271,16 @@ type boardView struct {
 	// Insecure marks a plaintext browser connection so the page can say so
 	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
 	Insecure bool
-	Version  string
-	CSRF     string
-	Groups   []groupView
-	Counts   []countView
-	Paused   bool
-	Control  bool
+	// NoAuth marks an instance running without a token. The page says so on
+	// every render: an unauthenticated board is readable and actionable by
+	// anyone who can reach it (NETWORKING.md 7.1).
+	NoAuth  bool
+	Version string
+	CSRF    string
+	Groups  []groupView
+	Counts  []countView
+	Paused  bool
+	Control bool
 	// Group is the current grouping key, and GroupOptions is the toggle. The
 	// board is about "airlines are down" only when the reader chose that lens.
 	Group        string
@@ -1116,6 +1125,7 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	view.Insecure = s.insecure(r)
+	view.NoAuth = s.auth.disabled()
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "board.html", view)
@@ -1358,6 +1368,7 @@ type targetView struct {
 	// Insecure marks a plaintext browser connection so the page can say so
 	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
 	Insecure   bool
+	NoAuth     bool
 	Tile       tileView
 	Probes     []probeView
 	History    bool
@@ -1711,6 +1722,7 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		view.Insecure = s.insecure(r)
+		view.NoAuth = s.auth.disabled()
 		w.Header().Set("Content-Security-Policy",
 			"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 		_ = s.tmpl.ExecuteTemplate(w, "target.html", view)
@@ -1737,6 +1749,7 @@ type incidentListView struct {
 	// Insecure marks a plaintext browser connection so the page can say so
 	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
 	Insecure  bool
+	NoAuth    bool
 	Incidents []incidentRow
 }
 
@@ -1754,6 +1767,7 @@ type incidentDetailView struct {
 	// Insecure marks a plaintext browser connection so the page can say so
 	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
 	Insecure          bool
+	NoAuth            bool
 	ID                string
 	Headline          string
 	Scope             string
@@ -1821,6 +1835,7 @@ func (s *server) handleIncidents(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	view.Insecure = s.insecure(r)
+	view.NoAuth = s.auth.disabled()
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "incidents.html", view)
@@ -1860,6 +1875,7 @@ func (s *server) handleIncident(w http.ResponseWriter, r *http.Request) {
 
 	view := incidentDetailView{
 		Insecure: s.insecure(r),
+		NoAuth:   s.auth.disabled(),
 		ID:       inc.ID, Headline: inc.Headline, Scope: inc.Scope, ScopeValue: inc.ScopeValue,
 		OpenedAt:   inc.OpenedAt.UTC().Format("2006-01-02 15:04"),
 		Confidence: inc.Confidence, Closed: !inc.ClosedAt.IsZero(),
@@ -1947,6 +1963,7 @@ func (s *server) handleIncident(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	view.Insecure = s.insecure(r)
+	view.NoAuth = s.auth.disabled()
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "incident.html", view)
@@ -2027,6 +2044,7 @@ type coverageView struct {
 	// Insecure marks a plaintext browser connection so the page can say so
 	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
 	Insecure      bool
+	NoAuth        bool
 	Total         int
 	Measurable    int
 	Unmeasurable  int
@@ -2192,6 +2210,7 @@ func (s *server) handleCoverage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	view.Insecure = s.insecure(r)
+	view.NoAuth = s.auth.disabled()
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "coverage.html", view)
@@ -2205,6 +2224,7 @@ type worldView struct {
 	// Insecure marks a plaintext browser connection so the page can say so
 	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
 	Insecure  bool
+	NoAuth    bool
 	Version   string
 	CSRF      string
 	Countries []countryView
@@ -2358,6 +2378,7 @@ func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	view.Insecure = s.insecure(r)
+	view.NoAuth = s.auth.disabled()
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "world.html", view)
@@ -2387,6 +2408,7 @@ type corridorsView struct {
 	// Insecure marks a plaintext browser connection so the page can say so
 	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
 	Insecure   bool
+	NoAuth     bool
 	Version    string
 	CSRF       string
 	Rows       []corridorRow
@@ -2484,6 +2506,7 @@ func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	view.Insecure = s.insecure(r)
+	view.NoAuth = s.auth.disabled()
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "corridors.html", view)
@@ -2496,6 +2519,7 @@ type diagnosticsView struct {
 	// Insecure marks a plaintext browser connection so the page can say so
 	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
 	Insecure    bool
+	NoAuth      bool
 	Version     string
 	CSRF        string
 	Note        string
@@ -2524,10 +2548,14 @@ type ihiView struct {
 	// Insecure marks a plaintext browser connection so the page can say so
 	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
 	Insecure bool
-	Version  string
-	CSRF     string
-	Health   healthView
-	Note     string
+	// NoAuth marks an instance running without a token. The page says so on
+	// every render: an unauthenticated board is readable and actionable by
+	// anyone who can reach it (NETWORKING.md 7.1).
+	NoAuth  bool
+	Version string
+	CSRF    string
+	Health  healthView
+	Note    string
 }
 
 // handleIHI is the page behind the board's index chip. It carries the same
@@ -2551,6 +2579,7 @@ func (s *server) handleIHI(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	view.Insecure = s.insecure(r)
+	view.NoAuth = s.auth.disabled()
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "ihi.html", view)
@@ -2603,6 +2632,7 @@ func (s *server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	view.Insecure = s.insecure(r)
+	view.NoAuth = s.auth.disabled()
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "diagnostics.html", view)
