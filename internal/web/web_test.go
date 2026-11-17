@@ -20,6 +20,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
+	"github.com/Greg-2600/netweather/internal/streamlimit"
 	"github.com/Greg-2600/netweather/internal/web"
 )
 
@@ -969,6 +970,49 @@ func TestStaticAssets(t *testing.T) {
 		if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, wantType) {
 			t.Errorf("%s: Content-Type %q, want %s", path, ct, wantType)
 		}
+	}
+}
+
+func TestSSEStreamCap(t *testing.T) {
+	t.Parallel()
+
+	m := fixture()
+	h, err := web.New(web.Deps{
+		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:      m,
+		Watcher:     m,
+		StreamLimit: streamlimit.New(1, 1),
+		Token:       testToken,
+		Version:     "test",
+		StartedAt:   time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	streamClient := &http.Client{Jar: client.Jar} // no timeout: the stream stays open
+
+	first, err := streamClient.Get(ts.URL + "/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = first.Body.Close() }()
+	if first.StatusCode != http.StatusOK {
+		t.Fatalf("first stream status = %d", first.StatusCode)
+	}
+
+	second, err := streamClient.Get(ts.URL + "/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = second.Body.Close() }()
+	if second.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("second stream status = %d, want 429 at the cap", second.StatusCode)
 	}
 }
 

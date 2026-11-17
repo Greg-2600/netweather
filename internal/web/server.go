@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -17,13 +18,15 @@ import (
 
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/store"
+	"github.com/Greg-2600/netweather/internal/streamlimit"
 )
 
 type server struct {
-	deps Deps
-	auth *authenticator
-	tmpl *template.Template
-	now  func() time.Time
+	deps    Deps
+	auth    *authenticator
+	tmpl    *template.Template
+	now     func() time.Time
+	streams *streamlimit.Limiter
 }
 
 // New builds the browser-facing handler: login, board, target detail, and the
@@ -41,10 +44,14 @@ func New(deps Deps) (http.Handler, error) {
 	}
 
 	s := &server{
-		deps: deps,
-		auth: newAuthenticator(deps.Token, deps.SecureCookies),
-		tmpl: tmpl,
-		now:  time.Now,
+		deps:    deps,
+		auth:    newAuthenticator(deps.Token, deps.SecureCookies),
+		tmpl:    tmpl,
+		now:     time.Now,
+		streams: deps.StreamLimit,
+	}
+	if s.streams == nil {
+		s.streams = streamlimit.New(streamlimit.DefaultTotal, streamlimit.DefaultPerIP)
 	}
 
 	mux := http.NewServeMux()
@@ -976,6 +983,14 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	release, ok := s.streams.Acquire(remoteHost(r))
+	if !ok {
+		w.Header().Set("Retry-After", "60")
+		http.Error(w, "too many concurrent event streams", http.StatusTooManyRequests)
+		return
+	}
+	defer release()
+
 	// The server sets WriteTimeout for normal requests; SSE outlives it.
 	rc := http.NewResponseController(w)
 	_ = rc.SetWriteDeadline(time.Time{})
@@ -1091,6 +1106,20 @@ func (s *server) heartbeatOnly(w http.ResponseWriter, r *http.Request, flusher h
 			flusher.Flush()
 		}
 	}
+}
+
+// remoteHost is the peer address without its port, used for the per-IP stream
+// cap. X-Forwarded-For is deliberately ignored: without a configured proxy CIDR
+// it is spoofable, and a spoofable header must not multiply a client's budget.
+func remoteHost(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		if r.RemoteAddr == "" {
+			return "unknown"
+		}
+		return r.RemoteAddr
+	}
+	return host
 }
 
 func (s *server) stateMap(ctx context.Context) map[string]board.Target {

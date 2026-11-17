@@ -222,29 +222,30 @@ func taskCover() error {
 	}
 
 	thresholds := map[string]float64{
-		"/internal/agent":     85,
-		"/internal/anomaly":   90,
-		"/internal/api":       90,
-		"/internal/baseline":  95,
-		"/internal/board":     90,
-		"/internal/classify":  95,
-		"/internal/config":    90,
-		"/internal/correlate": 90,
-		"/internal/doctor":    85,
-		"/internal/enrich":    85,
-		"/internal/feeds":     85,
-		"/internal/incidents": 85,
-		"/internal/logging":   78,
-		"/internal/metrics":   90,
-		"/internal/netx":      95,
-		"/internal/probe":     90,
-		"/internal/schedule":  90,
-		"/internal/startup":   75,
-		"/internal/store":     80,
-		"/internal/web":       72,
-		"/cmd/netweather":     30, // serve is wiring; the container smoke test owns it
-		"/internal/version":   70,
-		"/internal/devtool":   15, // profile parser + ldflags tests
+		"/internal/agent":       85,
+		"/internal/anomaly":     90,
+		"/internal/api":         90,
+		"/internal/baseline":    95,
+		"/internal/board":       90,
+		"/internal/classify":    95,
+		"/internal/config":      90,
+		"/internal/correlate":   90,
+		"/internal/doctor":      85,
+		"/internal/enrich":      85,
+		"/internal/feeds":       85,
+		"/internal/incidents":   85,
+		"/internal/logging":     78,
+		"/internal/metrics":     90,
+		"/internal/netx":        95,
+		"/internal/probe":       90,
+		"/internal/schedule":    90,
+		"/internal/startup":     75,
+		"/internal/store":       80,
+		"/internal/streamlimit": 90,
+		"/internal/web":         72,
+		"/cmd/netweather":       30, // serve is wiring; the container smoke test owns it
+		"/internal/version":     70,
+		"/internal/devtool":     15, // profile parser + ldflags tests
 	}
 	// Packages the docs promise but that do not exist yet still get gates the
 	// moment they appear.

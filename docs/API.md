@@ -726,7 +726,9 @@ Nothing remains on the read surface. Every read endpoint in this document is imp
 | `/events` | session cookie | the browser UI | **implemented** |
 | `/api/v1/events` | bearer | API clients | **implemented** |
 
-Two limitations are stated rather than hidden: `Last-Event-ID` replay is not implemented (neither broadcast has a ring), and a closed incident is not pushed as a diff. Both streams emit `incident` events; the UI reloads the incident pages, and an API client upserts open incidents by id or refetches for closures. Connection caps and a per-IP limit remain specified (`THREAT_MODEL.md` T10).
+Two limitations are stated rather than hidden: `Last-Event-ID` replay is not implemented (neither broadcast has a ring), and a closed incident is not pushed as a diff. Both streams emit `incident` events; the UI reloads the incident pages, and an API client upserts open incidents by id or refetches for closures.
+
+Concurrent streams are capped at 64 total and 8 per peer address (`THREAT_MODEL.md` T10). Exceeding either returns `429` with `Retry-After: 60`; `X-Forwarded-For` is not trusted for the per-IP budget, because without a configured proxy CIDR it is spoofable.
 
 ### 7.3 Actions (POST)
 

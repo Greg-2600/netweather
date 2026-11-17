@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"log/slog"
+	"net"
 	"net/http"
 	"runtime/debug"
 	"strings"
@@ -187,4 +188,19 @@ func bearerToken(r *http.Request) (string, bool) {
 	}
 	tok := strings.TrimSpace(h[7:])
 	return tok, tok != ""
+}
+
+// remoteHost is the peer address without its port, used for the per-IP stream
+// cap. X-Forwarded-For is deliberately ignored: the project does not trust it
+// without a configured proxy CIDR, and a spoofable header must not multiply a
+// client's stream budget.
+func remoteHost(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		if r.RemoteAddr == "" {
+			return "unknown"
+		}
+		return r.RemoteAddr
+	}
+	return host
 }

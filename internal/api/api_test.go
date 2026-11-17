@@ -24,6 +24,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/probe"
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
+	"github.com/Greg-2600/netweather/internal/streamlimit"
 )
 
 const testToken = "test-token-0123456789"
@@ -2061,6 +2062,76 @@ func (s *eventStream) readEvent(t *testing.T, want string, timeout time.Duration
 			}
 		}
 	}
+}
+
+func TestEventsStreamCap(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(board.Target{ID: "1", Host: "chase.com", State: board.StateUp})
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Source:      m,
+			Watcher:     m,
+			StreamLimit: streamlimit.New(1, 1),
+			Vantage:     "local",
+			Version:     "test",
+			Commit:      "deadbeef",
+			StartedAt:   time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	defer ts.Close()
+
+	open := func() *http.Response {
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/api/v1/events", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		resp, err := (&http.Client{}).Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+
+	first := open()
+	defer func() { _ = first.Body.Close() }()
+	if first.StatusCode != http.StatusOK {
+		t.Fatalf("first stream status = %d", first.StatusCode)
+	}
+
+	second := open()
+	defer func() { _ = second.Body.Close() }()
+	if second.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("second stream status = %d, want 429 at the cap", second.StatusCode)
+	}
+	if second.Header.Get("Retry-After") == "" {
+		t.Error("429 without a Retry-After hint")
+	}
+
+	// Closing the first stream releases the slot. The handler notices through
+	// the request context, so allow a moment rather than assuming it is
+	// synchronous.
+	_ = first.Body.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		third := open()
+		status := third.StatusCode
+		_ = third.Body.Close()
+		if status == http.StatusOK {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("closing the first stream did not free its slot")
 }
 
 func TestEventsSendsSnapshotThenDeltas(t *testing.T) {

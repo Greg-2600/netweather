@@ -20,6 +20,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
+	"github.com/Greg-2600/netweather/internal/streamlimit"
 )
 
 // Control is the probe kill switch. The agent implements it; a nil Control means
@@ -139,6 +140,8 @@ type Deps struct {
 	Tracer Tracer
 	// Resolver turns a target hostname into addresses for a trace.
 	Resolver HostResolver
+	// StreamLimit caps concurrent SSE connections. Nil uses the defaults.
+	StreamLimit *streamlimit.Limiter
 	// Metrics is the Prometheus handler. Nil keeps /metrics unmounted, which is
 	// the default: exposing it is an operator decision.
 	Metrics http.Handler
@@ -157,6 +160,9 @@ type server struct {
 	traceBudget *traceGovernor
 	// idempotency replays action responses for a repeated Idempotency-Key.
 	idempotency *idempotencyStore
+	// streams caps concurrent SSE connections. nil means "unlimited", which
+	// only a test should ask for.
+	streams *streamlimit.Limiter
 }
 
 // New builds the HTTP handler. It validates the exposure guardrail before it
@@ -177,6 +183,10 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 		authMode:    cfg.AuthMode(),
 		traceBudget: newTraceGovernor(),
 		idempotency: newIdempotencyStore(),
+		streams:     deps.StreamLimit,
+	}
+	if s.streams == nil {
+		s.streams = streamlimit.New(streamlimit.DefaultTotal, streamlimit.DefaultPerIP)
 	}
 
 	apiMux := http.NewServeMux()
@@ -1327,6 +1337,15 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusInternalServerError, CodeInternal, "streaming unsupported")
 		return
 	}
+
+	release, ok := s.streams.Acquire(remoteHost(r))
+	if !ok {
+		w.Header().Set("Retry-After", "60")
+		writeError(w, r, http.StatusTooManyRequests, CodeRateLimited,
+			"too many concurrent event streams")
+		return
+	}
+	defer release()
 
 	// Normal requests have a 30s write timeout; this one outlives it.
 	rc := http.NewResponseController(w)

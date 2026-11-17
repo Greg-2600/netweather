@@ -10,6 +10,7 @@ import (
 
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/store"
+	"github.com/Greg-2600/netweather/internal/streamlimit"
 )
 
 //go:embed templates/*.html
@@ -32,12 +33,14 @@ type Deps struct {
 	CoverageTrend   CoverageHistory
 	Series          Series
 	Changes         StateChanges
-	Control         Control
-	Vantage         string
-	Token           string
-	SecureCookies   bool
-	Version         string
-	StartedAt       time.Time
+	// StreamLimit caps concurrent SSE connections. Nil uses the defaults.
+	StreamLimit   *streamlimit.Limiter
+	Control       Control
+	Vantage       string
+	Token         string
+	SecureCookies bool
+	Version       string
+	StartedAt     time.Time
 }
 
 // Coverage supplies the blind-spot panel. Nil means the page says so rather
