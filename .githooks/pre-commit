@@ -1,7 +1,14 @@
 #!/bin/sh
-# Enable with: git config core.hooksPath .githooks
-# The full gate (coverage, fuzz, browser, build) belongs in CI; this is the
-# subset that catches the mistakes worth catching before a commit exists.
+# netweather pre-commit hook (QUALITY.md §8).
+#
+# Opt in once per clone:
+#
+#   git config core.hooksPath .githooks
+#
+# It runs the fast, deterministic part of the gate: formatting, vet, and the
+# same test task CI runs. Anything slower (coverage floors, UI, compose,
+# mutation, scanners) stays in CI so a commit does not take minutes.
+
 set -eu
 
 go run ./internal/devtool fmt -check

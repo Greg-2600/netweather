@@ -511,7 +511,7 @@ Always `-race -covermode=atomic`. Coverage is uploaded per-PR and diffed, so a P
 | e2e real | 6 targets | ❌ scheduled + release only |
 | mutation | `gremlins` on `classify` | ❌ advisory |
 
-Pre-commit hook runs format + vet + test. Everything else is CI. Go tool versions live in `go.mod`; external scanners (gitleaks, hadolint, Playwright) are pinned to an explicit version in the workflow, never a floating tag.
+Pre-commit hook runs format + vet + test. Install it once per clone with `git config core.hooksPath .githooks`; the hook itself is `.githooks/pre-commit`. Everything else is CI. Go tool versions live in `go.mod`; external scanners (gitleaks, hadolint, Playwright) are pinned to an explicit version in the workflow, never a floating tag.
 
 ---
 
