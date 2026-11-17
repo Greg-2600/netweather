@@ -4817,3 +4817,35 @@ func TestBoardShowsTheInsecureTransportBadge(t *testing.T) {
 		t.Fatal("an untrusted peer suppressed the warning with a forged header")
 	}
 }
+
+func TestLoginRejectsAnOversizedBody(t *testing.T) {
+	t.Parallel()
+
+	m := fixture()
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		Token:     testToken,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Just over the 8 KiB action-body cap.
+	body := "token=" + strings.Repeat("x", 9<<10)
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = "192.0.2.10:1234"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 for an oversized form", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Malformed form") {
+		t.Fatalf("the oversized body was not stated as malformed:\n%s", rec.Body)
+	}
+}

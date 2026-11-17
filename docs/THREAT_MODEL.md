@@ -151,7 +151,7 @@ The critical property is that **B2 is the only place a connection is created**. 
 | T7 | Session fixation | Session ID regenerated on login; sessions expire (default 12h idle, 7d absolute) | Enforced |
 | T8 | No transport encryption | The binary does **not** terminate TLS. Startup logs `event=plaintext_transport` once, and every page (including login) draws an "insecure transport" badge when the browser's own connection is plaintext. A TLS-terminating proxy suppresses it with `X-Forwarded-Proto: https`, believed only from `NETWEATHER_TRUSTED_PROXIES`. TLS is the reverse proxy's job. | Enforced (display) |
 | T9 | Open redirect in `?next=` | Only same-origin relative paths accepted | Enforced |
-| T10 | Handler-level DoS | `ReadHeaderTimeout`, `ReadTimeout`, `WriteTimeout`, `IdleTimeout`, `MaxHeaderBytes`, request body limit (SSE excluded from `WriteTimeout`), SSE connection cap | Enforced |
+| T10 | Handler-level DoS | `ReadHeaderTimeout`, `ReadTimeout`, `WriteTimeout`, `IdleTimeout`, `MaxHeaderBytes`, an 8 KiB action-body cap (`http.MaxBytesReader` on the login form and the JSON action bodies), SSE excluded from `WriteTimeout`, and an SSE connection cap | Enforced |
 | T11 | Clickjacking | `X-Frame-Options: DENY` + `frame-ancestors 'none'` | Enforced |
 | T12 | MIME sniffing | `X-Content-Type-Options: nosniff`, explicit `Content-Type` on every response | Enforced |
 | T13 | Token file readable by others | Refuse to start if the token file is group/world-readable (POSIX); on Windows, warn | Enforced (POSIX) |

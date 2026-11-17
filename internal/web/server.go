@@ -94,6 +94,11 @@ type loginView struct {
 	CSRF     string
 }
 
+// maxActionBody caps a UI POST body. A login form, an annotation, or a trace
+// request is a few hundred bytes; anything larger is not a form this handler
+// understands, and parsing it costs memory for no benefit (THREAT_MODEL.md T10).
+const maxActionBody = 8 << 10
+
 func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
 
@@ -108,6 +113,10 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.renderLogin(w, r, http.StatusOK, loginView{CSRF: csrf})
 
 	case http.MethodPost:
+		// A login form is a few hundred bytes. Cap the body so a large POST
+		// cannot make the handler parse megabytes; the same 8 KiB ceiling the
+		// API action bodies use applies here (THREAT_MODEL.md T10).
+		r.Body = http.MaxBytesReader(w, r.Body, maxActionBody)
 		if err := r.ParseForm(); err != nil {
 			s.renderLogin(w, r, http.StatusBadRequest, loginView{Error: "Malformed form."})
 			return
