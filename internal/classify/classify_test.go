@@ -444,3 +444,20 @@ func TestHasSemantic(t *testing.T) {
 		t.Fatal("json path is a semantic check")
 	}
 }
+
+func TestDNSDivergenceIsAdvisory(t *testing.T) {
+	t.Parallel()
+
+	got := classify.Decide(classify.Expected{}, classify.Response{
+		Err: errors.New("one resolver failed"), ErrorClass: "dns_divergence",
+	})
+	if got.State != state.Unknown {
+		t.Fatalf("state = %s, want unknown", got.State)
+	}
+	if got.Confidence != classify.High {
+		t.Fatalf("confidence = %s, want high", got.Confidence)
+	}
+	if !strings.Contains(got.Reason, "disagrees with its own baseline") {
+		t.Fatalf("reason = %q, want the divergence named", got.Reason)
+	}
+}

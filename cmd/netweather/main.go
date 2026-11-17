@@ -372,8 +372,9 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 	out := make([]agent.Target, 0, len(f.Targets))
 	for _, t := range f.Targets {
 		var (
-			url     string
-			address string
+			url       string
+			address   string
+			resolvers []string
 		)
 		switch t.Probe {
 		case "http":
@@ -385,6 +386,17 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 			address = t.Host
 		default:
 			return nil, fmt.Errorf("target %s: probe %q is not implemented yet", t.Host, t.Probe)
+		}
+
+		// A DNS target always has at least one resolver: its own address. The
+		// divergence path only wakes when a second one is configured.
+		if t.Probe == "dns" {
+			resolvers = append(resolvers, address)
+			for _, extra := range t.Resolvers {
+				if extra != address {
+					resolvers = append(resolvers, extra)
+				}
+			}
 		}
 
 		expect, err := t.Expect.Classify()
@@ -416,6 +428,7 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 			URL:        url,
 			Address:    address,
 			Query:      t.QName,
+			Resolvers:  resolvers,
 			Instrument: t.Probe,
 			Vantage:    "local",
 			Tier:       schedule.Tier(t.Tier),
@@ -638,11 +651,18 @@ func newInstruments() agent.Instruments {
 }
 
 func newAgent(targets []agent.Target, st *store.Store, lg *logging.Logger) *agent.Agent {
-	ag := agent.New(targets, newInstruments(), st)
+	instruments := newInstruments()
+	ag := agent.New(targets, instruments, st)
 	ag.Logger = lg.Logger
 	// The direct vantage owns the issuer baseline; the Tor vantage is
 	// corroboration and does not get to learn a different one.
 	ag.Pins = st
+	// Per-resolver DNS baselines: each target with more than one resolver is
+	// compared against its own history (CLASSIFIER.md §3.2).
+	ag.Divergence = st
+	ag.DNSQuery = func(ctx context.Context, server, name string) probe.DNSResult {
+		return instruments.DNS.Do(ctx, server, name)
+	}
 	return ag
 }
 
@@ -1304,6 +1324,16 @@ func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger, s
 				"rollup_5m", pruned.Rollup5m,
 				"rollup_1h", pruned.Rollup1h,
 				"rollup_1d", pruned.Rollup1d)
+		}
+
+		// DNS baselines age out on the seven-day window the divergence rule
+		// names; an older answer must not be treated as current.
+		if dropped, err := st.PruneDNSObservations(ctx, time.Now().Add(-7*24*time.Hour)); err != nil {
+			lg.Warn("dns baseline prune failed",
+				"event", "dns_prune_failed", "component", "maintenance", "error", err)
+		} else if dropped > 0 {
+			lg.Info("dns baselines pruned",
+				"event", "dns_prune", "component", "maintenance", "rows", dropped)
 		}
 	}
 

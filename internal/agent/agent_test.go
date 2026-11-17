@@ -16,6 +16,7 @@ import (
 
 	"github.com/Greg-2600/netweather/internal/agent"
 	"github.com/Greg-2600/netweather/internal/classify"
+	"github.com/Greg-2600/netweather/internal/dnsdiv"
 	"github.com/Greg-2600/netweather/internal/probe"
 	"github.com/Greg-2600/netweather/internal/schedule"
 	"github.com/Greg-2600/netweather/internal/state"
@@ -861,5 +862,154 @@ func TestLeafChangeIsInformational(t *testing.T) {
 	}
 	if len(pins.leaves) != 1 || pins.leaves[0] != "aabbcc" {
 		t.Fatalf("leaves = %+v", pins.leaves)
+	}
+}
+
+type fakeDivergence struct {
+	mu        sync.Mutex
+	baselines map[string]dnsdiv.Baseline
+	answers   []dnsdiv.Answer
+	verdicts  []dnsdiv.Verdict
+	err       error
+}
+
+func (f *fakeDivergence) RecordDNSAnswer(_ context.Context, _ string, ans dnsdiv.Answer) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.answers = append(f.answers, ans)
+	return f.err
+}
+
+func (f *fakeDivergence) DNSBaselines(context.Context, string, time.Time) (map[string]dnsdiv.Baseline, error) {
+	return f.baselines, f.err
+}
+
+func (f *fakeDivergence) RecordDNSDivergence(_ context.Context, _ string, v dnsdiv.Verdict, _ time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.verdicts = append(f.verdicts, v)
+	return f.err
+}
+
+func dnsTarget(resolvers ...string) agent.Target {
+	tg := target("dns1", "1.1.1.1")
+	tg.Instrument = "dns"
+	tg.Address = "1.1.1.1:53"
+	tg.Query = "example.com"
+	tg.URL = ""
+	tg.Resolvers = resolvers
+	return tg
+}
+
+func knownBaselines(resolvers ...string) map[string]dnsdiv.Baseline {
+	out := make(map[string]dnsdiv.Baseline, len(resolvers))
+	for _, resolver := range resolvers {
+		out[resolver] = dnsdiv.Baseline{
+			Addresses: map[string]struct{}{"192.0.2.1": {}},
+			Samples:   1,
+		}
+	}
+	return out
+}
+
+func TestDNSDivergenceDowngradesALocalFailure(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	tg := dnsTarget("1.1.1.1:53", "9.9.9.9:53")
+
+	p := newProber()
+	p.set("", probe.Result{ErrorClass: "dns_nxdomain", Err: errors.New("no such host")})
+
+	div := &fakeDivergence{baselines: knownBaselines(tg.Resolvers...)}
+	sink := &fakeSink{}
+	a := agent.New([]agent.Target{tg}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+	a.Divergence = div
+	a.DNSQuery = func(_ context.Context, server, _ string) probe.DNSResult {
+		if server == tg.Resolvers[0] {
+			return probe.DNSResult{ErrorClass: "dns_nxdomain", Err: errors.New("no such host")}
+		}
+		return probe.DNSResult{Addresses: []netip.Addr{netip.MustParseAddr("192.0.2.1")}}
+	}
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// The primary failed, but a second resolver answered: not DOWN.
+	got := sink.batch()[0]
+	if got.State != state.Unknown {
+		t.Fatalf("state = %s, want unknown (%s)", got.State, got.Reason)
+	}
+	if got.ErrorClass != "dns_divergence" {
+		t.Fatalf("class = %q, want dns_divergence", got.ErrorClass)
+	}
+	if len(div.answers) != 2 {
+		t.Fatalf("recorded answers = %d, want one per resolver", len(div.answers))
+	}
+	if len(div.verdicts) != 1 || div.verdicts[0].Kind != "DNS_ANOMALY" {
+		t.Fatalf("verdicts = %+v, want one advisory", div.verdicts)
+	}
+}
+
+func TestDNSDivergenceKeepsAGenuineOutageDown(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	tg := dnsTarget("1.1.1.1:53", "9.9.9.9:53")
+
+	p := newProber()
+	p.set("", probe.Result{ErrorClass: "dns_nxdomain", Err: errors.New("no such host")})
+
+	div := &fakeDivergence{baselines: knownBaselines(tg.Resolvers...)}
+	sink := &fakeSink{}
+	a := agent.New([]agent.Target{tg}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+	a.Divergence = div
+	a.DNSQuery = func(context.Context, string, string) probe.DNSResult {
+		return probe.DNSResult{ErrorClass: "dns_nxdomain", Err: errors.New("no such host")}
+	}
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Every resolver says NXDOMAIN where it used to answer: that is the ladder's
+	// high-confidence TAMPER, and the recorded state is still a real DOWN.
+	if got := sink.batch()[0]; got.State != state.Down || got.ErrorClass != "dns_nxdomain" {
+		t.Fatalf("probe = %+v, want down with the DNS class", got)
+	}
+	if len(div.verdicts) != 1 || div.verdicts[0].Kind != "TAMPER" || div.verdicts[0].Confidence != "high" {
+		t.Fatalf("verdicts = %+v, want a high-confidence TAMPER", div.verdicts)
+	}
+}
+
+func TestDNSDivergenceNeedsMoreThanOneResolver(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	tg := dnsTarget("1.1.1.1:53")
+
+	p := newProber()
+	p.set("", probe.Result{Addresses: []netip.Addr{netip.MustParseAddr("192.0.2.1")}})
+
+	div := &fakeDivergence{}
+	sink := &fakeSink{}
+	a := agent.New([]agent.Target{tg}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+	a.Divergence = div
+	a.DNSQuery = func(context.Context, string, string) probe.DNSResult {
+		return probe.DNSResult{Addresses: []netip.Addr{netip.MustParseAddr("192.0.2.1")}}
+	}
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(div.answers) != 0 || len(div.verdicts) != 0 {
+		t.Fatalf("a single resolver ran divergence: %+v %+v", div.answers, div.verdicts)
 	}
 }

@@ -65,6 +65,12 @@ type Target struct {
 	// CertLeafFingerprint is the learned leaf fingerprint. A change is
 	// informational, because leaves rotate on a schedule.
 	CertLeafFingerprint string
+	// DNS divergence is the newest advisory verdict, if any. It never changes
+	// State: it is evidence for the drawer and the API (CLASSIFIER.md §3.2).
+	DNSVerdict    string
+	DNSConfidence string
+	DNSDetail     string
+	DNSAt         time.Time
 }
 
 // Source returns the current board. It must be safe for concurrent use.

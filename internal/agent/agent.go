@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/classify"
+	"github.com/Greg-2600/netweather/internal/dnsdiv"
 	"github.com/Greg-2600/netweather/internal/probe"
 	"github.com/Greg-2600/netweather/internal/schedule"
 	"github.com/Greg-2600/netweather/internal/state"
@@ -32,6 +33,10 @@ type Target struct {
 	Address    string // host:port for tls/tcp/dns
 	Query      string // qname for dns
 	Instrument string // http, tls, tcp, dns
+	// Resolvers is the optional set of DNS servers to ask. Empty or a single
+	// entry means "just Address"; two or more enable the divergence check
+	// (CLASSIFIER.md §3.2).
+	Resolvers  []string
 	Vantage    string
 	Tier       schedule.Tier
 	Interval   time.Duration
@@ -81,7 +86,10 @@ func (i Instruments) Run(ctx context.Context, t Target) probe.Result {
 			return probe.Result{Err: fmt.Errorf("agent: dns instrument not configured")}
 		}
 		r := i.DNS.Do(ctx, t.Address, t.Query)
-		return probe.Result{Latency: r.Latency, ErrorClass: r.ErrorClass, Err: r.Err}
+		return probe.Result{
+			Latency: r.Latency, ErrorClass: r.ErrorClass, Err: r.Err,
+			Addresses: r.Addresses,
+		}
 	case "ntp":
 		if i.NTP == nil {
 			return probe.Result{Err: fmt.Errorf("agent: ntp instrument not configured")}
@@ -117,6 +125,15 @@ type Pins interface {
 	ObserveLeaf(ctx context.Context, targetID, fingerprint string, at time.Time) (changed bool, err error)
 }
 
+// Divergence is the per-resolver DNS baseline store. store.Store satisfies it.
+// Nil disables the divergence check, which is the right default for a vantage
+// that does not configure more than one resolver.
+type Divergence interface {
+	RecordDNSAnswer(ctx context.Context, targetID string, ans dnsdiv.Answer) error
+	DNSBaselines(ctx context.Context, targetID string, since time.Time) (map[string]dnsdiv.Baseline, error)
+	RecordDNSDivergence(ctx context.Context, targetID string, v dnsdiv.Verdict, at time.Time) error
+}
+
 // Agent runs due targets and records the results.
 type Agent struct {
 	Runner  Runner
@@ -139,6 +156,12 @@ type Agent struct {
 	// example) has stopped this agent. It is not the operator's pause: the
 	// kill switch is Pause/Resume, and this is the vantage's own allowance.
 	Suspend func() bool
+	// DNSQuery asks one resolver for one name. It is the seam the divergence
+	// path uses to probe every configured resolver; nil disables divergence.
+	DNSQuery func(ctx context.Context, server, name string) probe.DNSResult
+	// Divergence reads and writes the per-resolver DNS baselines. Nil disables
+	// divergence.
+	Divergence Divergence
 
 	mu      sync.RWMutex
 	targets []Target
@@ -290,6 +313,10 @@ func (a *Agent) Step(ctx context.Context) (int, error) {
 			}
 		}
 
+		if t.Instrument == "dns" && len(t.Resolvers) > 1 && a.DNSQuery != nil && a.Divergence != nil {
+			res = a.divergeDNS(ctx, t, res, now)
+		}
+
 		p := a.toProbe(t, res, now)
 		a.logProbe(t, p)
 		batch = append(batch, p)
@@ -371,6 +398,90 @@ func (a *Agent) logProbe(t Target, p store.Probe) {
 		"confidence", p.Confidence,
 		"reason", p.Reason,
 	)
+}
+
+// divergeDNS asks every configured resolver, records each answer against that
+// resolver's own baseline, and reports the ladder's verdict.
+//
+// The recorded probe stays the primary resolver's, with one exception: if the
+// primary failed while another resolver answered, that is our resolver or path
+// talking, not the name disappearing, so it becomes a divergence advisory
+// instead of DOWN (CLASSIFIER.md §3.2).
+func (a *Agent) divergeDNS(ctx context.Context, t Target, primary probe.Result, now time.Time) probe.Result {
+	answers := make([]dnsdiv.Answer, 0, len(t.Resolvers))
+	answered := 0
+	for _, server := range t.Resolvers {
+		r := a.DNSQuery(ctx, server, t.Query)
+		ans := dnsdiv.Answer{
+			Resolver:  server,
+			At:        now,
+			Addresses: dnsAddresses(r),
+			Failure:   dnsFailure(r),
+		}
+		answers = append(answers, ans)
+		if ans.Failure == "" {
+			answered++
+		}
+		if err := a.Divergence.RecordDNSAnswer(ctx, t.ID, ans); err != nil {
+			a.logger().Debug("dns baseline write failed",
+				"event", "dns_baseline_failed", "component", "agent",
+				"target", t.Host, "resolver", server, "error", err)
+		}
+	}
+
+	baselines, err := a.Divergence.DNSBaselines(ctx, t.ID, now.Add(-dnsBaselineWindow))
+	if err != nil {
+		a.logger().Debug("dns baseline read failed",
+			"event", "dns_baseline_read_failed", "component", "agent",
+			"target", t.Host, "error", err)
+		return primary
+	}
+
+	verdict := dnsdiv.Evaluate(answers, baselines)
+	if verdict.Kind != "" {
+		if err := a.Divergence.RecordDNSDivergence(ctx, t.ID, verdict, now); err != nil {
+			a.logger().Debug("dns divergence write failed",
+				"event", "dns_divergence_write_failed", "component", "agent",
+				"target", t.Host, "error", err)
+		}
+		a.logger().Warn("dns divergence",
+			"event", "dns_divergence", "component", "agent",
+			"target", t.Host, "verdict", verdict.Kind,
+			"confidence", verdict.Confidence, "detail", verdict.Detail)
+	}
+
+	if primary.Failed() && answered > 0 {
+		primary.ErrorClass = "dns_divergence"
+		primary.Err = fmt.Errorf("agent: %s failed while %d resolver(s) answered", t.Resolvers[0], answered)
+	}
+	return primary
+}
+
+// dnsBaselineWindow is the seven days CLASSIFIER.md §3.2 names.
+const dnsBaselineWindow = 7 * 24 * time.Hour
+
+func dnsAddresses(r probe.DNSResult) []string {
+	if r.Failed() {
+		return nil
+	}
+	out := make([]string, 0, len(r.Addresses))
+	for _, addr := range r.Addresses {
+		out = append(out, addr.String())
+	}
+	return out
+}
+
+// dnsFailure maps the instrument's class to the divergence engine's vocabulary.
+func dnsFailure(r probe.DNSResult) string {
+	if r.ErrorClass == "" {
+		return ""
+	}
+	switch class := strings.TrimPrefix(r.ErrorClass, "dns_"); class {
+	case "nxdomain", "nodata", "servfail", "refused", "timeout":
+		return class
+	default:
+		return "error"
+	}
 }
 
 func (a *Agent) primeLocked(now time.Time) {

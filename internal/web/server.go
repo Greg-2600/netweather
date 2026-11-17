@@ -220,6 +220,11 @@ type tileView struct {
 	CertChainLen         int
 	CertIntermediateSPKI string
 	CertLeafFingerprint  string
+	// DNS divergence is the newest advisory verdict. It never changes State.
+	DNSVerdict    string
+	DNSConfidence string
+	DNSDetail     string
+	DNSAt         string
 	// Spark is the 24-hour healthy-share shape, rendered only in comfortable
 	// density. Empty means "no history", which the tile shows as nothing rather
 	// than a fabricated line.
@@ -827,6 +832,10 @@ func toTile(t board.Target) tileView {
 		CertChainLen:         t.CertChainLen,
 		CertIntermediateSPKI: t.CertIntermediateSPKI,
 		CertLeafFingerprint:  t.CertLeafFingerprint,
+		DNSVerdict:           t.DNSVerdict,
+		DNSConfidence:        t.DNSConfidence,
+		DNSDetail:            t.DNSDetail,
+		DNSAt:                formatTimestamp(t.DNSAt),
 	}
 }
 
@@ -838,6 +847,15 @@ func formatCertExpiry(t time.Time) string {
 		return ""
 	}
 	return t.UTC().Format("2006-01-02")
+}
+
+// formatTimestamp prints a minute-resolution timestamp, which is what an
+// observation time needs. Empty means "never observed".
+func formatTimestamp(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format("2006-01-02 15:04")
 }
 
 // pinLabel says whether an issuer baseline exists. "Learned" is not "safe": the
@@ -877,6 +895,25 @@ func leafLabel(fingerprint string) string {
 		short = short[:16]
 	}
 	return "sha256 " + short + "…"
+}
+
+// dnsLabel states the newest divergence verdict, or that none was observed. It
+// is advisory: it never changes the tile's state (CLASSIFIER.md §3.2).
+func dnsLabel(verdict, confidence, detail, at string) string {
+	if verdict == "" {
+		return "none observed"
+	}
+	label := verdict
+	if confidence != "" {
+		label += " (" + confidence + ")"
+	}
+	if at != "" {
+		label += " at " + at
+	}
+	if detail != "" {
+		label += ": " + detail
+	}
+	return label
 }
 
 // badgeFor is the corner marker from DESIGN.md §10.2: the stage or status that
@@ -1084,6 +1121,7 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 			{"Certificate pin", pinLabel(t.CertPinned)},
 			{"Certificate chain", chainLabel(t.CertChainLen, t.CertIntermediateSPKI)},
 			{"Leaf certificate", leafLabel(t.CertLeafFingerprint)},
+			{"DNS divergence", dnsLabel(t.DNSVerdict, t.DNSConfidence, t.DNSDetail, formatTimestamp(t.DNSAt))},
 			{"Measurability", displayOr(t.Measurability, "ok")},
 		}
 

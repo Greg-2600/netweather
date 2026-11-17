@@ -3096,3 +3096,50 @@ func TestBoardPaginatesGroupsInComfortableDensity(t *testing.T) {
 		t.Fatalf("malformed show tiles = %d, want the default page", got)
 	}
 }
+
+func TestTargetDetailShowsDNSDivergence(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	m := board.NewMemory(
+		board.Target{
+			ID: "2", Name: "United", Host: "united.com", State: board.StateUp,
+			Port: 53, Probe: "dns", Tier: 2, IntervalS: 300,
+			DNSVerdict: "DNS_ANOMALY", DNSConfidence: "medium",
+			DNSDetail: "one resolver disagrees with its own baseline",
+			DNSAt:     at,
+		},
+		board.Target{
+			ID: "3", Name: "Quiet", Host: "quiet.example", State: board.StateUp,
+			Port: 53, Probe: "dns", Tier: 2, IntervalS: 300,
+		},
+	)
+
+	ts := newServerWithDetails(t, testToken, m, &fakeChanges{})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	get := func(id string) string {
+		t.Helper()
+		resp, err := client.Get(ts.URL + "/targets/" + id) //nolint:bodyclose // body() closes it
+		if err != nil {
+			t.Fatal(err)
+		}
+		return body(t, resp)
+	}
+
+	page := get("2")
+	for _, want := range []string{
+		">DNS divergence<", "DNS_ANOMALY (medium)",
+		"2026-11-17 12:00", "disagrees with its own baseline",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("divergence row missing %q", want)
+		}
+	}
+
+	// A target with no divergence says so instead of leaving the row blank.
+	if !strings.Contains(get("3"), "none observed") {
+		t.Error("a target without divergence did not say so")
+	}
+}

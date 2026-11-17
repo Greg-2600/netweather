@@ -395,6 +395,11 @@ type targetItem struct {
 	CertIntermediateSPKI string `json:"cert_intermediate_spki,omitempty"`
 	// CertLeafFingerprint is the learned leaf fingerprint: informational.
 	CertLeafFingerprint string `json:"cert_leaf_fingerprint,omitempty"`
+	// DNS divergence is the newest advisory verdict; it never changes state.
+	DNSVerdict    string `json:"dns_verdict,omitempty"`
+	DNSConfidence string `json:"dns_confidence,omitempty"`
+	DNSDetail     string `json:"dns_detail,omitempty"`
+	DNSAt         string `json:"dns_at,omitempty"`
 	// IXNames is PeeringDB exchange membership: enrichment only.
 	IXNames string `json:"ix_names,omitempty"`
 }
@@ -446,7 +451,9 @@ func (s *server) handleTargets(w http.ResponseWriter, r *http.Request) {
 			CertIssuer: t.CertIssuer, CertNotAfter: certNotAfterJSON(t.CertNotAfter),
 			CertChainLen: t.CertChainLen, CertIntermediateSPKI: t.CertIntermediateSPKI,
 			CertLeafFingerprint: t.CertLeafFingerprint,
-			IXNames:             t.IXNames,
+			DNSVerdict:          t.DNSVerdict, DNSConfidence: t.DNSConfidence,
+			DNSDetail: t.DNSDetail, DNSAt: certNotAfterJSON(t.DNSAt),
+			IXNames: t.IXNames,
 		}
 		if !t.Since.IsZero() {
 			item.Since = t.Since.UTC().Format(time.RFC3339)
@@ -595,7 +602,9 @@ func (s *server) serveTarget(w http.ResponseWriter, r *http.Request, id string) 
 		CertIssuer: row.CertIssuer, CertNotAfter: certNotAfterJSON(row.CertNotAfter),
 		CertChainLen: row.CertChainLen, CertIntermediateSPKI: row.CertIntermediateSPKI,
 		CertLeafFingerprint: row.CertLeafFingerprint,
-		IXNames:             row.IXNames,
+		DNSVerdict:          row.DNSVerdict, DNSConfidence: row.DNSConfidence,
+		DNSDetail: row.DNSDetail, DNSAt: certNotAfterJSON(row.DNSAt),
+		IXNames: row.IXNames,
 	}
 	if !row.Since.IsZero() {
 		item.Since = row.Since.UTC().Format(time.RFC3339)

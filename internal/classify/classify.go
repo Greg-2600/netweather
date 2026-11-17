@@ -168,6 +168,11 @@ func transport(t Expected, r Response) Result {
 		if t.DNSBlocked && (class == "dns_timeout" || class == "dns_error") {
 			return Result{state.Unmeasurable, High, class + ": egress port 53 is blocked"}
 		}
+		// A resolver that contradicts its own history while the others answer
+		// is an advisory, not an outage (CLASSIFIER.md §3.2).
+		if class == "dns_divergence" {
+			return Result{state.Unknown, High, class + ": one resolver disagrees with its own baseline"}
+		}
 		return Result{state.Down, Medium, class}
 	case strings.HasPrefix(class, "tcp_"), strings.HasPrefix(class, "tls_"), class == "icmp_unreachable":
 		return Result{state.Down, High, class}

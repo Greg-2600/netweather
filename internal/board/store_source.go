@@ -52,6 +52,10 @@ func (s *StoreSource) Snapshot(ctx context.Context) ([]Target, error) {
 			CertChainLen:         r.CertChainLen,
 			CertIntermediateSPKI: r.CertIntermediateSPKI,
 			CertLeafFingerprint:  r.CertLeafFingerprint,
+			DNSVerdict:           r.DNSVerdict,
+			DNSConfidence:        r.DNSConfidence,
+			DNSDetail:            r.DNSDetail,
+			DNSAt:                r.DNSAt,
 		})
 	}
 	return out, nil

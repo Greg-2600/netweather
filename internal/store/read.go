@@ -125,6 +125,13 @@ type TargetRow struct {
 	// CertLeafFingerprint is the learned leaf fingerprint. A change is
 	// informational, because leaves rotate on a schedule.
 	CertLeafFingerprint string
+	// DNS divergence is the newest advisory verdict for this target, if any.
+	// It never changes State: it is evidence for the drawer and the API
+	// (CLASSIFIER.md §3.2).
+	DNSVerdict    string
+	DNSConfidence string
+	DNSDetail     string
+	DNSAt         time.Time
 }
 
 // TargetsWithState is the board query: every enabled target plus its current
@@ -143,8 +150,14 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 		       COALESCE((SELECT cp.intermediate_spki FROM cert_pin cp
 		                 WHERE cp.target_id = t.id AND cp.intermediate_spki IS NOT NULL
 		                 ORDER BY cp.last_seen DESC LIMIT 1), ''),
-		       COALESCE((SELECT cl.fingerprint FROM cert_leaf cl WHERE cl.target_id = t.id), '')
+		       COALESCE((SELECT cl.fingerprint FROM cert_leaf cl WHERE cl.target_id = t.id), ''),
+		       COALESCE(dd.verdict, ''), COALESCE(dd.confidence, ''),
+		       COALESCE(dd.detail, ''), COALESCE(dd.ts, 0)
 		FROM target t
+		LEFT JOIN dns_divergence dd ON dd.id = (
+			SELECT d2.id FROM dns_divergence d2
+			WHERE d2.target_id = t.id ORDER BY d2.ts DESC, d2.id DESC LIMIT 1
+		)
 		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
 		LEFT JOIN probe p ON p.id = (
 			SELECT p2.id FROM probe p2
@@ -164,6 +177,7 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 			row      TargetRow
 			since    int64
 			notAfter int64
+			dnsAt    int64
 		)
 		if err := rows.Scan(
 			&row.ID, &row.Host, &row.Port, &row.Probe, &row.Name, &row.Class,
@@ -174,6 +188,7 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 			&row.Stage, &row.ErrorClass, &row.HTTPStatus,
 			&row.CertIssuer, &notAfter, &row.CertPinned,
 			&row.CertChainLen, &row.CertIntermediateSPKI, &row.CertLeafFingerprint,
+			&row.DNSVerdict, &row.DNSConfidence, &row.DNSDetail, &dnsAt,
 		); err != nil {
 			return nil, fmt.Errorf("store: scan target: %w", err)
 		}
@@ -182,6 +197,9 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 		}
 		if notAfter > 0 {
 			row.CertNotAfter = time.UnixMilli(notAfter).UTC()
+		}
+		if dnsAt > 0 {
+			row.DNSAt = time.UnixMilli(dnsAt).UTC()
 		}
 		out = append(out, row)
 	}
@@ -295,6 +313,7 @@ func (s *Store) TargetByID(ctx context.Context, vantageID, id string) (TargetRow
 		row      TargetRow
 		since    int64
 		notAfter int64
+		dnsAt    int64
 	)
 	err := s.reader.QueryRowContext(ctx, `
 		SELECT t.id, t.host, t.port, t.probe, t.name, t.class,
@@ -309,8 +328,14 @@ func (s *Store) TargetByID(ctx context.Context, vantageID, id string) (TargetRow
 		       COALESCE((SELECT cp.intermediate_spki FROM cert_pin cp
 		                 WHERE cp.target_id = t.id AND cp.intermediate_spki IS NOT NULL
 		                 ORDER BY cp.last_seen DESC LIMIT 1), ''),
-		       COALESCE((SELECT cl.fingerprint FROM cert_leaf cl WHERE cl.target_id = t.id), '')
+		       COALESCE((SELECT cl.fingerprint FROM cert_leaf cl WHERE cl.target_id = t.id), ''),
+		       COALESCE(dd.verdict, ''), COALESCE(dd.confidence, ''),
+		       COALESCE(dd.detail, ''), COALESCE(dd.ts, 0)
 		FROM target t
+		LEFT JOIN dns_divergence dd ON dd.id = (
+			SELECT d2.id FROM dns_divergence d2
+			WHERE d2.target_id = t.id ORDER BY d2.ts DESC, d2.id DESC LIMIT 1
+		)
 		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
 		LEFT JOIN probe p ON p.id = (
 			SELECT p2.id FROM probe p2
@@ -326,6 +351,7 @@ func (s *Store) TargetByID(ctx context.Context, vantageID, id string) (TargetRow
 		&row.Stage, &row.ErrorClass, &row.HTTPStatus,
 		&row.CertIssuer, &notAfter, &row.CertPinned,
 		&row.CertChainLen, &row.CertIntermediateSPKI, &row.CertLeafFingerprint,
+		&row.DNSVerdict, &row.DNSConfidence, &row.DNSDetail, &dnsAt,
 	)
 	if err != nil {
 		return TargetRow{}, err
@@ -335,6 +361,9 @@ func (s *Store) TargetByID(ctx context.Context, vantageID, id string) (TargetRow
 	}
 	if notAfter > 0 {
 		row.CertNotAfter = time.UnixMilli(notAfter).UTC()
+	}
+	if dnsAt > 0 {
+		row.DNSAt = time.UnixMilli(dnsAt).UTC()
 	}
 	return row, nil
 }

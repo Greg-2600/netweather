@@ -53,19 +53,22 @@ type Corridor struct {
 
 // Target is one configured probe.
 type Target struct {
-	ID         string `yaml:"id"`
-	Name       string `yaml:"name"`
-	Host       string `yaml:"host"`
-	Port       int    `yaml:"port"`
-	Probe      string `yaml:"probe"`
-	QName      string `yaml:"qname"`
-	Class      string `yaml:"class"`
-	Sector     string `yaml:"sector"`
-	Country    string `yaml:"country"`
-	Tier       int    `yaml:"tier"`
-	IntervalS  int    `yaml:"interval_s"`
-	ICMPAnchor bool   `yaml:"icmp_anchor"`
-	Expect     Expect `yaml:"expect"`
+	ID    string `yaml:"id"`
+	Name  string `yaml:"name"`
+	Host  string `yaml:"host"`
+	Port  int    `yaml:"port"`
+	Probe string `yaml:"probe"`
+	QName string `yaml:"qname"`
+	// Resolvers is the optional set of DNS servers a dns target asks. Empty
+	// means "just the target's own address". Each entry is host:port on 53.
+	Resolvers  []string `yaml:"resolvers"`
+	Class      string   `yaml:"class"`
+	Sector     string   `yaml:"sector"`
+	Country    string   `yaml:"country"`
+	Tier       int      `yaml:"tier"`
+	IntervalS  int      `yaml:"interval_s"`
+	ICMPAnchor bool     `yaml:"icmp_anchor"`
+	Expect     Expect   `yaml:"expect"`
 }
 
 // Expect is the semantic contract, mirroring classify.Expected.
@@ -280,6 +283,37 @@ func validateTarget(t *Target) error {
 		}
 	} else if t.QName != "" {
 		return fmt.Errorf("qname is only valid for dns targets, not %q", t.Probe)
+	}
+
+	// resolvers are a DNS-only list: each is a resolver the target asks, and
+	// divergence compares each one against its own history (CLASSIFIER.md 3.2).
+	if len(t.Resolvers) > 0 {
+		if t.Probe != "dns" {
+			return fmt.Errorf("resolvers are only valid for dns targets, not %q", t.Probe)
+		}
+		if len(t.Resolvers) > 4 {
+			return fmt.Errorf("%d resolvers exceeds the limit of 4", len(t.Resolvers))
+		}
+		seen := make(map[string]struct{}, len(t.Resolvers))
+		for i, raw := range t.Resolvers {
+			host, portText, err := net.SplitHostPort(strings.TrimSpace(raw))
+			if err != nil {
+				return fmt.Errorf("resolver %d: %w", i+1, err)
+			}
+			host = strings.ToLower(strings.TrimSpace(host))
+			if net.ParseIP(host) == nil && !validHostname(host) {
+				return fmt.Errorf("resolver %d: invalid host %q", i+1, host)
+			}
+			if portText != "53" {
+				return fmt.Errorf("resolver %d: port %q must be 53", i+1, portText)
+			}
+			addr := net.JoinHostPort(host, "53")
+			if _, dup := seen[addr]; dup {
+				return fmt.Errorf("resolver %d duplicates %q", i+1, addr)
+			}
+			seen[addr] = struct{}{}
+			t.Resolvers[i] = addr
+		}
 	}
 
 	interval := t.Interval()

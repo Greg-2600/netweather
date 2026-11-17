@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Greg-2600/netweather/internal/dnsdiv"
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
 )
@@ -67,8 +68,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 16 {
-		t.Errorf("schema version = %d, want 16", stats.SchemaVersion)
+	if stats.SchemaVersion != 17 {
+		t.Errorf("schema version = %d, want 17", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -96,7 +97,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 16 {
+	if err != nil || version != 17 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -2388,5 +2389,105 @@ func TestLeafFingerprintRecordsBaselineAndChange(t *testing.T) {
 	}
 	if _, err := s.ObserveLeaf(ctx, "t1", "  ", now); err == nil {
 		t.Fatal("an empty fingerprint was accepted")
+	}
+}
+
+func TestDNSBaselinesAndDivergence(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	record := func(resolver string, at time.Time, addrs ...string) {
+		t.Helper()
+		if err := s.RecordDNSAnswer(ctx, "t1", dnsdiv.Answer{
+			Resolver: resolver, At: at, Addresses: addrs,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	record("a:53", base, "192.0.2.1", "192.0.2.2")
+	record("a:53", base.Add(time.Hour), "192.0.2.1")
+	record("b:53", base, "198.51.100.7")
+
+	baselines, err := s.DNSBaselines(ctx, "t1", base.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(baselines) != 2 {
+		t.Fatalf("baselines = %+v", baselines)
+	}
+	if len(baselines["a:53"].Addresses) != 2 || baselines["a:53"].Samples != 2 {
+		t.Fatalf("a baseline = %+v", baselines["a:53"])
+	}
+	if _, ok := baselines["a:53"].Addresses["192.0.2.2"]; !ok {
+		t.Fatal("the address set lost an entry")
+	}
+	if _, ok := baselines["b:53"].Addresses["198.51.100.7"]; !ok {
+		t.Fatalf("b baseline = %+v", baselines["b:53"])
+	}
+
+	// The window excludes an old answer, which is what stops an ancient
+	// baseline from being treated as current.
+	future, err := s.DNSBaselines(ctx, "t1", base.Add(30*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(future["a:53"].Addresses) != 1 {
+		t.Fatalf("windowed baseline = %+v", future["a:53"])
+	}
+
+	// An answer without a resolver is a programming error; no addresses is a
+	// legitimate no-op (a failure says nothing about the baseline).
+	if err := s.RecordDNSAnswer(ctx, "t1", dnsdiv.Answer{Addresses: []string{"192.0.2.9"}}); err == nil {
+		t.Fatal("an answer without a resolver was accepted")
+	}
+	if err := s.RecordDNSAnswer(ctx, "t1", dnsdiv.Answer{Resolver: "a:53", At: base}); err != nil {
+		t.Fatalf("an empty answer errored: %v", err)
+	}
+
+	// An empty verdict is not stored; a real one is visible on the read path.
+	if err := s.RecordDNSDivergence(ctx, "t1", dnsdiv.Verdict{}, base); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordDNSDivergence(ctx, "t1", dnsdiv.Verdict{
+		Kind: "DNS_ANOMALY", Confidence: "medium",
+		Detail: "one resolver disagrees with its own baseline",
+	}, base); err != nil {
+		t.Fatal(err)
+	}
+
+	row, err := s.TargetByID(ctx, "local", "t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.DNSVerdict != "DNS_ANOMALY" || row.DNSConfidence != "medium" {
+		t.Fatalf("divergence row = %+v", row)
+	}
+	if !row.DNSAt.Equal(base) {
+		t.Fatalf("divergence at = %v, want %v", row.DNSAt, base)
+	}
+
+	// Pruning drops baselines older than the cutoff, and nothing else.
+	dropped, err := s.PruneDNSObservations(ctx, base.Add(30*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dropped == 0 {
+		t.Fatal("prune removed nothing")
+	}
+	remaining, err := s.DNSBaselines(ctx, "t1", base.Add(-24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for resolver, base := range remaining {
+		for addr := range base.Addresses {
+			if addr != "192.0.2.1" {
+				t.Fatalf("%s still has a pruned address %q", resolver, addr)
+			}
+		}
 	}
 }

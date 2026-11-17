@@ -398,3 +398,80 @@ corridors:
 		})
 	}
 }
+
+func TestLoadAcceptsDNSResolvers(t *testing.T) {
+	t.Parallel()
+
+	f, err := config.Load(write(t, `version: 1
+targets:
+  - name: Resolver pair
+    host: 1.1.1.1
+    port: 53
+    probe: dns
+    qname: example.com
+    class: network
+    resolvers: ["9.9.9.9:53", "DNS.Google:53"]
+`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	got := f.Targets[0].Resolvers
+	if len(got) != 2 {
+		t.Fatalf("resolvers = %+v", got)
+	}
+	// Hosts are normalised, so the same resolver cannot be spelled twice.
+	if got[0] != "9.9.9.9:53" || got[1] != "dns.google:53" {
+		t.Fatalf("resolvers = %+v", got)
+	}
+}
+
+func TestResolverValidation(t *testing.T) {
+	t.Parallel()
+
+	base := `version: 1
+targets:
+  - name: Resolver pair
+    host: 1.1.1.1
+    port: 53
+    probe: dns
+    qname: example.com
+    class: network
+`
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"wrong port", base + "    resolvers: [\"9.9.9.9:5353\"]\n", "must be 53"},
+		{"bad host", base + "    resolvers: [\"not a host:53\"]\n", "invalid host"},
+		{"no port", base + "    resolvers: [\"9.9.9.9\"]\n", "missing port"},
+		{"duplicate", base + "    resolvers: [\"9.9.9.9:53\", \"9.9.9.9:53\"]\n", "duplicates"},
+		{"too many", base + "    resolvers: [\"1.0.0.1:53\",\"8.8.8.8:53\",\"8.8.4.4:53\",\"208.67.222.222:53\",\"208.67.220.220:53\"]\n", "exceeds the limit"},
+		{
+			"non-dns probe",
+			`version: 1
+targets:
+  - name: Web
+    host: a.example
+    port: 443
+    probe: tls
+    class: service
+    resolvers: ["9.9.9.9:53"]
+`,
+			"only valid for dns",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := config.Load(write(t, tc.body))
+			if err == nil {
+				t.Fatalf("%s was accepted", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want it to mention %q", err, tc.want)
+			}
+		})
+	}
+}

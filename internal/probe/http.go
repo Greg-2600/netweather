@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/netx"
@@ -55,8 +56,11 @@ type Result struct {
 	// CertLeafFingerprint is the SHA-256 of the leaf DER. A change is
 	// informational, because leaves rotate on a schedule.
 	CertLeafFingerprint string
-	ErrorClass          string
-	Err                 error
+	// Addresses is set only by the DNS instrument: the A/AAAA answers. The
+	// divergence path needs them, and the classifier does not.
+	Addresses  []netip.Addr
+	ErrorClass string
+	Err        error
 }
 
 // Failed reports whether the exchange produced a transport-class failure.

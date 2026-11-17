@@ -61,7 +61,7 @@ A lone failure from a corroborating vantage is not even a signal. Tor exits are 
 | `dns_servfail` | RCODE 2 | DOWN | **Implemented.** The wire client reads the RCODE instead of collapsing it |
 | `dns_refused` | RCODE 5 | DOWN | **Implemented.** The resolver answered, so the path works |
 | `dns_timeout` | no response in the target timeout | DOWN | **Implemented.** Default 5s. `UNMEASURABLE` instead while the `port53` self-check reports this vantage's egress port 53 blocked |
-| `dns_divergence` | answer outside that resolver's own baseline | **DNS_ANOMALY**; `TAMPER` only with a second signal | Specified; see §3.2 |
+| `dns_divergence` | answer outside that resolver's own baseline | **DNS_ANOMALY**; `TAMPER` only with a second signal | **Implemented** for address sets and RCODEs; see §3.2 |
 
 The port-53 gate is a narrow, honest exception: a timeout or transport error while our own `:53` is unreachable measures the vantage, not the destination. It never applies to `dns_nxdomain`, `dns_nodata`, `dns_servfail`, or `dns_refused`, because those are answers rather than silence. A resolver that replied has proven the path works.
 
@@ -111,6 +111,15 @@ strong signal on the same target from >= 2 vantages,
 Baselines are per-resolver, per-target, rebuilt on every answer, and reset when `VANTAGE_CHANGED` fires (`DESIGN.md` §7.5).
 
 **Do not** classify `dns_nxdomain` as DOWN when the other resolvers resolve the name. That is divergence, not an outage.
+
+**Implemented:** `internal/dnsdiv` is the pure rule engine and `internal/store` keeps the baselines. A DNS target may declare `resolvers:` (up to four `host:53` entries); the agent asks each one every probe, records each resolver's address set for seven days (pruned with the other retention work), and compares each answer only against that resolver's own history:
+
+- `NXDOMAIN` where the resolver answered within the window is **strong**; `NODATA`, `SERVFAIL`, and `REFUSED` are **medium**; a successful address outside the learned set is **weak** (CDN rotation, never a verdict). A timeout stays path health and is already the classifier's job.
+- A target asked by three or more resolvers where exactly one deviates and the rest are clean treats that signal as strong, which is the "different answer from one resolver only" case.
+- The ladder is applied as written: two strong signals, or strong plus medium on the same target, is `TAMPER`; one strong is `DNS_ANOMALY`. A verdict is stored with its detail and resolvers, appears in the drawer as "DNS divergence", and is exposed on the target API. It never changes the tile's state.
+- When the primary resolver fails but another one answers, the recorded probe is `UNKNOWN` with `dns_divergence` rather than `DOWN`: our resolver or path is talking, not the name disappearing. When every resolver fails the same way, the normal `DOWN` stands.
+
+Still specified: the ASN-set, CNAME-suffix, and parent-delegation baselines, which need an authoritative query and an origin lookup per answer; the collapsed "DNS observations" strip; and resetting baselines on `VANTAGE_CHANGED` (the address sets age out on the seven-day window instead).
 
 ### 3.3 TCP
 

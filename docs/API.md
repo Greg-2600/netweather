@@ -522,6 +522,10 @@ Auth: bearer. One target with its current state and metadata.
     "cert_chain_len": 2,
     "cert_intermediate_spki": "aabbccddeeff00112233445566778899",
     "cert_leaf_fingerprint": "aabbccddeeff00112233445566778899",
+    "dns_verdict": "DNS_ANOMALY",
+    "dns_confidence": "medium",
+    "dns_detail": "one resolver disagrees with its own baseline (1.1.1.1:53: NXDOMAIN where this resolver answered before)",
+    "dns_at": "2026-11-17T12:00:00Z",
     "ix_names": "AMS-IX, DE-CIX Frankfurt"
   },
   "meta": {"request_id": "…"}
@@ -533,6 +537,7 @@ Auth: bearer. One target with its current state and metadata.
 - Certificate fields come from the last TLS observation and are absent when the last probe was not TLS. They describe the leaf certificate.
 - `cert_chain_len` and `cert_intermediate_spki` are the *learned* chain shape from the pin baseline (migration `0015`), not the last observation. A chain-shape change is informational and never changes `state`.
 - `cert_leaf_fingerprint` is the learned leaf fingerprint (migration `0016`). It is absent until a TLS probe has been seen; a rotation is informational.
+- `dns_verdict`, `dns_confidence`, `dns_detail`, and `dns_at` are the newest per-resolver divergence advisory (migration `0017`, §3.2 of `CLASSIFIER.md`). They are absent until one has been observed, and they never change `state`: `DNS_ANOMALY` is advisory and `TAMPER` is a ladder verdict that still leaves the recorded probe as its own measurement.
 - `ix_names` is PeeringDB exchange membership for the target's ASN: enrichment only, never a signal. It is absent until enrichment has learned it.
 
 ### 6.14 `GET /api/v1/coverage` — stable

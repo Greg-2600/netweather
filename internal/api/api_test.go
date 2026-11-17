@@ -1893,10 +1893,14 @@ func TestTargetDetail(t *testing.T) {
 				Country: "US", Tier: 2, IntervalS: 300,
 				IXNames: "AMS-IX, DE-CIX Frankfurt",
 			},
-			State:        state.Down,
-			Since:        since,
-			CertIssuer:   "CN=R11,O=Let's Encrypt,C=US",
-			CertNotAfter: expiry,
+			State:         state.Down,
+			Since:         since,
+			CertIssuer:    "CN=R11,O=Let's Encrypt,C=US",
+			CertNotAfter:  expiry,
+			DNSVerdict:    "DNS_ANOMALY",
+			DNSConfidence: "medium",
+			DNSDetail:     "one resolver disagrees with its own baseline",
+			DNSAt:         since,
 		},
 	}}
 
@@ -1910,15 +1914,19 @@ func TestTargetDetail(t *testing.T) {
 		t.Fatal(err)
 	}
 	var item struct {
-		ID           string `json:"id"`
-		Host         string `json:"host"`
-		Class        string `json:"class"`
-		Sector       string `json:"sector"`
-		State        string `json:"state"`
-		Since        string `json:"since"`
-		CertIssuer   string `json:"cert_issuer"`
-		CertNotAfter string `json:"cert_not_after"`
-		IXNames      string `json:"ix_names"`
+		ID            string `json:"id"`
+		Host          string `json:"host"`
+		Class         string `json:"class"`
+		Sector        string `json:"sector"`
+		State         string `json:"state"`
+		Since         string `json:"since"`
+		CertIssuer    string `json:"cert_issuer"`
+		CertNotAfter  string `json:"cert_not_after"`
+		DNSVerdict    string `json:"dns_verdict"`
+		DNSConfidence string `json:"dns_confidence"`
+		DNSDetail     string `json:"dns_detail"`
+		DNSAt         string `json:"dns_at"`
+		IXNames       string `json:"ix_names"`
 	}
 	if err := json.Unmarshal(env.Data, &item); err != nil {
 		t.Fatal(err)
@@ -1934,6 +1942,12 @@ func TestTargetDetail(t *testing.T) {
 	}
 	if item.CertNotAfter != "2027-01-16T12:00:00Z" {
 		t.Fatalf("cert_not_after = %q", item.CertNotAfter)
+	}
+	if item.DNSVerdict != "DNS_ANOMALY" || item.DNSConfidence != "medium" {
+		t.Fatalf("dns verdict = %+v", item)
+	}
+	if item.DNSAt != "2026-11-17T12:00:00Z" {
+		t.Fatalf("dns_at = %q", item.DNSAt)
 	}
 	if item.IXNames != "AMS-IX, DE-CIX Frankfurt" {
 		t.Fatalf("ix_names = %q", item.IXNames)
