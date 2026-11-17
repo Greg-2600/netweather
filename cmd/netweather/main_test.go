@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,7 +28,11 @@ func TestRunVersion(t *testing.T) {
 }
 
 func TestRunHealthcheck(t *testing.T) {
-	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	t.Setenv("NETWEATHER_HEALTHCHECK_URL", srv.URL+"/healthz")
 
 	if err := run([]string{"healthcheck"}, io.Discard); err != nil {
 		t.Fatalf("run(healthcheck) = %v, want nil", err)
@@ -210,5 +216,49 @@ targets:
 
 	if _, err := loadTargets(ctx, st); err == nil || !strings.Contains(err.Error(), "not implemented") {
 		t.Fatalf("error = %v, want an explicit unimplemented-probe error", err)
+	}
+}
+
+func TestHealthcheckFailsWithoutAServer(t *testing.T) {
+	t.Setenv("NETWEATHER_HEALTHCHECK_URL", "http://127.0.0.1:1/healthz")
+
+	if err := healthcheck(); err == nil {
+		t.Fatal("healthcheck should fail when nothing is listening")
+	}
+}
+
+func TestHealthcheckChecksTheStatus(t *testing.T) {
+	for _, status := range []int{http.StatusOK, http.StatusServiceUnavailable} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(status)
+		}))
+
+		t.Setenv("NETWEATHER_HEALTHCHECK_URL", srv.URL+"/healthz")
+		err := healthcheck()
+		srv.Close()
+
+		if status == http.StatusOK && err != nil {
+			t.Errorf("200 should pass: %v", err)
+		}
+		if status != http.StatusOK && err == nil {
+			t.Errorf("%d should fail", status)
+		}
+	}
+}
+
+func TestHealthcheckDerivesTheURLFromListen(t *testing.T) {
+	t.Setenv("NETWEATHER_HEALTHCHECK_URL", "")
+	t.Setenv("NETWEATHER_UI_LISTEN", "not-an-address")
+
+	if err := healthcheck(); err == nil {
+		t.Fatal("an unparseable listen address should fail")
+	}
+}
+
+func TestHealthcheckRefusesNonLoopback(t *testing.T) {
+	t.Setenv("NETWEATHER_HEALTHCHECK_URL", "http://example.com/healthz")
+
+	if err := healthcheck(); err == nil {
+		t.Fatal("a non-loopback healthcheck URL must be refused")
 	}
 }

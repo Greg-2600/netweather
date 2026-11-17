@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -62,9 +63,7 @@ func run(args []string, stdout io.Writer) error {
 		return nil
 
 	case "healthcheck":
-		// In phase 0 this proves the binary starts and exits cleanly. It becomes an
-		// HTTP probe of 127.0.0.1:2600 once the server exists (docs/NETWORKING.md §7.3).
-		return nil
+		return healthcheck()
 
 	case "serve":
 		lg.Info("starting",
@@ -303,6 +302,60 @@ func seedTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 		})
 	}
 	return out, nil
+}
+
+// healthcheck is the container liveness probe. It asks the local listener for
+// /healthz rather than inspecting process state, because "the process is alive"
+// and "the server answers" are different claims (NETWORKING.md §7.3).
+func healthcheck() error {
+	url := os.Getenv("NETWEATHER_HEALTHCHECK_URL")
+	if url == "" {
+		addr := os.Getenv("NETWEATHER_UI_LISTEN")
+		if addr == "" {
+			addr = "127.0.0.1:2600"
+		}
+		_, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return fmt.Errorf("healthcheck: %w", err)
+		}
+		url = "http://127.0.0.1:" + port + "/healthz"
+	}
+
+	// A liveness probe must only ever touch the local instance. Validating that
+	// here keeps the healthcheck from becoming an SSRF primitive if the
+	// environment is attacker-controlled.
+	parsed, err := neturl.Parse(url)
+	if err != nil {
+		return fmt.Errorf("healthcheck: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("healthcheck: unsupported scheme %q", parsed.Scheme)
+	}
+	host := parsed.Hostname()
+	ip := net.ParseIP(host)
+	if host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+		return fmt.Errorf("healthcheck: %q is not a loopback address", host)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// #nosec G704 -- parsed.Scheme and the host have been checked as loopback above.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("healthcheck: %w", err)
+	}
+	// #nosec G704 -- same validated loopback URL.
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("healthcheck: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("healthcheck: %s", resp.Status)
+	}
+	return nil
 }
 
 func newAgent(targets []agent.Target, st *store.Store, lg *logging.Logger) *agent.Agent {

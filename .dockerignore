@@ -1,0 +1,28 @@
+# Build context is only Go source plus module metadata.
+.git
+.github
+.githooks
+.vscode
+.idea
+
+# Runtime state and local secrets never enter an image.
+data
+secrets
+config/local
+*.db
+*.db-wal
+*.db-shm
+
+# Build and test artefacts.
+dist
+coverage.out
+coverage
+lint.txt
+netweather
+netweather.exe
+testdata/out
+
+# Documentation is not needed to compile.
+docs
+*.md
+LICENSE

@@ -1,0 +1,50 @@
+name: netweather
+
+services:
+  netweather:
+    image: ghcr.io/${NETWEATHER_OWNER:-greg-2600}/netweather:${NETWEATHER_TAG:-latest}
+    build: .
+    networks: [ui, egress]
+
+    # Inbound is the dashboard only. Auth is mandatory for a non-loopback bind.
+    ports: ["2600:2600"]
+
+    volumes:
+      - ./data:/data
+      - ./config:/config:ro
+      - ./secrets/ui_token:/run/secrets/ui_token:ro
+
+    environment:
+      NETWEATHER_UI_LISTEN: 0.0.0.0:2600
+      NETWEATHER_UI_TOKEN_FILE: /run/secrets/ui_token
+      NETWEATHER_DATA: /data
+      NETWEATHER_LOG: info
+      # Point this at /config/targets.yaml once you have one; otherwise the
+      # shipped seed list is used.
+      # NETWEATHER_CONFIG: /config/targets.yaml
+
+    read_only: true
+    tmpfs: [/tmp]
+    user: "65532:65532"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+    # Unprivileged ICMP; no NET_RAW, no NET_ADMIN.
+    sysctls:
+      net.ipv4.ping_group_range: "0 2147483647"
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "/netweather", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  ui:
+  egress:
+    driver_opts:
+      # VPN uplinks and some ISPs are not 1500; see docs/NETWORKING.md §4.
+      com.docker.network.driver.mtu: 1400

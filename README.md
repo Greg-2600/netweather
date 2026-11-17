@@ -10,7 +10,7 @@ A self-hosted internet weather station. One small container that answers three q
 
 Most monitors answer only #2, and answer it badly: `curl != 200` becomes "down." That produces enough false alarms that people stop looking. This one classifies bot protection instead of evading it, and refuses to call a single vantage point a global truth.
 
-**Status: phase 0, spine running.** The binary probes the ten shipped targets over HTTPS on the tiered scheduler, classifies each result, writes to SQLite, and serves a store-backed board with live SSE updates plus the versioned API. `NETWEATHER_SEED=none` starts with an empty board. DNS/TCP/TLS instruments, country anchors, feeds, incident correlation, and the container image are next.
+**Status: phase 0, spine running.** The binary probes the ten shipped targets over HTTPS on the tiered scheduler, classifies each result, writes to SQLite, and serves a store-backed board with live SSE updates plus the versioned API. A hardened container image and compose stack build and run. `NETWEATHER_SEED=none` starts with an empty board. DNS/TCP/TLS instruments, country anchors, feeds, and incident correlation are next.
 
 Build and test with one command: `go run ./internal/devtool verify`.
 
@@ -85,7 +85,17 @@ The through-line: `censor_sensor` asked *"can I reach it?"*, `global_packet_thro
 
 Single container, read-only rootfs, non-root, no shell in the release image. Outbound for probes; **inbound only on 2600** for the dashboard.
 
-The image and compose file do not exist yet — this is the deployment contract, not a description of an artefact you can pull.
+The image is built from [`Dockerfile`](Dockerfile) (Chainguard Go builder → static runtime, ~25 MB, no shell) and the stack is in [`compose.yaml`](compose.yaml). On a fresh install:
+
+```sh
+mkdir -p data secrets
+printf '%s' "$(openssl rand -hex 32)" > secrets/ui_token
+chmod 600 secrets/ui_token
+sudo chown -R 65532:65532 data   # Linux bind mounts only; the image owns /data
+docker compose up -d
+```
+
+The compose file binds `./data:/data` and `./config:/config:ro`, publishes only `2600`, and runs read-only with `cap_drop: ALL`. The named-volume path is also supported: `/data` exists in the image owned by uid 65532.
 
 ```yaml
 services:

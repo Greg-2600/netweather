@@ -123,3 +123,45 @@ jobs:
           path: testdata/out/
           if-no-files-found: ignore
           retention-days: 7
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: build image
+        run: docker build -t netweather:ci .
+
+      - name: run hardened
+        run: |
+          docker run -d --name nw-ci -p 127.0.0.1:2606:2600 \
+            --read-only --tmpfs /tmp \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            -e NETWEATHER_UI_TOKEN=ci-token-0123456789 \
+            -e NETWEATHER_SEED=none \
+            -v nw-ci-data:/data \
+            netweather:ci
+
+      - name: healthz answers
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:2606/healthz; then exit 0; fi
+            sleep 1
+          done
+          docker logs nw-ci
+          exit 1
+
+      - name: runs as the release uid
+        run: test "$(docker inspect --format '{{.Config.User}}' nw-ci)" = "65532:65532"
+
+      - name: no shell in the image
+        run: |
+          if docker exec nw-ci sh -c true 2>/dev/null; then
+            echo "release image has a shell"; exit 1
+          fi
+
+      - name: cleanup
+        if: always()
+        run: |
+          docker rm -f nw-ci || true
+          docker volume rm nw-ci-data || true
