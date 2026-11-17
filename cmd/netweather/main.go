@@ -155,6 +155,7 @@ func serve(lg *logging.Logger) error {
 		Version:   version.Version,
 		Commit:    version.Commit,
 		StartedAt: time.Now(),
+		Source:    source,
 		Fallback:  ui,
 	})
 	if err != nil {

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/api"
+	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/logging"
 )
 
@@ -361,6 +362,101 @@ func TestAPIRejectsBurstWith429(t *testing.T) {
 		if rec.Header().Get("Retry-After") == "" {
 			t.Error("429 without Retry-After")
 		}
+	}
+}
+
+func newBoardHandler(t *testing.T, src board.Source) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Source:    src,
+			Version:   "test",
+			Commit:    "deadbeef",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func TestBoardReturnsTargets(t *testing.T) {
+	t.Parallel()
+
+	since := time.Date(2026, 11, 17, 3, 14, 15, 0, time.UTC)
+	m := board.NewMemory(
+		board.Target{
+			ID: "1", Name: "Chase", Host: "chase.com", Sector: "financial/banking",
+			Country: "US", State: board.StateUp, Since: since,
+		},
+		board.Target{ID: "2", Name: "United", Host: "united.com", State: board.StateDown},
+	)
+
+	rec := do(newBoardHandler(t, m), http.MethodGet, "/api/v1/board", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var items []struct {
+		ID     string `json:"id"`
+		Name   string `json:"name"`
+		Host   string `json:"host"`
+		Sector string `json:"sector"`
+		State  string `json:"state"`
+		Since  string `json:"since"`
+	}
+	if err := json.Unmarshal(env.Data, &items); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(items) != 2 {
+		t.Fatalf("items = %d, want 2", len(items))
+	}
+	if items[0].State != "up" || items[0].Name != "Chase" {
+		t.Fatalf("first item = %+v", items[0])
+	}
+	if items[0].Since == "" {
+		t.Error("since missing for a probed target")
+	}
+	if items[1].State != "down" || items[1].Since != "" {
+		t.Fatalf("second item = %+v", items[1])
+	}
+	if env.Meta.Count != 2 {
+		t.Errorf("meta.count = %d", env.Meta.Count)
+	}
+}
+
+func TestBoardRequiresAuth(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newBoardHandler(t, board.NewMemory()), http.MethodGet, "/api/v1/board", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+func TestBoardWithoutSourceIsUnavailable(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/api/v1/board", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+
+	var e errorEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &e); err != nil {
+		t.Fatal(err)
+	}
+	if e.Error.Code != api.CodeUnavailable {
+		t.Fatalf("code = %q", e.Error.Code)
 	}
 }
 

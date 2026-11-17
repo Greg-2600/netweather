@@ -15,6 +15,7 @@ Honesty first, because a spec that implies more than the binary does is worse th
 | `GET /healthz` | **implemented** — liveness only, no auth, no data |
 | `GET /api/v1/meta` | **implemented** — build, uptime, auth mode, capabilities |
 | `GET /api/v1/logs` | **implemented** - reads the in-memory ring (`LOGGING.md` §9) |
+| `GET /api/v1/board` | **implemented** - the grid's data from the store |
 | `GET /events` | **implemented** - the UI's SSE stream; session cookie auth, not bearer. The API-facing counterpart is specified in §7.2 |
 | Everything else in §7 | **specified, not implemented** |
 | `/metrics` (`DESIGN.md` §6.4) | **specified, not implemented** — see §7.4 for why it is separate from `/api/v1` |
@@ -189,7 +190,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
-    "capabilities": ["health", "meta", "logs"],
+    "capabilities": ["health", "meta", "logs", "board"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -237,6 +238,32 @@ Auth: bearer. Reads the in-memory ring, not the file sink. Redaction already hap
 
 Sorted oldest → newest. The ring holds minutes, not days; for history use `GET /api/v1/targets/{id}/probes` once it exists.
 
+### 6.4 `GET /api/v1/board` — stable
+
+Auth: bearer. The grid's data, straight from the store, in source order.
+
+```json
+{
+  "data": [
+    {
+      "id": "svc-chase",
+      "name": "Chase",
+      "host": "www.chase.com",
+      "sector": "financial/banking",
+      "country": "US",
+      "state": "up",
+      "since": "2026-11-16T03:14:15Z"
+    }
+  ],
+  "meta": {"request_id": "…", "count": 1}
+}
+```
+
+- `state` is one of the eight target states, lower-cased (`DESIGN.md` §3.2).
+- `since` is the start of the current state. It is absent for a target that has never been probed, which is different from "up since the epoch".
+- No server-side filtering in v1: the list is capped at 2000, and a client that wants only failures can filter locally. Filters arrive with `/api/v1/targets` if they prove necessary.
+- `503 unavailable` when the store is not readable. An empty `data` means "no targets", not "cannot answer".
+
 ---
 
 ## 7. Specified, not implemented
@@ -247,7 +274,6 @@ Each of these is a promise about shape, not a claim that it works. `GET /api/v1/
 
 | Endpoint | Tier | Purpose |
 |---|---|---|
-| `GET /api/v1/board` | stable | Latest state per target for the primary vantage; the grid's data |
 | `GET /api/v1/targets` | stable | Target list with filters: `class`, `sector`, `country`, `state`, `enabled` |
 | `GET /api/v1/targets/{id}` | stable | One target with its current state and measurement metadata |
 | `GET /api/v1/targets/{id}/probes` | stable | Recent raw probes (`limit`, `from`, `to`) |

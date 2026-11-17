@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/logging"
 )
 
@@ -19,6 +20,9 @@ type Deps struct {
 	Version   string
 	Commit    string
 	StartedAt time.Time
+	// Source supplies the board. Nil means "not configured": the endpoint
+	// answers 503 rather than inventing an empty board.
+	Source board.Source
 	// Fallback serves everything that is not /healthz or /api/. It is the UI.
 	// Nil means "JSON 404", which is the right default for tests.
 	Fallback http.Handler
@@ -45,6 +49,7 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	s := &server{deps: deps, authMode: cfg.AuthMode()}
 
 	apiMux := http.NewServeMux()
+	apiMux.HandleFunc("/api/v1/board", onlyGET(s.handleBoard))
 	apiMux.HandleFunc("/api/v1/meta", onlyGET(s.handleMeta))
 	apiMux.HandleFunc("/api/v1/logs", onlyGET(s.handleLogs))
 	apiMux.HandleFunc("/", s.handleNotFound)
@@ -124,7 +129,7 @@ type metaResponse struct {
 
 // capabilities is the runtime truth. A client should feature-detect here rather
 // than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs"}
+var capabilities = []string{"health", "meta", "logs", "board"}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}
@@ -144,6 +149,52 @@ func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		Capabilities: capabilities,
 		Ring:         info,
 	}, nil)
+}
+
+type boardItem struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Host    string `json:"host"`
+	Sector  string `json:"sector,omitempty"`
+	Country string `json:"country,omitempty"`
+	State   string `json:"state"`
+	Since   string `json:"since,omitempty"`
+}
+
+// handleBoard is the machine-readable grid: one entry per enabled target, in the
+// source's order. It never filters by state; a client that wants only failures
+// can filter a list it already has.
+func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Source == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "board source is not configured")
+		return
+	}
+
+	targets, err := s.deps.Source.Snapshot(r.Context())
+	if err != nil {
+		s.deps.Logger.Error("board snapshot failed",
+			"event", "board_failed", "component", "http", "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "board unavailable")
+		return
+	}
+
+	out := make([]boardItem, 0, len(targets))
+	for _, t := range targets {
+		item := boardItem{
+			ID:      t.ID,
+			Name:    t.Name,
+			Host:    t.Host,
+			Sector:  t.Sector,
+			Country: t.Country,
+			State:   string(t.State),
+		}
+		if !t.Since.IsZero() {
+			item.Since = t.Since.UTC().Format(time.RFC3339)
+		}
+		out = append(out, item)
+	}
+
+	writeData(w, r, out, &Meta{Count: len(out)})
 }
 
 type logRecord struct {
