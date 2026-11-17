@@ -480,3 +480,39 @@ func TestPolicyRefusalIsUnmeasurable(t *testing.T) {
 		}
 	}
 }
+
+func TestLowMTUGateMakesATimeoutUnmeasurable(t *testing.T) {
+	t.Parallel()
+
+	// The three classes a black-holed large handshake can produce.
+	for _, class := range []string{"http_timeout", "tcp_timeout", "tls_handshake"} {
+		got := classify.Decide(classify.Expected{MTUBlocked: true}, classify.Response{
+			Err: errors.New("timeout"), ErrorClass: class,
+		})
+		if got.State != state.Unknown {
+			t.Errorf("%s under a low MTU = %s, want unknown", class, got.State)
+		}
+		if got.Confidence != classify.High {
+			t.Errorf("%s confidence = %s, want high", class, got.Confidence)
+		}
+		if !strings.Contains(got.Reason, "MTU") {
+			t.Errorf("%s reason = %q, want the MTU named", class, got.Reason)
+		}
+	}
+
+	// Without the gate the same timeout is a real DOWN, which is what makes
+	// the gate meaningful.
+	if got := classify.Decide(classify.Expected{}, classify.Response{
+		Err: errors.New("timeout"), ErrorClass: "http_timeout",
+	}); got.State != state.Down {
+		t.Fatalf("ungated http_timeout = %s, want down", got.State)
+	}
+
+	// A refused connection under a low MTU is still DOWN: the SYN arrived, so
+	// the path is not black-holing this handshake.
+	if got := classify.Decide(classify.Expected{MTUBlocked: true}, classify.Response{
+		Err: errors.New("refused"), ErrorClass: "tcp_refused",
+	}); got.State != state.Down {
+		t.Fatalf("tcp_refused under a low MTU = %s, want down", got.State)
+	}
+}

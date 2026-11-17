@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1000,5 +1001,40 @@ func TestDNSCollectsTheCNAMEChain(t *testing.T) {
 	}
 	if len(res.Addresses) != 1 || res.Addresses[0].String() != "192.0.2.10" {
 		t.Fatalf("addresses = %v", res.Addresses)
+	}
+}
+
+// A configured resolver that cannot be reached must not make the instrument
+// fall back to the host resolver: a fallback would silently answer from a
+// different server and hide the very failure the probe exists to report.
+func TestDNSNeverFallsBackToTheHostResolver(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu      sync.Mutex
+		dialled []string
+	)
+	dial := func(_ context.Context, _, address string) (net.Conn, error) {
+		mu.Lock()
+		dialled = append(dialled, address)
+		mu.Unlock()
+		return nil, errors.New("unreachable")
+	}
+
+	dns := probe.NewDNS(dial)
+	res := dns.Do(context.Background(), "203.0.113.5:53", "example.com")
+	if !res.Failed() {
+		t.Fatal("an unreachable resolver reported success")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(dialled) == 0 {
+		t.Fatal("the instrument never tried the configured resolver")
+	}
+	for _, address := range dialled {
+		if address != "203.0.113.5:53" {
+			t.Fatalf("instrument dialled %q, want only the configured resolver", address)
+		}
 	}
 }

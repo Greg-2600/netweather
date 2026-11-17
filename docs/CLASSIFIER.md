@@ -129,7 +129,7 @@ Baselines are per-resolver, per-target, rebuilt on every answer, and reset when 
 | Class | Condition | Candidate state |
 |---|---|---|
 | `tcp_refused` | RST on connect | DOWN |
-| `tcp_timeout` | no SYN-ACK within timeout | DOWN |
+| `tcp_timeout` | no SYN-ACK within timeout | DOWN, or **UNKNOWN** while the egress MTU self-check says the path is below the floor |
 | `tcp_reset` | RST mid-stream | DOWN |
 | `tcp_unreachable` | ICMP unreachable | DOWN |
 | `policy_blocked` | destination refused by this monitor's outbound policy | **UNMEASURABLE** |
@@ -141,7 +141,7 @@ Everything except the two policy classes is DOWN. A policy refusal means the pro
 
 | Class | Condition | Candidate state |
 |---|---|---|
-| `tls_handshake` | generic handshake failure | DOWN |
+| `tls_handshake` | generic handshake failure | DOWN, or **UNKNOWN** while the egress MTU self-check says the path is below the floor |
 | `tls_cert_expired` | `NotAfter` in the past | DOWN |
 | `tls_cert_not_yet_valid` | `NotBefore` in the future | DOWN |
 | `tls_cert_mismatch` | SAN does not cover host | DOWN |
@@ -200,7 +200,7 @@ after the TLS classes, because Go wraps TLS failures inside `*url.Error`.
 
 | Class | Condition | Candidate state |
 |---|---|---|
-| `http_timeout` | response deadline exceeded | DOWN |
+| `http_timeout` | response deadline exceeded | DOWN, or **UNKNOWN** while the egress MTU self-check says the path is below the floor |
 | `http_reset` | connection reset while reading/writing | DOWN |
 | `http_request` | request could not be constructed (bad URL) | CONFIG_ERROR |
 | `http_error` | any other HTTP-layer failure | UNKNOWN |

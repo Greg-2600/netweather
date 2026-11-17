@@ -153,6 +153,10 @@ type Agent struct {
 	// blocked. Nil means unknown, and an unknown path is treated as working:
 	// a missing health signal must not suppress real DOWN states.
 	DNSBlocked func() bool
+	// MTUBlocked reports whether this vantage's egress MTU is below the floor
+	// where a large handshake can be black-holed. Nil means unknown, treated as
+	// working for the same reason as DNSBlocked.
+	MTUBlocked func() bool
 	// Suspend reports whether a self-imposed limit (a daily volume budget, for
 	// example) has stopped this agent. It is not the operator's pause: the
 	// kill switch is Pause/Resume, and this is the vantage's own allowance.
@@ -574,7 +578,11 @@ func (a *Agent) toProbe(t Target, res probe.Result, now time.Time) store.Probe {
 	if t.Instrument == "dns" && a.DNSBlocked != nil {
 		dnsBlocked = a.DNSBlocked()
 	}
-	decision := decisionFor(t, res, dnsBlocked)
+	mtuBlocked := false
+	if a.MTUBlocked != nil {
+		mtuBlocked = a.MTUBlocked()
+	}
+	decision := decisionFor(t, res, dnsBlocked, mtuBlocked)
 
 	detail := decision.Reason
 	if res.Err != nil {
@@ -598,11 +606,15 @@ func (a *Agent) toProbe(t Target, res probe.Result, now time.Time) store.Probe {
 
 // decisionFor gives non-HTTP success its own answer. A completed TCP or TLS
 // handshake is reachability, not a missing HTTP status. dnsBlocked is the
-// vantage's port-53 health: a DNS transport failure under it measures us.
-func decisionFor(t Target, res probe.Result, dnsBlocked bool) classify.Result {
+// vantage's port-53 health and mtuBlocked its egress MTU health: a transport
+// failure under either measures us, not the target.
+func decisionFor(t Target, res probe.Result, dnsBlocked, mtuBlocked bool) classify.Result {
 	expect := t.Expect
 	if dnsBlocked {
 		expect.DNSBlocked = true
+	}
+	if mtuBlocked {
+		expect.MTUBlocked = true
 	}
 	// NTP is self-health: it can warn about this vantage's clock, but it never
 	// says a target is up or down (CLASSIFIER.md §3.6).

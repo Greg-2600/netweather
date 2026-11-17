@@ -1122,3 +1122,47 @@ func TestDNSDivergenceLearnsNewAddressLabels(t *testing.T) {
 		t.Fatalf("lookups for a known address = %d, want 0", looked)
 	}
 }
+
+func TestLowMTUGateReachesTheClassifier(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	tg := target("web1", "example.com")
+
+	// The handler accepts the connection and never answers: a timeout with no
+	// transport error is exactly what a black-holed handshake looks like.
+	p := newProber()
+	p.set(tg.URL, probe.Result{ErrorClass: "http_timeout", Err: errors.New("timeout")})
+
+	sink := &fakeSink{}
+	a := agent.New([]agent.Target{tg}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+	a.MTUBlocked = func() bool { return true }
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	got := sink.batch()[0]
+	if got.State != state.Unknown {
+		t.Fatalf("state = %s, want unknown under a low MTU (%s)", got.State, got.Reason)
+	}
+	if !strings.Contains(got.Reason, "MTU") {
+		t.Fatalf("reason = %q, want the MTU named", got.Reason)
+	}
+
+	// With the gate saying the path is fine, the same timeout is a DOWN.
+	clearSink := &fakeSink{}
+	b := agent.New([]agent.Target{tg}, p, clearSink)
+	b.Now = at(now)
+	b.Rand = zeroRand
+	b.MTUBlocked = func() bool { return false }
+
+	if _, err := b.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := clearSink.batch()[0]; got.State != state.Down {
+		t.Fatalf("state = %s without the gate, want down", got.State)
+	}
+}

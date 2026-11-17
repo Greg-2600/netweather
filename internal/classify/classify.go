@@ -72,6 +72,11 @@ type Expected struct {
 	// DNS transport failure is then a visibility failure, not a target outage:
 	// it classifies UNMEASURABLE rather than DOWN (DESIGN.md §7.5).
 	DNSBlocked bool
+
+	// MTUBlocked says this vantage's egress MTU is below the floor, where a
+	// large handshake can be black-holed. A timeout is then a visibility
+	// failure, not proof the target is down (DESIGN.md §7.5).
+	MTUBlocked bool
 }
 
 var defaultStatuses = []int{200, 203, 204, 301, 302}
@@ -156,6 +161,12 @@ func transport(t Expected, r Response) Result {
 	case strings.HasPrefix(class, "ntp_"):
 		return Result{state.Unknown, Low, class + ": self-health only"}
 	case class == "http_timeout", class == "http_reset":
+		// A timeout while this vantage's own egress MTU is below the floor can
+		// be a black-holed handshake rather than a dead target: call it
+		// UNKNOWN, with high confidence, because we know why we cannot see.
+		if t.MTUBlocked && class == "http_timeout" {
+			return Result{state.Unknown, High, class + ": egress MTU is below the floor"}
+		}
 		return Result{state.Down, High, class}
 	case class == "http_request":
 		return Result{state.ConfigError, High, class}
@@ -179,6 +190,14 @@ func transport(t Expected, r Response) Result {
 		// the probe never reached the network. That measures us, not the
 		// target; never let a refused address turn into DOWN (THREAT_MODEL T16).
 		return Result{state.Unmeasurable, High, class + ": destination refused by the outbound policy"}
+	case class == "tcp_timeout", class == "tls_handshake":
+		// A large handshake black-holed by a low egress MTU looks exactly like a
+		// dead service. With the self-check saying the MTU is below the floor,
+		// the honest answer is that we cannot see (DESIGN.md §7.5).
+		if t.MTUBlocked {
+			return Result{state.Unknown, High, class + ": egress MTU is below the floor"}
+		}
+		return Result{state.Down, High, class}
 	case strings.HasPrefix(class, "tcp_"), strings.HasPrefix(class, "tls_"), class == "icmp_unreachable":
 		return Result{state.Down, High, class}
 	default:

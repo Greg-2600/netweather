@@ -187,6 +187,9 @@ func serve(lg *logging.Logger) error {
 	healthGate := selfcheck.NewGate()
 	ag := newAgent(targets, st, lg)
 	ag.DNSBlocked = func() bool { return healthGate.Blocked("port53") }
+	// The same gate, for the other way a working path can look dead: a low
+	// egress MTU black-holes large handshakes (DESIGN.md §7.5).
+	ag.MTUBlocked = func() bool { return healthGate.Blocked("mtu") }
 
 	// The monitor must be able to see before its board is believable, so the
 	// self-checks run at startup and with maintenance, not only on request.
