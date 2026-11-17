@@ -209,7 +209,7 @@ Table-driven, `t.Parallel()`, no network, no disk, no sleep.
 | `internal/config` | TXT/YAML parsing, sector inference from paths, validation errors |
 | `internal/store` | Migrations, retention pruning, rollup math |
 
-Golden files for anything with a stable serialized form: classifier decisions, rendered templates, JSON API responses.
+Stable serialized forms are pinned rather than golden-filed: JSON API responses are asserted field by field in `internal/api` (envelope, error codes, pagination shape), pages are pinned by their `data-testid` contract and the Playwright suite, and classifier decisions are one table row per `CLASSIFIER.md` rule, kept in code so the expected value sits beside the input. Feed payloads are the one captured-file set (`testdata/feeds/`), because a third party's shape is the thing under test.
 
 ### 5.2 Property and fuzz tests
 

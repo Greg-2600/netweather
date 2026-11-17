@@ -1,0 +1,22 @@
+# netweather atypical-day calendar (docs/DESIGN.md §7.2)
+#
+# Point NETWEATHER_CALENDAR at this file, or leave it at calendar.yaml beside
+# your target config. Dates listed here are excluded from the hour-of-week
+# baseline, so a public holiday does not teach the detector that everyone is
+# offline on that date next year.
+#
+# Rules:
+#   - date is a UTC day, YYYY-MM-DD. A time or a zone is refused.
+#   - regions is optional. Omit it to exclude the day from every baseline;
+#     list two-letter country codes to exclude it only from those country
+#     baselines (global, sector, and ASN baselines keep sampling).
+#   - an unknown field, a duplicate date, or a malformed region refuses
+#     startup rather than silently doing nothing.
+#
+# The file is local and static: netweather never fetches it at runtime.
+
+dates:
+  - date: 2026-12-25
+  - date: 2026-12-26
+    regions: [GB, US]
+  - date: 2027-01-01
