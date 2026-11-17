@@ -1,0 +1,90 @@
+# The fake internet (QUALITY.md §5.3).
+#
+# Every host here is served by one local HTTPS listener on 127.0.0.1 with a
+# test CA, plus one UDP DNS responder that points every name at it. The harness
+# in internal/fakeinternet reads this file; the tests run the real HTTP, TLS,
+# DNS, and TCP instruments against it, so the classifier is exercised by real
+# responses rather than by hand-built Result values.
+#
+# `tls`: valid (default), expired, mismatch, or untrusted.
+# `a`: the A records the fake resolver answers; defaults to 127.0.0.1.
+# `aaaa_only: true` answers no A record at all, which is NODATA.
+# `delay`: a Go duration the handler waits before answering.
+# `http`: per-path responses; the first entry is the default for any path.
+
+- host: chase.test
+  tls: valid
+  http:
+    - status: 403
+      headers:
+        cf-mitigated: challenge
+      body: "<html><title>Just a moment...</title></html>"
+
+- host: akamai.test
+  tls: valid
+  http:
+    - status: 403
+      body: "Access Denied<br>Reference #18.abc123"
+
+- host: failing.test
+  tls: valid
+  http:
+    - status: 503
+      body: "origin unavailable"
+
+- host: ok.test
+  tls: valid
+  http:
+    - status: 200
+      headers:
+        content-type: text/plain
+      body: "ok"
+
+- host: semantic.test
+  tls: valid
+  http:
+    - status: 200
+      headers:
+        content-type: text/html
+      body: "<html><body><h1>service status</h1><p>all systems operational</p></body></html>"
+
+- host: slow.test
+  tls: valid
+  delay: 600ms
+  http:
+    - status: 200
+      body: "late"
+
+- host: expired.test
+  tls: expired
+  http:
+    - status: 200
+      body: "never reached"
+
+- host: mismatch.test
+  tls: mismatch
+  http:
+    - status: 200
+      body: "never reached"
+
+- host: untrusted.test
+  tls: untrusted
+  http:
+    - status: 200
+      body: "never reached"
+
+- host: ipv6only.test
+  tls: valid
+  aaaa_only: true
+  http:
+    - status: 200
+      body: "v6 only"
+
+- host: loop.test
+  tls: valid
+  http:
+    - status: 302
+      location: /loop
+    - path: /loop
+      status: 302
+      location: /loop

@@ -294,7 +294,9 @@ This catches the bugs unit tests cannot: config → scheduler → probe → clas
 
 **Implemented now:** `internal/e2e` wires the real store, agent, classifier, board source, and HTTP API together with a scripted runner at the probe seam. It asserts that a scripted Cloudflare challenge reaches the board as `BLOCKED`, a 503 as `DOWN`, a 200 as `UP_REACHABILITY`, that coverage counts `DOWN` but treats `BLOCKED` as a blind spot, and that `/targets/{id}` and `/targets/{id}/probes` agree with the tile. It runs in `devtool verify` and in CI.
 
-Still specified: the full `testdata/internet` harness (per-host YAML, a local CA, a UDP DNS responder, a SOCKS5 forwarder, a controllable clock and egress IP). That harness would exercise the real dialer and TLS stack; the current stub deliberately stops at the runner seam, and the docs should not claim more than that.
+**Implemented now, the fake internet:** `internal/fakeinternet` with `testdata/internet/scenarios.yaml` stands up a local CA, one HTTPS listener that selects a certificate by SNI and a scenario by `Host`, a UDP DNS responder that answers from the same file (NXDOMAIN, NODATA, and A records all real RCODEs), a SOCKS5 CONNECT forwarder, and controllable clock and egress-IP endpoints. `internal/fakeinternet` tests run the **real** `probe` instruments over the real `crypto/tls` stack and classify the results: a challenge page and a plain 403 are `BLOCKED`, a 503 is `DOWN`, a 200 is `UP_REACHABILITY`, a semantic marker is `UP`, expired/mismatched/untrusted leaves are `DOWN` with the exact class, a delayed host is `http_timeout`, NODATA and NXDOMAIN are their own DNS classes, and the Tor-style SOCKS hop carries TCP and HTTPS traffic. The clock check and the egress-identity check are driven from the fake endpoints rather than from injected values.
+
+Still specified: driving the **compiled binary** through the fake internet via its HTTP API. The harness already exercises every seam below the binary — dialer, TLS roots, DNS wire, SOCKS, clock, egress — but not the process boundary.
 
 ### 5.4 E2E — real endpoints, as small as possible
 
