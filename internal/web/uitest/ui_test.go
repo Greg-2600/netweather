@@ -360,6 +360,32 @@ func TestTargetDetailNavigation(t *testing.T) {
 	}
 }
 
+func TestDiagnosticsLinkAndPage(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.login(t)
+
+	expect := playwright.NewPlaywrightAssertions(5000)
+
+	if err := h.page.Locator(`[data-testid="diagnostics-link"] a`).Click(); err != nil {
+		t.Fatalf("the footer link did not click: %v", err)
+	}
+	if err := h.page.WaitForURL(h.baseURL + "/diagnostics"); err != nil {
+		t.Fatalf("the link did not reach /diagnostics: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="diagnostics-stats"]`)).ToBeVisible(); err != nil {
+		t.Fatalf("the setup table did not render: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator("h1")).ToHaveText("Diagnostics"); err != nil {
+		t.Fatalf("heading = %v", err)
+	}
+	// The harness wires an empty ring, so the page must state that instead of
+	// rendering an empty records table.
+	if err := expect.Locator(h.page.Locator(`[data-testid="no-diagnostics-records"]`)).ToBeVisible(); err != nil {
+		t.Fatalf("an empty ring was not stated: %v", err)
+	}
+}
+
 func TestMobileViewportDoesNotOverflow(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
