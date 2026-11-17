@@ -951,7 +951,9 @@ Every state carries a **shape or glyph** as well as colour: ring style (solid/da
 
 ### 10.8 Live updates
 
-SSE stream of state deltas only - not full page. The UI consumes it at `GET /events` with the session cookie; API clients use `/api/v1/events` with a bearer token or the same cookie (`API.md` §7.2).
+SSE stream of one state snapshot per connection followed by deltas - not repeated full pages. The UI consumes it at `GET /events` with the session cookie; API clients use `/api/v1/events` with a bearer token (`API.md` §7.2). The API does not accept the UI's session cookie: the two surfaces share the token but not the session store.
+
+The snapshot exists because the page render and the stream are not atomic: a change in that gap would otherwise sit inside the baseline and never be sent. It is bounded by connections, not by changes, so a single delta still cannot amplify into a whole grid. The API stream's matching mechanism is `Last-Event-ID` replay (`API.md` §6.17).
 
 Reconnect is automatic: the server sends `retry: 3000`, and the badge distinguishes `live` from `retrying`. There is no separate polling fallback - a second code path for a rare case is more likely to break than to help, and a page reload always recovers. If `EventSource` is unavailable the badge says so instead of pretending to be live.
 
