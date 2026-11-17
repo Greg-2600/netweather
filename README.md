@@ -127,6 +127,10 @@ Container networking is not an afterthought here: Docker's bridge defaults, embe
 
 ---
 
+## Configuration
+
+Targets come from `NETWEATHER_CONFIG=/config/targets.yaml` (see [`config/targets.example.yaml`](config/targets.example.yaml)), or the ten shipped defaults when it is unset. `NETWEATHER_SEED=none` starts with an empty board. State lives in `NETWEATHER_DATA` (default `./data`). Config validation is strict: an unknown field, a blocked port, or an interval under 30s refuses to start.
+
 ## Safety posture
 
 This tool sends periodic requests to third-party sites. That is dual-use, so the limits are enforced in code rather than documented and hoped for:

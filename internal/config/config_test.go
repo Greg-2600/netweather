@@ -1,0 +1,256 @@
+package config_test
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Greg-2600/netweather/internal/config"
+)
+
+func write(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "targets.yaml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestLoadValidFile(t *testing.T) {
+	t.Parallel()
+
+	path := write(t, `version: 1
+targets:
+  - name: Chase
+    host: WWW.Chase.com
+    port: 443
+    probe: http
+    class: service
+    sector: financial/banking
+    tier: 2
+    expect:
+      status: [200]
+      body_contains: "chase"
+  - name: root server
+    host: 198.41.0.4
+    port: 53
+    probe: dns
+    class: network
+    tier: 3
+    interval_s: 120
+`)
+
+	f, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(f.Targets) != 2 {
+		t.Fatalf("targets = %d", len(f.Targets))
+	}
+
+	first := f.Targets[0]
+	if first.Host != "www.chase.com" {
+		t.Errorf("host not normalised: %q", first.Host)
+	}
+	if first.ID != "www-chase-com-http" {
+		t.Errorf("derived id = %q", first.ID)
+	}
+	if first.IntervalS != 300 {
+		t.Errorf("interval = %d, want the tier default 300", first.IntervalS)
+	}
+
+	exp, err := first.Expect.Classify()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exp.Status) != 1 || exp.Status[0] != 200 || exp.BodyContains != "chase" {
+		t.Fatalf("expectation = %+v", exp)
+	}
+
+	// Anchors may be IP literals.
+	if f.Targets[1].Host != "198.41.0.4" || f.Targets[1].IntervalS != 120 {
+		t.Fatalf("anchor = %+v", f.Targets[1])
+	}
+}
+
+func TestLoadRejects(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"wrong version", "version: 2\ntargets: []\n", "not supported"},
+		{"unknown field", "version: 1\ntargets:\n  - name: x\n    host: x.com\n    port: 443\n    probe: http\n    class: service\n    bogus: 1\n", "field bogus"},
+		{"bad yaml", "version: 1\ntargets: [\n", "parse"},
+		{"two documents", "version: 1\ntargets: []\n---\nversion: 1\n", "multiple YAML documents"},
+		{"missing name", "version: 1\ntargets:\n  - host: x.com\n    port: 443\n    probe: http\n    class: service\n", "name is required"},
+		{"ip service", "version: 1\ntargets:\n  - name: x\n    host: 1.1.1.1\n    port: 443\n    probe: http\n    class: service\n", "hostname"},
+		{"bad host", "version: 1\ntargets:\n  - name: x\n    host: http://x.com/path\n    port: 443\n    probe: http\n    class: service\n", "invalid host"},
+		{"port for probe", "version: 1\ntargets:\n  - name: x\n    host: x.com\n    port: 53\n    probe: http\n    class: service\n", "not valid for probe"},
+		{"blocked port", "version: 1\ntargets:\n  - name: x\n    host: x.com\n    port: 22\n    probe: tcp\n    class: service\n", "not valid for probe"},
+		{"unknown probe", "version: 1\ntargets:\n  - name: x\n    host: x.com\n    port: 443\n    probe: ftp\n    class: service\n", "not supported"},
+		{"unknown class", "version: 1\ntargets:\n  - name: x\n    host: x.com\n    port: 443\n    probe: http\n    class: ads\n", "class"},
+		{"bad tier", "version: 1\ntargets:\n  - name: x\n    host: x.com\n    port: 443\n    probe: http\n    class: service\n    tier: 9\n", "tier"},
+		{"short interval", "version: 1\ntargets:\n  - name: x\n    host: x.com\n    port: 443\n    probe: http\n    class: service\n    interval_s: 10\n", "floor"},
+		{"bad status", "version: 1\ntargets:\n  - name: x\n    host: x.com\n    port: 443\n    probe: http\n    class: service\n    expect:\n      status: [99]\n", "HTTP status"},
+		{"header value without name", "version: 1\ntargets:\n  - name: x\n    host: x.com\n    port: 443\n    probe: http\n    class: service\n    expect:\n      header_value: green\n", "header_name"},
+		{"bad regex", "version: 1\ntargets:\n  - name: x\n    host: x.com\n    port: 443\n    probe: http\n    class: service\n    expect:\n      body_regex: \"(\"\n", "body_regex"},
+		{"icmp with a port", "version: 1\ntargets:\n  - name: x\n    host: x.com\n    port: 443\n    probe: icmp\n    class: service\n", "port 0"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := config.Load(write(t, tc.body))
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error %q does not mention %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestDuplicatesAreRejected(t *testing.T) {
+	t.Parallel()
+
+	path := write(t, `version: 1
+targets:
+  - name: a
+    host: x.com
+    port: 443
+    probe: http
+    class: service
+  - name: b
+    host: X.com
+    port: 443
+    probe: http
+    class: service
+`)
+	if _, err := config.Load(path); err == nil || !strings.Contains(err.Error(), "duplicates") {
+		t.Fatalf("error = %v, want a duplicate rejection", err)
+	}
+}
+
+func TestIDCollisionIsRejected(t *testing.T) {
+	t.Parallel()
+
+	path := write(t, `version: 1
+targets:
+  - id: same
+    name: a
+    host: a.com
+    port: 443
+    probe: http
+    class: service
+  - id: same
+    name: b
+    host: b.com
+    port: 443
+    probe: http
+    class: service
+`)
+	if _, err := config.Load(path); err == nil || !strings.Contains(err.Error(), "already used") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestTargetCap(t *testing.T) {
+	t.Parallel()
+
+	var b strings.Builder
+	b.WriteString("version: 1\ntargets:\n")
+	for i := 0; i <= config.MaxTargets; i++ {
+		fmt.Fprintf(&b, "  - name: t%d\n    host: h%d.example\n    port: 443\n    probe: http\n    class: service\n", i, i)
+	}
+
+	_, err := config.Load(write(t, b.String()))
+	if err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("error = %v, want the cap", err)
+	}
+}
+
+func TestEmptyTargetListIsValid(t *testing.T) {
+	t.Parallel()
+
+	f, err := config.Load(write(t, "version: 1\ntargets: []\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(f.Targets) != 0 {
+		t.Fatalf("targets = %d", len(f.Targets))
+	}
+}
+
+func TestFileSizeCap(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "big.yaml")
+	big := strings.Repeat("# padding\n", config.MaxFileBytes/8)
+	if err := os.WriteFile(path, []byte("version: 1\ntargets: []\n"+big), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := config.Load(path); err == nil || !strings.Contains(err.Error(), "limit") {
+		t.Fatalf("error = %v, want the size limit", err)
+	}
+}
+
+func TestMissingFile(t *testing.T) {
+	t.Parallel()
+
+	if _, err := config.Load(filepath.Join(t.TempDir(), "absent.yaml")); err == nil {
+		t.Fatal("missing file should be an error")
+	}
+}
+
+func TestIntervalFloorAndDefault(t *testing.T) {
+	t.Parallel()
+
+	f, err := config.Load(write(t, `version: 1
+targets:
+  - name: a
+    host: a.com
+    port: 443
+    probe: http
+    class: service
+    tier: 0
+  - name: b
+    host: b.com
+    port: 443
+    probe: http
+    class: service
+    tier: 2
+    interval_s: 600
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := f.Targets[0].Interval(); got != 30*time.Second {
+		t.Fatalf("tier 0 interval = %v", got)
+	}
+	if got := f.Targets[1].Interval(); got != 10*time.Minute {
+		t.Fatalf("explicit interval = %v", got)
+	}
+}
+
+func TestClassifyCompilesRegex(t *testing.T) {
+	t.Parallel()
+
+	exp, err := (config.Expect{BodyRegex: `v\d+`}).Classify()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exp.BodyRegex == nil || !exp.BodyRegex.MatchString("v42") {
+		t.Fatal("regex was not compiled")
+	}
+}

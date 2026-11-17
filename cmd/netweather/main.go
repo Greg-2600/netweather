@@ -13,12 +13,14 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/agent"
 	"github.com/Greg-2600/netweather/internal/api"
 	"github.com/Greg-2600/netweather/internal/board"
+	"github.com/Greg-2600/netweather/internal/config"
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/netx"
 	"github.com/Greg-2600/netweather/internal/probe"
@@ -127,7 +129,7 @@ func serve(lg *logging.Logger) error {
 		return err
 	}
 
-	targets, err := seedTargets(ctx, st)
+	targets, err := loadTargets(ctx, st)
 	if err != nil {
 		return err
 	}
@@ -176,7 +178,7 @@ func serve(lg *logging.Logger) error {
 		ErrorLog:       slog.NewLogLogger(lg.Handler(), slog.LevelWarn),
 	}
 
-	go probeLoop(ctx, lg, agent.New(targets, probe.NewHTTP(netx.New()), st), changes)
+	go probeLoop(ctx, lg, newAgent(targets, st, lg), changes)
 
 	go func() {
 		<-ctx.Done()
@@ -201,6 +203,67 @@ func serve(lg *logging.Logger) error {
 
 	lg.Info("stopped", "event", "shutdown")
 	return nil
+}
+
+// loadTargets prefers NETWEATHER_CONFIG, then the shipped seed list. Only the
+// HTTP instrument exists so far; a config that asks for another probe fails
+// loudly instead of silently dropping targets.
+func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
+	path := os.Getenv("NETWEATHER_CONFIG")
+	if path == "" {
+		return seedTargets(ctx, st)
+	}
+
+	f, err := config.Load(path)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]agent.Target, 0, len(f.Targets))
+	for _, t := range f.Targets {
+		if t.Probe != "http" {
+			return nil, fmt.Errorf("target %s: probe %q is not implemented yet (http only)", t.Host, t.Probe)
+		}
+		expect, err := t.Expect.Classify()
+		if err != nil {
+			return nil, fmt.Errorf("target %s: %w", t.Host, err)
+		}
+		if err := st.UpsertTarget(ctx, store.Target{
+			ID:        t.ID,
+			Host:      t.Host,
+			Port:      t.Port,
+			Probe:     t.Probe,
+			Name:      t.Name,
+			Class:     t.Class,
+			Sector:    t.Sector,
+			Country:   t.Country,
+			Tier:      t.Tier,
+			IntervalS: t.IntervalS,
+		}); err != nil {
+			return nil, err
+		}
+
+		out = append(out, agent.Target{
+			ID:         t.ID,
+			Name:       t.Name,
+			Host:       t.Host,
+			URL:        targetURL(t.Host, t.Port),
+			Vantage:    "local",
+			Tier:       schedule.Tier(t.Tier),
+			Interval:   t.Interval(),
+			Expect:     expect,
+			ICMPAnchor: t.ICMPAnchor,
+		})
+	}
+	return out, nil
+}
+
+func targetURL(host string, port int) string {
+	scheme := "http"
+	if port == 443 {
+		scheme = "https"
+	}
+	return scheme + "://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/"
 }
 
 // seedTargets reconciles the shipped list into the store and returns the agent's
@@ -240,6 +303,12 @@ func seedTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 		})
 	}
 	return out, nil
+}
+
+func newAgent(targets []agent.Target, st *store.Store, lg *logging.Logger) *agent.Agent {
+	ag := agent.New(targets, probe.NewHTTP(netx.New()), st)
+	ag.Logger = lg.Logger
+	return ag
 }
 
 func probeLoop(ctx context.Context, lg *logging.Logger, ag *agent.Agent, changes *board.Broadcast) {

@@ -1,9 +1,12 @@
 package agent_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -291,5 +294,40 @@ func TestClassifierExpectationsAreCarried(t *testing.T) {
 	}
 	if got := sink.batch()[0].State; got != state.Degraded {
 		t.Fatalf("state = %s, want degraded", got)
+	}
+}
+
+func TestStepLogsTheDecisionRecord(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	p := newProber()
+	p.set("https://chase.com/", probe.Result{Status: http.StatusOK, Latency: 7 * time.Millisecond})
+
+	var out bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&out, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	a := agent.New([]agent.Target{target("t1", "chase.com")}, p, &fakeSink{})
+	a.Now = at(now)
+	a.Rand = zeroRand
+	a.Logger = logger
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	line := out.String()
+	for _, want := range []string{
+		"msg=probe",
+		"target=chase.com",
+		"vantage=local",
+		"state=up_reachability",
+		"stage=http",
+		"confidence=low",
+		"reason=",
+	} {
+		if !strings.Contains(line, want) {
+			t.Errorf("log line missing %q:\n%s", want, line)
+		}
 	}
 }

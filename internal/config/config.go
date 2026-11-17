@@ -1,0 +1,272 @@
+// Package config loads and validates the target file. Validation is strict on
+// purpose: a target list is untrusted input that decides what the process
+// connects to, so a typo becomes a startup error rather than a probe.
+package config
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/Greg-2600/netweather/internal/classify"
+	"github.com/Greg-2600/netweather/internal/netx"
+	"github.com/Greg-2600/netweather/internal/schedule"
+	"gopkg.in/yaml.v3"
+)
+
+const (
+	// CurrentVersion is the only accepted schema version.
+	CurrentVersion = 1
+	// MaxTargets bounds the list (DESIGN.md §14).
+	MaxTargets = 2000
+	// MaxFileBytes bounds a config file before it is parsed.
+	MaxFileBytes = 1 << 20
+)
+
+// File is the on-disk schema.
+type File struct {
+	Version int      `yaml:"version"`
+	Targets []Target `yaml:"targets"`
+}
+
+// Target is one configured probe.
+type Target struct {
+	ID         string `yaml:"id"`
+	Name       string `yaml:"name"`
+	Host       string `yaml:"host"`
+	Port       int    `yaml:"port"`
+	Probe      string `yaml:"probe"`
+	Class      string `yaml:"class"`
+	Sector     string `yaml:"sector"`
+	Country    string `yaml:"country"`
+	Tier       int    `yaml:"tier"`
+	IntervalS  int    `yaml:"interval_s"`
+	ICMPAnchor bool   `yaml:"icmp_anchor"`
+	Expect     Expect `yaml:"expect"`
+}
+
+// Expect is the semantic contract, mirroring classify.Expected.
+type Expect struct {
+	Status          []int  `yaml:"status"`
+	BodyContains    string `yaml:"body_contains"`
+	BodyNotContains string `yaml:"body_not_contains"`
+	BodyRegex       string `yaml:"body_regex"`
+	TitleContains   string `yaml:"title_contains"`
+	HeaderPresent   string `yaml:"header_present"`
+	HeaderName      string `yaml:"header_name"`
+	HeaderValue     string `yaml:"header_value"`
+	MinBodyBytes    int    `yaml:"min_body_bytes"`
+	JSONPath        string `yaml:"json_path"`
+	JSONValue       string `yaml:"json_value"`
+}
+
+// Interval returns the effective interval, falling back to the tier default.
+func (t Target) Interval() time.Duration {
+	if t.IntervalS > 0 {
+		return time.Duration(t.IntervalS) * time.Second
+	}
+	return schedule.DefaultInterval(schedule.Tier(t.Tier))
+}
+
+// Classify converts the YAML expectation into the classifier's shape.
+func (e Expect) Classify() (classify.Expected, error) {
+	out := classify.Expected{
+		Status:          e.Status,
+		BodyContains:    e.BodyContains,
+		BodyNotContains: e.BodyNotContains,
+		TitleContains:   e.TitleContains,
+		HeaderPresent:   e.HeaderPresent,
+		HeaderName:      e.HeaderName,
+		HeaderValue:     e.HeaderValue,
+		MinBodyBytes:    e.MinBodyBytes,
+		JSONPath:        e.JSONPath,
+		JSONValue:       e.JSONValue,
+	}
+	if e.BodyRegex != "" {
+		re, err := regexp.Compile(e.BodyRegex)
+		if err != nil {
+			return out, fmt.Errorf("body_regex: %w", err)
+		}
+		out.BodyRegex = re
+	}
+	return out, nil
+}
+
+// Load reads, parses, and validates a target file.
+func Load(path string) (*File, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("config: %w", err)
+	}
+	if info.Size() > MaxFileBytes {
+		return nil, fmt.Errorf("config: %s is %d bytes; limit is %d", path, info.Size(), MaxFileBytes)
+	}
+
+	raw, err := os.ReadFile(path) // #nosec G304 -- operator-supplied config path.
+	if err != nil {
+		return nil, fmt.Errorf("config: %w", err)
+	}
+
+	dec := yaml.NewDecoder(bytes.NewReader(raw))
+	dec.KnownFields(true)
+
+	var f File
+	if err := dec.Decode(&f); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, errors.New("config: file is empty")
+		}
+		return nil, fmt.Errorf("config: parse: %w", err)
+	}
+	// Reject a second YAML document rather than silently ignoring it.
+	var extra any
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		return nil, errors.New("config: multiple YAML documents are not supported")
+	}
+
+	if err := f.Validate(); err != nil {
+		return nil, err
+	}
+	return &f, nil
+}
+
+var (
+	hostLabelRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+	idCleanRE   = regexp.MustCompile(`[^a-z0-9]+`)
+	validProbes = map[string]map[int]struct{}{
+		"http": {80: {}, 443: {}},
+		"tcp":  {80: {}, 443: {}},
+		"tls":  {443: {}},
+		"dns":  {53: {}},
+		"ntp":  {123: {}},
+		"icmp": {},
+	}
+	validClasses = map[string]struct{}{
+		"service": {}, "country": {}, "network": {}, "reference": {},
+	}
+)
+
+// Validate normalises and checks the whole file. It mutates derived fields
+// (ids, normalised hosts and intervals), which is why it takes a pointer.
+func (f *File) Validate() error {
+	if f.Version != CurrentVersion {
+		return fmt.Errorf("config: version %d is not supported (want %d)", f.Version, CurrentVersion)
+	}
+	if len(f.Targets) > MaxTargets {
+		return fmt.Errorf("config: %d targets exceeds the %d limit", len(f.Targets), MaxTargets)
+	}
+
+	seenKey := make(map[string]int, len(f.Targets))
+	seenID := make(map[string]int, len(f.Targets))
+
+	for i := range f.Targets {
+		t := &f.Targets[i]
+		if err := validateTarget(t); err != nil {
+			return fmt.Errorf("config: target %d (%s): %w", i, t.Host, err)
+		}
+
+		key := fmt.Sprintf("%s|%d|%s", t.Host, t.Port, t.Probe)
+		if other, dup := seenKey[key]; dup {
+			return fmt.Errorf("config: target %d duplicates target %d (%s)", i, other, key)
+		}
+		seenKey[key] = i
+
+		if other, dup := seenID[t.ID]; dup {
+			return fmt.Errorf("config: target %d uses id %q already used by target %d", i, t.ID, other)
+		}
+		seenID[t.ID] = i
+	}
+	return nil
+}
+
+func validateTarget(t *Target) error {
+	t.Host = strings.ToLower(strings.TrimSpace(t.Host))
+	t.Name = strings.TrimSpace(t.Name)
+
+	if t.Name == "" {
+		return errors.New("name is required")
+	}
+
+	ip := net.ParseIP(t.Host)
+	if ip != nil {
+		if t.Class != "country" && t.Class != "network" {
+			return errors.New("service targets must use a hostname, not an IP literal")
+		}
+	} else if !validHostname(t.Host) {
+		return fmt.Errorf("invalid host %q", t.Host)
+	}
+
+	if _, ok := validClasses[t.Class]; !ok {
+		return fmt.Errorf("class %q is not one of service, country, network, reference", t.Class)
+	}
+
+	allowedPorts, ok := validProbes[t.Probe]
+	if !ok {
+		return fmt.Errorf("probe %q is not supported", t.Probe)
+	}
+	if t.Probe == "icmp" {
+		if t.Port != 0 {
+			return errors.New("icmp targets must use port 0")
+		}
+	} else {
+		if _, ok := allowedPorts[t.Port]; !ok {
+			return fmt.Errorf("port %d is not valid for probe %q", t.Port, t.Probe)
+		}
+		if !netx.DefaultPolicy().PortAllowed(t.Port) {
+			return fmt.Errorf("port %d is not in the outbound allowlist", t.Port)
+		}
+	}
+
+	if t.Tier < 0 || t.Tier > 3 {
+		return fmt.Errorf("tier %d must be 0-3", t.Tier)
+	}
+
+	interval := t.Interval()
+	if interval < schedule.Floor {
+		return fmt.Errorf("interval_s %d is below the %s floor", t.IntervalS, schedule.Floor)
+	}
+	t.IntervalS = int(interval / time.Second)
+
+	for _, status := range t.Expect.Status {
+		if status < 100 || status > 599 {
+			return fmt.Errorf("expect.status %d is not a valid HTTP status", status)
+		}
+	}
+	if t.Expect.HeaderValue != "" && t.Expect.HeaderName == "" {
+		return errors.New("expect.header_value requires expect.header_name")
+	}
+	if t.Expect.BodyRegex != "" {
+		if _, err := regexp.Compile(t.Expect.BodyRegex); err != nil {
+			return fmt.Errorf("expect.body_regex: %w", err)
+		}
+	}
+
+	if t.ID == "" {
+		t.ID = deriveID(t.Host, t.Probe)
+	}
+	if t.ID == "" {
+		return errors.New("could not derive an id")
+	}
+	return nil
+}
+
+func validHostname(host string) bool {
+	if len(host) == 0 || len(host) > 253 || !strings.Contains(host, ".") {
+		return false
+	}
+	for _, label := range strings.Split(host, ".") {
+		if !hostLabelRE.MatchString(label) {
+			return false
+		}
+	}
+	return true
+}
+
+func deriveID(host, probe string) string {
+	return strings.Trim(idCleanRE.ReplaceAllString(strings.ToLower(host), "-"), "-") + "-" + probe
+}

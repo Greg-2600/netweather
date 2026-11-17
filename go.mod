@@ -5,6 +5,7 @@ go 1.27.4
 require (
 	github.com/mxschmitt/playwright-go v0.6401.0
 	golang.org/x/net v0.62.0
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.62.0
 )
 
@@ -224,7 +225,6 @@ require (
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	honnef.co/go/tools v0.8.2 // indirect
 	modernc.org/libc v1.80.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

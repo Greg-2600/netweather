@@ -9,6 +9,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"strings"
 	"time"
@@ -50,6 +51,7 @@ type Agent struct {
 	Limiter *schedule.Limiter
 	Now     func() time.Time
 	Rand    func() float64
+	Logger  *slog.Logger
 
 	next   map[string]time.Time
 	primed bool
@@ -95,7 +97,9 @@ func (a *Agent) Step(ctx context.Context) (int, error) {
 		res := a.Prober.Do(ctx, t.URL)
 		release()
 
-		batch = append(batch, a.toProbe(t, res, now))
+		p := a.toProbe(t, res, now)
+		a.logProbe(t, p)
+		batch = append(batch, p)
 		a.next[t.ID] = now.Add(schedule.Next(t.Interval, schedule.DefaultJitter(t.Tier), a.Rand))
 		ran++
 	}
@@ -117,6 +121,32 @@ func (a *Agent) now() time.Time {
 		return time.Now()
 	}
 	return a.Now()
+}
+
+func (a *Agent) logger() *slog.Logger {
+	if a.Logger != nil {
+		return a.Logger
+	}
+	return slog.Default()
+}
+
+// logProbe emits the decision record from LOGGING.md §3 at DEBUG. One line per
+// probe is the right volume for an opt-in level; the state change itself is
+// logged by the store/incident layer at INFO.
+func (a *Agent) logProbe(t Target, p store.Probe) {
+	a.logger().Debug("probe",
+		"event", "probe",
+		"component", "agent",
+		"target", t.Host,
+		"vantage", t.Vantage,
+		"state", string(p.State),
+		"stage", p.Stage,
+		"error_class", p.ErrorClass,
+		"http_status", p.HTTPStatus,
+		"latency_ms", p.LatencyMS,
+		"confidence", p.Confidence,
+		"reason", p.Reason,
+	)
 }
 
 func (a *Agent) prime(now time.Time) {

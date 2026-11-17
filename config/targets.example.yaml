@@ -1,0 +1,54 @@
+# netweather target configuration
+#
+# Point NETWEATHER_CONFIG at this file (or your own copy) to replace the shipped
+# seed list. Validation is strict: an unknown field, a bad port, or a 10s
+# interval is a startup error, not a probe.
+#
+# Outbound ports: 80, 443, 53, 123, 853. Service targets must be hostnames;
+# country and network anchors may be IP literals. The 30s interval floor is
+# enforced here and in the scheduler.
+
+version: 1
+
+targets:
+  - name: Example
+    host: example.com
+    port: 443
+    probe: http
+    class: reference
+    tier: 0
+    # interval_s is optional; omitting it uses the tier default (30s for tier 0).
+    expect:
+      status: [200]
+
+  - name: Cloudflare
+    host: www.cloudflare.com
+    port: 443
+    probe: http
+    class: service
+    sector: cloud
+    country: US
+    tier: 1
+    interval_s: 120
+    expect:
+      status: [200]
+      body_contains: "cloudflare"
+
+  - name: Wikipedia
+    host: www.wikipedia.org
+    port: 443
+    probe: http
+    class: service
+    sector: reference
+    tier: 2
+    expect:
+      status: [200]
+      title_contains: "Wikipedia"
+
+  # An anchor may use an IP literal; a service target may not.
+  # - name: Root server A
+  #   host: 198.41.0.4
+  #   port: 53
+  #   probe: dns
+  #   class: network
+  #   tier: 3
