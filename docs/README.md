@@ -11,6 +11,7 @@ Project name: **netweather** (decided — see `DESIGN.md` §16).
 | [`QUALITY.md`](QUALITY.md) | ✅ | Linters, security scanning, the six test layers, fuzz targets, the fake internet, coverage gates, CI |
 | [`SCHEMA.md`](SCHEMA.md) | ✅ | SQLite tables, pragmas and pools, incremental rollups, retention jobs, query shapes, backup and export, sizing |
 | [`LOGGING.md`](LOGGING.md) | ✅ | Levels and volume, the decision-record field schema, redaction, sinks, backpressure, the in-memory ring, debug bundle |
+| [`API.md`](API.md) | ✅ | `/api/v1` contract, envelope and error codes, auth, pagination, SSE, implemented vs specified endpoints, CLI contract |
 | [`THREAT_MODEL.md`](THREAT_MODEL.md) | ✅ | Assets, adversaries, trust boundaries, SSRF and exposure threats, supply chain, invariants, residual risk, operator runbook |
 | [`ACCEPTABLE_USE.md`](ACCEPTABLE_USE.md) | ✅ | Wire-level behaviour, hard limits, volume math, target selection, prohibited uses, abuse handling, Tor policy, contribution rules |
 
@@ -23,7 +24,7 @@ Project name: **netweather** (decided — see `DESIGN.md` §16).
 5. `SCHEMA.md` — if you are touching storage, rollups, or retention
 6. `THREAT_MODEL.md` and `ACCEPTABLE_USE.md` — before you expose it or point it at anyone
 7. `NETWORKING.md` and `IMAGE.md` — if you are going to actually run it
-8. `LOGGING.md` — when a target flips and you need to know why
+8. `LOGGING.md` and `API.md` — if a target flips, or you are integrating
 9. `QUALITY.md` — if you are going to change it
 
 ## Core position

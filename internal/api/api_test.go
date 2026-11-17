@@ -1,0 +1,343 @@
+package api_test
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Greg-2600/netweather/internal/api"
+	"github.com/Greg-2600/netweather/internal/logging"
+)
+
+const testToken = "test-token-0123456789"
+
+func newHandler(t *testing.T, token string, ring *logging.Ring) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: token},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Ring:      ring,
+			Version:   "test",
+			Commit:    "deadbeef",
+			StartedAt: time.Now().Add(-90 * time.Second),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func do(h http.Handler, method, path, token string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, nil)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+type errorEnvelope struct {
+	Error struct {
+		Code      string `json:"code"`
+		Message   string `json:"message"`
+		RequestID string `json:"request_id"`
+	} `json:"error"`
+}
+
+type dataEnvelope struct {
+	Data json.RawMessage `json:"data"`
+	Meta struct {
+		RequestID string `json:"request_id"`
+		Count     int    `json:"count"`
+		Limit     int    `json:"limit"`
+	} `json:"meta"`
+}
+
+func TestHealthzNeedsNoAuthAndLeaksNothing(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/healthz", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	var got map[string]any
+	if err := json.Unmarshal([]byte(body), &got); err != nil {
+		t.Fatalf("healthz is not JSON: %v", err)
+	}
+	if got["status"] != "ok" {
+		t.Fatalf("status field = %v", got["status"])
+	}
+	for _, forbidden := range []string{"target", "vantage", "capabilities", "asn"} {
+		if strings.Contains(strings.ToLower(body), forbidden) {
+			t.Errorf("healthz discloses %q", forbidden)
+		}
+	}
+}
+
+func TestMetaRequiresBearer(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/api/v1/meta", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+	if got := rec.Header().Get("WWW-Authenticate"); !strings.Contains(got, "Bearer") {
+		t.Errorf("WWW-Authenticate = %q", got)
+	}
+
+	var e errorEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &e); err != nil {
+		t.Fatalf("error body is not JSON: %v", err)
+	}
+	if e.Error.Code != api.CodeUnauthorized {
+		t.Fatalf("code = %q, want %q", e.Error.Code, api.CodeUnauthorized)
+	}
+}
+
+func TestMetaWithToken(t *testing.T) {
+	t.Parallel()
+
+	ring := logging.NewRing(50, 0)
+	rec := do(newHandler(t, testToken, ring), http.MethodGet, "/api/v1/meta", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var meta struct {
+		API          string   `json:"api"`
+		Auth         string   `json:"auth"`
+		Capabilities []string `json:"capabilities"`
+		Ring         struct {
+			Capacity int `json:"capacity"`
+		} `json:"ring"`
+	}
+	if err := json.Unmarshal(env.Data, &meta); err != nil {
+		t.Fatal(err)
+	}
+	if meta.API != "v1" || meta.Auth != "bearer" {
+		t.Fatalf("meta = %+v", meta)
+	}
+	if meta.Ring.Capacity != 50 {
+		t.Fatalf("ring capacity = %d", meta.Ring.Capacity)
+	}
+	found := false
+	for _, c := range meta.Capabilities {
+		if c == "logs" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("logs missing from capabilities: %v", meta.Capabilities)
+	}
+	if env.Meta.RequestID == "" {
+		t.Error("request_id missing from envelope")
+	}
+}
+
+func TestWrongTokenIsRejected(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/api/v1/meta", "not-the-token-000000")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+func TestAuthNoneOnLoopback(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, "", nil), http.MethodGet, "/api/v1/meta", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 on a loopback-only, tokenless instance", rec.Code)
+	}
+
+	var env dataEnvelope
+	_ = json.Unmarshal(rec.Body.Bytes(), &env)
+	var meta struct {
+		Auth string `json:"auth"`
+	}
+	_ = json.Unmarshal(env.Data, &meta)
+	if meta.Auth != "none" {
+		t.Fatalf("auth = %q, want none", meta.Auth)
+	}
+}
+
+func seedRing(t *testing.T) *logging.Ring {
+	t.Helper()
+
+	r := logging.NewRing(100, 0)
+	add := func(level slog.Level, msg string, attrs ...slog.Attr) {
+		rec := slog.NewRecord(time.Now().UTC(), level, msg, 0)
+		rec.AddAttrs(attrs...)
+		if err := r.Handle(context.Background(), rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add(slog.LevelInfo, "state change",
+		slog.String("target", "chase.com"), slog.String("state_to", "DOWN"), slog.String("token", "leak-me"))
+	add(slog.LevelWarn, "feed stale", slog.String("feed", "radar"))
+	add(slog.LevelDebug, "probe", slog.String("target", "united.com"))
+	return r
+}
+
+func TestLogsFiltering(t *testing.T) {
+	t.Parallel()
+
+	h := newHandler(t, testToken, seedRing(t))
+
+	all := do(h, http.MethodGet, "/api/v1/logs", testToken)
+	if all.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", all.Code, all.Body)
+	}
+	var env dataEnvelope
+	if err := json.Unmarshal(all.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var records []struct {
+		Level   string            `json:"level"`
+		Message string            `json:"message"`
+		Attrs   map[string]string `json:"attrs"`
+	}
+	if err := json.Unmarshal(env.Data, &records); err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 3 {
+		t.Fatalf("got %d records, want 3", len(records))
+	}
+	if strings.Contains(all.Body.String(), "leak-me") {
+		t.Fatal("redaction failed: secret reached the API")
+	}
+
+	warnOnly := do(h, http.MethodGet, "/api/v1/logs?level=warn", testToken)
+	_ = json.Unmarshal(warnOnly.Body.Bytes(), &env)
+	_ = json.Unmarshal(env.Data, &records)
+	if len(records) != 1 || records[0].Message != "feed stale" {
+		t.Fatalf("level filter returned %#v", records)
+	}
+
+	byTarget := do(h, http.MethodGet, "/api/v1/logs?target=united", testToken)
+	_ = json.Unmarshal(byTarget.Body.Bytes(), &env)
+	_ = json.Unmarshal(env.Data, &records)
+	if len(records) != 1 || records[0].Attrs["target"] != "united.com" {
+		t.Fatalf("target filter returned %#v", records)
+	}
+
+	limited := do(h, http.MethodGet, "/api/v1/logs?limit=1", testToken)
+	_ = json.Unmarshal(limited.Body.Bytes(), &env)
+	_ = json.Unmarshal(env.Data, &records)
+	if len(records) != 1 || records[0].Message != "probe" {
+		t.Fatalf("limit should keep the newest record, got %#v", records)
+	}
+}
+
+func TestLogsRejectsBadParameters(t *testing.T) {
+	t.Parallel()
+
+	h := newHandler(t, testToken, nil)
+	for _, q := range []string{"limit=0", "limit=501", "limit=abc", "since=yesterday", "level=loud"} {
+		rec := do(h, http.MethodGet, "/api/v1/logs?"+q, testToken)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", q, rec.Code)
+			continue
+		}
+		var e errorEnvelope
+		_ = json.Unmarshal(rec.Body.Bytes(), &e)
+		if e.Error.Code != api.CodeInvalidArgument {
+			t.Errorf("%s: code = %q", q, e.Error.Code)
+		}
+	}
+}
+
+func TestUnknownPathIsJSON404(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/api/v1/nope", testToken)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	var e errorEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &e); err != nil {
+		t.Fatalf("404 body is not JSON: %v", err)
+	}
+	if e.Error.Code != api.CodeNotFound {
+		t.Fatalf("code = %q", e.Error.Code)
+	}
+}
+
+func TestWrongMethodIsJSON405(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodPost, "/api/v1/meta", testToken)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if got := rec.Header().Get("Allow"); !strings.Contains(got, "GET") {
+		t.Errorf("Allow = %q", got)
+	}
+	var e errorEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &e); err != nil {
+		t.Fatal(err)
+	}
+	if e.Error.Code != api.CodeMethodNotAllowed {
+		t.Fatalf("code = %q", e.Error.Code)
+	}
+}
+
+func TestRequestIDIsEchoed(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("X-Request-Id", "abc-123_XYZ")
+	rec := httptest.NewRecorder()
+	newHandler(t, testToken, nil).ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("X-Request-Id"); got != "abc-123_XYZ" {
+		t.Fatalf("X-Request-Id = %q", got)
+	}
+}
+
+func TestHostileRequestIDIsReplaced(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("X-Request-Id", "<script>alert(1)</script>")
+	rec := httptest.NewRecorder()
+	newHandler(t, testToken, nil).ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("X-Request-Id"); got == "<script>alert(1)</script>" || got == "" {
+		t.Fatalf("hostile request id was not replaced: %q", got)
+	}
+}
+
+func TestSecurityHeaders(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/api/v1/meta", testToken)
+	want := map[string]string{
+		"X-Content-Type-Options": "nosniff",
+		"X-Frame-Options":        "DENY",
+		"Referrer-Policy":        "no-referrer",
+		"Cache-Control":          "no-store",
+	}
+	for k, v := range want {
+		if got := rec.Header().Get(k); got != v {
+			t.Errorf("%s = %q, want %q", k, got, v)
+		}
+	}
+}

@@ -39,11 +39,27 @@ func TestRunUnknownCommandIsAnError(t *testing.T) {
 	}
 }
 
-func TestRunServeIsHonestUntilPhase0Lands(t *testing.T) {
-	t.Parallel()
+func TestRunServeRefusesPublicBindWithoutToken(t *testing.T) {
+	// Not parallel: it mutates the process environment.
+	t.Setenv("NETWEATHER_UI_LISTEN", "0.0.0.0:2600")
+	t.Setenv("NETWEATHER_UI_TOKEN", "")
+	t.Setenv("NETWEATHER_UI_TOKEN_FILE", "")
+	t.Setenv("NETWEATHER_UI_ALLOW_PUBLIC", "")
 
 	err := run([]string{"serve"}, io.Discard)
 	if err == nil {
-		t.Fatal("run(serve) = nil, but the server is not implemented; a silent success would be a lie")
+		t.Fatal("a public bind without a token must refuse to start")
+	}
+	if !strings.Contains(err.Error(), "without auth") {
+		t.Fatalf("error %q does not explain the refusal", err)
+	}
+}
+
+func TestRunServeRejectsBadListenAddress(t *testing.T) {
+	t.Setenv("NETWEATHER_UI_LISTEN", "not-an-address")
+	t.Setenv("NETWEATHER_UI_ALLOW_PUBLIC", "true")
+
+	if err := run([]string{"serve"}, io.Discard); err == nil {
+		t.Fatal("an unparseable listen address must fail before binding")
 	}
 }

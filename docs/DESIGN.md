@@ -785,7 +785,9 @@ Endpoints: prefer RIPE Atlas anchors (stable, distributed). Fallback: country an
 
 ## 10. UI
 
-Four screens plus a drawer. Server-rendered HTML + HTMX + SSE. No JS framework, no build step. Served on `:2600` — port and bind rationale in `NETWORKING.md` §7.1.
+Four screens plus a drawer. Server-rendered HTML + HTMX + SSE. No JS framework, no build step. Served on `:2600` - port and bind rationale in `NETWORKING.md` §7.1.
+
+The same state is exposed machine-readably under `/api/v1`; the contract, envelope, error codes, and stability tiers are in [`API.md`](API.md). The UI is a client of the store, not of its own API - but the two must never disagree about a state, so both read the same rows.
 
 ### 10.1 Overview
 

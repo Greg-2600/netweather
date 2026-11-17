@@ -3,11 +3,19 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
+	"net"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
+	"github.com/Greg-2600/netweather/internal/api"
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/startup"
 	"github.com/Greg-2600/netweather/internal/version"
@@ -70,10 +78,70 @@ func run(args []string, stdout io.Writer) error {
 			)
 		}
 
-		lg.Warn("serve is not implemented yet", "event", "not_implemented", "phase", 0)
-		return errors.New("serve is not implemented yet: this is phase 0 scaffolding (docs/DESIGN.md §15)")
+		return serve(lg)
 
 	default:
 		return fmt.Errorf("unknown command %q (try: serve, version, healthcheck)", command)
 	}
+}
+
+// serve binds the listener and blocks until a signal arrives. Configuration and
+// the exposure guardrail are validated before the socket is opened, so a
+// misconfigured bind fails loudly instead of serving anonymously.
+func serve(lg *logging.Logger) error {
+	cfg, err := api.FromEnv(os.Getenv)
+	if err != nil {
+		lg.Error("invalid ui configuration", "event", "config_invalid", "error", err)
+		return err
+	}
+
+	handler, err := api.New(cfg, api.Deps{
+		Logger:    lg.Logger,
+		Ring:      lg.Ring,
+		Version:   version.Version,
+		Commit:    version.Commit,
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		return err
+	}
+
+	ln, err := net.Listen("tcp", cfg.Listen)
+	if err != nil {
+		return fmt.Errorf("listen %s: %w", cfg.Listen, err)
+	}
+
+	srv := &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		// SSE will relax this per connection with http.ResponseController.
+		WriteTimeout:   30 * time.Second,
+		IdleTimeout:    60 * time.Second,
+		MaxHeaderBytes: 16 << 10,
+		ErrorLog:       slog.NewLogLogger(lg.Handler(), slog.LevelWarn),
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+	}()
+
+	lg.Info("listening",
+		"event", "startup",
+		"addr", cfg.Listen,
+		"auth", cfg.AuthMode(),
+	)
+
+	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("serve: %w", err)
+	}
+
+	lg.Info("stopped", "event", "shutdown")
+	return nil
 }

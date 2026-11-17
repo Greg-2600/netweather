@@ -207,6 +207,9 @@ func (r *Ring) Len() int {
 	return st.n
 }
 
+// Capacity reports the configured record limit.
+func (r *Ring) Capacity() int { return r.state.maxRecords }
+
 func recordContains(rec Record, needle string) bool {
 	if strings.Contains(strings.ToLower(rec.Message), needle) {
 		return true
