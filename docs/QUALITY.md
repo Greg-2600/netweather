@@ -496,7 +496,7 @@ Always `-race -covermode=atomic`. Coverage is uploaded per-PR and diffed, so a P
 | modules | `go mod verify` + `go mod tidy -diff` (no uncommitted tidy) | ✅ |
 | test | `devtool test` (`-race`, `-shuffle=on`, `-count=1`) | ✅ |
 | coverage | `devtool cover`: profile + the per-package floors in §7 (the same numbers `internal/devtool/main.go` enforces) | ✅ |
-| ui test (browser) | Playwright + chromium, `-tags=uitest` | ✅ (paths touching `internal/web`, `internal/board`, templates) |
+| ui test (browser) | Playwright + chromium, `-tags=uitest` | ✅ (every push and PR) |
 | fuzz (short) | `go test -run=^$ -fuzz=FuzzScrubStringIsIdempotent -fuzztime=20s` | ✅ |
 | mutation (advisory) | `devtool mutate`: gremlins on `internal/classify`, `mutation.json` uploaded | advisory; job-level `continue-on-error` |
 | vuln | `go tool govulncheck ./...` (pinned in `go.mod`) | ✅ |
@@ -507,7 +507,7 @@ Always `-race -covermode=atomic`. Coverage is uploaded per-PR and diffed, so a P
 | image scan | `grype` on the release image; `hadolint` on both Dockerfiles (`.hadolint.yaml` explains its two ignores) | ✅ |
 | sbom + sign | `syft`, `cosign` | ✅ |
 | integration | fake internet | ✅ |
-| container smoke | compose topology, 7 network tests | ✅ (paths that touch netguard/probe/Dockerfile) |
+| container smoke | compose topology, 7 network tests | ✅ (every push and PR) |
 | e2e real | 6 targets | ❌ scheduled + release only |
 | mutation | `gremlins` on `classify` | ❌ advisory |
 

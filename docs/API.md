@@ -202,7 +202,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
-    "schema_version": 22,
+    "schema_version": 23,
     "egress": {"used_bytes": 1048576, "limit_bytes": 2147483648, "exhausted": false},
     "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "annotations", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace", "corridors", "ihi", "target_control"],
     "ring": {"records": 128, "capacity": 2000}
