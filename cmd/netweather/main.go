@@ -828,6 +828,33 @@ func buildFeedPollers(st *store.Store, lg *logging.Logger) []*feeds.Poller {
 				Sink:   st,
 				Every:  10 * time.Minute,
 			})
+		case "statuspage":
+			raw := strings.TrimSpace(os.Getenv("NETWEATHER_STATUSPAGE_URLS"))
+			if raw == "" {
+				lg.Warn("statuspage feed requested without NETWEATHER_STATUSPAGE_URLS",
+					"event", "feed_not_configured", "component", "feeds", "feed", "statuspage")
+				continue
+			}
+			urls := splitList(raw)
+			out = append(out, &feeds.Poller{
+				Feed:   "statuspage",
+				Source: feeds.NewStatuspage(client, urls),
+				Sink:   st,
+				Every:  5 * time.Minute,
+			})
+		}
+	}
+	return out
+}
+
+// splitList trims and drops empty entries from a comma-separated operator
+// value. A trailing comma is a typo, not a target.
+func splitList(raw string) []string {
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if item := strings.TrimSpace(part); item != "" {
+			out = append(out, item)
 		}
 	}
 	return out

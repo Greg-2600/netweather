@@ -603,7 +603,7 @@ For browser `EventSource`, which cannot set an `Authorization` header, use the U
 
 ### 6.18 `GET /api/v1/feeds` — stable
 
-Auth: bearer. Feed health and recent external events. Feeds are opt-in (`NETWEATHER_FEEDS=ioda` or `ioda,radar`), because they are outbound calls to someone else's API. The Radar feed also needs `NETWEATHER_RADAR_TOKEN`; without it the feed is skipped with a startup warning rather than polling unauthenticated.
+Auth: bearer. Feed health and recent external events. Feeds are opt-in (`NETWEATHER_FEEDS=ioda`, `ioda,radar`, or `ioda,statuspage`), because they are outbound calls to someone else's API. The Radar feed also needs `NETWEATHER_RADAR_TOKEN`; the statuspage feed needs `NETWEATHER_STATUSPAGE_URLS` (comma-separated). A feed without its configuration is skipped with a startup warning rather than polling unauthenticated.
 
 | Parameter | Default | Notes |
 |---|---|---|

@@ -718,6 +718,8 @@ https://status.<company>.com/api/v2/summary.json
 
 Plus AWS (`status.aws.amazon.com/rss/all.rss`), GCP (`status.cloud.google.com/incidents.json`), Azure status feed.
 
+**Implemented:** `internal/feeds.Statuspage` polls any number of configured summary endpoints (`NETWEATHER_STATUSPAGE_URLS`, a base URL or a full `summary.json` URL) and stores one `statuspage` event per incident with its impact mapped to a severity, its start time, and its `resolved_at` when present. An empty incident list is a successful poll: "operational" is information, not absence. Update history is dropped from the stored payload because it is long and adds nothing to corroboration. Still specified: the AWS RSS, GCP incidents JSON, and Azure feed shapes.
+
 Used for **corroboration**, producing the most interesting sentence in the product:
 
 > **You:** unreachable · **Official:** operational → likely you, your region, or a bot-wall.
