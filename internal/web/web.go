@@ -161,6 +161,8 @@ type LogDiagnostics interface {
 	LogRecords(minLevel slog.Level, contains string, limit int) []logging.Record
 	Diagnostics() logging.Diagnostics
 	ActiveScopes() []logging.Scope
+	// Subscribe feeds the SSE log stream. A closed channel means no ring.
+	Subscribe() (<-chan logging.Record, func())
 }
 
 // IncidentAnnotator records the operator's ground truth for an incident.

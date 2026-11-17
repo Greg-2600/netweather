@@ -194,7 +194,7 @@ Because the release image has no shell, the ring is the only practical way to se
 | `/api/v1/logs?level=&target=&since=&limit=` | **implemented** | Reads the ring; bearer auth required; redacted by construction. Contract in `API.md` §6.3 |
 | Drawer → "Why?" tab | **implemented** | Last 50 ring lines that name the target, beside the stored `state_change.reason` rows |
 | Footer → "diagnostics" | **implemented** | The board footer links to `/diagnostics`, which shows ring size, drops, write errors, sink path, level, format, and the scopes still in force |
-| SSE `log` events | planned | Only for records at `WARN`+ by default |
+| SSE `log` events | **implemented** | Only for records at `WARN`+ by default; best-effort, so a slow reader drops lines before state |
 
 The ring is not a log shipper. It holds minutes, not days.
 

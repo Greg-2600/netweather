@@ -44,6 +44,10 @@ type ringState struct {
 	bytes      int
 	maxRecords int
 	maxBytes   int
+	// subs fans a record out to live readers (the SSE log stream). Sends are
+	// non-blocking: a slow browser must not stall a probe's log line.
+	subs    map[int]chan Record
+	nextSub int
 }
 
 // NewRing creates a ring bounded by both record count and approximate bytes.
@@ -60,6 +64,7 @@ func NewRing(maxRecords, maxKB int) *Ring {
 		buf:        make([]Record, 0, min(maxRecords, 256)),
 		maxRecords: maxRecords,
 		maxBytes:   maxBytes,
+		subs:       make(map[int]chan Record),
 	}}
 }
 
@@ -142,6 +147,51 @@ func (r *Ring) push(rec Record) {
 	st.buf[idx] = rec
 	st.n++
 	st.bytes += size
+
+	// A live reader gets the record after it is committed to the buffer, so a
+	// subscriber can never see a line the ring itself dropped. A full channel
+	// drops this reader's copy rather than blocking the producer.
+	for _, ch := range st.subs {
+		select {
+		case ch <- rec:
+		default:
+		}
+	}
+}
+
+// Subscribe returns a channel of newly pushed records and a cancel function.
+// The channel is small and lossy on purpose: the log stream is a debugging
+// aid, and a slow reader must never apply backpressure to a probe. Reading the
+// ring after subscribing is the caller's job; this only delivers what comes
+// next.
+func (r *Ring) Subscribe() (<-chan Record, func()) {
+	st := r.state
+	st.mu.Lock()
+	defer st.mu.Unlock()
+
+	id := st.nextSub
+	st.nextSub++
+	ch := make(chan Record, 64)
+	st.subs[id] = ch
+
+	cancel := func() {
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		if _, ok := st.subs[id]; !ok {
+			return
+		}
+		delete(st.subs, id)
+		close(ch)
+	}
+	return ch, cancel
+}
+
+// Subscribers reports how many live readers the ring is feeding.
+func (r *Ring) Subscribers() int {
+	st := r.state
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return len(st.subs)
 }
 
 func (st *ringState) grow() {

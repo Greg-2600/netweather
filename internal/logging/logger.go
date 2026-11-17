@@ -40,6 +40,9 @@ type Diagnostics struct {
 	Dropped      uint64
 	WriteErrors  uint64
 	Scopes       int
+	// Streams is how many live SSE readers the ring is feeding. A number that
+	// keeps climbing without a browser open is a leak.
+	Streams int
 }
 
 // Diagnostics reports the current logging setup and its backpressure counters.
@@ -57,6 +60,7 @@ func (l *Logger) Diagnostics() Diagnostics {
 	if l.Ring != nil {
 		d.RingRecords = l.Ring.Len()
 		d.RingCapacity = l.Ring.Capacity()
+		d.Streams = l.Ring.Subscribers()
 	}
 	if l.rot != nil {
 		d.File = l.rot.path
@@ -85,6 +89,17 @@ func (l *Logger) ActiveScopes() []Scope {
 		return nil
 	}
 	return l.Scopes.List()
+}
+
+// Subscribe feeds the SSE log stream. With no ring there is nothing to stream,
+// so the channel is closed immediately and the caller's read returns at once.
+func (l *Logger) Subscribe() (<-chan Record, func()) {
+	if l == nil || l.Ring == nil {
+		ch := make(chan Record)
+		close(ch)
+		return ch, func() {}
+	}
+	return l.Ring.Subscribe()
 }
 
 // New builds a logger for cfg writing to stdout. Format "auto" is text on a TTY

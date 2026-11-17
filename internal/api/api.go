@@ -1635,6 +1635,15 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	rc := http.NewResponseController(w)
 	_ = rc.SetWriteDeadline(time.Time{})
 
+	// Log lines are a separate best-effort stream from the state deltas: a
+	// slow reader drops lines rather than the state (LOGGING.md §9).
+	var logCh <-chan logging.Record
+	if s.deps.Ring != nil {
+		ch, stop := s.deps.Ring.Subscribe()
+		logCh = ch
+		defer stop()
+	}
+
 	// Decide the resume before writing headers. A client with a usable
 	// Last-Event-ID gets only what it missed; anything else gets a snapshot.
 	var (
@@ -1711,6 +1720,20 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			flusher.Flush()
+		case rec, ok := <-logCh:
+			if !ok {
+				logCh = nil
+				continue
+			}
+			// WARN and above by default: a stream of INFO lines would make the
+			// state stream unreadable, and the ring already holds them.
+			if rec.Level < slog.LevelWarn {
+				continue
+			}
+			if !writeSSE(w, "", "log", toSSELogRecord(rec)) {
+				return
+			}
+			flusher.Flush()
 		}
 	}
 }
@@ -1735,6 +1758,25 @@ func writeSSE(w io.Writer, id, event string, v any) bool {
 func writeLogEntry(w io.Writer, id string, entry logEntry) bool {
 	_, err := fmt.Fprintf(w, "id: %s\nevent: %s\ndata: %s\n\n", id, entry.event, entry.data)
 	return err == nil
+}
+
+// sseLogRecord is the wire shape for one log line on the event stream. It is
+// deliberately the same fields the logs endpoint returns, so a client does not
+// learn two vocabularies (LOGGING.md §9).
+type sseLogRecord struct {
+	TS      string            `json:"ts"`
+	Level   string            `json:"level"`
+	Message string            `json:"message"`
+	Attrs   map[string]string `json:"attrs,omitempty"`
+}
+
+func toSSELogRecord(rec logging.Record) sseLogRecord {
+	return sseLogRecord{
+		TS:      rec.Time.UTC().Format(time.RFC3339Nano),
+		Level:   rec.LevelName,
+		Message: rec.Message,
+		Attrs:   rec.Attrs,
+	}
 }
 
 // incidentEvent is the wire shape for an incident on the stream.

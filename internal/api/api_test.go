@@ -3651,3 +3651,66 @@ func TestCorridorsAPI(t *testing.T) {
 		t.Fatalf("unconfigured status = %d, want 503", rec.Code)
 	}
 }
+
+func TestEventsStreamsWarnLogLines(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(board.Target{
+		ID: "1", Name: "Chase", Host: "chase.com", State: board.StateUp,
+	})
+	ring := logging.NewRing(100, 0)
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Ring:      ring,
+			Source:    m,
+			Watcher:   m,
+			Vantage:   "local",
+			Version:   "test",
+			Commit:    "deadbeef",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	defer ts.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/api/v1/events", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+testToken)
+
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	stream := newEventStream(bufio.NewReader(resp.Body))
+	stream.readEvent(t, "snapshot", 5*time.Second)
+
+	// An INFO line is not a stream event: the ring holds it, the stream does
+	// not, because a stream of INFO would bury the state deltas.
+	_ = ring.Handle(context.Background(), slog.NewRecord(time.Now(), slog.LevelInfo, "quiet line", 0))
+	// A WARN line is, and it is the first log event the client sees, which is
+	// what proves the INFO line was filtered rather than merely late.
+	_ = ring.Handle(context.Background(), slog.NewRecord(time.Now(), slog.LevelWarn, "loud line", 0))
+
+	data := stream.readEvent(t, "log", 5*time.Second)
+	var rec struct {
+		Level   string `json:"level"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(data), &rec); err != nil {
+		t.Fatalf("log event: %v (%s)", err, data)
+	}
+	if rec.Level != "WARN" || rec.Message != "loud line" {
+		t.Fatalf("log event = %+v, want the WARN line", rec)
+	}
+}

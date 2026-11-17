@@ -630,6 +630,9 @@ data: {"id":"inc-9f2c","verdict":"INCIDENT","scope":"sector","scope_value":"airl
        "headline":"5 of 6 targets failing on sector=airline","confidence":"high",
        "opened_at":"2026-11-17T12:05:00Z"}
 
+event: log
+data: {"time":"12:05:03","level":"WARN","message":"self-check failed"}
+
 : heartbeat
 ```
 
@@ -640,6 +643,7 @@ data: {"id":"inc-9f2c","verdict":"INCIDENT","scope":"sector","scope_value":"airl
 - A client that cannot keep up with the live stream is disconnected rather than silently skipped; it reconnects and resumes from the ring, which still holds the events.
 - The initial `snapshot` is an addition to the original delta-only sketch; it removes the connect-then-fetch race without sending a full page twice.
 - `incident` events carry **open** incidents, re-sent whole when the incident log changes; a client upserts by `id`. A close is not pushed as a diff - refetch `/api/v1/incidents` to see closures. This is a stated limit, not an omission.
+- `log` events carry `WARN` and above from the in-memory ring, with `ts`, `level`, `message`, and `attrs` (LOGGING.md §9). They are best-effort: a slow client drops log lines before it drops state, and the ring still holds them for `/api/v1/logs`. An `INFO` line is never pushed, because a stream of them would bury the deltas.
 - The UI's `/events` stream emits the same `incident` event; the incident pages listen for it and reload, because a reload cannot show a stale attribution or close reason. The UI stream refetches on reconnect instead of resuming, which is why its `Last-Event-ID` is not offered.
 - `503` when no board source is configured, rather than a connection that can only heartbeat.
 

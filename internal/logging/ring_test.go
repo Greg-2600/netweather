@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Greg-2600/netweather/internal/logging"
 )
@@ -128,5 +129,57 @@ func TestRingConcurrentHandlers(t *testing.T) {
 
 	if got := r.Len(); got != 500 {
 		t.Fatalf("Len = %d, want 500", got)
+	}
+}
+
+func TestSubscribeDeliversNewRecordsAndUnsubscribes(t *testing.T) {
+	t.Parallel()
+
+	ring := logging.NewRing(10, 0)
+	ch, cancel := ring.Subscribe()
+	if got := ring.Subscribers(); got != 1 {
+		t.Fatalf("subscribers = %d, want 1", got)
+	}
+
+	_ = ring.Handle(context.Background(), slog.NewRecord(time.Unix(0, 0), slog.LevelWarn, "first", 0))
+
+	select {
+	case rec := <-ch:
+		if rec.Message != "first" || rec.LevelName != "WARN" {
+			t.Fatalf("record = %+v", rec)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no record delivered")
+	}
+
+	cancel()
+	if got := ring.Subscribers(); got != 0 {
+		t.Fatalf("subscribers after cancel = %d, want 0", got)
+	}
+	if _, ok := <-ch; ok {
+		t.Fatal("cancel left the channel open")
+	}
+
+	// A second cancel is a no-op rather than a close of a closed channel.
+	cancel()
+}
+
+func TestSubscribeDropsForASlowReader(t *testing.T) {
+	t.Parallel()
+
+	ring := logging.NewRing(10, 0)
+	ch, cancel := ring.Subscribe()
+	defer cancel()
+
+	// Fill the reader's buffer and then push far more: the producer must not
+	// block and the ring must keep every record it accepted.
+	for i := 0; i < 500; i++ {
+		_ = ring.Handle(context.Background(), slog.NewRecord(time.Unix(0, 0), slog.LevelInfo, "line", 0))
+	}
+	if got := ring.Len(); got != 10 {
+		t.Fatalf("ring length = %d, want the 10-record cap", got)
+	}
+	if got := len(ch); got != cap(ch) {
+		t.Fatalf("reader buffer = %d, want it full at %d", got, cap(ch))
 	}
 }

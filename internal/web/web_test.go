@@ -3427,11 +3427,19 @@ type fakeLogs struct {
 	records []logging.Record
 	diag    logging.Diagnostics
 	scopes  []logging.Scope
+	stream  chan logging.Record
 }
 
 func (f *fakeLogs) LogRecords(slog.Level, string, int) []logging.Record { return f.records }
 func (f *fakeLogs) Diagnostics() logging.Diagnostics                    { return f.diag }
 func (f *fakeLogs) ActiveScopes() []logging.Scope                       { return f.scopes }
+
+func (f *fakeLogs) Subscribe() (<-chan logging.Record, func()) {
+	if f.stream == nil {
+		f.stream = make(chan logging.Record, 8)
+	}
+	return f.stream, func() {}
+}
 
 func newServerWithLogs(t *testing.T, token string, m *board.Memory, logs web.LogDiagnostics) *httptest.Server {
 	t.Helper()

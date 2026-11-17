@@ -2055,6 +2055,7 @@ func (s *server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 			{"Dropped lines", fmt.Sprintf("%d", d.Dropped)},
 			{"Write errors", fmt.Sprintf("%d", d.WriteErrors)},
 			{"Active debug scopes", fmt.Sprintf("%d", d.Scopes)},
+			{"Log streams", fmt.Sprintf("%d", d.Streams)},
 		}
 
 		for _, scope := range s.deps.Logs.ActiveScopes() {
@@ -2376,6 +2377,14 @@ type stateEvent struct {
 	Since  string `json:"since,omitempty"`
 }
 
+// logEvent is one WARN-or-above line on the UI stream. The full ring stays in
+// the diagnostics page; this is the "something to notice right now" feed.
+type logEvent struct {
+	Time    string `json:"time"`
+	Level   string `json:"level"`
+	Message string `json:"message"`
+}
+
 // handleEvents streams state deltas only. The page renders the full board; the
 // stream never resends it, so a slow client cannot amplify one change into a
 // whole grid.
@@ -2421,6 +2430,15 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		incidentCh = incCh
 	}
 
+	// Log lines ride the same stream but are best-effort: a slow reader drops
+	// lines, never state (LOGGING.md §9).
+	var logCh <-chan logging.Record
+	if s.deps.Logs != nil {
+		ch, stop := s.deps.Logs.Subscribe()
+		defer stop()
+		logCh = ch
+	}
+
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream; charset=utf-8")
 	h.Set("Cache-Control", "no-cache")
@@ -2462,6 +2480,27 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if _, err := fmt.Fprintf(w, "event: incident\ndata: %s\n\n", data); err != nil {
+				return
+			}
+			flusher.Flush()
+		case rec, ok := <-logCh:
+			if !ok {
+				logCh = nil
+				continue
+			}
+			// WARN and above: an INFO stream would bury the state deltas.
+			if rec.Level < slog.LevelWarn {
+				continue
+			}
+			data, err := json.Marshal(logEvent{
+				Time:    rec.Time.UTC().Format("15:04:05"),
+				Level:   rec.LevelName,
+				Message: rec.Message,
+			})
+			if err != nil {
+				continue
+			}
+			if _, err := fmt.Fprintf(w, "event: log\ndata: %s\n\n", data); err != nil {
 				return
 			}
 			flusher.Flush()
