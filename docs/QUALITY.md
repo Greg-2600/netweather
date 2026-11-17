@@ -341,7 +341,15 @@ The stub E2E above runs in-process and therefore proves nothing about Docker. A 
 
 **Implemented now:** the CI `container` job builds the real image and asserts the container-level invariants: `/healthz` answers, the process runs as `65532:65532`, the rootfs is read-only, and there is no shell in the image. The same sequence was run locally against the release image. `netweather doctor` additionally reports what the container can and cannot do (raw ICMP/traceroute are warnings without `CAP_NET_RAW`).
 
-Still specified: the seven-test compose network suite above. It is a different harness from the image smoke test, and the docs should not conflate them.
+**Implemented now, the network plane:** `internal/e2e/compose_test.go`, behind `//go:build compose`, builds `netweather:compose-test`, creates both a bridge network with a 1280-byte MTU and an `--internal` network, and runs five scenarios. It needs a Docker daemon, so `go test ./...` never touches it; the CI `compose` job runs it with a 20-minute timeout.
+
+- **The image is the hardened release image.** The running container is `65532:65532`, its rootfs is read-only, and `docker exec … sh -c true` fails because there is no shell.
+- **A low MTU is reported, not hidden.** On the 1280-byte network the `mtu` self-check fails and names 1280, and the `port53` self-check passes on that same network with working egress.
+- **DNS probes the configured resolver and refuses private ones.** A DNS target pointed at `1.1.1.1:53` reaches `up_reachability` while `127.0.0.11` (Docker's embedded DNS), `172.17.0.1`, and `169.254.169.254` are `unmeasurable`: the instrument queries the configured server directly rather than falling back to the host resolver, and the SSRF policy refuses the private destinations instead of calling them `DOWN`.
+- **Tor is reachable by service name, not on loopback.** A stand-in TCP listener publishes nothing, answers at `tor.nw:9050` from the app's network after a readiness wait, and refuses `127.0.0.1:9050`.
+- **Port 53 blocked is unmeasurable, not down.** On the `--internal` network the `port53` self-check fails, and a DNS target in that container becomes `unmeasurable`. Because Docker Desktop does not forward host traffic into an internal network, this scenario is observed through an `alpine` container beside the app rather than a published port; that is a harness detail, not a product behaviour.
+
+Still specified: a probe whose payload is black-holed by a low MTU asserted as `UNKNOWN` (the suite asserts the MTU self-check, not a probe result), and a dedicated test that the DNS instrument never falls back to the host resolver when the configured resolver is unreachable (the private-address scenario is adjacent, not identical). It is a different harness from the image smoke test, and the docs should not conflate them.
 
 ### 5.6 Contract tests for external feeds
 

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Greg-2600/netweather/internal/netx"
 	"golang.org/x/net/dns/dnsmessage"
 )
 
@@ -305,6 +306,14 @@ func answerAddresses(msg dnsmessage.Message) []netip.Addr {
 func classifyExchangeError(err error) string {
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		return "dns_timeout"
+	}
+	// A resolver this monitor's own policy refuses never received a query, so
+	// the failure measures the vantage, not the name (THREAT_MODEL.md T16).
+	switch {
+	case errors.Is(err, netx.ErrBlockedPort):
+		return "policy_blocked_port"
+	case errors.Is(err, netx.ErrBlocked):
+		return "policy_blocked"
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
