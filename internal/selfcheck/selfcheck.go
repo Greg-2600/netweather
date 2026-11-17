@@ -154,6 +154,10 @@ func (r *Runner) now() time.Time {
 	return r.Now()
 }
 
+// DiskWarnFreeShare is the free-space floor from DESIGN.md §7.5: warn at 85%
+// used. Below it the check fails, because SQLite full means silent data loss.
+const DiskWarnFreeShare = 0.15
+
 // DiskCheck writes, syncs, and removes a file under dir. It proves the data
 // volume is writable, which is the failure that silently stops all history.
 func DiskCheck(dir string) Check {
@@ -179,7 +183,22 @@ func DiskCheck(dir string) Check {
 			if err := f.Sync(); err != nil {
 				return false, "", err.Error(), nil
 			}
-			return true, "64 KiB written and synced", "", nil
+
+			// A writable volume that is nearly full is still silent data loss,
+			// so the write test is not enough: measure the free share and warn
+			// at the documented 85% used (DESIGN.md §7.5). A platform that
+			// cannot measure it keeps the write result rather than failing.
+			share, err := DiskFreeShare(dir)
+			if err != nil {
+				return true, "64 KiB written and synced",
+					"free space unavailable: " + err.Error(), nil
+			}
+			if share < DiskWarnFreeShare {
+				return false, fmt.Sprintf("%.0f%% free", share*100),
+					fmt.Sprintf("free space is %.0f%%, below the %.0f%% free floor (warn at 85%% used)",
+						share*100, DiskWarnFreeShare*100), nil
+			}
+			return true, fmt.Sprintf("64 KiB written and synced; %.0f%% free", share*100), "", nil
 		},
 	}
 }

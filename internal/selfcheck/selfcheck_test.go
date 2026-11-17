@@ -160,8 +160,20 @@ func TestDiskCheckWritesAndCleansUp(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("disk check = (%v, %q, %q, %v)", ok, value, detail, err)
 	}
+	if !strings.Contains(value, "64 KiB written and synced") || !strings.Contains(value, "% free") {
+		t.Fatalf("value = %q, want the write and the free share", value)
+	}
 	if _, err := os.Stat(filepath.Join(dir, ".selfcheck")); !os.IsNotExist(err) {
 		t.Fatalf("temporary file was not removed: %v", err)
+	}
+
+	// The free-share measurement is what makes the warning mean something.
+	share, err := selfcheck.DiskFreeShare(dir)
+	if err != nil {
+		t.Fatalf("DiskFreeShare: %v", err)
+	}
+	if share <= 0 || share > 1 {
+		t.Fatalf("free share = %v, want (0,1]", share)
 	}
 }
 

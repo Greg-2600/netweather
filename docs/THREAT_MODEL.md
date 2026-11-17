@@ -210,7 +210,7 @@ Residual: a public host that later *becomes* a private address after the operato
 | T45 | Database readable by other users on the host | File created `0600`, directory `0700`; container runs as one UID; volume ownership documented | Enforced |
 | T46 | Operator annotations leak sensitive context | Free text, stored as written, never sent anywhere; the export command is explicit | Policy |
 | T47 | Downgrade silently drops columns | Refuse to start if `schema_version` is newer than the binary | Enforced |
-| T48 | Disk fill from a runaway writer | Retention jobs, per-table caps, `self_check` disk warning at 80% and a hard stop on probes at 95% | Enforced |
+| T48 | Disk fill from a runaway writer | Retention jobs, per-table caps, and the `self_check` disk warning at 85% used (15% free) with the measured share in the value. There is no probe hard stop: stopping the writer does not free the volume, retention does, and a store write failure is already logged. | Enforced (warning) |
 
 Residual: encryption at rest is the host's responsibility. The document says so instead of pretending a SQLite file is encrypted.
 
