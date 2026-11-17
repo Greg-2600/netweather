@@ -388,7 +388,7 @@ func serve(lg *logging.Logger) error {
 	if traceEnabled {
 		lg.Info("traceroute enabled", "event", "trace_enabled", "component", "startup")
 	}
-	traceBudget := tracebudget.New(10, time.Hour)
+	traceBudget := tracebudget.New(tracebudget.DefaultLimit, tracebudget.DefaultWindow)
 	tracer := probe.NewTrace()
 	traceResolver := netx.New()
 

@@ -13,6 +13,14 @@ import (
 	"time"
 )
 
+// DefaultLimit and DefaultWindow are the documented ceiling: ten runs per
+// hour, per instance. Both surfaces build from these so the API's 429 message
+// and the dashboard's note cannot describe different budgets.
+const (
+	DefaultLimit  = 10
+	DefaultWindow = time.Hour
+)
+
 // Governor is a fixed-window counter. A caller gets a retry hint when the
 // window is exhausted, because "try later" without a time is not an answer.
 type Governor struct {
@@ -41,6 +49,13 @@ func (g *Governor) SetClock(now func() time.Time) {
 	defer g.mu.Unlock()
 	g.now = now
 }
+
+// Limit reports the configured runs per window. A page that states the budget
+// reads it here rather than repeating a literal that can drift.
+func (g *Governor) Limit() int { return g.limit }
+
+// Window reports the configured reset window.
+func (g *Governor) Window() time.Duration { return g.window }
 
 // Allow spends one run from the window. It returns false and the time until the
 // window resets when the budget is exhausted.

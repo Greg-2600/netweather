@@ -96,21 +96,26 @@ func (s *server) handleTraceAction(w http.ResponseWriter, r *http.Request) {
 	case s.deps.TraceBudget == nil:
 		view.Note = "Traceroute has no budget configured, so this instance will not run one."
 	default:
-		s.runTracePage(w, r, target, &view)
+		s.runTracePage(r, target, &view)
 	}
 
 	s.renderTrace(w, r, view)
 }
 
 // runTracePage spends one budget unit and, when it can, runs the walk.
-func (s *server) runTracePage(w http.ResponseWriter, r *http.Request, target board.Target, view *tracePageView) {
+func (s *server) runTracePage(r *http.Request, target board.Target, view *tracePageView) {
 	if ok, retry := s.deps.TraceBudget.Allow(); !ok {
 		wait := retry.Round(time.Minute)
 		if wait < time.Minute {
 			wait = time.Minute
 		}
+		runs := "runs"
+		if s.deps.TraceBudget.Limit() == 1 {
+			runs = "run"
+		}
 		view.Note = fmt.Sprintf(
-			"Traceroute is limited to ten runs per hour across the instance. Try again in about %s.", wait)
+			"Traceroute is limited to %d %s per %s across the instance. Try again in about %s.",
+			s.deps.TraceBudget.Limit(), runs, windowWord(s.deps.TraceBudget.Window()), wait)
 		return
 	}
 
@@ -176,4 +181,13 @@ func (s *server) renderTrace(w http.ResponseWriter, r *http.Request, view traceP
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "trace.html", view)
+}
+
+// windowWord renders the budget window for a sentence. An hour is the shipped
+// shape, so it gets the word rather than "1h0m0s".
+func windowWord(d time.Duration) string {
+	if d == time.Hour {
+		return "hour"
+	}
+	return d.String()
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/probe"
+	"github.com/Greg-2600/netweather/internal/tracebudget"
 )
 
 // Tracer runs one on-demand traceroute. probe.Trace satisfies it.
@@ -26,10 +27,14 @@ type HostResolver interface {
 }
 
 // traceLimit is the global ceiling, not per client: traceroute is the most
-// visible thing this binary can do, and it is on-demand (DESIGN.md §5.4).
+// visible thing this binary can do, and it is on-demand (DESIGN.md §5.4). The
+// numbers come from the shared budget package so the dashboard and the API
+// cannot describe different limits.
 const (
-	traceLimit  = 10
-	traceWindow = time.Hour
+	traceLimit  = tracebudget.DefaultLimit
+	traceWindow = tracebudget.DefaultWindow
+	// traceBudget bounds one walk; the name is historical and refers to the
+	// run's deadline, not the hourly budget.
 	traceBudget = 60 * time.Second
 )
 

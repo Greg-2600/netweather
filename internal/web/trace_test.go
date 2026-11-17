@@ -120,6 +120,15 @@ func TestTargetTraceActionRunsAWalk(t *testing.T) {
 func TestTargetTraceActionStatesItsRefusals(t *testing.T) {
 	t.Parallel()
 
+	// A two-run budget with both runs already spent: the page should say the
+	// configured limit, not the remaining count.
+	exhausted := tracebudget.New(2, time.Hour)
+	for i := 0; i < 2; i++ {
+		if ok, _ := exhausted.Allow(); !ok {
+			t.Fatal("the test budget was exhausted early")
+		}
+	}
+
 	cases := []struct {
 		name     string
 		enabled  bool
@@ -141,8 +150,8 @@ func TestTargetTraceActionStatesItsRefusals(t *testing.T) {
 			enabled:  true,
 			tracer:   &fakeWebTracer{},
 			resolver: &fakeWebResolver{addrs: []netip.Addr{netip.MustParseAddr("203.0.113.10")}},
-			budget:   tracebudget.New(0, time.Hour),
-			want:     "limited to ten runs per hour",
+			budget:   exhausted,
+			want:     "limited to 2 runs per hour",
 		},
 		{
 			name:     "unresolvable host",
