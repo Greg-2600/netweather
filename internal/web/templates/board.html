@@ -64,6 +64,15 @@
       {{end}}
     </nav>
 
+    <nav class="grouping" aria-label="Tile density" data-testid="density-toggle">
+      <span class="muted small">Density</span>
+      {{range .DensityOptions}}
+      <a class="group-link{{if .Active}} active{{end}}" href="{{.Href}}"
+         data-testid="density-{{.Key}}" data-density="{{.Key}}"
+         {{if .Active}}aria-current="true"{{end}}>{{.Label}}</a>
+      {{end}}
+    </nav>
+
     {{if .Country}}
     <p class="filter-note" data-testid="country-filter">
       Country filter: <b class="mono">{{.Country}}</b>
@@ -88,7 +97,8 @@
     </p>
     {{end}}
 
-    <section class="board" aria-label="Target status" data-testid="board">
+    <section class="board density-{{.Density}}" aria-label="Target status"
+             data-testid="board" data-density="{{.Density}}">
       {{if not .Groups}}
       <p class="empty" data-testid="empty-board">
         {{if .Focus}}No target is down or degraded.{{else}}No targets yet. Add a target file or use the shipped defaults.{{end}}

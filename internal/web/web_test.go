@@ -2635,3 +2635,63 @@ func TestWorldOverlayNotes(t *testing.T) {
 		})
 	}
 }
+
+func TestBoardDensityToggle(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(
+		board.Target{ID: "1", Name: "Chase", Host: "chase.com", Country: "US", Sector: "financial/banking", State: board.StateUp},
+		board.Target{ID: "2", Name: "United", Host: "united.com", Country: "US", Sector: "airline", State: board.StateDown},
+	)
+	ts := newServer(t, testToken, m)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	get := func(path string) string {
+		t.Helper()
+		resp, err := client.Get(ts.URL + path) //nolint:bodyclose // body() closes it
+		if err != nil {
+			t.Fatal(err)
+		}
+		return body(t, resp)
+	}
+
+	// Compact is the default and is stated on the page.
+	page := get("/")
+	if !strings.Contains(page, `data-density="compact"`) {
+		t.Fatalf("default density missing:\n%s", page)
+	}
+	if !strings.Contains(page, `data-testid="density-compact"`) || !strings.Contains(page, `data-testid="density-comfortable"`) {
+		t.Fatal("density toggle incomplete")
+	}
+	if !strings.Contains(page, `class="group-link active" href="/?group=sector"`) {
+		t.Error("default density link is not marked active")
+	}
+
+	// Comfortable is a real lens, marked active, and stated on the board.
+	page = get("/?density=comfortable")
+	if !strings.Contains(page, `data-density="comfortable"`) {
+		t.Fatal("comfortable density not applied")
+	}
+	if !strings.Contains(page, `class="group-link active" href="/?group=sector&amp;density=comfortable"`) {
+		t.Error("comfortable is not marked active")
+	}
+
+	// Switching density keeps the other view state, and switching group keeps
+	// density: the controls must not silently reset each other.
+	page = get("/?group=cdn&focus=problems&country=US&density=comfortable")
+	for _, want := range []string{
+		`href="/?group=state&amp;focus=problems&amp;country=US&amp;density=comfortable"`,
+		`href="/?group=cdn&amp;focus=problems&amp;country=US"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("a toggle dropped view state: missing %q", want)
+		}
+	}
+
+	// A typo falls back to the default rather than breaking the page.
+	page = get("/?density=huge")
+	if !strings.Contains(page, `data-density="compact"`) {
+		t.Fatal("an unknown density did not fall back to compact")
+	}
+}

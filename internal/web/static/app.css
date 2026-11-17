@@ -334,6 +334,25 @@ body.auth {
   gap: 0.6rem;
 }
 
+/* Density: the comfortable lens trades screen count for readability
+   (DESIGN.md §10.2). Compact stays the default because 750 targets must fit. */
+.board.density-comfortable .tiles {
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0.8rem;
+}
+
+.board.density-comfortable .tile {
+  padding: 0.9rem;
+  gap: 0.3rem;
+}
+
+.board.density-comfortable .tile .favicon {
+  width: 2.75rem;
+  height: 2.75rem;
+}
+
+.board.density-comfortable .tile .name { font-size: 1.05rem; }
+
 .tile {
   position: relative;
   display: grid;

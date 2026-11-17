@@ -839,8 +839,10 @@ The wall of favicons. Grouping is a toggle: **sector (default)** · state · CDN
 
 **Implemented:** tiles render a generated square icon per target (`/icon/{id}.svg`): the name's initial on a colour derived from the host. It is generated rather than fetched, because pulling `/favicon.ico` from every target would add requests with no measurement justification (`ACCEPTABLE_USE.md`). The icon is session-protected like the board, and each tile keeps its state colour, text, corner stage badge, and accessible name.
 
-- **Compact** (default at 750+): 40–48px tiles, ring colour + corner stage badge (`DNS`/`TLS`/`403`/`429`). ~760 per screen, so 750 targets is about one screen — no virtualisation needed.
+- **Compact** (default at 750+): 40-48px tiles, ring colour + corner stage badge (`DNS`/`TLS`/`403`/`429`). ~760 per screen, so 750 targets is about one screen - no virtualisation needed.
 - **Comfortable**: 96px tiles, name + 24h sparkline. Paginated by group, never all at once.
+
+**Implemented:** both densities exist as a toggle (`/?density=comfortable`). Compact is the default; comfortable widens the grid and enlarges the tile, name, and icon. Every toggle link preserves the other view state (grouping lens, focus mode, country filter, density), so switching one control cannot silently reset another. An unknown density falls back to compact rather than returning an error. Still specified: the per-tile 24h sparkline and pagination by group.
 - Healthy groups collapsed by default. Problems expanded.
 - The feed-health strip shows each external feed as `ok`, `stale`, `failing`, or `never`; a stale or never-succeeded feed adds a banner, because a dead corroboration source must be visible on the board, not only in the API (P5).
 - Focus mode: hide everything not `DOWN`/`DEGRADED`/`TAMPER`.

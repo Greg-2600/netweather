@@ -235,7 +235,10 @@ type boardView struct {
 	// Group is the current grouping key, and GroupOptions is the toggle. The
 	// board is about "airlines are down" only when the reader chose that lens.
 	Group        string
-	GroupOptions []groupOption
+	GroupOptions []toggleOption
+	// Density is the tile-size lens, and DensityOptions is its toggle.
+	Density        string
+	DensityOptions []toggleOption
 	// Country is the active country filter, uppercase ISO-3166-1 when set.
 	// The clear link drops it without dropping focus or the grouping lens.
 	Country    string
@@ -274,14 +277,70 @@ type groupView struct {
 	Targets  []tileView
 }
 
-// groupOption is one entry in the grouping toggle.
-type groupOption struct {
+// toggleOption is one entry in a board toggle (grouping or density).
+type toggleOption struct {
 	Key    string
 	Label  string
 	Active bool
-	// Href switches the lens while preserving focus mode. Built here so the
-	// template does not have to assemble query strings.
+	// Href switches this control while preserving the rest of the view state.
+	// Built here so the template does not have to assemble query strings.
 	Href string
+}
+
+// Board density modes from DESIGN.md §10.2.
+const (
+	densityCompact     = "compact"
+	densityComfortable = "comfortable"
+)
+
+// boardParams is the view state every toggle link must preserve. Building hrefs
+// from one struct is what stops the grouping toggle from dropping the country
+// filter, or the density toggle from dropping focus mode.
+type boardParams struct {
+	Group   string
+	Focus   bool
+	Country string
+	Density string
+}
+
+func (p boardParams) href() string {
+	href := "/?group=" + p.Group
+	if p.Focus {
+		href += "&focus=problems"
+	}
+	if p.Country != "" {
+		href += "&country=" + url.QueryEscape(p.Country)
+	}
+	if p.Density != "" && p.Density != densityCompact {
+		href += "&density=" + p.Density
+	}
+	return href
+}
+
+// normaliseDensity maps an unknown or empty value to the default. Compact is
+// the documented default: at 750 targets the wall of tiles must fit.
+func normaliseDensity(density string) string {
+	if strings.EqualFold(strings.TrimSpace(density), densityComfortable) {
+		return densityComfortable
+	}
+	return densityCompact
+}
+
+// densityOptions builds the density toggle with the active entry marked.
+func densityOptions(active string, params boardParams) []toggleOption {
+	modes := []struct{ key, label string }{
+		{densityCompact, "Compact"},
+		{densityComfortable, "Comfortable"},
+	}
+	out := make([]toggleOption, 0, len(modes))
+	for _, m := range modes {
+		next := params
+		next.Density = m.key
+		out = append(out, toggleOption{
+			Key: m.key, Label: m.label, Active: m.key == active, Href: next.href(),
+		})
+	}
+	return out
 }
 
 // groupModes is the documented toggle order (DESIGN.md §10.2): sector is the
@@ -406,18 +465,13 @@ func groupKey(t board.Target, mode string) (name, label string) {
 // groupOptions builds the toggle with the active entry marked. Focus mode and
 // the country filter are preserved when switching lenses, because the controls
 // answer different questions and silently resetting one is hostile.
-func groupOptions(active string, focus bool, country string) []groupOption {
-	out := make([]groupOption, 0, len(groupModes))
+func groupOptions(active string, params boardParams) []toggleOption {
+	out := make([]toggleOption, 0, len(groupModes))
 	for _, m := range groupModes {
-		href := "/?group=" + m.Key
-		if focus {
-			href += "&focus=problems"
-		}
-		if country != "" {
-			href += "&country=" + url.QueryEscape(country)
-		}
-		out = append(out, groupOption{
-			Key: m.Key, Label: m.Label, Active: m.Key == active, Href: href,
+		next := params
+		next.Group = m.Key
+		out = append(out, toggleOption{
+			Key: m.Key, Label: m.Label, Active: m.Key == active, Href: next.href(),
 		})
 	}
 	return out
@@ -486,22 +540,28 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	csrf, _ := s.auth.csrfFrom(r)
-	group := normaliseGroupMode(r.URL.Query().Get("group"))
+	params := boardParams{
+		Group:   normaliseGroupMode(r.URL.Query().Get("group")),
+		Focus:   focus,
+		Country: country,
+		Density: normaliseDensity(r.URL.Query().Get("density")),
+	}
 	view := boardView{
-		Version:      s.deps.Version,
-		CSRF:         csrf,
-		Groups:       groupBy(targets, group),
-		Control:      s.deps.Control != nil,
-		Focus:        focus,
-		Group:        group,
-		GroupOptions: groupOptions(group, focus, country),
-		Country:      country,
+		Version:        s.deps.Version,
+		CSRF:           csrf,
+		Groups:         groupBy(targets, params.Group),
+		Control:        s.deps.Control != nil,
+		Focus:          focus,
+		Group:          params.Group,
+		GroupOptions:   groupOptions(params.Group, params),
+		Density:        params.Density,
+		DensityOptions: densityOptions(params.Density, params),
+		Country:        country,
 	}
 	if country != "" {
-		view.CountryOff = "/?group=" + group
-		if focus {
-			view.CountryOff += "&focus=problems"
-		}
+		clear := params
+		clear.Country = ""
+		view.CountryOff = clear.href()
 	}
 	if s.deps.Control != nil {
 		view.Paused = s.deps.Control.Paused()
