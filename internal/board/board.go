@@ -56,6 +56,8 @@ type Target struct {
 	// Leaf certificate from the last TLS observation.
 	CertIssuer   string
 	CertNotAfter time.Time
+	// CertPinned reports whether an issuer set has been learned.
+	CertPinned bool
 }
 
 // Source returns the current board. It must be safe for concurrent use.

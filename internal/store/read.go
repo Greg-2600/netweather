@@ -115,6 +115,8 @@ type TargetRow struct {
 	// last probe was not TLS, not that the certificate is unknown.
 	CertIssuer   string
 	CertNotAfter time.Time
+	// CertPinned reports whether any issuer has been learned for this target.
+	CertPinned bool
 }
 
 // TargetsWithState is the board query: every enabled target plus its current
@@ -127,7 +129,8 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 		       COALESCE(t.as_country, ''), COALESCE(t.as_name, ''), COALESCE(t.ix_names, ''),
 		       COALESCE(ts.state, 'unknown'), COALESCE(ts.since, 0),
 		       COALESCE(p.stage, ''), COALESCE(p.error_class, ''), COALESCE(p.http_status, 0),
-		       COALESCE(p.cert_issuer, ''), COALESCE(p.cert_not_after, 0)
+		       COALESCE(p.cert_issuer, ''), COALESCE(p.cert_not_after, 0),
+		       EXISTS(SELECT 1 FROM cert_pin cp WHERE cp.target_id = t.id)
 		FROM target t
 		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
 		LEFT JOIN probe p ON p.id = (
@@ -156,7 +159,7 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 			&row.ASCountry, &row.ASName, &row.IXNames,
 			&row.State, &since,
 			&row.Stage, &row.ErrorClass, &row.HTTPStatus,
-			&row.CertIssuer, &notAfter,
+			&row.CertIssuer, &notAfter, &row.CertPinned,
 		); err != nil {
 			return nil, fmt.Errorf("store: scan target: %w", err)
 		}
@@ -286,7 +289,8 @@ func (s *Store) TargetByID(ctx context.Context, vantageID, id string) (TargetRow
 		       COALESCE(t.as_country, ''), COALESCE(t.as_name, ''), COALESCE(t.ix_names, ''),
 		       COALESCE(ts.state, 'unknown'), COALESCE(ts.since, 0),
 		       COALESCE(p.stage, ''), COALESCE(p.error_class, ''), COALESCE(p.http_status, 0),
-		       COALESCE(p.cert_issuer, ''), COALESCE(p.cert_not_after, 0)
+		       COALESCE(p.cert_issuer, ''), COALESCE(p.cert_not_after, 0),
+		       EXISTS(SELECT 1 FROM cert_pin cp WHERE cp.target_id = t.id)
 		FROM target t
 		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
 		LEFT JOIN probe p ON p.id = (
@@ -301,7 +305,7 @@ func (s *Store) TargetByID(ctx context.Context, vantageID, id string) (TargetRow
 		&row.ASCountry, &row.ASName, &row.IXNames,
 		&row.State, &since,
 		&row.Stage, &row.ErrorClass, &row.HTTPStatus,
-		&row.CertIssuer, &notAfter,
+		&row.CertIssuer, &notAfter, &row.CertPinned,
 	)
 	if err != nil {
 		return TargetRow{}, err

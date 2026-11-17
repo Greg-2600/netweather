@@ -226,6 +226,7 @@ func TestTargetDetailShowsCertificateObservation(t *testing.T) {
 		Sector: "airline", Country: "US", State: board.StateUp,
 		Port: 443, Probe: "tls", Tier: 2, IntervalS: 300,
 		CertIssuer: "CN=R11,O=Let's Encrypt,C=US", CertNotAfter: expiry,
+		CertPinned: true,
 	})
 
 	ts := newServerWithDetails(t, testToken, m, &fakeChanges{})
@@ -241,6 +242,7 @@ func TestTargetDetailShowsCertificateObservation(t *testing.T) {
 	for _, want := range []string{
 		">Certificate issuer<", "CN=R11,O=Let&#39;s Encrypt,C=US",
 		">Certificate expires<", "2027-01-16",
+		">Certificate pin<", ">issuer learned<",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("certificate row missing %q", want)
@@ -268,6 +270,10 @@ func TestTargetDetailCertificateRowsWithoutTLS(t *testing.T) {
 
 	if got := strings.Count(page, "not a TLS probe"); got != 2 {
 		t.Fatalf("non-TLS rows = %d, want both certificate rows stated as absent", got)
+	}
+	// The pin row is its own claim: a non-TLS target has no issuer baseline.
+	if !strings.Contains(page, ">Certificate pin<") || !strings.Contains(page, ">not learned yet<") {
+		t.Error("the pin row did not state that no baseline exists")
 	}
 }
 

@@ -67,8 +67,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 12 {
-		t.Errorf("schema version = %d, want 12", stats.SchemaVersion)
+	if stats.SchemaVersion != 13 {
+		t.Errorf("schema version = %d, want 13", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -96,7 +96,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 12 {
+	if err != nil || version != 13 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -1829,5 +1829,66 @@ func TestAnnotateIncident(t *testing.T) {
 	// An unknown id is an error, not a silent no-op.
 	if err := s.AnnotateIncident(ctx, "nope", "x", at); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("unknown id error = %v, want sql.ErrNoRows", err)
+	}
+}
+
+func TestCertPinLearnsAndFlagsOnce(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	const first = "CN=R11,O=Let's Encrypt,C=US"
+	const rotated = "CN=GTS CA 1P5,O=Google Trust Services LLC,C=US"
+
+	if known, err := s.CertPinKnown(ctx, "t1"); err != nil || known {
+		t.Fatalf("known before any observation = %v, %v", known, err)
+	}
+
+	// The first issuer is a baseline, not a change.
+	changed, err := s.ObserveCertIssuer(ctx, "t1", first, now)
+	if err != nil || changed {
+		t.Fatalf("first observation = (%v, %v)", changed, err)
+	}
+	if known, err := s.CertPinKnown(ctx, "t1"); err != nil || !known {
+		t.Fatalf("known after baseline = %v, %v", known, err)
+	}
+
+	// The same issuer again is still not a change, and it refreshes last_seen.
+	changed, err = s.ObserveCertIssuer(ctx, "t1", first, now.Add(time.Hour))
+	if err != nil || changed {
+		t.Fatalf("repeat observation = (%v, %v)", changed, err)
+	}
+
+	// A different issuer is accepted on first sight and flagged exactly once.
+	changed, err = s.ObserveCertIssuer(ctx, "t1", rotated, now.Add(2*time.Hour))
+	if err != nil || !changed {
+		t.Fatalf("new issuer = (%v, %v), want a one-time flag", changed, err)
+	}
+	changed, err = s.ObserveCertIssuer(ctx, "t1", rotated, now.Add(3*time.Hour))
+	if err != nil || changed {
+		t.Fatalf("accepted issuer re-flagged = (%v, %v)", changed, err)
+	}
+
+	// A different target starts its own baseline: one target's issuer set is
+	// not evidence about another's.
+	if err := s.UpsertTarget(ctx, store.Target{
+		ID: "t2", Host: "united.com", Port: 443, Probe: "http",
+		Name: "United", Class: "service", Tier: 2, IntervalS: 300,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := s.ObserveCertIssuer(ctx, "t2", rotated, now); err != nil || changed {
+		t.Fatalf("second target baseline = (%v, %v)", changed, err)
+	}
+
+	// Missing arguments are errors, not silent no-ops.
+	if _, err := s.ObserveCertIssuer(ctx, "", first, now); err == nil {
+		t.Fatal("an empty target was accepted")
+	}
+	if _, err := s.ObserveCertIssuer(ctx, "t1", "   ", now); err == nil {
+		t.Fatal("an empty issuer was accepted")
 	}
 }

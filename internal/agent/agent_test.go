@@ -691,3 +691,130 @@ func TestStepLogsTheDecisionRecord(t *testing.T) {
 		}
 	}
 }
+
+type fakePins struct {
+	mu      sync.Mutex
+	changed bool
+	err     error
+	issuers []string
+}
+
+func (f *fakePins) ObserveCertIssuer(_ context.Context, _, issuer string, _ time.Time) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.issuers = append(f.issuers, issuer)
+	return f.changed, f.err
+}
+
+func TestCertificatePinFlagsANewIssuer(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	newTLS := func() agent.Target {
+		tg := target("tls1", "example.com")
+		tg.Instrument = "tls"
+		tg.Address = "example.com:443"
+		tg.URL = ""
+		return tg
+	}
+
+	// A changed issuer is a one-time flag, not a verdict: the classifier keeps
+	// it at UNKNOWN with the reason naming the learned set.
+	p := newProber()
+	p.set("", probe.Result{CertIssuer: "CN=GTS CA 1P5,O=Google Trust Services LLC,C=US"})
+	sink := &fakeSink{}
+	pins := &fakePins{changed: true}
+	a := agent.New([]agent.Target{newTLS()}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+	a.Pins = pins
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got := sink.batch()[0]
+	if got.ErrorClass != "tls_issuer_unexpected" {
+		t.Fatalf("class = %q, want the pin class", got.ErrorClass)
+	}
+	if got.State != state.Unknown {
+		t.Fatalf("state = %s, want unknown", got.State)
+	}
+	if !strings.Contains(got.Reason, "issuer outside learned set") {
+		t.Fatalf("reason = %q", got.Reason)
+	}
+	if len(pins.issuers) != 1 || !strings.Contains(pins.issuers[0], "Google Trust") {
+		t.Fatalf("observed issuers = %+v", pins.issuers)
+	}
+
+	// An unchanged issuer leaves the TLS success as reachability.
+	p = newProber()
+	p.set("", probe.Result{CertIssuer: "CN=R11,O=Let's Encrypt,C=US"})
+	sink = &fakeSink{}
+	a = agent.New([]agent.Target{newTLS()}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+	a.Pins = &fakePins{changed: false}
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := sink.batch()[0]; got.State != state.UpReachability || got.ErrorClass != "" {
+		t.Fatalf("unchanged issuer = %+v", got)
+	}
+
+	// A pin-store failure must not turn a good measurement into a bad one.
+	p = newProber()
+	p.set("", probe.Result{CertIssuer: "CN=R11,O=Let's Encrypt,C=US"})
+	sink = &fakeSink{}
+	a = agent.New([]agent.Target{newTLS()}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+	a.Pins = &fakePins{err: errors.New("db down")}
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := sink.batch()[0]; got.State != state.UpReachability {
+		t.Fatalf("pin failure changed the state: %+v", got)
+	}
+}
+
+func TestCertificatePinSkippedWithoutIssuerOrPins(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	tg := target("tls1", "example.com")
+	tg.Instrument = "tls"
+	tg.Address = "example.com:443"
+	tg.URL = ""
+
+	// No issuer on the result: nothing to learn.
+	p := newProber()
+	p.set("", probe.Result{})
+	sink := &fakeSink{}
+	pins := &fakePins{changed: true}
+	a := agent.New([]agent.Target{tg}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+	a.Pins = pins
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(pins.issuers) != 0 {
+		t.Fatalf("observed issuers without one = %+v", pins.issuers)
+	}
+
+	// No pin store: the probe is unaffected.
+	p = newProber()
+	p.set("", probe.Result{CertIssuer: "CN=R11"})
+	sink = &fakeSink{}
+	a = agent.New([]agent.Target{tg}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := sink.batch()[0]; got.State != state.UpReachability {
+		t.Fatalf("state without pins = %+v", got)
+	}
+}

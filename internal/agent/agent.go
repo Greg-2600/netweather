@@ -105,6 +105,13 @@ type Sink interface {
 	Record(ctx context.Context, probes []store.Probe) error
 }
 
+// Pins learns and checks certificate issuers. store.Store satisfies it. Nil
+// disables pinning, which is the right default for a vantage that has no
+// business pinning someone else's names.
+type Pins interface {
+	ObserveCertIssuer(ctx context.Context, targetID, issuer string, at time.Time) (changed bool, err error)
+}
+
 // Agent runs due targets and records the results.
 type Agent struct {
 	Runner  Runner
@@ -113,6 +120,8 @@ type Agent struct {
 	Now     func() time.Time
 	Rand    func() float64
 	Logger  *slog.Logger
+	// Pins learns certificate issuers and flags a change once. Nil disables it.
+	Pins Pins
 	// Pace is the minimum gap between two probes in one Step. It is zero for
 	// the direct vantage and non-zero for Tor, where bursty traffic is both
 	// abusive and a fingerprint.
@@ -234,6 +243,21 @@ func (a *Agent) Step(ctx context.Context) (int, error) {
 
 		res := a.Runner.Run(ctx, t)
 		release()
+
+		if a.Pins != nil && t.Instrument == "tls" && res.CertIssuer != "" {
+			changed, err := a.Pins.ObserveCertIssuer(ctx, t.ID, res.CertIssuer, now)
+			switch {
+			case err != nil:
+				a.logger().Debug("certificate pin check failed",
+					"event", "cert_pin_failed", "component", "agent",
+					"target", t.Host, "error", err)
+			case changed:
+				// A new issuer is accepted and flagged once, never TAMPER on
+				// arrival: CDN-fronted sites rotate CAs legitimately.
+				res.ErrorClass = "tls_issuer_unexpected"
+				res.Err = fmt.Errorf("agent: issuer changed for %s", t.Host)
+			}
+		}
 
 		p := a.toProbe(t, res, now)
 		a.logProbe(t, p)

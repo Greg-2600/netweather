@@ -611,6 +611,9 @@ func newInstruments() agent.Instruments {
 func newAgent(targets []agent.Target, st *store.Store, lg *logging.Logger) *agent.Agent {
 	ag := agent.New(targets, newInstruments(), st)
 	ag.Logger = lg.Logger
+	// The direct vantage owns the issuer baseline; the Tor vantage is
+	// corroboration and does not get to learn a different one.
+	ag.Pins = st
 	return ag
 }
 

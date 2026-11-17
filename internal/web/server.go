@@ -214,6 +214,7 @@ type tileView struct {
 	Measurability string
 	CertIssuer    string
 	CertNotAfter  string
+	CertPinned    bool
 }
 
 type countView struct {
@@ -593,6 +594,7 @@ func toTile(t board.Target) tileView {
 		ASN: t.ASN, Prefix: t.Prefix, CDN: t.CDN, Measurability: t.Measurability,
 		ASCountry: t.ASCountry, ASName: t.ASName, IXNames: t.IXNames,
 		CertIssuer: t.CertIssuer, CertNotAfter: formatCertExpiry(t.CertNotAfter),
+		CertPinned: t.CertPinned,
 	}
 }
 
@@ -604,6 +606,15 @@ func formatCertExpiry(t time.Time) string {
 		return ""
 	}
 	return t.UTC().Format("2006-01-02")
+}
+
+// pinLabel says whether an issuer baseline exists. "Learned" is not "safe": the
+// pin flags a change once, it does not certify the certificate (SCHEMA.md §8).
+func pinLabel(known bool) string {
+	if known {
+		return "issuer learned"
+	}
+	return "not learned yet"
 }
 
 // badgeFor is the corner marker from DESIGN.md §10.2: the stage or status that
@@ -794,6 +805,7 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 			{"CDN", displayOr(t.CDN, "not learned yet")},
 			{"Certificate issuer", displayOr(t.CertIssuer, "not a TLS probe")},
 			{"Certificate expires", displayOr(formatCertExpiry(t.CertNotAfter), "not a TLS probe")},
+			{"Certificate pin", pinLabel(t.CertPinned)},
 			{"Measurability", displayOr(t.Measurability, "ok")},
 		}
 

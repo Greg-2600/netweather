@@ -134,7 +134,7 @@ All → DOWN.
 | `tls_cert_untrusted` | chain does not validate to system roots | DOWN |
 | `tls_protocol` | no shared version/cipher | DOWN |
 | `tls_reset_after_hello` | RST immediately after ClientHello, repeatedly | **BLOCKED_TLS** (low confidence) |
-| `tls_issuer_unexpected` | issuer outside learned set (§3.5) | **TAMPER** |
+| `tls_issuer_unexpected` | issuer outside learned set (§3.5) | `UNKNOWN` with high confidence, one-time flag; `TAMPER` is a verdict that needs a second signal |
 
 `tls_reset_after_hello` is ambiguous: it is either JA3-based blocking or a middlebox. Only classify as `BLOCKED_TLS` when the same host answers other probe types successfully and the reset is reproducible. Otherwise treat as DOWN.
 
@@ -148,6 +148,8 @@ Pin the **issuer set** instead:
 2. Maintain a learned set of issuers per target (a target may legitimately rotate between two CAs).
 3. Alert `tls_issuer_unexpected` when the issuer validates against system roots **but is not in the target's learned set**.
 4. Record leaf changes as informational only.
+
+**Implemented:** step 2 and step 3. `store.ObserveCertIssuer` keeps the hash of each issuer DN per target; the first issuer is a baseline, and a new one is accepted and reported once, which the agent turns into `tls_issuer_unexpected`. The classifier records that as `UNKNOWN` with high confidence and the reason "issuer outside learned set", not as TAMPER: a single unexpected issuer is a signal that needs corroboration, and TAMPER is a verdict rather than a target state. Still specified: the intermediate SPKI and chain length, which require the full chain on the probe result, and the informational leaf-change flag.
 
 That rule catches the real threat — a locally trusted CA being used to intercept a specific host — without firing on ordinary renewals. Chain-length changes and validity periods > 398 days are also informational flags.
 
