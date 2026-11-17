@@ -4558,3 +4558,55 @@ func TestBoardCollapsesTargetsMarkedUnmeasurable(t *testing.T) {
 		t.Fatal("the banking sector still holds a permanently unmeasurable target")
 	}
 }
+
+func TestTargetDrawerSaysYouVersusOfficial(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		state board.State
+		event bool
+		want  bool
+	}{
+		{"down but the provider reports nothing", board.StateDown, false, true},
+		{"blocked but the provider reports nothing", board.StateBlocked, false, true},
+		{"down with a provider incident", board.StateDown, true, false},
+		{"healthy with a quiet provider", board.StateUp, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			m := board.NewMemory(board.Target{
+				ID: "2", Name: "Chase", Host: "chase.com", State: tc.state,
+				StatusURL: "https://status.chase.com",
+			})
+			provider := &fakeProvider{}
+			if tc.event {
+				at := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+				provider.events = []store.ExternalEvent{{
+					ID: 1, Feed: "statuspage", ExternalID: "status.chase.com:inc-1",
+					Kind: "statuspage", Severity: 0.8, StartedAt: at, ObservedAt: at,
+				}}
+			}
+
+			ts := newServerWithProvider(t, testToken, m, provider)
+			client, _ := newClient(t)
+			login(t, ts, client, testToken)
+
+			resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+			if err != nil {
+				t.Fatal(err)
+			}
+			page := body(t, resp)
+
+			has := strings.Contains(page, `data-testid="compare-verdict"`)
+			if has != tc.want {
+				t.Fatalf("compare sentence present = %v, want %v:\n%s", has, tc.want, page)
+			}
+			if tc.want && !strings.Contains(page, "official status: operational") {
+				t.Fatal("the sentence does not name the official status")
+			}
+		})
+	}
+}

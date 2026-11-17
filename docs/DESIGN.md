@@ -752,6 +752,8 @@ Used for **corroboration**, producing the most interesting sentence in the produ
 
 > **You:** unreachable · **Official:** operational → likely you, your region, or a bot-wall.
 
+**Implemented:** when a target's state is `DOWN`, `DEGRADED`, or `BLOCKED` and its declared status page answered successfully with no incident in the last 24 hours, the target drawer prints that sentence with the actual state. It is drawn only when the provider query succeeded: an unconfigured reader, a failed query, or a page with an incident says its own case, because the asymmetry is evidence only when both sides are known. The feed-corroboration panel stays separate: a matching country or ASN event is a scope observation, not the provider's own report.
+
 ### 8.5 PeeringDB - enrichment only
 
 ASN → organisation, country, IX membership. Cached locally, refreshed weekly. Labels the ASN view; never a monitoring signal.

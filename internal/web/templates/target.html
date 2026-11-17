@@ -22,6 +22,10 @@
         {{if .Tile.Since}}<span class="muted">since {{.Tile.Since}}</span>{{end}}
       </p>
 
+      {{if .Compare}}
+      <p class="compare" data-testid="compare-verdict">{{.Compare}}</p>
+      {{end}}
+
       <dl class="meta" data-testid="target-meta">
         {{range .Meta}}
         <dt>{{.Label}}</dt><dd class="mono">{{.Value}}</dd>

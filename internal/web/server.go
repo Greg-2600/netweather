@@ -1303,6 +1303,10 @@ type targetView struct {
 	Provider     []targetCorroborationView
 	ProviderNote string
 	StatusURL    string
+	// Compare is the "you vs official" sentence from DESIGN.md §8.4: when the
+	// target is failing but its declared status page reports no incident, the
+	// asymmetry is the most useful thing the drawer can say.
+	Compare string
 	// Why is the drawer's "Why?" panel: the newest log lines that name this
 	// target (LOGGING.md §9). The state-change reasons above are the other half
 	// of that answer.
@@ -1547,6 +1551,7 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 		// with no declared provider has no provider claim, so the panel is
 		// omitted rather than guessed (DESIGN.md §10.5).
 		view.StatusURL = t.StatusURL
+		providerOperational := false
 		if t.StatusURL != "" {
 			if s.deps.Provider == nil {
 				view.ProviderNote = "Provider status is not configured on this instance."
@@ -1561,10 +1566,23 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 					view.ProviderNote = "Provider status is temporarily unavailable."
 				case len(events) == 0:
 					view.ProviderNote = "The provider's status page reports no incident in the last 24 hours."
+					providerOperational = true
 				default:
 					view.Provider = toCorroborationRows(events)
 				}
 			}
+		}
+
+		// The most interesting sentence in the product (DESIGN.md §8.4): the
+		// monitor cannot reach the target while the operator's declared status
+		// page says there is nothing wrong. That asymmetry points at the local
+		// path, a region, or a bot-wall rather than the service.
+		failing := t.State == board.StateDown || t.State == board.StateDegraded ||
+			t.State == board.StateBlocked
+		if failing && providerOperational {
+			view.Compare = fmt.Sprintf(
+				"You: %s - official status: operational -> likely you, your region, or a bot-wall.",
+				t.State.Text())
 		}
 
 		if s.deps.Changes == nil {
