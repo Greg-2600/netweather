@@ -193,6 +193,7 @@ func serve(lg *logging.Logger) error {
 		selfcheck.DiskCheck(dataDir),
 		selfcheck.DNSCheck(instruments.DNS, "1.1.1.1:53", "example.com"),
 		selfcheck.Port53Check(instruments.DNS, instruments.TCP, "1.1.1.1:53", "example.com"),
+		selfcheck.MTUCheck(nil),
 		selfcheck.EgressCheck(instruments.TCP, "1.1.1.1:443"),
 		selfcheck.ClockCheck(instruments.HTTP, "https://www.cloudflare.com/", time.Minute),
 	}}

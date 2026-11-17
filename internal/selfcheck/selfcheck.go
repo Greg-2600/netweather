@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -209,6 +210,57 @@ func EgressCheck(tcp *probe.TCP, address string) Check {
 				return false, "", res.ErrorClass + ": " + errText(res.Err), nil
 			}
 			return true, address, res.Latency.Round(time.Millisecond).String(), nil
+		},
+	}
+}
+
+// mtuFloor is the smallest MTU this project treats as safe. The compose file
+// deliberately sets 1400 on the egress network, so anything below that is a
+// misconfiguration rather than a choice.
+const mtuFloor = 1400
+
+// MTUCheck reports the smallest MTU among the host's up, non-loopback
+// interfaces.
+//
+// It cannot measure the *path* MTU: that needs a DF-bit probe and therefore raw
+// sockets. What it can do is catch the documented local failure - a bridge or
+// VPN interface smaller than the egress floor - before a large handshake
+// black-holes and looks like DOWN (DESIGN.md §7.5, NETWORKING.md §4).
+func MTUCheck(interfaces func() ([]net.Interface, error)) Check {
+	return Check{
+		Name: "mtu",
+		Run: func(context.Context) (bool, string, string, error) {
+			if interfaces == nil {
+				interfaces = net.Interfaces
+			}
+			ifaces, err := interfaces()
+			if err != nil {
+				return false, "", err.Error(), nil
+			}
+
+			smallest, name, checked := 0, "", 0
+			for _, iface := range ifaces {
+				if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+					continue
+				}
+				if iface.MTU <= 0 {
+					continue
+				}
+				checked++
+				if smallest == 0 || iface.MTU < smallest {
+					smallest, name = iface.MTU, iface.Name
+				}
+			}
+			if checked == 0 {
+				return false, "", "no up, non-loopback interface found", nil
+			}
+
+			detail := fmt.Sprintf("%s has the smallest MTU (%d)", name, smallest)
+			if smallest < mtuFloor {
+				return false, fmt.Sprintf("%s %d", name, smallest),
+					detail + fmt.Sprintf("; below the %d-byte floor, large handshakes may black-hole", mtuFloor), nil
+			}
+			return true, fmt.Sprintf("%s %d", name, smallest), detail, nil
 		},
 	}
 }

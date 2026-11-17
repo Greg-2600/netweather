@@ -575,7 +575,7 @@ Auth: bearer. The newest result for each self-health check. This answers "can th
 }
 ```
 
-- Checks are `disk`, `resolver`, `egress`, `port53`, and `clock`. `port53` proves both UDP/53 and TCP/53 to a public resolver, because a blocked egress port would turn every DNS anchor red while the internet is fine. `mtu` remains specified: it needs a DF-bit probe and therefore raw sockets.
+- Checks are `disk`, `resolver`, `egress`, `port53`, `mtu`, and `clock`. `port53` proves both UDP/53 and TCP/53 to a public resolver, because a blocked egress port would turn every DNS anchor red while the internet is fine. `mtu` reports the smallest MTU among up, non-loopback interfaces and warns below a 1400-byte floor; it measures the local interface, not the path, because a path measurement needs a DF-bit probe and raw sockets.
 - `ok: false` means the monitor's own path failed, which is why this endpoint is separate from the board: a broken monitor must not look like a broken internet.
 - One row per check; the endpoint reports the latest run, not a history.
 - Self-checks run at startup and with maintenance every ten minutes, so a failed check is already in the logs before anyone opens this page.

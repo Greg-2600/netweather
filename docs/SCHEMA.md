@@ -453,7 +453,7 @@ CREATE INDEX self_check_name_ts ON self_check("check", ts DESC);
 
 `check` is a reserved word in SQLite, so it is quoted in the migration and in every query. The column keeps the name because "check" is what it holds.
 
-**Implemented in migration `0006`:** `disk`, `resolver`, `egress`, and `clock` are recorded by `internal/selfcheck`; `mtu` and `port53` are still specified, because they need raw sockets or a second transport rather than the guarded dialer.
+**Implemented in migration `0006`:** `disk`, `resolver`, `egress`, `clock`, `mtu`, and `port53` are recorded by `internal/selfcheck`. `mtu` reports the smallest local interface MTU (a path MTU needs a DF-bit probe and raw sockets); `port53` proves both UDP/53 and TCP/53 through the guarded dialer.
 
 CREATE TABLE external_event (
     id          INTEGER PRIMARY KEY,

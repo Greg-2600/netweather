@@ -272,6 +272,72 @@ func startFakeDNS(t *testing.T) string {
 	return pc.LocalAddr().String()
 }
 
+func TestMTUCheckReportsTheSmallestInterface(t *testing.T) {
+	t.Parallel()
+
+	interfaces := func() ([]net.Interface, error) {
+		return []net.Interface{
+			{Name: "lo", MTU: 65536, Flags: net.FlagUp | net.FlagLoopback},
+			{Name: "down0", MTU: 900, Flags: 0},
+			{Name: "eth0", MTU: 1500, Flags: net.FlagUp},
+			{Name: "vpn0", MTU: 1400, Flags: net.FlagUp},
+		}, nil
+	}
+
+	ok, value, detail, err := selfcheck.MTUCheck(interfaces).Run(context.Background())
+	if err != nil || !ok {
+		t.Fatalf("check = (%v, %q, %q, %v)", ok, value, detail, err)
+	}
+	if value != "vpn0 1400" {
+		t.Fatalf("value = %q, want the smallest up interface", value)
+	}
+	if !strings.Contains(detail, "vpn0") {
+		t.Fatalf("detail = %q", detail)
+	}
+}
+
+func TestMTUCheckWarnsBelowTheFloor(t *testing.T) {
+	t.Parallel()
+
+	interfaces := func() ([]net.Interface, error) {
+		return []net.Interface{{Name: "wg0", MTU: 1280, Flags: net.FlagUp}}, nil
+	}
+
+	ok, value, detail, err := selfcheck.MTUCheck(interfaces).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("an MTU below the floor reported healthy")
+	}
+	if value != "wg0 1280" {
+		t.Fatalf("value = %q", value)
+	}
+	if !strings.Contains(detail, "floor") {
+		t.Fatalf("detail = %q, want the floor named", detail)
+	}
+}
+
+func TestMTUCheckFailuresAreVisible(t *testing.T) {
+	t.Parallel()
+
+	failing := func() ([]net.Interface, error) { return nil, errors.New("no interfaces") }
+	if ok, _, detail, _ := selfcheck.MTUCheck(failing).Run(context.Background()); ok || detail == "" {
+		t.Fatalf("error case = (%v, %q)", ok, detail)
+	}
+
+	empty := func() ([]net.Interface, error) {
+		return []net.Interface{
+			{Name: "lo", MTU: 65536, Flags: net.FlagUp | net.FlagLoopback},
+			{Name: "down0", MTU: 1500, Flags: 0},
+			{Name: "zero0", MTU: 0, Flags: net.FlagUp},
+		}, nil
+	}
+	if ok, _, detail, _ := selfcheck.MTUCheck(empty).Run(context.Background()); ok || !strings.Contains(detail, "no up") {
+		t.Fatalf("empty case = (%v, %q)", ok, detail)
+	}
+}
+
 func TestPort53CheckRequiresBothTransports(t *testing.T) {
 	t.Parallel()
 
