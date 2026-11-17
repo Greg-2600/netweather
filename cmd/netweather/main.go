@@ -844,6 +844,17 @@ func buildFeedPollers(st *store.Store, lg *logging.Logger) []*feeds.Poller {
 				Sink:   st,
 				Every:  5 * time.Minute,
 			})
+		case "aws-status":
+			aws := feeds.NewAWSStatus(client)
+			if endpoint := strings.TrimSpace(os.Getenv("NETWEATHER_AWS_STATUS_URL")); endpoint != "" {
+				aws.URL = endpoint
+			}
+			out = append(out, &feeds.Poller{
+				Feed:   "aws-status",
+				Source: aws,
+				Sink:   st,
+				Every:  5 * time.Minute,
+			})
 		}
 	}
 	return out

@@ -30,7 +30,7 @@ services:
       # NETWEATHER_TOR_SOCKS: tor:9050
       #
       # External corroboration, also off by default.
-      # NETWEATHER_FEEDS: ioda,radar,statuspage
+      # NETWEATHER_FEEDS: ioda,radar,statuspage,aws-status
       # NETWEATHER_STATUSPAGE_URLS: https://status.example.com,https://status.other.example
       # Radar also needs a token; it is skipped with a warning without one.
       # NETWEATHER_RADAR_TOKEN: /run/secrets/radar_token is not supported; use env or a secret-aware wrapper.
