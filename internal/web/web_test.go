@@ -4067,3 +4067,46 @@ func TestBoardOmitsStaleAndNonCoverageAdvisories(t *testing.T) {
 		})
 	}
 }
+
+func TestLocalVerdictMutesDownTiles(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithVerdict(t, testToken, fixture(), &fakeVerdict{res: verdict.Result{
+		Verdict: verdict.Local, Detail: "2 of 3 reference targets failing; this is likely your path",
+	}})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	// united.com is DOWN in the fixture; the tile keeps its state and gains the
+	// local-path presentation.
+	if !strings.Contains(page, `data-testid="local-path"`) || !strings.Contains(page, "your connection") {
+		t.Fatalf("a LOCAL verdict did not mute the down tile:\n%s", page)
+	}
+	if !strings.Contains(page, "local-path") {
+		t.Error("the tile does not carry the local-path class")
+	}
+	// The confirmed state is unchanged.
+	if !strings.Contains(page, `data-target="united.com"`) {
+		t.Error("the down target disappeared from the board")
+	}
+
+	// Without LOCAL the tile is not muted.
+	ok := newServerWithVerdict(t, testToken, fixture(), &fakeVerdict{res: verdict.Result{
+		Verdict: verdict.OK, Detail: "within the baseline band",
+	}})
+	client2, _ := newClient(t)
+	login(t, ok, client2, testToken)
+	resp, err = client2.Get(ok.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(body(t, resp), `data-testid="local-path"`) {
+		t.Error("an OK verdict muted a down tile")
+	}
+}

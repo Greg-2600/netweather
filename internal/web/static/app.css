@@ -641,3 +641,22 @@ table.probes td.detail { max-width: 18rem; overflow-wrap: anywhere; }
 .verdict-STALE { color: #ff9c97; border-color: rgba(255, 156, 151, 0.55); }
 .verdict-STARTING,
 .verdict-LEARNING { color: var(--muted); }
+/* --- local-path muting (DESIGN.md 3.3) ------------------------------------- */
+
+/* The target keeps its confirmed DOWN state; the red is suppressed because the
+   monitor's own path is the more likely explanation. The label, not the colour,
+   carries the meaning. */
+.tile.local-path {
+  border-color: rgba(240, 184, 73, 0.45);
+  background: rgba(240, 184, 73, 0.05);
+}
+
+.tile.local-path .state {
+  color: #f0b849;
+}
+
+.local-path-label {
+  font-size: 0.7rem;
+  color: var(--muted);
+  white-space: nowrap;
+}

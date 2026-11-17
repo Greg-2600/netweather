@@ -110,7 +110,7 @@ Exactly one, shown in the top bar.
 
 Priority is explicit because two signals can be true at once: `STALE` outranks every interpretation (a blind monitor cannot speak), `TAMPER` outranks an outage, `LOCAL` outranks the cluster it may be casting, and `INCIDENT` outranks `LEARNING`. A failed read is an absent signal, never evidence: the builder does not invent a failure, a tamper, or a local-path claim from a broken query.
 
-Two limits are stated rather than hidden. The `TAMPER` verdict accepts the DNS ladder's `TAMPER`, which is already the second-signal verdict from `CLASSIFIER.md` §3.2; a certificate anomaly alone remains a drawer signal. And `LOCAL`'s "suppress per-target red" presentation is not a separate wash over tiles yet: the targets keep their confirmed states and the top-bar label names the local path, which is the part that changes the operator's reading.
+Two limits are stated rather than hidden. The `TAMPER` verdict accepts the DNS ladder's `TAMPER`, which is already the second-signal verdict from `CLASSIFIER.md` §3.2; a certificate anomaly alone remains a drawer signal. And `LOCAL`'s "suppress per-target red" is a presentation rule: while the verdict holds, a `DOWN` tile keeps its confirmed state but renders muted with a "your connection" label, so the operator reads the path before the service; nothing about the stored state or the history changes.
 
 ---
 

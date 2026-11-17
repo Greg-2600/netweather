@@ -234,6 +234,10 @@ type tileView struct {
 	// density. Empty means "no history", which the tile shows as nothing rather
 	// than a fabricated line.
 	Spark string
+	// Local marks a DOWN tile while the global verdict says the monitor's own
+	// path is the problem. The target keeps its confirmed state; only the
+	// presentation is muted (DESIGN.md §3.3).
+	Local bool
 }
 
 type countView struct {
@@ -937,6 +941,20 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	// are already on the page, so it is computed after they are read.
 	if s.deps.Verdict != nil {
 		view.Verdict = s.deps.Verdict.Build(r.Context())
+	}
+
+	// LOCAL suppresses per-target red (DESIGN.md §3.3): the targets keep their
+	// confirmed DOWN state, but a red grid while the monitor's own path is the
+	// problem is the false alarm this rule exists to prevent. The mute is
+	// presentation, not a state write.
+	if view.Verdict.Verdict == verdict.Local {
+		for gi := range view.Groups {
+			for ti := range view.Groups[gi].Targets {
+				if view.Groups[gi].Targets[ti].State == "down" {
+					view.Groups[gi].Targets[ti].Local = true
+				}
+			}
+		}
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
