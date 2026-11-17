@@ -240,6 +240,8 @@ func serve(lg *logging.Logger) error {
 		Commit:          version.Commit,
 		StartedAt:       time.Now(),
 		Source:          source,
+		Watcher:         changes,
+		RunContext:      ctx,
 		Control:         ag,
 		Probes:          st,
 		Incidents:       st,

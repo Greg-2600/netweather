@@ -617,10 +617,12 @@ data: {"id":"inc-9f2c","verdict":"INCIDENT","scope":"sector","scope_value":"airl
 
 - Heartbeat comment every 15 seconds so proxies do not idle-close.
 - The write deadline is cleared for this route only; normal requests keep the 30-second timeout.
-- `Last-Event-ID` is **not** implemented: neither broadcast has a replay buffer. A reconnecting client refetches `/api/v1/board` and `/api/v1/incidents`.
+- `Last-Event-ID` **is** implemented. Every event carries an `id` of the form `<epoch>:<sequence>`; a reconnecting client sends the last id it saw and receives only the events it missed, then continues live. A bounded ring (256 events) is the window: a client away longer than that, or reconnecting after a restart (the epoch changes), gets a fresh `snapshot` instead of a partial history.
+- The `snapshot` sent on connect also carries an id, so a client that disconnects immediately after reading it can still resume.
+- A client that cannot keep up with the live stream is disconnected rather than silently skipped; it reconnects and resumes from the ring, which still holds the events.
 - The initial `snapshot` is an addition to the original delta-only sketch; it removes the connect-then-fetch race without sending a full page twice.
-- `incident` events carry **open** incidents, re-sent whole when the incident log changes; a client upserts by `id`. A close is not pushed as a diff — refetch `/api/v1/incidents` to see closures. This is a stated limit, not an omission.
-- The UI's `/events` stream emits the same `incident` event; the incident pages listen for it and reload, because a reload cannot show a stale attribution or close reason.
+- `incident` events carry **open** incidents, re-sent whole when the incident log changes; a client upserts by `id`. A close is not pushed as a diff - refetch `/api/v1/incidents` to see closures. This is a stated limit, not an omission.
+- The UI's `/events` stream emits the same `incident` event; the incident pages listen for it and reload, because a reload cannot show a stale attribution or close reason. The UI stream refetches on reconnect instead of resuming, which is why its `Last-Event-ID` is not offered.
 - `503` when no board source is configured, rather than a connection that can only heartbeat.
 
 For browser `EventSource`, which cannot set an `Authorization` header, use the UI's cookie-authenticated `/events`; an API client should use a `fetch`-based SSE reader instead.
@@ -750,7 +752,7 @@ Nothing remains on the read surface. Every read endpoint in this document is imp
 | `/events` | session cookie | the browser UI | **implemented** |
 | `/api/v1/events` | bearer | API clients | **implemented** |
 
-Two limitations are stated rather than hidden: `Last-Event-ID` replay is not implemented (neither broadcast has a ring), and a closed incident is not pushed as a diff. Both streams emit `incident` events; the UI reloads the incident pages, and an API client upserts open incidents by id or refetches for closures.
+One limitation is stated rather than hidden: a closed incident is not pushed as a diff. The API stream resumes from a bounded `Last-Event-ID` ring (§6.17); the UI stream refetches on reconnect instead. Both streams emit `incident` events; the UI reloads the incident pages, and an API client upserts open incidents by id or refetches for closures.
 
 Concurrent streams are capped at 64 total and 8 per peer address (`THREAT_MODEL.md` T10). Exceeding either returns `429` with `Retry-After: 60`; `X-Forwarded-For` is not trusted for the per-IP budget, because without a configured proxy CIDR it is spoofable.
 

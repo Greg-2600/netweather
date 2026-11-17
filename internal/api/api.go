@@ -166,6 +166,9 @@ type Deps struct {
 	// Fallback serves everything that is not /healthz or /api/. It is the UI.
 	// Nil means "JSON 404", which is the right default for tests.
 	Fallback http.Handler
+	// RunContext ends the SSE event tracker when the server stops. Nil uses
+	// context.Background(), which is what a test wants.
+	RunContext context.Context
 }
 
 type server struct {
@@ -179,6 +182,8 @@ type server struct {
 	// streams caps concurrent SSE connections. nil means "unlimited", which
 	// only a test should ask for.
 	streams *streamlimit.Limiter
+	// events is the fan-out and replay ring for the SSE stream.
+	events *eventLog
 }
 
 // New builds the HTTP handler. It validates the exposure guardrail before it
@@ -200,9 +205,20 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 		traceBudget: newTraceGovernor(),
 		idempotency: newIdempotencyStore(),
 		streams:     deps.StreamLimit,
+		events:      newEventLog(DefaultEventLogSize),
 	}
 	if s.streams == nil {
 		s.streams = streamlimit.New(streamlimit.DefaultTotal, streamlimit.DefaultPerIP)
+	}
+
+	// The tracker owns the replay ring: it records deltas whether or not a
+	// client is connected, which is what makes Last-Event-ID a real resume.
+	if deps.Watcher != nil {
+		runCtx := deps.RunContext
+		if runCtx == nil {
+			runCtx = context.Background()
+		}
+		go s.trackEvents(runCtx)
 	}
 
 	apiMux := http.NewServeMux()
@@ -1506,6 +1522,30 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	rc := http.NewResponseController(w)
 	_ = rc.SetWriteDeadline(time.Time{})
 
+	// Decide the resume before writing headers. A client with a usable
+	// Last-Event-ID gets only what it missed; anything else gets a snapshot.
+	var (
+		backlog []logEntry
+		entryCh <-chan logEntry
+		cancel  func()
+		resumed bool
+	)
+
+	if raw := strings.TrimSpace(r.Header.Get("Last-Event-ID")); raw != "" {
+		if missed, ch, ok, cancelFn := s.events.resume(raw); ok {
+			backlog, entryCh, cancel, resumed = missed, ch, cancelFn, true
+		}
+	}
+
+	if !resumed {
+		// Attach before the snapshot is read, so a change during the read is
+		// forwarded afterwards instead of falling into a gap.
+		seq := s.events.current()
+		missed, ch, cancelFn := s.events.attach(seq)
+		backlog, entryCh, cancel = missed, ch, cancelFn
+	}
+	defer cancel()
+
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream; charset=utf-8")
 	h.Set("Cache-Control", "no-cache")
@@ -1516,75 +1556,25 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if _, err := io.WriteString(w, "retry: 3000\n\n"); err != nil {
 		return
 	}
-	flusher.Flush()
 
-	writeState := func(event string, v any) bool {
-		data, err := json.Marshal(v)
+	if !resumed {
+		snapshot, err := s.streamSnapshot(r.Context())
 		if err != nil {
-			return true
+			_ = writeSSE(w, "", "error", map[string]string{"message": "board unavailable"})
+			flusher.Flush()
+			return
 		}
-		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data); err != nil {
-			return false
+		if !writeSSE(w, s.events.id(s.events.current()), "snapshot", sseSnapshot{Targets: snapshot.list()}) {
+			return
 		}
-		return true
 	}
 
-	// Subscribe before the snapshot is written. A subscriber that only attaches
-	// afterwards can miss a change that happens in the gap, which is a real
-	// lost-wakeup for a client and a hang for a test that notifies as soon as it
-	// reads the snapshot.
-	var ch <-chan struct{}
-	if s.deps.Watcher != nil {
-		boardCh, cancel := s.deps.Watcher.Subscribe()
-		defer cancel()
-		ch = boardCh
-	}
-
-	var incidentCh <-chan struct{}
-	if s.deps.IncidentWatcher != nil {
-		incCh, incCancel := s.deps.IncidentWatcher.Subscribe()
-		defer incCancel()
-		incidentCh = incCh
-	}
-
-	last, err := s.streamSnapshot(r.Context())
-	if err != nil {
-		_ = writeState("error", map[string]string{"message": "board unavailable"})
-		flusher.Flush()
-		return
-	}
-	if !writeState("snapshot", sseSnapshot{Targets: last.list()}) {
-		return
+	for _, entry := range backlog {
+		if !writeLogEntry(w, s.events.id(entry.seq), entry) {
+			return
+		}
 	}
 	flusher.Flush()
-
-	if ch == nil {
-		s.heartbeat(w, r, flusher)
-		return
-	}
-
-	emitIncidents := func(ctx context.Context) bool {
-		if s.deps.Incidents == nil {
-			return true
-		}
-		open, err := s.deps.Incidents.Incidents(ctx, true, 50)
-		if err != nil {
-			s.deps.Logger.Warn("incident stream read failed",
-				"event", "incident_stream_failed", "component", "http", "error", err)
-			return true
-		}
-		for _, inc := range open {
-			if !writeState("incident", incidentEvent{
-				ID: inc.ID, Verdict: inc.Verdict, Scope: inc.Scope,
-				ScopeValue: inc.ScopeValue, Headline: inc.Headline,
-				Confidence: inc.Confidence,
-				OpenedAt:   inc.OpenedAt.UTC().Format(time.RFC3339),
-			}) {
-				return false
-			}
-		}
-		return true
-	}
 
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
@@ -1598,32 +1588,40 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			flusher.Flush()
-		case <-incidentCh:
-			// Open incidents are re-sent whole; a client upserts by id. A close
-			// is not sent as an event because the stream carries current state,
-			// not a diff, and guessing would be worse than a refetch.
-			if !emitIncidents(r.Context()) {
+		case entry, ok := <-entryCh:
+			// A closed channel means this subscriber could not keep up; the
+			// client reconnects and resumes from the ring.
+			if !ok {
 				return
 			}
-			flusher.Flush()
-		case <-ch:
-			current, err := s.streamSnapshot(r.Context())
-			if err != nil {
+			if !writeLogEntry(w, s.events.id(entry.seq), entry) {
 				return
 			}
-			for _, id := range current.ids() {
-				next := current[id]
-				if prev, seen := last[id]; seen && prev.State == next.State {
-					continue
-				}
-				if !writeState("state", next) {
-					return
-				}
-			}
-			last = current
 			flusher.Flush()
 		}
 	}
+}
+
+// writeSSE writes one event. An empty id omits the line, which is what the
+// error event wants: it is not replayable state.
+func writeSSE(w io.Writer, id, event string, v any) bool {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return true
+	}
+	var line string
+	if id != "" {
+		line = fmt.Sprintf("id: %s\nevent: %s\ndata: %s\n\n", id, event, data)
+	} else {
+		line = fmt.Sprintf("event: %s\ndata: %s\n\n", event, data)
+	}
+	_, err = io.WriteString(w, line)
+	return err == nil
+}
+
+func writeLogEntry(w io.Writer, id string, entry logEntry) bool {
+	_, err := fmt.Fprintf(w, "id: %s\nevent: %s\ndata: %s\n\n", id, entry.event, entry.data)
+	return err == nil
 }
 
 // incidentEvent is the wire shape for an incident on the stream.
@@ -1684,22 +1682,6 @@ func (s *server) vantage() string {
 		return "local"
 	}
 	return s.deps.Vantage
-}
-
-func (s *server) heartbeat(w http.ResponseWriter, r *http.Request, flusher http.Flusher) {
-	ticker := time.NewTicker(15 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case <-ticker.C:
-			if _, err := io.WriteString(w, ": heartbeat\n\n"); err != nil {
-				return
-			}
-			flusher.Flush()
-		}
-	}
 }
 
 type feedStateItem struct {

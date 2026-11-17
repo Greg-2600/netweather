@@ -2293,6 +2293,9 @@ func newEventsHandler(t *testing.T, src board.Source, watcher board.Watcher) htt
 type eventStream struct {
 	lines chan string
 	errs  chan error
+	// lastID is the id line most recently seen. It is the value a client would
+	// echo back as Last-Event-ID.
+	lastID string
 }
 
 func newEventStream(r *bufio.Reader) *eventStream {
@@ -2325,6 +2328,8 @@ func (s *eventStream) readEvent(t *testing.T, want string, timeout time.Duration
 			t.Fatalf("stream ended before %q: %v", want, err)
 		case line := <-s.lines:
 			switch {
+			case strings.HasPrefix(line, "id: "):
+				s.lastID = strings.TrimPrefix(line, "id: ")
 			case strings.HasPrefix(line, "event: "):
 				event = strings.TrimPrefix(line, "event: ")
 			case strings.HasPrefix(line, "data: ") && event == want:
@@ -2508,6 +2513,84 @@ func TestEventsHeartbeatOnlyWithoutWatcher(t *testing.T) {
 	stream := newEventStream(bufio.NewReader(resp.Body))
 	if got := stream.readEvent(t, "snapshot", 5*time.Second); !strings.Contains(got, "chase.com") {
 		t.Fatalf("snapshot = %s", got)
+	}
+}
+
+func TestEventsResumesFromLastEventID(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(board.Target{ID: "1", Name: "Chase", Host: "chase.com", State: board.StateUp})
+
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	t.Cleanup(cancelRun)
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Source:     m,
+			Watcher:    m,
+			RunContext: runCtx,
+			Vantage:    "local",
+			Version:    "test",
+			Commit:     "deadbeef",
+			StartedAt:  time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	defer ts.Close()
+
+	open := func(lastID string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/api/v1/events", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		if lastID != "" {
+			req.Header.Set("Last-Event-ID", lastID)
+		}
+		resp, err := (&http.Client{}).Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+
+	first := open("")
+	initial := newEventStream(bufio.NewReader(first.Body))
+	initial.readEvent(t, "snapshot", 5*time.Second)
+	resumeFrom := initial.lastID
+	if resumeFrom == "" {
+		t.Fatal("the snapshot carried no id, so a client cannot resume")
+	}
+	_ = first.Body.Close()
+
+	// Disconnected while the state changes: the tracker must have recorded the
+	// delta for the reconnect to find it.
+	if _, changed := m.Set("1", board.StateDown); !changed {
+		t.Fatal("fixture did not change")
+	}
+
+	second := open(resumeFrom)
+	defer func() { _ = second.Body.Close() }()
+	resumed := newEventStream(bufio.NewReader(second.Body))
+	delta := resumed.readEvent(t, "state", 5*time.Second)
+	if !strings.Contains(delta, `"state":"down"`) {
+		t.Fatalf("resumed delta = %s, want the missed down state", delta)
+	}
+
+	// An id this process cannot bridge gets a fresh snapshot instead of a
+	// partial history.
+	third := open("not-an-id")
+	defer func() { _ = third.Body.Close() }()
+	fresh := newEventStream(bufio.NewReader(third.Body))
+	if got := fresh.readEvent(t, "snapshot", 5*time.Second); !strings.Contains(got, "chase.com") {
+		t.Fatalf("fallback snapshot = %s", got)
 	}
 }
 
