@@ -1,0 +1,19 @@
+# netweather Tor sidecar configuration (docs/IMAGE.md 7).
+#
+# Baked into the image on purpose: the two lines that matter are the ones a
+# forgotten mount would silently drop. The monitor only ever reads from this
+# proxy, so it carries no exit traffic and opens no control port.
+ClientOnly 1
+ExitPolicy reject *:*
+
+# The app reaches this over the compose egress network; nothing is published.
+SocksPort 0.0.0.0:9050
+
+# The release image runs read-only with a tmpfs at /tmp, and tor needs a
+# writable data directory it owns.
+DataDirectory /tmp/tor
+
+# Logs go to stdout so `docker logs` keeps them; SafeLogging strips addresses
+# from those lines.
+Log notice stdout
+SafeLogging 1

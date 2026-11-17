@@ -229,7 +229,9 @@ EXPOSE 9050
 ENTRYPOINT ["tor", "-f", "/etc/tor/torrc"]
 ```
 
-The `torrc` is baked in, and `netweather doctor` verifies the effective exit policy at runtime. A managed Tor with an open exit policy is a hard error.
+The `torrc` is baked in at build time (`torrc`, copied by `Dockerfile.tor`), and `compose.yaml`'s `tor` service builds that image rather than pulling a third-party proxy. The non-negotiable lines are `ClientOnly 1` and `ExitPolicy reject *:*`; a unit test reads `torrc` and asserts both, and another asserts the compose service builds `Dockerfile.tor` and publishes no port.
+
+`netweather doctor` adds a `tor socks (optional)` check when the Tor vantage is enabled: it proves the SOCKS port answers. It does **not** audit the effective exit policy, because the app container cannot read the sidecar's config, and claiming a runtime policy check would imply a control channel the deployment does not have. The policy is guaranteed by the image, which is why the image is built here.
 
 ---
 

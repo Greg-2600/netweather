@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -50,5 +51,58 @@ func TestWorkflowFilesParse(t *testing.T) {
 				t.Errorf("%s has no jobs:", path)
 			}
 		}
+	}
+}
+
+// TestTorSidecarIsBakedIn pins the two properties that make the sidecar safe:
+// the torrc is client-only with no exit traffic, and compose builds that image
+// rather than pulling a third-party proxy.
+func TestTorSidecarIsBakedIn(t *testing.T) {
+	t.Parallel()
+
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	torrc, err := os.ReadFile(filepath.Join(root, "torrc")) // #nosec G304 -- repo file.
+	if err != nil {
+		t.Fatalf("torrc: %v", err)
+	}
+	for _, want := range []string{"ClientOnly 1", "ExitPolicy reject *:*", "SocksPort 0.0.0.0:9050"} {
+		if !strings.Contains(string(torrc), want) {
+			t.Errorf("torrc is missing %q", want)
+		}
+	}
+
+	raw, err := os.ReadFile(filepath.Join(root, "compose.yaml")) // #nosec G304 -- repo file.
+	if err != nil {
+		t.Fatalf("compose.yaml: %v", err)
+	}
+	var compose struct {
+		Services map[string]struct {
+			// build is a mapping for the tor service and the short string form
+			// for the main image, so it cannot be decoded into a struct.
+			Build any    `yaml:"build"`
+			Ports []any  `yaml:"ports"`
+			Image string `yaml:"image"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(raw, &compose); err != nil {
+		t.Fatalf("compose.yaml: %v", err)
+	}
+	tor, ok := compose.Services["tor"]
+	if !ok {
+		t.Fatal("compose has no tor service")
+	}
+	build, ok := tor.Build.(map[string]any)
+	if !ok {
+		t.Fatalf("tor build = %T, want a mapping with dockerfile", tor.Build)
+	}
+	if build["dockerfile"] != "Dockerfile.tor" {
+		t.Fatalf("tor builds with %v, want Dockerfile.tor", build["dockerfile"])
+	}
+	if len(tor.Ports) != 0 {
+		t.Fatalf("tor publishes %v; the proxy must stay on the egress network", tor.Ports)
 	}
 }

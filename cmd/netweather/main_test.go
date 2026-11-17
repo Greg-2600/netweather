@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -1033,5 +1034,36 @@ func TestNewDirectBudgetDisabled(t *testing.T) {
 	}
 	if budget == nil || budget.Allowance() != 2048<<20 {
 		t.Fatalf("budget = %+v, want 2 GB", budget)
+	}
+}
+
+func TestTorSocksCheck(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+
+	go func() {
+		conn, err := ln.Accept()
+		if err == nil {
+			_ = conn.Close()
+		}
+	}()
+
+	detail, err := torSocksCheck(ln.Addr().String())(context.Background())
+	if err != nil {
+		t.Fatalf("a listening proxy reported %v", err)
+	}
+	if !strings.Contains(detail, "answered") {
+		t.Fatalf("detail = %q", detail)
+	}
+
+	// A closed proxy is a warning for the doctor, not a panic: the check
+	// reports an error and the runner decides.
+	addr := ln.Addr().String()
+	_ = ln.Close()
+	if _, err := torSocksCheck(addr)(context.Background()); err == nil {
+		t.Fatal("a closed proxy was accepted")
 	}
 }

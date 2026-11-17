@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,6 +63,20 @@ func doctorCommand(args []string, out io.Writer) error {
 			}
 			return "443 allowed, 22 refused", nil
 		}},
+	}
+
+	// The Tor sidecar is optional, so its check is only added when the vantage
+	// is enabled, and a missing proxy is a warning rather than a startup
+	// failure. The exit policy itself is guaranteed by the baked-in torrc in
+	// Dockerfile.tor; the app container cannot inspect the sidecar's config,
+	// and claiming to would be the kind of assurance this project avoids.
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("NETWEATHER_TOR")), "true") ||
+		strings.TrimSpace(os.Getenv("NETWEATHER_TOR_SOCKS")) != "" {
+		proxy := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_SOCKS"))
+		if proxy == "" {
+			proxy = "tor:9050"
+		}
+		checks = append(checks, doctor.Check{Name: "tor socks (optional)", Run: torSocksCheck(proxy)})
 	}
 
 	runner := &doctor.Runner{Checks: checks}
@@ -227,5 +242,20 @@ func capabilityCheck(name string, open func() (io.Closer, error)) func(context.C
 		}
 		_ = transport.Close()
 		return name + " available", nil
+	}
+}
+
+// torSocksCheck proves the sidecar's SOCKS port answers. It does not audit the
+// exit policy: that is guaranteed by the torrc baked into Dockerfile.tor, and
+// the app container has no way to read the sidecar's effective config.
+func torSocksCheck(proxy string) func(context.Context) (string, error) {
+	return func(ctx context.Context) (string, error) {
+		d := net.Dialer{Timeout: 3 * time.Second}
+		conn, err := d.DialContext(ctx, "tcp", proxy)
+		if err != nil {
+			return "", fmt.Errorf("SOCKS proxy %s: %w", proxy, err)
+		}
+		_ = conn.Close()
+		return proxy + " answered", nil
 	}
 }

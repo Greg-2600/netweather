@@ -1,0 +1,23 @@
+# syntax=docker/dockerfile:1
+#
+# The Tor sidecar's own image (docs/IMAGE.md 7). We build it rather than pull a
+# third-party Tor image so the client-only torrc is baked in: an operator cannot
+# forget a mount and turn the monitor's proxy into an exit node.
+#
+# Wolfi is used for the same reason as the main image: daily rebuilds and a
+# small package set for a security-sensitive component.
+
+FROM cgr.dev/chainguard/wolfi-base:latest
+
+USER 0
+
+RUN apk add --no-cache tor ca-certificates-bundle \
+ && mkdir -p /tmp/tor \
+ && chown 65532:65532 /tmp/tor
+
+COPY torrc /etc/tor/torrc
+
+USER 65532:65532
+EXPOSE 9050
+
+ENTRYPOINT ["tor", "-f", "/etc/tor/torrc"]

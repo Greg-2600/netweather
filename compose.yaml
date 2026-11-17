@@ -3,11 +3,11 @@ name: netweather
 services:
   netweather:
     # In production, pin the digest instead of a tag:
-#   image: ghcr.io/<owner>/netweather@sha256:<digest>
-# The release job prints the digest and the cosign verify command for each tag;
-# the signature is keyless and the image carries SBOM and provenance
-# attestations (docs/IMAGE.md 6).
-image: ghcr.io/${NETWEATHER_OWNER:-greg-2600}/netweather:${NETWEATHER_TAG:-latest}
+    #   image: ghcr.io/<owner>/netweather@sha256:<digest>
+    # The release job prints the digest and the cosign verify command for each
+    # tag; the signature is keyless and the image carries SBOM and provenance
+    # attestations (docs/IMAGE.md §6).
+    image: ghcr.io/${NETWEATHER_OWNER:-greg-2600}/netweather:${NETWEATHER_TAG:-latest}
     build: .
     networks: [ui, egress]
 
@@ -75,7 +75,13 @@ image: ghcr.io/${NETWEATHER_OWNER:-greg-2600}/netweather:${NETWEATHER_TAG:-lates
   # The exit is not country-pinned; use a pinned SOCKS5 endpoint when the
   # country label matters (docs/ACCEPTABLE_USE.md §8).
   tor:
-    image: dperson/torproxy:latest
+    # Built from this repository's Dockerfile.tor, not a third-party image: the
+    # client-only torrc is baked in, so an operator cannot turn the proxy into
+    # an exit node by forgetting a mount (docs/IMAGE.md 7).
+    build:
+      context: .
+      dockerfile: Dockerfile.tor
+    image: netweather-tor:local
     profiles: [tor]
     networks: [egress]
     restart: unless-stopped
