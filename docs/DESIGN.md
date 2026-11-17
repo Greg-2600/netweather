@@ -104,7 +104,7 @@ Exactly one, shown in the top bar.
 
 `DNS_ANOMALY` is deliberately **not** a global verdict. A single resolver disagreeing with its own history is advisory: it appears in the drawer and a collapsed observations strip, never on the top bar. Promoting it to `TAMPER` requires a second signal (`CLASSIFIER.md` §3.2).
 
-`LOCAL` does not overwrite per-target state - targets keep `DOWN` internally, with `attributed_to: local`. The board renders them muted with a "your connection" label instead of red. This preserves history while preventing panic.
+`LOCAL` does not overwrite per-target state - targets keep `DOWN` internally. While the verdict holds, the board renders a `DOWN` tile muted with a "your connection" label instead of red. This preserves history while preventing panic. `target_state.attributed_to` is reserved for a stored attribution and stays `NULL`: the mute is presentation, not a state write, so a read never mutates the database.
 
 **Implemented:** `internal/verdict` is the table as a pure function, and the board computes it per request from signals that are already on the page: the newest confirmed probe (`STALE`), the confirmed target count (`STARTING`), the newest high-confidence DNS `TAMPER` verdict in the last hour, reference-class failures (`LOCAL`, two of three or more), a target `DOWN` on one vantage and up on another (`REGIONAL`), open incidents (`INCIDENT`), and the global scope's usable baseline samples (`LEARNING`). The badge is in the top bar with the sentence as its title, `STALE` also raises a banner, and `/api/v1/board` carries the same value and sentence in `meta.verdict`.
 

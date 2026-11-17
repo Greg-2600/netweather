@@ -227,7 +227,7 @@ CREATE TABLE target_state (
     ok_streak     INTEGER NOT NULL DEFAULT 0,
     last_probe_at INTEGER NOT NULL,
     last_error    TEXT,
-    attributed_to TEXT,                       -- 'local', or an incident id
+    attributed_to TEXT,                       -- reserved: NULL; LOCAL is presentation (DESIGN.md 3.3)
     PRIMARY KEY (target_id, vantage_id)
 ) WITHOUT ROWID;
 
@@ -681,7 +681,7 @@ These are the five queries that decide whether the schema is right.
 
 ```sql
 SELECT t.id, t.name, t.sector, t.country, t.cdn,
-       s.state, s.since, s.last_error, s.attributed_to
+       s.state, s.since, s.last_error, s.attributed_to  -- reserved; NULL today
 FROM target t
 JOIN target_state s
   ON s.target_id = t.id AND s.vantage_id = ?

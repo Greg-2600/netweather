@@ -302,7 +302,7 @@ These are the properties the security model reduces to. They are listed as testa
 
 **Publish an instance.** Read `NETWORKING.md` §7.1 first. The page is the disclosure: target list, egress ASN, coverage gaps.
 
-**Vulnerability reports.** `SECURITY.md` (to be written) is the intake path. Until it exists, the repository's private advisory channel is the intake path.
+**Vulnerability reports.** `SECURITY.md` is the intake path: GitHub private vulnerability reporting, with the in-scope list naming the SSRF guard, auth, and container hardening as urgent. Do not open a public issue for a suspected vulnerability.
 
 ---
 
