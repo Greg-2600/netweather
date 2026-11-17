@@ -222,6 +222,7 @@ func taskCover() error {
 	}
 
 	thresholds := map[string]float64{
+		"/internal/agent":    85,
 		"/internal/api":      90,
 		"/internal/board":    90,
 		"/internal/classify": 95,
