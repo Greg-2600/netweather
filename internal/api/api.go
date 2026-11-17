@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/logging"
+	"github.com/Greg-2600/netweather/internal/store"
 )
 
 // Control is the probe kill switch. The agent implements it; a nil Control means
@@ -18,6 +20,12 @@ type Control interface {
 	Pause()
 	Resume()
 	Paused() bool
+}
+
+// ProbeReader is the read side the API needs for target history.
+type ProbeReader interface {
+	RecentProbes(ctx context.Context, targetID, vantageID string, limit int) ([]store.ProbeRow, error)
+	TargetExists(ctx context.Context, targetID string) (bool, error)
 }
 
 // Deps is everything the HTTP layer needs. It is deliberately small: the API
@@ -33,6 +41,10 @@ type Deps struct {
 	Source board.Source
 	// Control is the pause/resume switch.
 	Control Control
+	// Probes reads recent observations for one target. Nil disables the route.
+	Probes ProbeReader
+	// Vantage is the vantage the read endpoints report on.
+	Vantage string
 	// Fallback serves everything that is not /healthz or /api/. It is the UI.
 	// Nil means "JSON 404", which is the right default for tests.
 	Fallback http.Handler
@@ -65,6 +77,7 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	apiMux.HandleFunc("/api/v1/resume", onlyPOST(s.handleResume))
 	apiMux.HandleFunc("/api/v1/meta", onlyGET(s.handleMeta))
 	apiMux.HandleFunc("/api/v1/logs", onlyGET(s.handleLogs))
+	apiMux.HandleFunc("/api/v1/targets/", onlyGET(s.handleTargetProbes))
 	apiMux.HandleFunc("/", s.handleNotFound)
 
 	// 60 requests/minute sustained, 20 burst (docs/API.md §8).
@@ -154,7 +167,7 @@ type metaResponse struct {
 
 // capabilities is the runtime truth. A client should feature-detect here rather
 // than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs", "board", "control"}
+var capabilities = []string{"health", "meta", "logs", "board", "control", "probes"}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}
@@ -220,6 +233,78 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, r, out, &Meta{Count: len(out)})
+}
+
+type probeItem struct {
+	TS         string `json:"ts"`
+	State      string `json:"state"`
+	Stage      string `json:"stage"`
+	ErrorClass string `json:"error_class,omitempty"`
+	HTTPStatus int    `json:"http_status,omitempty"`
+	LatencyMS  int    `json:"latency_ms,omitempty"`
+	Confidence string `json:"confidence"`
+	Detail     string `json:"detail,omitempty"`
+}
+
+// handleTargetProbes serves /api/v1/targets/{id}/probes: the newest observations
+// for one target, newest first. It is the drawer's data.
+func (s *server) handleTargetProbes(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Probes == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "probe history is not configured")
+		return
+	}
+
+	rest := strings.TrimPrefix(r.URL.Path, "/api/v1/targets/")
+	id, suffix, ok := strings.Cut(rest, "/")
+	if !ok || id == "" || suffix != "probes" {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such endpoint")
+		return
+	}
+
+	limit, err := parseLimit(r.URL.Query().Get("limit"), 20, 200)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, err.Error())
+		return
+	}
+
+	exists, err := s.deps.Probes.TargetExists(r.Context(), id)
+	if err != nil {
+		s.deps.Logger.Error("target lookup failed", "event", "target_lookup_failed", "component", "http", "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "probe history unavailable")
+		return
+	}
+	if !exists {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such target")
+		return
+	}
+
+	vantage := s.deps.Vantage
+	if vantage == "" {
+		vantage = "local"
+	}
+
+	rows, err := s.deps.Probes.RecentProbes(r.Context(), id, vantage, limit)
+	if err != nil {
+		s.deps.Logger.Error("probe history failed", "event", "probe_history_failed", "component", "http", "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "probe history unavailable")
+		return
+	}
+
+	out := make([]probeItem, 0, len(rows))
+	for _, p := range rows {
+		out = append(out, probeItem{
+			TS:         p.TS.UTC().Format(time.RFC3339),
+			State:      string(p.State),
+			Stage:      p.Stage,
+			ErrorClass: p.ErrorClass,
+			HTTPStatus: p.HTTPStatus,
+			LatencyMS:  p.LatencyMS,
+			Confidence: p.Confidence,
+			Detail:     p.Detail,
+		})
+	}
+
+	writeData(w, r, out, &Meta{Count: len(out), Limit: limit})
 }
 
 type controlState struct {

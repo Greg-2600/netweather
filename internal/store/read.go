@@ -148,6 +148,69 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 	return out, nil
 }
 
+// ProbeRow is one stored observation, shaped for the drawer.
+type ProbeRow struct {
+	TS         time.Time
+	State      state.State
+	Stage      string
+	ErrorClass string
+	HTTPStatus int
+	LatencyMS  int
+	Confidence string
+	Detail     string
+}
+
+// RecentProbes returns the newest observations for a target and vantage.
+func (s *Store) RecentProbes(ctx context.Context, targetID, vantageID string, limit int) ([]ProbeRow, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.reader.QueryContext(ctx, `
+		SELECT ts, state, stage, COALESCE(error_class, ''), COALESCE(http_status, 0),
+		       COALESCE(latency_ms, 0), confidence, COALESCE(detail, '')
+		FROM probe
+		WHERE target_id = ? AND vantage_id = ?
+		ORDER BY ts DESC, id DESC
+		LIMIT ?`, targetID, vantageID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("store: recent probes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []ProbeRow
+	for rows.Next() {
+		var (
+			row ProbeRow
+			ts  int64
+		)
+		if err := rows.Scan(&ts, &row.State, &row.Stage, &row.ErrorClass,
+			&row.HTTPStatus, &row.LatencyMS, &row.Confidence, &row.Detail); err != nil {
+			return nil, fmt.Errorf("store: scan probe: %w", err)
+		}
+		row.TS = time.UnixMilli(ts).UTC()
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: recent probes: %w", err)
+	}
+	return out, nil
+}
+
+// TargetExists reports whether an enabled target has this id.
+func (s *Store) TargetExists(ctx context.Context, id string) (bool, error) {
+	var one int
+	err := s.reader.QueryRowContext(ctx,
+		`SELECT 1 FROM target WHERE id = ? AND enabled = 1`, id).Scan(&one)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("store: target exists: %w", err)
+	default:
+		return true, nil
+	}
+}
+
 // Rollup is one 5-minute bucket.
 type Rollup struct {
 	Bucket   time.Time

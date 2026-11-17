@@ -17,6 +17,7 @@ Honesty first, because a spec that implies more than the binary does is worse th
 | `GET /api/v1/logs` | **implemented** - reads the in-memory ring (`LOGGING.md` §9) |
 | `GET /api/v1/board` | **implemented** - the grid's data from the store |
 | `GET /api/v1/control`, `POST /api/v1/pause`, `POST /api/v1/resume` | **implemented** - the probe kill switch |
+| `GET /api/v1/targets/{id}/probes` | **implemented** - recent raw observations for one target |
 | `GET /events` | **implemented** - the UI's SSE stream; session cookie auth, not bearer. The API-facing counterpart is specified in §7.2 |
 | Everything else in §7 | **specified, not implemented** |
 | `/metrics` (`DESIGN.md` §6.4) | **specified, not implemented** — see §7.4 for why it is separate from `/api/v1` |
@@ -191,7 +192,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
-    "capabilities": ["health", "meta", "logs", "board", "control"],
+    "capabilities": ["health", "meta", "logs", "board", "control", "probes"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -278,6 +279,35 @@ The kill switch. Pausing stops outbound probing immediately; the UI, API, and st
 - The action is logged at `INFO` with the request id, so "who paused it" is answerable.
 - **Pause is not persisted across a restart.** A crash must not leave a kill switch on forever, and a restart must not silently silence monitoring.
 
+### 6.6 `GET /api/v1/targets/{id}/probes` — stable
+
+Auth: bearer. The newest observations for one target, newest first. This is the drawer's data.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `limit` | 20 | 1–200 |
+
+```json
+{
+  "data": [
+    {
+      "ts": "2026-11-17T12:01:00Z",
+      "state": "down",
+      "stage": "tls",
+      "error_class": "tls_cert_expired",
+      "latency_ms": 41,
+      "confidence": "high",
+      "detail": "certificate expired"
+    }
+  ],
+  "meta": {"request_id": "…", "count": 1, "limit": 20}
+}
+```
+
+- `404` for an unknown target. A target that exists but has never been probed is `200` with an empty list — those mean different things.
+- Raw probes are retained for 72h (`SCHEMA.md` §11); for longer ranges use `/series` when it lands.
+- `since` is not a parameter here: this endpoint is "the last N", not a range scan.
+
 ---
 
 ## 7. Specified, not implemented
@@ -290,7 +320,6 @@ Each of these is a promise about shape, not a claim that it works. `GET /api/v1/
 |---|---|---|
 | `GET /api/v1/targets` | stable | Target list with filters: `class`, `sector`, `country`, `state`, `enabled` |
 | `GET /api/v1/targets/{id}` | stable | One target with its current state and measurement metadata |
-| `GET /api/v1/targets/{id}/probes` | stable | Recent raw probes (`limit`, `from`, `to`) |
 | `GET /api/v1/targets/{id}/series` | stable | Rollups; `step=5m\|1h\|1d` |
 | `GET /api/v1/scopes/{scope}` | stable | Health, coverage, and baseline for `global`, `sector`, `country`, `asn`; `?value=` selects |
 | `GET /api/v1/anomalies` | stable | Detector output, advisory included |

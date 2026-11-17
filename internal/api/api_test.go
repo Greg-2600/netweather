@@ -16,6 +16,8 @@ import (
 	"github.com/Greg-2600/netweather/internal/api"
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/logging"
+	"github.com/Greg-2600/netweather/internal/state"
+	"github.com/Greg-2600/netweather/internal/store"
 )
 
 const testToken = "test-token-0123456789"
@@ -591,6 +593,164 @@ func TestPauseRejectsGET(t *testing.T) {
 	}
 	if got := rec.Header().Get("Allow"); got != "POST" {
 		t.Fatalf("Allow = %q", got)
+	}
+}
+
+type fakeProbes struct {
+	rows map[string][]store.ProbeRow
+}
+
+func (f *fakeProbes) RecentProbes(_ context.Context, id, _ string, limit int) ([]store.ProbeRow, error) {
+	rows := f.rows[id]
+	if limit > 0 && len(rows) > limit {
+		rows = rows[:limit]
+	}
+	return rows, nil
+}
+
+func (f *fakeProbes) TargetExists(_ context.Context, id string) (bool, error) {
+	_, ok := f.rows[id]
+	return ok, nil
+}
+
+func newProbesHandler(t *testing.T, p api.ProbeReader) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Probes:    p,
+			Vantage:   "local",
+			Version:   "test",
+			Commit:    "deadbeef",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func probeFixture() *fakeProbes {
+	return &fakeProbes{rows: map[string][]store.ProbeRow{
+		"t1": {
+			{
+				TS:    time.Date(2026, 11, 17, 12, 1, 0, 0, time.UTC),
+				State: state.Down, Stage: "tls", ErrorClass: "tls_cert_expired",
+				LatencyMS: 41, Confidence: "high", Detail: "certificate expired",
+			},
+			{
+				TS:    time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC),
+				State: state.Up, Stage: "http", HTTPStatus: 200,
+				LatencyMS: 80, Confidence: "high",
+			},
+		},
+	}}
+}
+
+func TestTargetProbesReturnsHistory(t *testing.T) {
+	t.Parallel()
+
+	h := newProbesHandler(t, probeFixture())
+	rec := do(h, http.MethodGet, "/api/v1/targets/t1/probes", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var items []struct {
+		TS         string `json:"ts"`
+		State      string `json:"state"`
+		Stage      string `json:"stage"`
+		ErrorClass string `json:"error_class"`
+		Confidence string `json:"confidence"`
+	}
+	if err := json.Unmarshal(env.Data, &items); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(items) != 2 {
+		t.Fatalf("items = %d", len(items))
+	}
+	if items[0].State != "down" || items[0].Stage != "tls" || items[0].ErrorClass != "tls_cert_expired" {
+		t.Fatalf("newest item = %+v", items[0])
+	}
+	if items[1].State != "up" {
+		t.Fatalf("second item = %+v", items[1])
+	}
+	if env.Meta.Limit != 20 {
+		t.Errorf("meta.limit = %d, want the default 20", env.Meta.Limit)
+	}
+}
+
+func TestTargetProbesLimit(t *testing.T) {
+	t.Parallel()
+
+	h := newProbesHandler(t, probeFixture())
+	rec := do(h, http.MethodGet, "/api/v1/targets/t1/probes?limit=1", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+
+	var env dataEnvelope
+	_ = json.Unmarshal(rec.Body.Bytes(), &env)
+	var items []map[string]any
+	_ = json.Unmarshal(env.Data, &items)
+	if len(items) != 1 {
+		t.Fatalf("items = %d, want 1", len(items))
+	}
+	if env.Meta.Limit != 1 {
+		t.Fatalf("meta.limit = %d", env.Meta.Limit)
+	}
+}
+
+func TestTargetProbesUnknownTarget(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newProbesHandler(t, probeFixture()), http.MethodGet, "/api/v1/targets/nope/probes", testToken)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestTargetProbesRequiresTheProbesSuffix(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newProbesHandler(t, probeFixture()), http.MethodGet, "/api/v1/targets/t1", testToken)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestTargetProbesRejectsBadLimit(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newProbesHandler(t, probeFixture()), http.MethodGet, "/api/v1/targets/t1/probes?limit=0", testToken)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestTargetProbesUnavailableWithoutReader(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/api/v1/targets/t1/probes", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+}
+
+func TestTargetProbesRequiresAuth(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newProbesHandler(t, probeFixture()), http.MethodGet, "/api/v1/targets/t1/probes", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
 	}
 }
 

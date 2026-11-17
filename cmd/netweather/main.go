@@ -159,6 +159,8 @@ func serve(lg *logging.Logger) error {
 		StartedAt: time.Now(),
 		Source:    source,
 		Control:   ag,
+		Probes:    st,
+		Vantage:   "local",
 		Fallback:  ui,
 	})
 	if err != nil {

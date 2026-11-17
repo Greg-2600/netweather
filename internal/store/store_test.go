@@ -417,3 +417,63 @@ func TestReadsFailAfterClose(t *testing.T) {
 		t.Error("SchemaVersion on a closed store should fail")
 	}
 }
+
+func TestRecentProbesNewestFirstAndLimited(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	if err := s.Record(ctx, []store.Probe{probeAt(base, state.Up)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Record(ctx, []store.Probe{probeAt(base.Add(time.Minute), state.Down)}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := s.RecentProbes(ctx, "t1", "local", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows = %d", len(rows))
+	}
+	if rows[0].State != state.Down || rows[1].State != state.Up {
+		t.Fatalf("order = %s, %s (want newest first)", rows[0].State, rows[1].State)
+	}
+
+	one, err := s.RecentProbes(ctx, "t1", "local", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(one) != 1 || one[0].State != state.Down {
+		t.Fatalf("limit = %+v", one)
+	}
+
+	none, err := s.RecentProbes(ctx, "missing", "local", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(none) != 0 {
+		t.Fatalf("unknown target returned %d rows", len(none))
+	}
+}
+
+func TestTargetExists(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	exists, err := s.TargetExists(ctx, "t1")
+	if err != nil || !exists {
+		t.Fatalf("t1 exists = %v, err = %v", exists, err)
+	}
+	exists, err = s.TargetExists(ctx, "nope")
+	if err != nil || exists {
+		t.Fatalf("nope exists = %v, err = %v", exists, err)
+	}
+}
