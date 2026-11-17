@@ -200,7 +200,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
-    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck"],
+    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -555,6 +555,22 @@ Auth: bearer. The newest result for each self-health check. This answers "can th
 - One row per check; the endpoint reports the latest run, not a history.
 - Self-checks run at startup and with maintenance every ten minutes, so a failed check is already in the logs before anyone opens this page.
 
+### 6.16 `GET /api/v1/export` — stable
+
+Auth: bearer. Streams observations for a time range. Nothing is buffered: the store calls back one row at a time, so a 31-day export does not become a 500 MB slice.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `format` | `csv` | `csv` or `jsonl` |
+| `from` | 24h ago | RFC 3339, inclusive |
+| `to` | now | RFC 3339, exclusive |
+
+- `Content-Disposition` is set so a browser downloads rather than renders.
+- A window longer than 31 days is `400`. The CLI has no such cap because an operator can wait; a client cannot.
+- CSV columns are stable: `target_id, host, vantage, ts, state, stage, error_class, http_status, latency_ms, confidence, detail`.
+- If the stream fails mid-way the status is already `200`; the failure is logged with `event=export_failed`. A client must treat a truncated file as truncated, not as complete.
+- Raw probes are retained for 72h, so a longer window returns what exists, not an error.
+
 ---
 
 ## 7. Specified, not implemented
@@ -566,7 +582,6 @@ Each of these is a promise about shape, not a claim that it works. `GET /api/v1/
 | Endpoint | Tier | Purpose |
 |---|---|---|
 | `GET /api/v1/feeds` | stable | Feed state: last success, staleness, consecutive failures |
-| `GET /api/v1/export` | stable | Streaming CSV/JSON over a time range; never loads the set into memory |
 
 ### 7.2 Live updates
 

@@ -197,6 +197,7 @@ func serve(lg *logging.Logger) error {
 		Targets:    st,
 		Coverage:   st,
 		SelfChecks: st,
+		Exporter:   st,
 		Metrics:    metricsHandler,
 		Vantage:    "local",
 		Fallback:   ui,

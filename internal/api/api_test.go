@@ -1849,6 +1849,149 @@ func TestSelfCheckUnavailableAndAuth(t *testing.T) {
 	}
 }
 
+type fakeExporter struct {
+	rows []store.ExportRow
+	err  error
+	from time.Time
+	to   time.Time
+}
+
+func (f *fakeExporter) ExportProbes(_ context.Context, from, to time.Time, fn func(store.ExportRow) error) error {
+	f.from, f.to = from, to
+	if f.err != nil {
+		return f.err
+	}
+	for _, row := range f.rows {
+		if err := fn(row); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func newExportHandler(t *testing.T, exporter api.Exporter) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Exporter:  exporter,
+			Version:   "test",
+			Commit:    "deadbeef",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func exportFixture() *fakeExporter {
+	return &fakeExporter{rows: []store.ExportRow{
+		{
+			TargetID: "t1", Host: "chase.com", VantageID: "local",
+			TS:    time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC),
+			State: state.Up, Stage: "http", HTTPStatus: 200,
+			LatencyMS: 42, Confidence: "high",
+		},
+		{
+			TargetID: "t2", Host: "united.com", VantageID: "local",
+			TS:    time.Date(2026, 11, 17, 12, 1, 0, 0, time.UTC),
+			State: state.Down, Stage: "tls", ErrorClass: "tls_cert_expired",
+			Confidence: "high", Detail: "certificate expired",
+		},
+	}}
+}
+
+func TestExportCSV(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newExportHandler(t, exportFixture()), http.MethodGet,
+		"/api/v1/export?format=csv&from=2026-11-17T00:00:00Z&to=2026-11-18T00:00:00Z", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/csv") {
+		t.Fatalf("Content-Type = %q", ct)
+	}
+	if cd := rec.Header().Get("Content-Disposition"); !strings.Contains(cd, "attachment") {
+		t.Fatalf("Content-Disposition = %q", cd)
+	}
+
+	lines := strings.Split(strings.TrimSpace(rec.Body.String()), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("lines = %d, want header + 2 rows:\n%s", len(lines), rec.Body)
+	}
+	if !strings.HasPrefix(lines[0], "target_id,host,vantage,ts,state") {
+		t.Fatalf("header = %q", lines[0])
+	}
+	if !strings.Contains(lines[1], "chase.com") || !strings.Contains(lines[1], "up") {
+		t.Fatalf("row 1 = %q", lines[1])
+	}
+	if !strings.Contains(lines[2], "tls_cert_expired") {
+		t.Fatalf("row 2 = %q", lines[2])
+	}
+}
+
+func TestExportJSONL(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newExportHandler(t, exportFixture()), http.MethodGet,
+		"/api/v1/export?format=jsonl&from=2026-11-17T00:00:00Z&to=2026-11-18T00:00:00Z", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/x-ndjson") {
+		t.Fatalf("Content-Type = %q", ct)
+	}
+
+	lines := strings.Split(strings.TrimSpace(rec.Body.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("lines = %d, want 2 objects", len(lines))
+	}
+	var row map[string]any
+	if err := json.Unmarshal([]byte(lines[1]), &row); err != nil {
+		t.Fatalf("jsonl row: %v", err)
+	}
+	if row["host"] != "united.com" || row["error_class"] != "tls_cert_expired" {
+		t.Fatalf("row = %v", row)
+	}
+}
+
+func TestExportRejectsBadInput(t *testing.T) {
+	t.Parallel()
+
+	h := newExportHandler(t, exportFixture())
+	for _, query := range []string{
+		"format=xml",
+		"from=yesterday",
+		"to=soon",
+		"from=2026-11-18T00:00:00Z&to=2026-11-17T00:00:00Z",
+		"from=2026-01-01T00:00:00Z&to=2026-11-17T00:00:00Z",
+	} {
+		rec := do(h, http.MethodGet, "/api/v1/export?"+query, testToken)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", query, rec.Code)
+		}
+	}
+}
+
+func TestExportUnavailableAndAuth(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/api/v1/export", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+
+	rec = do(newExportHandler(t, exportFixture()), http.MethodGet, "/api/v1/export", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
 func TestSecurityHeaders(t *testing.T) {
 	t.Parallel()
 

@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -65,6 +67,12 @@ type SelfCheckReader interface {
 	LatestSelfChecks(ctx context.Context) ([]store.SelfCheck, error)
 }
 
+// Exporter streams observations for the export endpoint. The callback shape is
+// the whole point: an export never materialises its result set.
+type Exporter interface {
+	ExportProbes(ctx context.Context, from, to time.Time, fn func(store.ExportRow) error) error
+}
+
 // Deps is everything the HTTP layer needs. It is deliberately small: the API
 // reads state, it does not own it.
 type Deps struct {
@@ -92,6 +100,8 @@ type Deps struct {
 	Coverage CoverageReader
 	// SelfChecks reads the latest self-health results. Nil disables the route.
 	SelfChecks SelfCheckReader
+	// Exporter streams observations. Nil disables the route.
+	Exporter Exporter
 	// Metrics is the Prometheus handler. Nil keeps /metrics unmounted, which is
 	// the default: exposing it is an operator decision.
 	Metrics http.Handler
@@ -135,6 +145,7 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	apiMux.HandleFunc("/api/v1/anomalies", onlyGET(s.handleAnomalies))
 	apiMux.HandleFunc("/api/v1/coverage", onlyGET(s.handleCoverage))
 	apiMux.HandleFunc("/api/v1/selfcheck", onlyGET(s.handleSelfCheck))
+	apiMux.HandleFunc("/api/v1/export", onlyGET(s.handleExport))
 	apiMux.HandleFunc("/api/v1/incidents", onlyGET(s.handleIncidents))
 	apiMux.HandleFunc("/api/v1/incidents/", onlyGET(s.handleIncidentByID))
 	apiMux.HandleFunc("/", s.handleNotFound)
@@ -231,7 +242,7 @@ type metaResponse struct {
 
 // capabilities is the runtime truth. A client should feature-detect here rather
 // than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck"}
+var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export"}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}
@@ -1017,6 +1028,127 @@ func (s *server) handleSelfCheck(w http.ResponseWriter, r *http.Request) {
 
 type controlState struct {
 	Paused bool `json:"paused"`
+}
+
+// exportHeader is the CSV column contract. It is stable on purpose: an operator
+// piping this into a spreadsheet should not have to rename columns on upgrade.
+var exportHeader = []string{
+	"target_id", "host", "vantage", "ts", "state", "stage",
+	"error_class", "http_status", "latency_ms", "confidence", "detail",
+}
+
+// handleExport streams observations for a time range as CSV or JSONL. Nothing
+// is buffered: the store calls back one row at a time.
+func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Exporter == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "export is not configured")
+		return
+	}
+
+	q := r.URL.Query()
+	format := q.Get("format")
+	if format == "" {
+		format = "csv"
+	}
+	if format != "csv" && format != "jsonl" {
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "format must be csv or jsonl")
+		return
+	}
+
+	now := time.Now().UTC()
+	from := now.Add(-24 * time.Hour)
+	to := now
+
+	parseTime := func(name string, dst *time.Time) bool {
+		raw := q.Get(name)
+		if raw == "" {
+			return true
+		}
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, name+" must be RFC 3339")
+			return false
+		}
+		*dst = parsed
+		return true
+	}
+	if !parseTime("from", &from) || !parseTime("to", &to) {
+		return
+	}
+	if !from.Before(to) {
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "from must be before to")
+		return
+	}
+	// A month is the largest window that still streams politely; the CLI has no
+	// such cap because the operator can wait, and a client cannot.
+	if to.Sub(from) > 31*24*time.Hour {
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "window must be 31 days or less")
+		return
+	}
+
+	switch format {
+	case "csv":
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Disposition", `attachment; filename="netweather-probes.csv"`)
+		w.WriteHeader(http.StatusOK)
+
+		cw := csv.NewWriter(w)
+		if err := cw.Write(exportHeader); err != nil {
+			return
+		}
+		err := s.deps.Exporter.ExportProbes(r.Context(), from, to, func(row store.ExportRow) error {
+			if err := cw.Write(exportRow(row)); err != nil {
+				return err
+			}
+			// Flush per row so a long export is visible as it runs.
+			cw.Flush()
+			return cw.Error()
+		})
+		cw.Flush()
+		if err != nil {
+			s.deps.Logger.Warn("export failed mid-stream",
+				"event", "export_failed", "component", "http", "error", err)
+		}
+
+	case "jsonl":
+		w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
+		w.Header().Set("Content-Disposition", `attachment; filename="netweather-probes.jsonl"`)
+		w.WriteHeader(http.StatusOK)
+
+		enc := json.NewEncoder(w)
+		err := s.deps.Exporter.ExportProbes(r.Context(), from, to, func(row store.ExportRow) error {
+			return enc.Encode(exportObject(row))
+		})
+		if err != nil {
+			s.deps.Logger.Warn("export failed mid-stream",
+				"event", "export_failed", "component", "http", "error", err)
+		}
+	}
+}
+
+func exportRow(row store.ExportRow) []string {
+	return []string{
+		row.TargetID, row.Host, row.VantageID, row.TS.UTC().Format(time.RFC3339),
+		string(row.State), row.Stage, row.ErrorClass,
+		strconv.Itoa(row.HTTPStatus), strconv.Itoa(row.LatencyMS),
+		row.Confidence, row.Detail,
+	}
+}
+
+func exportObject(row store.ExportRow) map[string]any {
+	return map[string]any{
+		"target_id":   row.TargetID,
+		"host":        row.Host,
+		"vantage":     row.VantageID,
+		"ts":          row.TS.UTC().Format(time.RFC3339),
+		"state":       string(row.State),
+		"stage":       row.Stage,
+		"error_class": row.ErrorClass,
+		"http_status": row.HTTPStatus,
+		"latency_ms":  row.LatencyMS,
+		"confidence":  row.Confidence,
+		"detail":      row.Detail,
+	}
 }
 
 func (s *server) handleControl(w http.ResponseWriter, r *http.Request) {
