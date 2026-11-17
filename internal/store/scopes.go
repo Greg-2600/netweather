@@ -17,6 +17,22 @@ import (
 // (DESIGN.md §7.2). Unprobed targets still count toward judgeable, which is what
 // makes coverage fall when the scheduler is not keeping up.
 func (s *Store) ScopeStates(ctx context.Context, vantageID, scope, value string) (map[state.State]int, int, error) {
+	return s.scopeStates(ctx, vantageID, scope, value, time.Time{})
+}
+
+// ScopeStatesFresh is the detection variant: it ignores targets whose last probe
+// is outside their own freshness window, so a stalled scheduler cannot turn
+// stale state into an incident. The window is DESIGN.md §7.2's
+// min(2*interval + 30s, 15m): a target probed every ten minutes is a
+// low-resolution sensor, not a missing one.
+//
+// Coverage intentionally uses ScopeStates (unfiltered), because a target that
+// stopped being probed is exactly the blind spot coverage reports.
+func (s *Store) ScopeStatesFresh(ctx context.Context, vantageID, scope, value string, now time.Time) (map[state.State]int, int, error) {
+	return s.scopeStates(ctx, vantageID, scope, value, now)
+}
+
+func (s *Store) scopeStates(ctx context.Context, vantageID, scope, value string, now time.Time) (map[state.State]int, int, error) {
 	const base = `
 		SELECT COALESCE(ts.state, ''), COUNT(*)
 		FROM target t
@@ -43,6 +59,11 @@ func (s *Store) ScopeStates(ctx context.Context, vantageID, scope, value string)
 		args = append(args, asn)
 	default:
 		return nil, 0, fmt.Errorf("store: unknown scope %q", scope)
+	}
+
+	if !now.IsZero() {
+		query += ` AND ts.last_probe_at >= ? - MIN(2 * t.interval_s * 1000 + 30000, 900000)`
+		args = append(args, now.UnixMilli())
 	}
 
 	query += ` GROUP BY ts.state`

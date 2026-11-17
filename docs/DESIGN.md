@@ -580,6 +580,8 @@ So:
 
 Stale targets drop out of both numerator and denominator, and therefore lower `coverage`. That is deliberate: a stalled scheduler is a visibility failure, not an outage, and it should surface as a hatched board plus a `COVERAGE_DROP` advisory rather than as mass `DOWN`.
 
+**Implemented:** incident detection and the anomaly detector apply exactly that window (`internal/incidents/freshness`, `store.ScopeStatesFresh`). A target with no probe time, or one outside its window, is dropped from both numerator and denominator rather than counted as healthy or failing. Reconciliation refuses to close an incident when every observation is stale: blind is not clear. Coverage deliberately uses the unfiltered query, because a stalled scheduler is precisely the blind spot it reports.
+
 Consequences, stated plainly:
 
 - "Simultaneous" means *current within the freshness window at the evaluation instant*, not *observed in the same 5 minutes*.

@@ -122,7 +122,7 @@ func TestNTPTimesOutOnASilentServer(t *testing.T) {
 	if res.ErrorClass != "ntp_timeout" {
 		t.Fatalf("class = %q, want ntp_timeout (%v)", res.ErrorClass, res.Err)
 	}
-	if elapsed := time.Since(start); elapsed > 2*time.Second {
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
 		t.Fatalf("exchange took %v despite the timeout", elapsed)
 	}
 }

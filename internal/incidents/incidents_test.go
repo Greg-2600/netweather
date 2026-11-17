@@ -77,10 +77,12 @@ func airlineFailures(failing int, total int) []store.Observation {
 	out := make([]store.Observation, 0, total)
 	for i := 0; i < total; i++ {
 		out = append(out, store.Observation{
-			TargetID: string(rune('a' + i)),
-			Sector:   "airline",
-			Stage:    "tls",
-			Failing:  i < failing,
+			TargetID:  string(rune('a' + i)),
+			Sector:    "airline",
+			Stage:     "tls",
+			Failing:   i < failing,
+			IntervalS: 300,
+			LastProbe: time.Now(),
 		})
 	}
 	return out
@@ -92,7 +94,7 @@ func TestEvaluateOpensAnIncident(t *testing.T) {
 	src := &fakeSource{obs: airlineFailures(5, 6)}
 	sink := newSink()
 
-	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
 	inc, opened, err := incidents.Evaluate(context.Background(), src, sink, "local", now)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
@@ -121,6 +123,55 @@ func TestEvaluateOpensAnIncident(t *testing.T) {
 	}
 	if sink.attrs[0][0].Kind != "sector" || sink.attrs[0][0].Value != "airline" {
 		t.Fatalf("top attribution = %+v", sink.attrs[0][0])
+	}
+}
+
+func TestEvaluateIgnoresStaleObservations(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	stale := airlineFailures(5, 6)
+	for i := range stale {
+		stale[i].LastProbe = now.Add(-time.Hour)
+	}
+
+	sink := newSink()
+	if _, opened, err := incidents.Evaluate(context.Background(), &fakeSource{obs: stale}, sink, "local", now); err != nil {
+		t.Fatal(err)
+	} else if opened {
+		t.Fatal("stale observations produced an incident")
+	}
+
+	// One fresh failure among stale ones counts only the fresh set; three
+	// stale failures plus one fresh one must not clear the failure gate.
+	mixed := append(stale[:3:3], store.Observation{
+		TargetID: "fresh", Sector: "airline", Stage: "tls", Failing: true, LastProbe: now,
+	})
+	if _, opened, err := incidents.Evaluate(context.Background(), &fakeSource{obs: mixed}, sink, "local", now); err != nil {
+		t.Fatal(err)
+	} else if opened {
+		t.Fatal("stale observations counted toward the failure gate")
+	}
+}
+
+func TestReconcileKeepsIncidentsWhenBlind(t *testing.T) {
+	t.Parallel()
+
+	sink := newSink()
+	sink.incidents = []store.Incident{{ID: "inc-1", Scope: "sector", ScopeValue: "airline"}}
+
+	now := time.Now().UTC()
+	stale := airlineFailures(0, 6)
+	for i := range stale {
+		stale[i].LastProbe = now.Add(-time.Hour)
+	}
+
+	closed, err := incidents.Reconcile(context.Background(), &fakeSource{obs: stale}, sink, "local", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if closed != 0 {
+		t.Fatal("reconciliation closed an incident while every observation was stale")
 	}
 }
 

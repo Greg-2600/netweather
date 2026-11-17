@@ -565,6 +565,9 @@ func TestObservationsIncludeOnlyProbedTargets(t *testing.T) {
 		t.Fatalf("observations = %d, want 2", len(obs))
 	}
 	for _, o := range obs {
+		if o.LastProbe.IsZero() {
+			t.Errorf("%s observation has no last probe time", o.TargetID)
+		}
 		switch o.TargetID {
 		case "t1":
 			if !o.Failing || o.Stage != "tls" {

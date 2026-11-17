@@ -50,10 +50,48 @@ func toCorrelate(observations []store.Observation) []correlate.Observation {
 
 // Evaluate runs one detection cycle. It returns the opened incident, or false
 // when nothing cleared the gates or the cluster was already open.
+// maxFreshness caps the per-target window: a target probed once every ten
+// minutes is a low-resolution sensor, not a missing one, but no state is
+// trusted forever.
+const maxFreshness = 15 * time.Minute
+
+// freshness is DESIGN.md §7.2's window: min(2*interval + 30s, 15m).
+func freshness(intervalS int) time.Duration {
+	interval := time.Duration(intervalS) * time.Second
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
+	window := 2*interval + 30*time.Second
+	if window > maxFreshness {
+		return maxFreshness
+	}
+	return window
+}
+
+// fresh drops observations the scheduler has not refreshed within the target's
+// own window. A zero LastProbe also counts as stale: a state with no probe time
+// cannot be trusted.
+func fresh(observations []store.Observation, now time.Time) []store.Observation {
+	out := make([]store.Observation, 0, len(observations))
+	for _, o := range observations {
+		if o.LastProbe.IsZero() || now.Sub(o.LastProbe) > freshness(o.IntervalS) {
+			continue
+		}
+		out = append(out, o)
+	}
+	return out
+}
+
 func Evaluate(ctx context.Context, src Source, sink Sink, vantage string, now time.Time) (store.Incident, bool, error) {
 	observations, err := src.Observations(ctx, vantage)
 	if err != nil {
 		return store.Incident{}, false, err
+	}
+	observations = fresh(observations, now)
+	if len(observations) == 0 {
+		// With no fresh evidence there is nothing to correlate; opening an
+		// incident here would be inventing one.
+		return store.Incident{}, false, nil
 	}
 
 	correlated := toCorrelate(observations)
@@ -149,6 +187,12 @@ func Reconcile(ctx context.Context, src Source, sink Reconciler, vantage string,
 	observations, err := src.Observations(ctx, vantage)
 	if err != nil {
 		return 0, err
+	}
+	observations = fresh(observations, now)
+	if len(observations) == 0 {
+		// Blind is not clear: keep incidents open rather than close them on
+		// the absence of evidence.
+		return 0, nil
 	}
 
 	passing := make(map[string]struct{})

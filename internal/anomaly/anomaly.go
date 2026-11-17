@@ -17,7 +17,7 @@ import (
 // Source supplies scopes, current counts, and hour-of-week history.
 type Source interface {
 	Scopes(ctx context.Context) ([]store.ScopeRef, error)
-	ScopeStates(ctx context.Context, vantageID, scope, value string) (map[state.State]int, int, error)
+	ScopeStatesFresh(ctx context.Context, vantageID, scope, value string, now time.Time) (map[state.State]int, int, error)
 	ScopeHistory(ctx context.Context, scope, value string, at time.Time) ([]float64, error)
 }
 
@@ -66,7 +66,7 @@ func (e *Evaluator) Evaluate(ctx context.Context) (int, error) {
 	for _, ref := range refs {
 		key := ref.Scope + "|" + ref.Value
 
-		counts, judgeable, err := e.Source.ScopeStates(ctx, e.Vantage, ref.Scope, ref.Value)
+		counts, judgeable, err := e.Source.ScopeStatesFresh(ctx, e.Vantage, ref.Scope, ref.Value, now)
 		if err != nil {
 			return triggered, err
 		}

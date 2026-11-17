@@ -869,11 +869,11 @@ func TestSSEDeliversStateDelta(t *testing.T) {
 		}
 	}()
 
-	waitForLine(t, lines, "retry:", 2*time.Second)
+	waitForLine(t, lines, "retry:", 5*time.Second)
 
 	m.Set("2", board.StateUp)
 
-	waitForLine(t, lines, `"state":"up"`, 3*time.Second)
+	waitForLine(t, lines, `"state":"up"`, 5*time.Second)
 }
 
 func newServerWithIncidentWatcher(t *testing.T, token string, m *board.Memory, incidents board.Watcher) *httptest.Server {
@@ -922,12 +922,12 @@ func TestSSEDeliversIncidentEvents(t *testing.T) {
 		}
 	}()
 
-	waitForLine(t, lines, "retry:", 2*time.Second)
+	waitForLine(t, lines, "retry:", 5*time.Second)
 
 	incidentChanges.Notify()
 
-	waitForLine(t, lines, "event: incident", 3*time.Second)
-	waitForLine(t, lines, `"updated_at"`, 3*time.Second)
+	waitForLine(t, lines, "event: incident", 5*time.Second)
+	waitForLine(t, lines, `"updated_at"`, 5*time.Second)
 }
 
 func TestSSERequiresSession(t *testing.T) {

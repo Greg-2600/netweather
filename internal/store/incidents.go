@@ -20,6 +20,12 @@ type Observation struct {
 	Sector   string
 	Stage    string
 	Failing  bool
+	// IntervalS is the target's configured interval, used to decide whether its
+	// last observation is still fresh enough to judge.
+	IntervalS int
+	// LastProbe is when this state was last refreshed. Detection skips stale
+	// observations; coverage is where staleness is reported.
+	LastProbe time.Time
 }
 
 // Attribution is one ranked explanation stored with an incident.
@@ -56,6 +62,8 @@ func (s *Store) Observations(ctx context.Context, vantageID string) ([]Observati
 		SELECT t.id, t.name, t.host, COALESCE(t.cdn, ''), COALESCE(t.asn, 0),
 		       COALESCE(t.prefix, ''), COALESCE(t.country, ''), COALESCE(t.sector, ''),
 		       COALESCE(p.stage, ''),
+		       t.interval_s,
+		       COALESCE(ts.last_probe_at, 0),
 		       CASE WHEN ts.state = 'down' THEN 1 ELSE 0 END
 		FROM target t
 		JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
@@ -73,12 +81,16 @@ func (s *Store) Observations(ctx context.Context, vantageID string) ([]Observati
 	var out []Observation
 	for rows.Next() {
 		var (
-			o       Observation
-			failing int
+			o         Observation
+			failing   int
+			lastProbe int64
 		)
 		if err := rows.Scan(&o.TargetID, &o.Name, &o.Host, &o.CDN, &o.ASN,
-			&o.Prefix24, &o.Country, &o.Sector, &o.Stage, &failing); err != nil {
+			&o.Prefix24, &o.Country, &o.Sector, &o.Stage, &o.IntervalS, &lastProbe, &failing); err != nil {
 			return nil, fmt.Errorf("store: scan observation: %w", err)
+		}
+		if lastProbe > 0 {
+			o.LastProbe = time.UnixMilli(lastProbe).UTC()
 		}
 		o.Failing = failing == 1
 		out = append(out, o)

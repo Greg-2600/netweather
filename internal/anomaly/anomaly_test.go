@@ -26,7 +26,7 @@ func (f *fakeSource) Scopes(context.Context) ([]store.ScopeRef, error) {
 	return f.scopes, f.err
 }
 
-func (f *fakeSource) ScopeStates(_ context.Context, _, scope, value string) (map[state.State]int, int, error) {
+func (f *fakeSource) ScopeStatesFresh(_ context.Context, _, scope, value string, _ time.Time) (map[state.State]int, int, error) {
 	if f.statesErr != nil {
 		return nil, 0, f.statesErr
 	}
