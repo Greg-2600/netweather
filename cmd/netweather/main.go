@@ -254,12 +254,17 @@ func serve(lg *logging.Logger) error {
 		return err
 	}
 
+	// The applied migration number is not secret and makes a support bundle
+	// useful without database access; unknown is reported as absent.
+	schemaVersion, _ := st.SchemaVersion(ctx)
+
 	handler, err := api.New(cfg, api.Deps{
 		Logger:          lg.Logger,
 		Ring:            lg.Ring,
 		Version:         version.Version,
 		Commit:          version.Commit,
 		StartedAt:       time.Now(),
+		SchemaVersion:   schemaVersion,
 		Source:          source,
 		Watcher:         changes,
 		RunContext:      ctx,

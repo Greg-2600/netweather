@@ -129,6 +129,9 @@ type Deps struct {
 	Version   string
 	Commit    string
 	StartedAt time.Time
+	// SchemaVersion is the applied migration number, reported by /meta so a
+	// support bundle can carry it without database access.
+	SchemaVersion int
 	// Source supplies the board. Nil means "not configured": the endpoint
 	// answers 503 rather than inventing an empty board.
 	Source board.Source
@@ -342,14 +345,15 @@ type ringInfo struct {
 }
 
 type metaResponse struct {
-	Version      string   `json:"version"`
-	Commit       string   `json:"commit"`
-	API          string   `json:"api"`
-	StartedAt    string   `json:"started_at"`
-	UptimeS      int64    `json:"uptime_s"`
-	Auth         string   `json:"auth"`
-	Capabilities []string `json:"capabilities"`
-	Ring         ringInfo `json:"ring"`
+	Version       string   `json:"version"`
+	Commit        string   `json:"commit"`
+	API           string   `json:"api"`
+	StartedAt     string   `json:"started_at"`
+	UptimeS       int64    `json:"uptime_s"`
+	Auth          string   `json:"auth"`
+	SchemaVersion int      `json:"schema_version,omitempty"`
+	Capabilities  []string `json:"capabilities"`
+	Ring          ringInfo `json:"ring"`
 }
 
 // capabilities is the runtime truth. A client should feature-detect here rather
@@ -365,14 +369,15 @@ func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	auth := s.authMode
 
 	writeData(w, r, metaResponse{
-		Version:      s.deps.Version,
-		Commit:       s.deps.Commit,
-		API:          "v1",
-		StartedAt:    s.deps.StartedAt.UTC().Format(time.RFC3339Nano),
-		UptimeS:      int64(time.Since(s.deps.StartedAt).Seconds()),
-		Auth:         auth,
-		Capabilities: capabilities,
-		Ring:         info,
+		Version:       s.deps.Version,
+		Commit:        s.deps.Commit,
+		API:           "v1",
+		StartedAt:     s.deps.StartedAt.UTC().Format(time.RFC3339Nano),
+		UptimeS:       int64(time.Since(s.deps.StartedAt).Seconds()),
+		Auth:          auth,
+		SchemaVersion: s.deps.SchemaVersion,
+		Capabilities:  capabilities,
+		Ring:          info,
 	}, nil)
 }
 

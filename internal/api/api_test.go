@@ -164,6 +164,57 @@ func TestMetaWithToken(t *testing.T) {
 	}
 }
 
+func TestMetaReportsTheSchemaVersion(t *testing.T) {
+	t.Parallel()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Version:       "test",
+			StartedAt:     time.Now(),
+			SchemaVersion: 19,
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+
+	rec := do(h, http.MethodGet, "/api/v1/meta", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+	var env struct {
+		Data struct {
+			SchemaVersion int `json:"schema_version"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env.Data.SchemaVersion != 19 {
+		t.Fatalf("schema_version = %d, want 19", env.Data.SchemaVersion)
+	}
+
+	// An unknown version is absent, not a fabricated zero.
+	h, err = api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Version:   "test",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	rec = do(h, http.MethodGet, "/api/v1/meta", testToken)
+	if !strings.Contains(rec.Body.String(), "schema_version") {
+		return // absent is the expected shape
+	}
+	t.Fatalf("an unknown schema version was reported: %s", rec.Body)
+}
+
 func TestWrongTokenIsRejected(t *testing.T) {
 	t.Parallel()
 

@@ -208,17 +208,19 @@ A bug report about a monitor needs the monitor's own state, not a screenshot.
 netweather debug bundle -o netweather-bundle.tar.gz
 ```
 
-Contents (planned):
+Contents (implemented):
 
 - `version.txt` — build identity, Go version, OS/arch
-- `config.redacted.yaml` — the effective config with credentials removed
-- `schema.txt` — `schema_meta`, pragmas, migration list
-- `ring.jsonl` — the last 2,000 redacted records
-- `selfcheck.json` — clock, egress IP/ASN, resolver, MTU, port 53, disk
-- `probes.jsonl` — last 20 probes for each target currently `DOWN` or `UNKNOWN`
-- `MANIFEST.txt` — file list with SHA-256
+- `config.redacted.yaml` — the effective config with anything key-shaped removed
+- `meta.json` — the `/api/v1/meta` answer, including the applied `schema_version`
+- `ring.jsonl` — up to the last 2,000 redacted records, every level
+- `selfcheck.json` — the latest clock, egress IP/ASN, resolver, MTU, port 53, and disk rows
+- `probes.jsonl` — the last 20 probes for each target currently `DOWN`, `DEGRADED`, `BLOCKED`, or `UNKNOWN`, each row tagged with its target
+- `MANIFEST.txt` — every file with its SHA-256 and size
 
-Never included: the token file, feed API keys, response bodies, the raw database.
+The command reads the public API with the same bearer token the other CLI verbs use, so it works from a laptop against a remote instance and needs no privileged local path. A failed optional read is recorded in the file as a stated error rather than aborting the bundle.
+
+Not included: a separate `schema.txt` with the migration list, because a remote CLI has no database access and inventing one would mean a second data path. The schema **version** is in `meta.json`; the migration history is in the repository at that version. Never included either: the token file, feed API keys, response bodies, the raw database.
 
 ---
 

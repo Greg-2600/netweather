@@ -30,8 +30,10 @@ func debugCommand(args []string, out io.Writer) error {
 		return debugStatus(args[1:], out)
 	case "disable":
 		return debugDisable(args[1:], out)
+	case "bundle":
+		return debugBundle(args[1:], out)
 	default:
-		return fmt.Errorf("debug: unknown subcommand %q (want enable, status, disable)", args[0])
+		return fmt.Errorf("debug: unknown subcommand %q (want enable, status, disable, or bundle)", args[0])
 	}
 }
 

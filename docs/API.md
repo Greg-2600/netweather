@@ -200,6 +200,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
+    "schema_version": 19,
     "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "annotations", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace", "corridors"],
     "ring": {"records": 128, "capacity": 2000}
   },
@@ -207,7 +208,7 @@ Auth: bearer.
 }
 ```
 
-`capabilities` is the runtime truth: a client should feature-detect here rather than assume an endpoint exists. `auth` is `bearer` or `none` (loopback development only).
+`capabilities` is the runtime truth: a client should feature-detect here rather than assume an endpoint exists. `auth` is `bearer` or `none` (loopback development only). `schema_version` is the applied migration number, absent when it cannot be read; it is what a support bundle needs and cannot get from a remote CLI otherwise.
 
 No target data appears here. That is deliberate: `/meta` is the one endpoint a monitoring system may poll, and it must not become a target-list leak.
 
@@ -858,6 +859,7 @@ The binary is also scriptable, and its contract matters as much as HTTP:
 | `netweather seed` | 0 applied, 1 rejected | summary |
 | `netweather export` | 0 success, 1 error | data to stdout, logs to stderr |
 | `netweather debug enable\|status\|disable` | 0 success, 1 error | one line per scope |
+| `netweather debug bundle -o FILE` | 0 success, 1 error | one summary line, or an envelope with `-json` |
 | `netweather doctor` | 0 all fatal checks pass, 1 a fatal check failed | capability table |
 
 Commands that exist in the binary today: `serve`, `version`, `healthcheck`, `seed`, `export`, `debug`, `doctor`. Pause/resume remain HTTP-only (`POST /api/v1/pause`, `POST /api/v1/resume`).
