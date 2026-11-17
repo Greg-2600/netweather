@@ -1516,3 +1516,46 @@ func TestBuildFeedPollersRejectsInsecureURLs(t *testing.T) {
 		t.Fatal("an HTTP IODA override was applied")
 	}
 }
+
+func TestTrustedProxiesFromEnv(t *testing.T) {
+	// No t.Parallel: this test sets environment variables.
+
+	if got, err := trustedProxiesFromEnv(); err != nil || got != nil {
+		t.Fatalf("unset = (%v, %v), want (nil, nil)", got, err)
+	}
+
+	t.Setenv("NETWEATHER_TRUSTED_PROXIES", "10.0.0.0/8, 192.0.2.7, 2001:db8::/32")
+	got, err := trustedProxiesFromEnv()
+	if err != nil {
+		t.Fatalf("trustedProxiesFromEnv: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("prefixes = %v, want three", got)
+	}
+	if got[0].String() != "10.0.0.0/8" {
+		t.Errorf("first = %v, want the masked CIDR", got[0])
+	}
+	// A bare address becomes a single-host prefix, not a /0 or a /32 mistake.
+	if got[1].String() != "192.0.2.7/32" {
+		t.Errorf("bare address = %v, want a /32", got[1])
+	}
+	if got[2].String() != "2001:db8::/32" {
+		t.Errorf("v6 = %v", got[2])
+	}
+
+	// A typo refuses startup rather than silently trusting nobody.
+	t.Setenv("NETWEATHER_TRUSTED_PROXIES", "10.0.0.0/33")
+	if _, err := trustedProxiesFromEnv(); err == nil {
+		t.Fatal("a bad CIDR was accepted")
+	}
+	t.Setenv("NETWEATHER_TRUSTED_PROXIES", "not-an-address")
+	if _, err := trustedProxiesFromEnv(); err == nil {
+		t.Fatal("a bad address was accepted")
+	}
+
+	// Empty entries are ignored so a trailing comma is harmless.
+	t.Setenv("NETWEATHER_TRUSTED_PROXIES", "10.0.0.0/8,")
+	if got, err := trustedProxiesFromEnv(); err != nil || len(got) != 1 {
+		t.Fatalf("trailing comma = (%v, %v)", got, err)
+	}
+}

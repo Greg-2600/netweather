@@ -6,6 +6,7 @@ import (
 	"errors"
 	"html/template"
 	"log/slog"
+	"net/netip"
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/board"
@@ -85,13 +86,17 @@ type Deps struct {
 	SeriesBatch     SeriesBatch
 	Changes         StateChanges
 	// StreamLimit caps concurrent SSE connections. Nil uses the defaults.
-	StreamLimit   *streamlimit.Limiter
-	Control       Control
-	Vantage       string
-	Token         string
-	SecureCookies bool
-	Version       string
-	StartedAt     time.Time
+	StreamLimit *streamlimit.Limiter
+	// TrustedProxies are the peers whose X-Forwarded-For is believed for
+	// per-client limits and log lines. Empty means trust nobody, which is the
+	// safe default (NETWORKING.md §7.3).
+	TrustedProxies []netip.Prefix
+	Control        Control
+	Vantage        string
+	Token          string
+	SecureCookies  bool
+	Version        string
+	StartedAt      time.Time
 }
 
 // Coverage supplies the blind-spot panel. Nil means the page says so rather

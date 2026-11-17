@@ -134,6 +134,19 @@ func serve(lg *logging.Logger) error {
 		return err
 	}
 
+	// Per-client limits and log lines are only meaningful behind a correctly
+	// configured proxy. An empty list keeps the peer address, which is the
+	// only address a client cannot forge (NETWORKING.md §7.3).
+	trustedProxies, err := trustedProxiesFromEnv()
+	if err != nil {
+		lg.Error("invalid proxy configuration", "event", "config_invalid", "error", err)
+		return err
+	}
+	if len(trustedProxies) > 0 {
+		lg.Info("trusting X-Forwarded-For from configured proxies",
+			"event", "trusted_proxies", "component", "http", "count", len(trustedProxies))
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -319,6 +332,7 @@ func serve(lg *logging.Logger) error {
 		Watcher:             source,
 		Token:               cfg.Token,
 		SecureCookies:       os.Getenv("NETWEATHER_UI_SECURE_COOKIES") == "true",
+		TrustedProxies:      trustedProxies,
 		Version:             version.Version,
 		StartedAt:           time.Now(),
 		History:             st,
@@ -409,6 +423,7 @@ func serve(lg *logging.Logger) error {
 		Source:          source,
 		Watcher:         changes,
 		RunContext:      ctx,
+		TrustedProxies:  trustedProxies,
 		Control:         ag,
 		TargetControl:   targetDisabler(disableTarget),
 		Probes:          st,
@@ -1119,6 +1134,44 @@ func rateLimitFromEnv() (float64, error) {
 		return 0, fmt.Errorf("NETWEATHER_RATE_LIMIT %q is not a rate between 0 and 1000 req/s", raw)
 	}
 	return n, nil
+}
+
+// trustedProxiesFromEnv parses NETWEATHER_TRUSTED_PROXIES, a comma-separated
+// list of CIDRs or bare addresses whose X-Forwarded-For the UI and API will
+// believe (NETWORKING.md §7.3). Empty means "trust nobody", which is the safe
+// default: trusting every peer turns a header into a rate-limit bypass.
+//
+// A bare address becomes a single-host prefix, and a malformed entry refuses
+// startup rather than being skipped: an operator who mistypes a CIDR would
+// otherwise see per-client limits silently fall back to the proxy address.
+func trustedProxiesFromEnv() ([]netip.Prefix, error) {
+	raw := strings.TrimSpace(os.Getenv("NETWEATHER_TRUSTED_PROXIES"))
+	if raw == "" {
+		return nil, nil
+	}
+
+	var out []netip.Prefix
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if strings.Contains(entry, "/") {
+			prefix, err := netip.ParsePrefix(entry)
+			if err != nil {
+				return nil, fmt.Errorf("NETWEATHER_TRUSTED_PROXIES %q is not a CIDR: %w", entry, err)
+			}
+			out = append(out, prefix.Masked())
+			continue
+		}
+		addr, err := netip.ParseAddr(entry)
+		if err != nil {
+			return nil, fmt.Errorf("NETWEATHER_TRUSTED_PROXIES %q is not an address or CIDR: %w", entry, err)
+		}
+		addr = addr.Unmap()
+		out = append(out, netip.PrefixFrom(addr, addr.BitLen()))
+	}
+	return out, nil
 }
 
 // enrichmentLoop learns ASN, prefix and CDN for hostname targets. It runs at

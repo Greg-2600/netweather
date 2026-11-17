@@ -186,7 +186,7 @@ The guardrail moves from the address to the credential:
 - Auth is a token file or a single operator account, compared in constant time, with login rate-limited per IP. No token in the query string — it ends up in logs and `Referer` headers.
 - Cookies are `HttpOnly` + `SameSite=Lax`, and `Secure` whenever the effective scheme is HTTPS (proxy TLS or `X-Forwarded-Proto: https`). Plaintext deployments get the cookie *without* `Secure` — a browser will not send a `Secure` cookie over HTTP, so setting it unconditionally would simply break login — plus a persistent "insecure transport" badge. Every state-changing route requires the auth cookie; there is no "read-only so it's safe" mode, because the drawer exposes mutations (on-demand trace, interval changes).
 - **There is no TLS in the binary.** A bearer token over plaintext HTTP is only as private as the network it crosses. On a LAN you trust, that is acceptable. On anything else, terminate TLS at a proxy (§7.3) or put the whole thing on the tailnet (§7.2).
-- `X-Forwarded-For` is trusted only from `ui.trusted_proxies` (§7.3).
+- `X-Forwarded-For` is trusted only when the immediate peer is inside `NETWEATHER_TRUSTED_PROXIES` (§7.3). With no configured proxies the header is ignored and the peer address is used.
 
 Why the credential matters more here than on a normal dashboard: **the page itself is the disclosure.** A public netweather publishes your target list, your egress IP and ASN, your resolver set, and your incident history. That is a map of what you can see and what you cannot — precisely the reconnaissance worth having before an operation. The HTML is not the secret; the coverage panel is.
 
@@ -225,7 +225,7 @@ If you do use namespace sharing, `netweather doctor` must refuse to start when `
 
 ### 7.3 Reverse proxy details
 
-- Trust `X-Forwarded-For` **only** from a configured CIDR (`ui.trusted_proxies`). Otherwise it is a rate-limit bypass and a log-poisoning vector.
+- Trust `X-Forwarded-For` **only** from a configured source: `NETWEATHER_TRUSTED_PROXIES` is a comma-separated list of CIDRs or bare addresses. An empty list is the default and trusts nobody. When the immediate peer is trusted, the chain is walked right to left and the first address that is not itself a trusted proxy is the client: a caller can only prepend forged entries, so the rightmost untrusted address is the one a proxy actually saw. A malformed entry reached by the walk falls back to the peer, and a malformed configured CIDR refuses startup rather than silently trusting nobody. Without this, `X-Forwarded-For` is a rate-limit bypass and a log-poisoning vector.
 - Docker does not set `X-Forwarded-*`. Your proxy must.
 - Healthcheck (`/netweather healthcheck`) hits `127.0.0.1:2600` inside the container and needs no egress. Do not make it check the internet — a healthcheck that fails when your ISP blips will restart-loop the container for no reason.
 

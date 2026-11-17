@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"sort"
 	"strconv"
 	"strings"
@@ -245,6 +246,10 @@ type Deps struct {
 	Resolver HostResolver
 	// StreamLimit caps concurrent SSE connections. Nil uses the defaults.
 	StreamLimit *streamlimit.Limiter
+	// TrustedProxies are the peers whose X-Forwarded-For is believed for
+	// per-client stream limits and log lines. Empty means trust nobody, which
+	// is the safe default (NETWORKING.md §7.3).
+	TrustedProxies []netip.Prefix
 	// Metrics is the Prometheus handler. Nil keeps /metrics unmounted, which is
 	// the default: exposing it is an operator decision.
 	Metrics http.Handler
@@ -1878,7 +1883,7 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	release, ok := s.streams.Acquire(remoteHost(r))
+	release, ok := s.streams.Acquire(s.clientIP(r))
 	if !ok {
 		w.Header().Set("Retry-After", "60")
 		writeError(w, r, http.StatusTooManyRequests, CodeRateLimited,

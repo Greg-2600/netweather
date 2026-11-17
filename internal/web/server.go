@@ -10,7 +10,6 @@ import (
 	"io"
 	"log/slog"
 	"math"
-	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -21,6 +20,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/ihi"
 	"github.com/Greg-2600/netweather/internal/logging"
+	"github.com/Greg-2600/netweather/internal/netx"
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/streamlimit"
@@ -109,7 +109,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			s.renderLogin(w, http.StatusBadRequest, loginView{Error: "Malformed form."})
 			return
 		}
-		if !s.auth.limit.Allow(clientIP(r)) || !s.auth.global.Allow("login") {
+		if !s.auth.limit.Allow(s.clientIP(r)) || !s.auth.global.Allow("login") {
 			w.Header().Set("Retry-After", "60")
 			s.renderLogin(w, http.StatusTooManyRequests, loginView{Error: "Too many attempts. Wait a minute."})
 			return
@@ -122,7 +122,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 		if !s.auth.checkToken(r.PostFormValue("token")) {
 			s.deps.Logger.Warn("login failed",
-				"event", "login_failed", "component", "http", "client", clientIP(r))
+				"event", "login_failed", "component", "http", "client", s.clientIP(r))
 			s.renderLogin(w, http.StatusUnauthorized, loginView{
 				Error: "That token is not correct.",
 				CSRF:  r.PostFormValue("csrf"),
@@ -130,7 +130,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.auth.setSessionCookie(w, s.auth.issueSession(now), now)
-		s.deps.Logger.Info("login ok", "event", "login_ok", "component", "http", "client", clientIP(r))
+		s.deps.Logger.Info("login ok", "event", "login_ok", "component", "http", "client", s.clientIP(r))
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 
 	default:
@@ -2872,7 +2872,7 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	release, ok := s.streams.Acquire(remoteHost(r))
+	release, ok := s.streams.Acquire(s.clientIP(r))
 	if !ok {
 		w.Header().Set("Retry-After", "60")
 		http.Error(w, "too many concurrent event streams", http.StatusTooManyRequests)
@@ -3027,18 +3027,17 @@ func (s *server) heartbeatOnly(w http.ResponseWriter, r *http.Request, flusher h
 	}
 }
 
-// remoteHost is the peer address without its port, used for the per-IP stream
-// cap. X-Forwarded-For is deliberately ignored: without a configured proxy CIDR
-// it is spoofable, and a spoofable header must not multiply a client's budget.
-func remoteHost(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		if r.RemoteAddr == "" {
-			return "unknown"
-		}
-		return r.RemoteAddr
+// clientIP is the address a per-client limit and a log line should name. It is
+// the peer unless the peer is inside a configured trusted proxy, in which case
+// the rightmost untrusted X-Forwarded-For entry wins (NETWORKING.md §7.3).
+// Without configured proxies the header is ignored, because a spoofable header
+// must not multiply a client's budget.
+func (s *server) clientIP(r *http.Request) string {
+	ip := netx.ClientIP(r.RemoteAddr, r.Header.Get("X-Forwarded-For"), s.deps.TrustedProxies)
+	if ip == "" {
+		return "unknown"
 	}
-	return host
+	return ip
 }
 
 func (s *server) stateMap(ctx context.Context) map[string]board.Target {

@@ -7,7 +7,6 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -178,14 +177,6 @@ func (a *authenticator) csrfMatches(r *http.Request, formValue string) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(cookie), []byte(formValue)) == 1
-}
-
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }
 
 // requireSession protects the board and the event stream. It redirects to the

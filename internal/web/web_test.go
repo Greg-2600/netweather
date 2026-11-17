@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -4673,5 +4674,75 @@ func TestBoardShowsWhatsHappening(t *testing.T) {
 	if !strings.Contains(page, `data-testid="happening-note"`) ||
 		!strings.Contains(page, "not configured") {
 		t.Fatalf("an unwired incident log was silent:\n%s", page)
+	}
+}
+
+func TestLoginLimiterTrustsOnlyConfiguredProxies(t *testing.T) {
+	t.Parallel()
+
+	build := func(t *testing.T, trusted []netip.Prefix) http.Handler {
+		t.Helper()
+
+		m := fixture()
+		h, err := web.New(web.Deps{
+			Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Source:         m,
+			Watcher:        m,
+			Token:          testToken,
+			Version:        "test",
+			StartedAt:      time.Now(),
+			TrustedProxies: trusted,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return h
+	}
+
+	post := func(h http.Handler, remote, forward string) int {
+		t.Helper()
+
+		req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("token=wrong"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if forward != "" {
+			req.Header.Set("X-Forwarded-For", forward)
+		}
+		req.RemoteAddr = remote
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	// Behind a trusted proxy, each client address gets its own allowance: six
+	// distinct clients are not capped, and the sixth attempt from any one of
+	// them is. A CSRF-less attempt reaches the limiter first, so a non-429
+	// here is the ordinary 400 the form returns.
+	trusting := build(t, []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")})
+	for i := 1; i <= 6; i++ {
+		client := "198.51.100." + strconv.Itoa(i)
+		if code := post(trusting, "10.0.0.2:443", client); code == http.StatusTooManyRequests {
+			t.Fatalf("trusted client %s was capped early", client)
+		}
+	}
+	for i := 2; i <= 5; i++ {
+		if code := post(trusting, "10.0.0.2:443", "198.51.100.1"); code == http.StatusTooManyRequests {
+			t.Fatalf("trusted client attempt %d was capped early", i)
+		}
+	}
+	if code := post(trusting, "10.0.0.2:443", "198.51.100.1"); code != http.StatusTooManyRequests {
+		t.Fatalf("sixth attempt from one trusted client = %d, want 429", code)
+	}
+
+	// From an untrusted peer the header is ignored, so six different claims
+	// share one bucket and the sixth is capped.
+	untrusting := build(t, nil)
+	for i := 1; i <= 5; i++ {
+		client := "198.51.100." + strconv.Itoa(i)
+		if code := post(untrusting, "203.0.113.9:443", client); code == http.StatusTooManyRequests {
+			t.Fatalf("attempt %d from an untrusted peer was capped early", i)
+		}
+	}
+	if code := post(untrusting, "203.0.113.9:443", "198.51.100.6"); code != http.StatusTooManyRequests {
+		t.Fatalf("sixth distinct claim from one untrusted peer = %d, want 429", code)
 	}
 }

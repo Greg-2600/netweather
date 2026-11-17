@@ -5,13 +5,13 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"log/slog"
-	"net"
 	"net/http"
 	"runtime/debug"
 	"strings"
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/logging"
+	"github.com/Greg-2600/netweather/internal/netx"
 )
 
 type ctxKey int
@@ -190,17 +190,15 @@ func bearerToken(r *http.Request) (string, bool) {
 	return tok, tok != ""
 }
 
-// remoteHost is the peer address without its port, used for the per-IP stream
-// cap. X-Forwarded-For is deliberately ignored: the project does not trust it
-// without a configured proxy CIDR, and a spoofable header must not multiply a
-// client's stream budget.
-func remoteHost(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		if r.RemoteAddr == "" {
-			return "unknown"
-		}
-		return r.RemoteAddr
+// clientIP is the address a per-client stream cap and a log line should name.
+// It is the peer unless the peer is inside a configured trusted proxy, in
+// which case the rightmost untrusted X-Forwarded-For entry wins
+// (NETWORKING.md §7.3). Without configured proxies the header is ignored,
+// because a spoofable header must not multiply a client's stream budget.
+func (s *server) clientIP(r *http.Request) string {
+	ip := netx.ClientIP(r.RemoteAddr, r.Header.Get("X-Forwarded-For"), s.deps.TrustedProxies)
+	if ip == "" {
+		return "unknown"
 	}
-	return host
+	return ip
 }

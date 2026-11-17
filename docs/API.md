@@ -876,7 +876,7 @@ Nothing remains on the read surface. Every read endpoint in this document is imp
 
 One limitation is stated rather than hidden: a closed incident is not pushed as a diff. The API stream resumes from a bounded `Last-Event-ID` ring (§6.17); the UI stream refetches on reconnect instead. Both streams emit `incident` events; the UI reloads the incident pages, and an API client upserts open incidents by id or refetches for closures.
 
-Concurrent streams are capped at 64 total and 8 per peer address (`THREAT_MODEL.md` T10). Exceeding either returns `429` with `Retry-After: 60`; `X-Forwarded-For` is not trusted for the per-IP budget, because without a configured proxy CIDR it is spoofable.
+Concurrent streams are capped at 64 total and 8 per peer address (`THREAT_MODEL.md` T10). Exceeding either returns `429` with `Retry-After: 60`. A per-peer cap uses `X-Forwarded-For` only when the immediate peer is inside `NETWEATHER_TRUSTED_PROXIES` and the walk finds an untrusted address (`NETWORKING.md` §7.3); otherwise it uses the peer, because an untrusted header would let one client multiply its stream budget.
 
 ### 7.3 Actions (POST)
 
