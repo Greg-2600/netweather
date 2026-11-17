@@ -74,6 +74,37 @@ jobs:
       - name: govulncheck (pinned in go.mod)
         run: go tool govulncheck ./...
 
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: a secret removed from HEAD is still a leaked secret.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Pinned in the workflow rather than go.mod: this is a scanner, not a
+      # package the binary builds against (QUALITY.md §8).
+      - name: gitleaks (pinned)
+        run: go run github.com/zricethezav/gitleaks/v8@v8.24.3 detect --source . --verbose --redact --exit-code 1
+
+  dockerfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Both images: the release image has no shell but still has a Dockerfile
+      # with a base image, a user, and a copy list (THREAT_MODEL.md T63).
+      - name: lint the release Dockerfile
+        run: docker run --rm -i hadolint/hadolint:v2.12.0 < Dockerfile
+
+      - name: lint the Tor sidecar Dockerfile
+        run: docker run --rm -i hadolint/hadolint:v2.12.0 < Dockerfile.tor
+
   build:
     runs-on: ubuntu-latest
     steps:

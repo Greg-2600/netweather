@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,7 +55,80 @@ func TestWorkflowFilesParse(t *testing.T) {
 	}
 }
 
-// TestTorSidecarIsBakedIn pins the two properties that make the sidecar safe:
+// TestCICarriesTheDeclaredScans keeps THREAT_MODEL.md T62/T63 and QUALITY.md
+// §8 honest: the docs say a secret scan and a Dockerfile lint run in CI, so the
+// jobs must exist and be pinned rather than floating.
+func TestCICarriesTheDeclaredScans(t *testing.T) {
+	t.Parallel()
+
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml")) // #nosec G304 -- repo file.
+	if err != nil {
+		t.Fatalf("ci.yml: %v", err)
+	}
+
+	var ci struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string         `yaml:"name"`
+				Run  string         `yaml:"run"`
+				Uses string         `yaml:"uses"`
+				With map[string]any `yaml:"with"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &ci); err != nil {
+		t.Fatalf("ci.yml: %v", err)
+	}
+
+	secrets, ok := ci.Jobs["secrets"]
+	if !ok {
+		t.Fatal("ci.yml has no secrets job")
+	}
+	var gitleaks, fullHistory bool
+	for _, step := range secrets.Steps {
+		if strings.Contains(step.Run, "gitleaks") {
+			gitleaks = true
+			// A scanner pinned to @vX.Y.Z, not @latest and not an unpinned go run.
+			if !strings.Contains(step.Run, "gitleaks/v8@v") {
+				t.Errorf("gitleaks step is not version-pinned: %q", step.Run)
+			}
+		}
+		if strings.Contains(step.Uses, "actions/checkout") {
+			if depth, ok := step.With["fetch-depth"]; ok && fmt.Sprint(depth) == "0" {
+				fullHistory = true
+			}
+		}
+	}
+	if !gitleaks {
+		t.Error("the secrets job does not run gitleaks")
+	}
+	if !fullHistory {
+		t.Error("the secrets job checks out a shallow history; a removed secret is still leaked")
+	}
+
+	dockerfile, ok := ci.Jobs["dockerfile"]
+	if !ok {
+		t.Fatal("ci.yml has no dockerfile job")
+	}
+	scanned := 0
+	for _, step := range dockerfile.Steps {
+		if !strings.Contains(step.Run, "hadolint") {
+			continue
+		}
+		scanned++
+		if strings.Contains(step.Run, ":latest") {
+			t.Errorf("hadolint image floats on :latest: %q", step.Run)
+		}
+	}
+	if scanned != 2 {
+		t.Fatalf("hadolint steps = %d, want one per Dockerfile", scanned)
+	}
+}
+
 // the torrc is client-only with no exit traffic, and compose builds that image
 // rather than pulling a third-party proxy.
 func TestTorSidecarIsBakedIn(t *testing.T) {

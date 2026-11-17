@@ -1,0 +1,11 @@
+# hadolint configuration (THREAT_MODEL.md T63, QUALITY.md §8).
+#
+# DL3007: a :latest tag is refused unless the same reference carries @sha256.
+# Both Dockerfiles pin every FROM by digest and keep the tag for a human, so
+# the digest is the pin; TestDockerfilesPinBaseImages enforces that.
+# DL3018: apk package versions are not pinned. The base image is digest-pinned
+# and Dependabot updates it weekly; pinning `tor`'s version inside the sidecar
+# would freeze a security-sensitive component between base updates.
+ignored:
+  - DL3007
+  - DL3018

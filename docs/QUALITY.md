@@ -500,18 +500,18 @@ Always `-race -covermode=atomic`. Coverage is uploaded per-PR and diffed, so a P
 | fuzz (short) | `go test -run=^$ -fuzz=FuzzScrubStringIsIdempotent -fuzztime=20s` | ✅ |
 | mutation (advisory) | `devtool mutate`: gremlins on `internal/classify`, `mutation.json` uploaded | advisory; job-level `continue-on-error` |
 | vuln | `go tool govulncheck ./...` (pinned in `go.mod`) | ✅ |
-| secrets | `gitleaks` | ✅ |
+| secrets | `gitleaks` over full history, pinned in the workflow | ✅ |
 | build | `devtool build` (static, `-trimpath`, version stamped via ldflags) | ✅ |
 | reproducibility | `devtool repro`: two builds of the same revision, identical SHA-256 | ✅ |
 | release | `devtool snapshot`: five platforms + `SHA256SUMS`, tags only | ✅ (tags) |
-| image scan | `grype`, `hadolint` | ✅ |
+| image scan | `grype` on the release image; `hadolint` on both Dockerfiles (`.hadolint.yaml` explains its two ignores) | ✅ |
 | sbom + sign | `syft`, `cosign` | ✅ |
 | integration | fake internet | ✅ |
 | container smoke | compose topology, 7 network tests | ✅ (paths that touch netguard/probe/Dockerfile) |
 | e2e real | 6 targets | ❌ scheduled + release only |
 | mutation | `gremlins` on `classify` | ❌ advisory |
 
-Pre-commit hook runs format + vet + test. Everything else is CI. Tool versions live in `go.mod`, not in a workflow file.
+Pre-commit hook runs format + vet + test. Everything else is CI. Go tool versions live in `go.mod`; external scanners (gitleaks, hadolint, Playwright) are pinned to an explicit version in the workflow, never a floating tag.
 
 ---
 
