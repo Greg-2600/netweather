@@ -175,7 +175,7 @@ CREATE TABLE probe (
     family      TEXT,                         -- '4' | '6' — which stack was actually used
     cdn         TEXT,
     asn         INTEGER,
-    confidence  TEXT NOT NULL,                -- 'semantic','reachability','low'
+    confidence  TEXT NOT NULL,                -- 'high','medium','low' (CLASSIFIER.md §9)
     detail      TEXT CHECK (length(detail) <= 200)
 );
 

@@ -130,7 +130,7 @@ func recordOne(ctx context.Context, tx *sql.Tx, p Probe) error {
 	ts := p.TS.UnixMilli()
 	detail := sanitizeDetail(p.Detail)
 
-	if _, err := tx.ExecContext(ctx, `
+	res, err := tx.ExecContext(ctx, `
 		INSERT INTO probe (
 			target_id, vantage_id, ts, bucket_30s, state, stage, error_class,
 			http_status, latency_ms, family, cdn, asn, confidence, detail,
@@ -141,9 +141,11 @@ func recordOne(ctx context.Context, tx *sql.Tx, p Probe) error {
 		p.TargetID, p.VantageID, ts, ts/30000, string(p.State), p.Stage,
 		p.ErrorClass, p.HTTPStatus, p.LatencyMS, p.Family, p.CDN, p.ASN,
 		confidenceOrDefault(p.Confidence), detail,
-		p.CertIssuer, certExpiry(p.CertNotAfter)); err != nil {
+		p.CertIssuer, certExpiry(p.CertNotAfter))
+	if err != nil {
 		return fmt.Errorf("store: probe %s: %w", p.TargetID, err)
 	}
+	probeID, _ := res.LastInsertId()
 
 	up, degraded, down, blocked, unknown := counters(p.State)
 	if _, err := tx.ExecContext(ctx, `
@@ -176,7 +178,42 @@ func recordOne(ctx context.Context, tx *sql.Tx, p Probe) error {
 		return fmt.Errorf("store: rollup %s: %w", p.TargetID, err)
 	}
 
-	return recordState(ctx, tx, p, ts, detail)
+	if err := recordState(ctx, tx, p, ts, detail); err != nil {
+		return err
+	}
+	return applyFlapConfidence(ctx, tx, p, ts, probeID)
+}
+
+// flapTransitions and flapWindow are CLASSIFIER.md §9: a target that has
+// changed state more than six times in a day is flapping. Its observations are
+// still real, but they are weak evidence, so the stored confidence becomes low
+// and a reader does not have to replay history to learn that.
+const (
+	flapTransitions = 6
+	flapWindow      = 24 * time.Hour
+)
+
+// applyFlapConfidence downgrades the probe that was just written when its
+// target has been bouncing. The count is windowed on the probe's own
+// timestamp, so a backfill is judged against the day it belongs to rather than
+// against wall-clock now.
+func applyFlapConfidence(ctx context.Context, tx *sql.Tx, p Probe, ts, probeID int64) error {
+	var transitions int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM state_change
+		WHERE target_id = ? AND vantage_id = ? AND ts >= ? AND ts <= ?`,
+		p.TargetID, p.VantageID, ts-flapWindow.Milliseconds(), ts).
+		Scan(&transitions); err != nil {
+		return fmt.Errorf("store: flap count %s: %w", p.TargetID, err)
+	}
+	if transitions <= flapTransitions {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE probe SET confidence = 'low' WHERE id = ?`, probeID); err != nil {
+		return fmt.Errorf("store: flap confidence %s: %w", p.TargetID, err)
+	}
+	return nil
 }
 
 func recordState(ctx context.Context, tx *sql.Tx, p Probe, ts int64, detail string) error {

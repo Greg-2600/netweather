@@ -3350,3 +3350,74 @@ func TestTargetVantagesReportsBothPaths(t *testing.T) {
 		t.Fatalf("missing target = (%+v, %v)", empty, err)
 	}
 }
+
+func TestFlappingTargetsGetLowConfidenceProbes(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	if err := s.UpsertTarget(ctx, store.Target{
+		ID: "flap", Host: "flap.example", Port: 443, Probe: "http",
+		Name: "Flap", Class: "network", Tier: 3, IntervalS: 120,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	base := time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC)
+	at := base
+	record := func(st state.State) time.Time {
+		t.Helper()
+		if err := s.Record(ctx, []store.Probe{probeFor("flap", at, st)}); err != nil {
+			t.Fatal(err)
+		}
+		got := at
+		at = at.Add(3 * time.Minute)
+		return got
+	}
+
+	// Anchor rules: two consecutive failures confirm DOWN, one pass recovers,
+	// and the 120s debounce is clear at three-minute spacing. Four down/up
+	// cycles produce eight transitions, past the documented six.
+	record(state.Up)
+	for i := 0; i < 4; i++ {
+		record(state.Down)
+		record(state.Down)
+		record(state.Up)
+	}
+	// A probe whose target is already bouncing is low confidence even when it
+	// does not itself transition.
+	record(state.Down)
+	if err := s.Record(ctx, []store.Probe{probeFor("flap", at, state.Down)}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := s.RecentProbes(ctx, "flap", "local", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("probes = %d, want 1", len(rows))
+	}
+	if rows[0].Confidence != "low" {
+		t.Fatalf("confidence = %q, want low for a flapping target", rows[0].Confidence)
+	}
+
+	// A quiet target keeps the classifier's confidence.
+	if err := s.Record(ctx, []store.Probe{probeAt(base, state.Up)}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 3; i++ {
+		if err := s.Record(ctx, []store.Probe{probeAt(base.Add(time.Duration(i)*time.Minute), state.Down)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	quiet, err := s.RecentProbes(ctx, "t1", "local", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(quiet) != 1 || quiet[0].Confidence != "high" {
+		t.Fatalf("quiet target confidence = %+v, want high", quiet)
+	}
+}

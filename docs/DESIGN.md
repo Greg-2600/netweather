@@ -81,9 +81,9 @@ Six values. No more.
 |---|---|
 | `measurability: ok` | Has produced a real measurement in the last 7 days |
 | `measurability: mostly_blocked` | `BLOCKED` > 80% of probes over 7 days → **UNMEASURABLE** |
-| `confidence: semantic` | A content/JSON assertion passed |
-| `confidence: reachability` | Only transport + status verified |
-| `confidence: low` | Single probe, no corroboration, or flapping |
+| `confidence: high` | Transport resolved and a semantic assertion passed, or an unambiguous challenge / origin failure |
+| `confidence: medium` | Single-signature challenge, semantic mismatch, or a DNS-derived `DOWN` pending corroboration |
+| `confidence: low` | Reachability only, a JS shell, a flapping target (>6 transitions/24h), or a single observation |
 
 **UNMEASURABLE targets are excluded from the health index and collapsed into their own board section.** This is the single most important calibration decision: it prevents 200 permanently-bot-walled banks and airlines from making the dashboard look permanently on fire.
 

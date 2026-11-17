@@ -442,7 +442,9 @@ func classify(t Target, r Response) (State, Confidence, Reason) {
 | **medium** | Single-signature challenge; semantic mismatch; a DNS-derived `DOWN` (needs corroboration) |
 | **low** | No semantic check (reachability only), JS shell, flapping (>6 transitions/24h), single observation |
 
-Confidence propagates: a `DOWN` derived from a `low`-confidence probe is not promoted to `INCIDENT` on its own — it needs a second observation.
+Confidence propagates: a `DOWN` derived from a `low`-confidence probe is not promoted to `INCIDENT` on its own - it needs a second observation.
+
+**Implemented:** the classifier assigns `high`, `medium`, or `low` from the decision path (a passed semantic assertion is high, a semantic mismatch or single-signature challenge is medium, reachability-only and JS shells are low). The flapping rule lives in `store.Record`: after the state transition is applied, the store counts `state_change` rows for that target and vantage inside the probe's own 24-hour window, and when there are more than six it rewrites the just-written probe's confidence to `low`. The window is anchored to the probe's timestamp rather than wall-clock now, so a backfill is judged against the day it belongs to. The stored value is what the API and the drawer read, so a reader does not have to replay history to learn that the target was bouncing.
 
 ---
 
