@@ -276,6 +276,58 @@ func TestStepWithNoTargets(t *testing.T) {
 	}
 }
 
+func TestStepPacesProbes(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	p := newProber()
+	sink := &fakeSink{}
+
+	a := agent.New([]agent.Target{
+		target("a", "a.example"),
+		target("b", "b.example"),
+		target("c", "c.example"),
+	}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+	a.Pace = 20 * time.Millisecond
+
+	start := time.Now()
+	ran, err := a.Step(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	elapsed := time.Since(start)
+
+	if ran != 3 {
+		t.Fatalf("ran = %d, want 3", ran)
+	}
+	// Three probes means at least two pace gaps between them.
+	if elapsed < 40*time.Millisecond {
+		t.Fatalf("elapsed = %v, want the 20ms pace applied between probes", elapsed)
+	}
+}
+
+func TestStepPaceHonoursCancellation(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	a := agent.New([]agent.Target{
+		target("a", "a.example"),
+		target("b", "b.example"),
+	}, newProber(), &fakeSink{})
+	a.Now = at(now)
+	a.Rand = zeroRand
+	a.Pace = time.Hour
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := a.Step(ctx); err == nil {
+		t.Fatal("a cancelled pace must stop the step")
+	}
+}
+
 func TestClassifierExpectationsAreCarried(t *testing.T) {
 	t.Parallel()
 

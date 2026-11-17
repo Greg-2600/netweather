@@ -82,9 +82,18 @@ func Transport(d *netx.Dialer) *http.Transport {
 	if d == nil {
 		d = netx.New()
 	}
+	return TransportForDial(d.DialContext)
+}
+
+// TransportForDial builds the same transport over an arbitrary dial function.
+// The Tor vantage uses this: identical HTTP behaviour, different last hop.
+func TransportForDial(dial DialFunc) *http.Transport {
+	if dial == nil {
+		dial = (&net.Dialer{Timeout: 5 * time.Second}).DialContext
+	}
 	return &http.Transport{
 		Proxy:                 nil,
-		DialContext:           d.DialContext,
+		DialContext:           dial,
 		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          4,
@@ -94,6 +103,12 @@ func Transport(d *netx.Dialer) *http.Transport {
 		ResponseHeaderTimeout: 10 * time.Second,
 		ExpectContinueTimeout: time.Second,
 	}
+}
+
+// NewHTTPWithDial returns an HTTP instrument over dial. Production uses NewHTTP;
+// the Tor vantage uses this with a SOCKS5 dialer.
+func NewHTTPWithDial(dial DialFunc) *HTTP {
+	return NewHTTPWithTransport(TransportForDial(dial))
 }
 
 func (h *HTTP) checkRedirect(_ *http.Request, via []*http.Request) error {

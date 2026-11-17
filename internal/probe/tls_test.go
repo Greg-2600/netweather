@@ -97,4 +97,9 @@ func TestTLSConstructorUsesDefaults(t *testing.T) {
 	if p.Dial == nil {
 		t.Fatal("NewTLS left Dial nil without installing a default")
 	}
+
+	withDial := probe.NewTLSWithDial(nil)
+	if withDial.Dial == nil {
+		t.Fatal("NewTLSWithDial left Dial nil without installing a default")
+	}
 }

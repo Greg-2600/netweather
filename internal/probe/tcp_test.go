@@ -77,4 +77,9 @@ func TestTCPConstructorUsesDefaults(t *testing.T) {
 	if p.Dial == nil {
 		t.Fatal("NewTCP left Dial nil without installing a default")
 	}
+
+	withDial := probe.NewTCPWithDial(nil)
+	if withDial.Dial == nil {
+		t.Fatal("NewTCPWithDial left Dial nil without installing a default")
+	}
 }

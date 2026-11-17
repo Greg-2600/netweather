@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/agent"
+	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
 )
@@ -261,6 +262,145 @@ targets:
 
 	if _, err := loadTargets(ctx, st); err == nil || !strings.Contains(err.Error(), "not implemented") {
 		t.Fatalf("error = %v, want an explicit unimplemented-probe error", err)
+	}
+}
+
+func TestSelectTorTargets(t *testing.T) {
+	t.Parallel()
+
+	base := []agent.Target{
+		{ID: "dns", Instrument: "dns", Interval: time.Minute, Vantage: "local"},
+		{ID: "c", Instrument: "http", Interval: time.Minute, Vantage: "local"},
+		{ID: "a", Instrument: "tls", Interval: 30 * time.Minute, Vantage: "local"},
+		{ID: "b", Instrument: "tcp", Interval: 5 * time.Minute, Vantage: "local"},
+	}
+
+	got := selectTorTargets(base, 2)
+	if len(got) != 2 {
+		t.Fatalf("selected = %d, want the cap of 2", len(got))
+	}
+	// Sorted by id, so "a" then "b": deterministic across restarts.
+	if got[0].ID != "a" || got[1].ID != "b" {
+		t.Fatalf("order = %s,%s", got[0].ID, got[1].ID)
+	}
+	for _, tg := range got {
+		if tg.Vantage != "tor" {
+			t.Errorf("%s vantage = %q", tg.ID, tg.Vantage)
+		}
+		if tg.Interval < minTorInterval {
+			t.Errorf("%s interval = %v, want the Tor floor", tg.ID, tg.Interval)
+		}
+	}
+	// A long interval is preserved, not shortened.
+	if got[0].Interval != 30*time.Minute {
+		t.Errorf("a interval = %v, want it preserved", got[0].Interval)
+	}
+
+	// A zero cap falls back to the default cap rather than selecting nothing.
+	if n := len(selectTorTargets(base, 0)); n != 3 {
+		t.Fatalf("default cap selected %d, want the three tcp-based targets", n)
+	}
+
+	// Non-TCP instruments are never selected.
+	for _, tg := range selectTorTargets(base, 10) {
+		if tg.Instrument == "dns" {
+			t.Fatal("dns target selected for Tor; DNS does not run over this dialer")
+		}
+	}
+}
+
+func TestNewTorAgentIsOffByDefault(t *testing.T) {
+	t.Setenv("NETWEATHER_TOR", "")
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "tor.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+
+	lg := &logging.Logger{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	ag, err := newTorAgent(ctx, st, nil, lg)
+	if err != nil {
+		t.Fatalf("disabled tor: %v", err)
+	}
+	if ag != nil {
+		t.Fatal("tor vantage was built without being enabled")
+	}
+}
+
+func TestNewTorAgentRejectsBadProxy(t *testing.T) {
+	t.Setenv("NETWEATHER_TOR", "true")
+	t.Setenv("NETWEATHER_TOR_SOCKS", "not-a-proxy")
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "tor-bad.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+
+	lg := &logging.Logger{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	if _, err := newTorAgent(ctx, st, nil, lg); err == nil {
+		t.Fatal("an invalid SOCKS address must fail loudly")
+	}
+}
+
+func TestNewTorAgentBuildsOne(t *testing.T) {
+	t.Setenv("NETWEATHER_TOR", "true")
+	t.Setenv("NETWEATHER_TOR_SOCKS", "127.0.0.1:9050")
+	t.Setenv("NETWEATHER_TOR_MAX", "2")
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "tor-on.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+
+	direct := []agent.Target{
+		{ID: "a", Instrument: "http", Interval: time.Minute, Vantage: "local"},
+		{ID: "b", Instrument: "tls", Interval: time.Minute, Vantage: "local"},
+		{ID: "c", Instrument: "tcp", Interval: time.Minute, Vantage: "local"},
+	}
+
+	lg := &logging.Logger{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	ag, err := newTorAgent(ctx, st, direct, lg)
+	if err != nil {
+		t.Fatalf("newTorAgent: %v", err)
+	}
+	if ag == nil {
+		t.Fatal("expected a Tor agent")
+	}
+	if ag.TargetCount() != 2 {
+		t.Fatalf("targets = %d, want the cap", ag.TargetCount())
+	}
+	if ag.Pace != torPace {
+		t.Fatalf("pace = %v, want %v", ag.Pace, torPace)
+	}
+
+	states, err := st.FeedStates(ctx) // unrelated table, but proves the store is usable
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = states
+}
+
+func TestNewTorAgentRequiresTcpTargets(t *testing.T) {
+	t.Setenv("NETWEATHER_TOR", "true")
+	t.Setenv("NETWEATHER_TOR_SOCKS", "127.0.0.1:9050")
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "tor-none.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+
+	lg := &logging.Logger{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	_, err = newTorAgent(ctx, st, []agent.Target{{ID: "dns", Instrument: "dns"}}, lg)
+	if err == nil {
+		t.Fatal("a Tor vantage with only DNS targets should fail, not run empty")
 	}
 }
 

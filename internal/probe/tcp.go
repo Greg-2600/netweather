@@ -22,6 +22,15 @@ func NewTCP(d *netx.Dialer) *TCP {
 	return &TCP{Dial: d.DialContext}
 }
 
+// NewTCPWithDial returns a TCP instrument over an arbitrary dialer, used by the
+// Tor vantage.
+func NewTCPWithDial(dial DialFunc) *TCP {
+	if dial == nil {
+		dial = (&net.Dialer{Timeout: 5 * time.Second}).DialContext
+	}
+	return &TCP{Dial: dial}
+}
+
 // TCPResult is one connect attempt.
 type TCPResult struct {
 	Latency    time.Duration

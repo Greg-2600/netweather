@@ -290,6 +290,51 @@ func TestNewHTTPUsesGuardedTransport(t *testing.T) {
 	}
 }
 
+func TestNewHTTPWithDial(t *testing.T) {
+	t.Parallel()
+
+	h := probe.NewHTTPWithDial(nil)
+	if h.Client == nil || h.Client.Transport == nil {
+		t.Fatal("NewHTTPWithDial did not build a client")
+	}
+	tr, ok := h.Client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("transport = %T", h.Client.Transport)
+	}
+	if tr.Proxy != nil {
+		t.Fatal("a custom dialer must not pick up HTTP_PROXY")
+	}
+	if tr.DialContext == nil {
+		t.Fatal("transport has no dial function")
+	}
+	if h.Client.Timeout != probe.DefaultTimeout {
+		t.Fatalf("Timeout = %v", h.Client.Timeout)
+	}
+}
+
+func TestHTTPUsesTheInjectedDialer(t *testing.T) {
+	t.Parallel()
+
+	called := make(chan string, 1)
+	h := probe.NewHTTPWithDial(func(_ context.Context, _, address string) (net.Conn, error) {
+		called <- address
+		return nil, errors.New("dial refused by test")
+	})
+
+	res := h.Do(context.Background(), "http://example.com/")
+	if !res.Failed() {
+		t.Fatal("a failing dial should fail the probe")
+	}
+	select {
+	case addr := <-called:
+		if !strings.HasPrefix(addr, "example.com:") {
+			t.Fatalf("dial address = %q, want the target host", addr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("the injected dialer was never used")
+	}
+}
+
 func TestResultString(t *testing.T) {
 	t.Parallel()
 

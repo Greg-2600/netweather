@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -145,6 +146,12 @@ func serve(lg *logging.Logger) error {
 		return err
 	}
 
+	torAgent, err := newTorAgent(ctx, st, targets, lg)
+	if err != nil {
+		lg.Error("tor vantage unavailable", "event", "tor_unavailable", "error", err)
+		return err
+	}
+
 	changes := board.NewBroadcast()
 	source := &board.StoreSource{Store: st, Vantage: "local", Changes: changes}
 
@@ -232,6 +239,9 @@ func serve(lg *logging.Logger) error {
 	}
 
 	go probeLoop(ctx, lg, ag, changes)
+	if torAgent != nil {
+		go probeLoop(ctx, lg, torAgent, changes)
+	}
 
 	incidentInterval := 5 * time.Minute
 	if v := os.Getenv("NETWEATHER_INCIDENT_INTERVAL"); v != "" {
@@ -485,6 +495,97 @@ func newAgent(targets []agent.Target, st *store.Store, lg *logging.Logger) *agen
 	ag := agent.New(targets, newInstruments(), st)
 	ag.Logger = lg.Logger
 	return ag
+}
+
+// Tor caps from ACCEPTABLE_USE.md §8: at most 25 targets, at least 2s between
+// probes, and a slower interval than the direct vantage.
+const (
+	defaultTorMax   = 25
+	minTorInterval  = 10 * time.Minute
+	defaultTorProxy = "127.0.0.1:9050"
+	torPace         = 2 * time.Second
+)
+
+// newTorAgent builds the optional corroboration vantage. It returns nil when
+// NETWEATHER_TOR is not "true": Tor is off by default, because it is a
+// different trust domain and a different volume budget.
+func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg *logging.Logger) (*agent.Agent, error) {
+	if !strings.EqualFold(strings.TrimSpace(os.Getenv("NETWEATHER_TOR")), "true") {
+		return nil, nil
+	}
+
+	proxyAddr := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_SOCKS"))
+	if proxyAddr == "" {
+		proxyAddr = defaultTorProxy
+	}
+	dial, err := netx.Socks5(proxyAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	maxTargets := defaultTorMax
+	if raw := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_MAX")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n <= 0 {
+			return nil, fmt.Errorf("NETWEATHER_TOR_MAX %q is not a positive integer", raw)
+		}
+		maxTargets = n
+	}
+
+	selected := selectTorTargets(direct, maxTargets)
+	if len(selected) == 0 {
+		return nil, errors.New("tor vantage enabled but no tcp-based targets are configured")
+	}
+
+	if err := st.EnsureVantage(ctx, "tor", "socks5", "corroboration"); err != nil {
+		return nil, err
+	}
+
+	runner := agent.Instruments{
+		HTTP: probe.NewHTTPWithDial(probe.DialFunc(dial)),
+		TLS:  probe.NewTLSWithDial(probe.DialFunc(dial)),
+		TCP:  probe.NewTCPWithDial(probe.DialFunc(dial)),
+	}
+	ag := agent.New(selected, runner, st)
+	ag.Logger = lg.Logger
+	ag.Pace = torPace
+
+	lg.Info("tor vantage enabled",
+		"event", "tor_enabled", "component", "agent",
+		"proxy", proxyAddr, "targets", len(selected), "pace", torPace.String())
+	return ag, nil
+}
+
+// selectTorTargets copies the TCP-based targets under the vantage, sorted by id
+// so the selected subset is stable across restarts, and slows each interval to
+// the Tor floor.
+func selectTorTargets(direct []agent.Target, max int) []agent.Target {
+	if max <= 0 {
+		max = defaultTorMax
+	}
+
+	candidates := make([]agent.Target, 0, len(direct))
+	for _, t := range direct {
+		switch t.Instrument {
+		case "http", "tls", "tcp", "":
+			candidates = append(candidates, t)
+		}
+	}
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].ID < candidates[j].ID })
+
+	if len(candidates) > max {
+		candidates = candidates[:max]
+	}
+
+	out := make([]agent.Target, 0, len(candidates))
+	for _, t := range candidates {
+		t.Vantage = "tor"
+		if t.Interval < minTorInterval {
+			t.Interval = minTorInterval
+		}
+		out = append(out, t)
+	}
+	return out
 }
 
 // buildFeedPollers returns a poller per enabled feed. NETWEATHER_FEEDS is a

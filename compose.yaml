@@ -22,6 +22,15 @@ services:
       # Point this at /config/targets.yaml once you have one; otherwise the
       # shipped seed list is used.
       # NETWEATHER_CONFIG: /config/targets.yaml
+      #
+      # Tor is a separate profile (compose --profile tor) and off by default.
+      # Enable both lines together: the sidecar is useless without the client,
+      # and the client fails loudly when the sidecar is missing.
+      # NETWEATHER_TOR: "true"
+      # NETWEATHER_TOR_SOCKS: tor:9050
+      #
+      # External corroboration, also off by default.
+      # NETWEATHER_FEEDS: ioda
 
     read_only: true
     tmpfs: [/tmp]
@@ -41,6 +50,21 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # Optional Tor vantage. The sidecar is client-only and the monitor never
+  # embeds Tor. Start with: docker compose --profile tor up -d
+  #
+  # The exit is not country-pinned; use a pinned SOCKS5 endpoint when the
+  # country label matters (docs/ACCEPTABLE_USE.md §8).
+  tor:
+    image: dperson/torproxy:latest
+    profiles: [tor]
+    networks: [egress]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
 
 networks:
   ui:

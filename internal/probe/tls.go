@@ -27,6 +27,15 @@ func NewTLS(d *netx.Dialer) *TLS {
 	return &TLS{Dial: d.DialContext}
 }
 
+// NewTLSWithDial returns a TLS instrument over an arbitrary dialer, used by the
+// Tor vantage.
+func NewTLSWithDial(dial DialFunc) *TLS {
+	if dial == nil {
+		dial = (&net.Dialer{Timeout: 5 * time.Second}).DialContext
+	}
+	return &TLS{Dial: dial}
+}
+
 // TLSResult is one handshake observation.
 type TLSResult struct {
 	Latency     time.Duration

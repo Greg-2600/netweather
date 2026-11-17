@@ -194,14 +194,16 @@ A Tor vantage is **corroboration**, never the primary measurement. It exists to 
 
 Rules:
 
-- TCP-based instruments only; no ICMP, no traceroute, no NTP.
-- `socks5h` only. `socks5://` is rejected because it resolves the name locally and leaks the query.
-- Exit-country pinning is required for a country-labelled vantage; an unpinned exit is not a country measurement.
-- Expect 40–70% `BLOCKED`. That is the normal result of using Tor, not a fault to be fixed by evasion.
-- Volume caps are lower than the direct vantage by design (≤25 targets, ≥2s spacing, daily MB budget).
-- The sidecar is client-only. `ExitPolicy reject *:*`, `BridgeRelay 0`, `PublishServerDescriptor 0`, and `ClientOnly 1` are verified at startup.
+- TCP-based instruments only; no ICMP, no traceroute, no NTP. **Implemented:** the Tor agent is built from HTTP/TLS/TCP only, and DNS targets are excluded rather than silently failing.
+- `socks5h` only. `socks5://` is rejected because it resolves the name locally and leaks the query. **Implemented:** `netx.Socks5` uses x/net/proxy, which sends domain names with `ATYP=3`; a test asserts the proxy sees the hostname.
+- Exit-country pinning is required for a country-labelled vantage; an unpinned exit is not a country measurement. **Specified:** the shipped profile is unpinned and therefore labelled `tor`, not a country.
+- Expect 40-70% `BLOCKED`. That is the normal result of using Tor, not a fault to be fixed by evasion.
+- Volume caps are lower than the direct vantage by design (≤25 targets, ≥2s spacing, daily MB budget). **Implemented:** `NETWEATHER_TOR_MAX` (default 25), a 2-second pace between probes, and a 10-minute interval floor. The daily MB budget is specified.
+- The sidecar is client-only. `ExitPolicy reject *:*`, `BridgeRelay 0`, `PublishServerDescriptor 0`, and `ClientOnly 1` are verified at startup. **Specified:** the shipped image is a third-party client-only proxy, and the operator is expected to verify its torrc; the monitor only speaks SOCKS5 to it.
 
-A user-supplied SOCKS5 endpoint is allowed if the operator owns it or has permission to use it. Scraped lists are not.
+A user-supplied SOCKS5 endpoint is allowed if the operator owns it or has permission to use it. Scraped lists are not. **Implemented:** `NETWEATHER_TOR_SOCKS` accepts any `host:port`, and the only shipped default is the local loopback sidecar.
+
+Only the primary vantage may declare `DOWN`. **Implemented by construction:** Tor probes are stored under vantage `tor`, while the board, incidents, anomalies, and coverage all read the `local` vantage. A Tor failure is therefore evidence, never a verdict.
 
 ### RIPE Atlas
 

@@ -96,6 +96,10 @@ type Agent struct {
 	Now     func() time.Time
 	Rand    func() float64
 	Logger  *slog.Logger
+	// Pace is the minimum gap between two probes in one Step. It is zero for
+	// the direct vantage and non-zero for Tor, where bursty traffic is both
+	// abusive and a fingerprint.
+	Pace time.Duration
 
 	mu      sync.RWMutex
 	targets []Target
@@ -211,6 +215,14 @@ func (a *Agent) Step(ctx context.Context) (int, error) {
 		a.next[t.ID] = now.Add(schedule.Next(t.Interval, schedule.DefaultJitter(t.Tier), a.Rand))
 		a.mu.Unlock()
 		ran++
+
+		if a.Pace > 0 {
+			select {
+			case <-ctx.Done():
+				return ran, ctx.Err()
+			case <-time.After(a.Pace):
+			}
+		}
 	}
 
 	if len(batch) == 0 {
