@@ -1680,3 +1680,60 @@ targets:
 		t.Fatalf("sources after the edit = %+v, want one row with a new hash", sources)
 	}
 }
+
+func TestBackupCommand(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("NETWEATHER_DATA", filepath.Join(dir, "data"))
+
+	// Create a real database with one target so the copy has content to prove.
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(dir, "data", "netweather.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.EnsureVantage(ctx, "local", "direct", "primary"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertTarget(ctx, store.Target{
+		ID: "t1", Host: "chase.com", Port: 443, Probe: "http",
+		Name: "Chase", Class: "service", Tier: 2, IntervalS: 300,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	dest := filepath.Join(dir, "backup.db")
+	var out bytes.Buffer
+	if err := run([]string{"backup", "-o", dest}, &out); err != nil {
+		t.Fatalf("run(backup): %v", err)
+	}
+	if !strings.Contains(out.String(), "backup written to") {
+		t.Fatalf("output = %q", out.String())
+	}
+	if info, err := os.Stat(dest); err != nil || info.Size() == 0 {
+		t.Fatalf("backup file = (%v, %v)", info, err)
+	}
+
+	// The copy is a usable database, not just bytes.
+	copied, err := store.OpenReadOnly(ctx, dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := copied.TargetIDs(ctx)
+	_ = copied.Close()
+	if err != nil || len(ids) != 1 || ids[0] != "t1" {
+		t.Fatalf("backup targets = (%v, %v)", ids, err)
+	}
+
+	if err := run([]string{"backup"}, io.Discard); err == nil {
+		t.Fatal("backup without -o was accepted")
+	}
+	if err := run([]string{"backup", "-o", dest}, io.Discard); err == nil {
+		t.Fatal("backup overwrote an existing file")
+	}
+	if err := run([]string{"backup", "-o", dest, "extra"}, io.Discard); err == nil {
+		t.Fatal("backup accepted an extra argument")
+	}
+}

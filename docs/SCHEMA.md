@@ -783,7 +783,7 @@ WHERE t.enabled = 1;
 
 ## 14. Backup and export
 
-**Backup:** `VACUUM INTO '/data/backup-2026-11-16.db'`. It is consistent while the app is running, produces a compact file with no WAL, and needs no lock choreography. Copying `netweather.db` directly while WAL is active is the standard way to produce a corrupt backup.
+**Backup:** `netweather backup -o /data/backup-2026-11-16.db`, which runs `VACUUM INTO` against the live database. It is consistent while the app is running, produces a compact file with no WAL, and needs no lock choreography. The command refuses to overwrite an existing file, creates the parent directory, and writes the copy 0600 on POSIX. It exists because the release image has no shell and no `sqlite3` binary: the documented procedure has to be executable from the binary itself. Copying `netweather.db` directly while WAL is active is the standard way to produce a corrupt backup.
 
 **Export:** `netweather export --from … --to … --format csv|json`, streaming from `rollup_5m` or `rollup_1h`, never loading a result set into memory.
 

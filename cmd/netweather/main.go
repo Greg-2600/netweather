@@ -97,6 +97,9 @@ func run(args []string, stdout io.Writer) error {
 	case "doctor":
 		return doctorCommand(args[1:], stdout)
 
+	case "backup":
+		return backupCommand(args[1:], stdout)
+
 	case "serve":
 		lg.Info("starting",
 			"event", "startup",
@@ -123,7 +126,7 @@ func run(args []string, stdout io.Writer) error {
 		return serve(lg)
 
 	default:
-		return fmt.Errorf("unknown command %q (try: serve, version, healthcheck)", command)
+		return fmt.Errorf("unknown command %q (try: serve, version, healthcheck, seed, export, debug, disable, doctor, backup)", command)
 	}
 }
 

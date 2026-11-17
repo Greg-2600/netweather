@@ -935,8 +935,9 @@ The binary is also scriptable, and its contract matters as much as HTTP:
 | `netweather debug enable\|status\|disable` | 0 success, 1 error | one line per scope |
 | `netweather debug bundle -o FILE` | 0 success, 1 error | one summary line, or an envelope with `-json` |
 | `netweather doctor` | 0 all fatal checks pass, 1 a fatal check failed | capability table |
+| `netweather backup -o FILE` | 0 success, 1 error | one line with the destination and size; refuses an existing file and writes the copy 0600 |
 
-Commands that exist in the binary today: `serve`, `version`, `healthcheck`, `seed`, `export`, `debug`, `disable`, `doctor`. Pause/resume remain HTTP-only (`POST /api/v1/pause`, `POST /api/v1/resume`).
+Commands that exist in the binary today: `serve`, `version`, `healthcheck`, `seed`, `export`, `debug`, `disable`, `doctor`, `backup`. Pause/resume remain HTTP-only (`POST /api/v1/pause`, `POST /api/v1/resume`).
 
 `netweather doctor` reports which instruments work on this host: data-directory writability, resolver, TCP egress, TLS, HTTP, NTP offset, and whether raw ICMP/traceroute sockets can be opened. Missing optional capabilities are a warning, not a startup failure (`DESIGN.md` §5.5).
 
