@@ -1381,6 +1381,39 @@ targets:
 	}
 }
 
+func TestStaleWALNotice(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	db := filepath.Join(dir, "netweather.db")
+	if err := os.WriteFile(db, []byte("db"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// No WAL beside a clean database.
+	if size, ok := staleWAL(db); ok || size != 0 {
+		t.Fatalf("no WAL = (%d, %v)", size, ok)
+	}
+
+	// A non-empty WAL is reported with its size; SQLite will recover it, and
+	// the log line names the restore rule.
+	wal := db + "-wal"
+	if err := os.WriteFile(wal, []byte("12345"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if size, ok := staleWAL(db); !ok || size != 5 {
+		t.Fatalf("WAL = (%d, %v), want (5, true)", size, ok)
+	}
+
+	// An empty WAL is not worth a line.
+	if err := os.WriteFile(wal, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := staleWAL(db); ok {
+		t.Fatal("an empty WAL was reported")
+	}
+}
+
 func TestFeedURLsMustBeHTTPS(t *testing.T) {
 	t.Parallel()
 

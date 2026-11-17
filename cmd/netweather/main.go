@@ -156,7 +156,18 @@ func serve(lg *logging.Logger) error {
 	}
 	lg.UseScopes(scopes)
 
-	st, err := store.Open(ctx, filepath.Join(dataDir, "netweather.db"))
+	dbPath := filepath.Join(dataDir, "netweather.db")
+	// A non-empty WAL is normal after an unclean shutdown and SQLite recovers
+	// it. After a restore, the -wal and -shm siblings belong to the replaced
+	// file and must be removed first (SCHEMA.md §14). The binary cannot tell a
+	// foreign WAL from a crashed one, so it states what it sees rather than
+	// claiming to detect the difference.
+	if size, ok := staleWAL(dbPath); ok {
+		lg.Info("database has a write-ahead log at startup; SQLite will recover it. After restoring a backup, delete the -wal and -shm siblings first",
+			"event", "db_wal_present", "component", "store", "wal_bytes", size)
+	}
+
+	st, err := store.Open(ctx, dbPath)
 	if err != nil {
 		lg.Error("store unavailable", "event", "store_open_failed", "error", err)
 		return err
@@ -1871,6 +1882,18 @@ func feedClient() *http.Client {
 func feedURLIsHTTPS(raw string) bool {
 	u, err := neturl.Parse(raw)
 	return err == nil && strings.EqualFold(u.Scheme, "https") && u.Host != ""
+}
+
+// staleWAL reports a non-empty write-ahead log beside dbPath. A WAL left by an
+// unclean shutdown is recovered by SQLite; after a restore, the -wal and -shm
+// siblings belong to the replaced file and must be deleted first (SCHEMA.md
+// §14). The size is returned so the log line can name what it saw.
+func staleWAL(dbPath string) (int64, bool) {
+	info, err := os.Stat(dbPath + "-wal") // #nosec G703 -- operator-supplied data directory plus a fixed suffix.
+	if err != nil || info.Size() == 0 {
+		return 0, false
+	}
+	return info.Size(), true
 }
 
 // splitList trims and drops empty entries from a comma-separated operator

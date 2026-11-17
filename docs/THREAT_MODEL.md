@@ -206,7 +206,7 @@ Residual: a public host that later *becomes* a private address after the operato
 | T41 | SQL injection | Only `?` placeholders; no string-built SQL; `query_only` readers make an accidental write a hard error | Enforced |
 | T42 | Handler writes to the DB | Readers are `query_only=1`; write access exists only in the store package | Enforced |
 | T43 | Backup copied while WAL is live → corrupt file | Only `VACUUM INTO`; documentation forbids copying the live file | Enforced |
-| T44 | Restored DB with stale `-wal` | Restore procedure deletes `-wal`/`-shm` siblings; startup detects a mismatched WAL and refuses | Enforced |
+| T44 | Restored DB with stale `-wal` | Restore procedure deletes `-wal`/`-shm` siblings (`SCHEMA.md` §14). Startup logs `event=db_wal_present` with the WAL size and repeats the restore rule; SQLite recovers a WAL left by a crash, and the binary cannot tell a foreign WAL from a crashed one, so it does not claim to detect it. | Enforced (procedure) |
 | T45 | Database readable by other users on the host | File created `0600`, directory `0700`; container runs as one UID; volume ownership documented | Enforced |
 | T46 | Operator annotations leak sensitive context | Free text, stored as written, never sent anywhere; the export command is explicit | Policy |
 | T47 | Downgrade silently drops columns | Refuse to start if `schema_version` is newer than the binary | Enforced |
