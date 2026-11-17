@@ -247,6 +247,42 @@ targets:
 	}
 }
 
+func TestLoadAcceptsTCPPing(t *testing.T) {
+	t.Parallel()
+
+	path := write(t, `version: 1
+targets:
+  - name: Portable RTT
+    host: example.com
+    port: 443
+    probe: tcpping
+    class: network
+    tier: 3
+    interval_s: 120
+`)
+
+	f, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	got := f.Targets[0]
+	if got.Probe != "tcpping" || got.Port != 443 {
+		t.Fatalf("target = %+v", got)
+	}
+	// tcpping is only meaningful on the probe ports in the allowlist.
+	if _, err := config.Load(write(t, `version: 1
+targets:
+  - name: bad
+    host: example.com
+    port: 22
+    probe: tcpping
+    class: network
+    tier: 3
+`)); err == nil {
+		t.Fatal("tcpping on port 22 should be rejected")
+	}
+}
+
 func TestIntervalFloorAndDefault(t *testing.T) {
 	t.Parallel()
 

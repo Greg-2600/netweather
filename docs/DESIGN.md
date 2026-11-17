@@ -285,9 +285,7 @@ Degradation is mandatory:
 
 **Implemented:** `netweather doctor` reports data-directory writability, resolver reachability, TCP egress, TLS, HTTP, clock offset, and whether raw ICMP and traceroute sockets can be opened. Optional capabilities are warnings; only a fatal capability (unwritable data directory, no resolver, no TCP egress, a broken allowlist) exits non-zero.
 
-Still specified: the `tcpping` fallback. Until it lands, an `icmp` target on a host without raw sockets reports `UNKNOWN` with `icmp_unavailable`, which is honest rather than wrong.
-
-`tcpping` is the portable RTT instrument; `icmp` is an optimisation on hosts that allow it. Windows and macOS hosts differ enough that this must be documented rather than guessed.
+`tcpping` is the portable RTT instrument: it reuses the TCP connect path, needs no raw socket, and is selected explicitly with `probe: tcpping`. It is not an automatic fallback from `icmp`, because silently connecting to a guessed port on an anchor would fabricate a measurement; an `icmp` target on a host without raw sockets reports `UNKNOWN` / `icmp_unavailable` instead. Windows and macOS hosts differ enough that this must be documented rather than guessed.
 
 ### 5.6 Vantage points
 

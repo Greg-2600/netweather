@@ -746,3 +746,39 @@ func TestHealthcheckRefusesNonLoopback(t *testing.T) {
 		t.Fatal("a non-loopback healthcheck URL must be refused")
 	}
 }
+
+func TestLoadTargetsAcceptsTCPPing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tcpping.yaml")
+	yaml := `version: 1
+targets:
+  - name: Portable RTT
+    host: example.com
+    port: 443
+    probe: tcpping
+    class: network
+    tier: 3
+    interval_s: 120
+`
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NETWEATHER_CONFIG", path)
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "tcpping.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+
+	got, err := loadTargets(ctx, st)
+	if err != nil {
+		t.Fatalf("loadTargets: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("targets = %d", len(got))
+	}
+	if got[0].Instrument != "tcpping" || got[0].Address != "example.com:443" {
+		t.Fatalf("tcpping target = %+v", got[0])
+	}
+}

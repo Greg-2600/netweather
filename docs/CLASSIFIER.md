@@ -169,6 +169,8 @@ Two hard rules:
 
 NTP never produces a target state at all. It feeds `DESIGN.md` §7.5 self-health and can only warn.
 
+`tcpping` is the portable RTT instrument: it reuses the TCP connect classes above (`tcp_*` on failure, `UP_REACHABILITY` on success) with no raw socket. It is an explicit probe type rather than an automatic fallback from `icmp`, because silently connecting to a guessed port on an anchor would fabricate a measurement. An `icmp` target on a host without raw sockets therefore reports `UNKNOWN` / `icmp_unavailable`, and the operator can choose a `tcpping` anchor instead.
+
 ---
 
 ### 3.7 HTTP transport

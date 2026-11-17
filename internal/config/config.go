@@ -140,12 +140,13 @@ var (
 	hostLabelRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 	idCleanRE   = regexp.MustCompile(`[^a-z0-9]+`)
 	validProbes = map[string]map[int]struct{}{
-		"http": {80: {}, 443: {}},
-		"tcp":  {80: {}, 443: {}},
-		"tls":  {443: {}},
-		"dns":  {53: {}},
-		"ntp":  {123: {}},
-		"icmp": {},
+		"http":    {80: {}, 443: {}},
+		"tcp":     {80: {}, 443: {}},
+		"tcpping": {80: {}, 443: {}},
+		"tls":     {443: {}},
+		"dns":     {53: {}},
+		"ntp":     {123: {}},
+		"icmp":    {},
 	}
 	validClasses = map[string]struct{}{
 		"service": {}, "country": {}, "network": {}, "reference": {},

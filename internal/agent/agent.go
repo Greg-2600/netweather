@@ -65,7 +65,7 @@ func (i Instruments) Run(ctx context.Context, t Target) probe.Result {
 		}
 		r := i.TLS.Do(ctx, t.Address)
 		return probe.Result{Latency: r.Latency, ErrorClass: r.ErrorClass, Err: r.Err}
-	case "tcp":
+	case "tcp", "tcpping":
 		if i.TCP == nil {
 			return probe.Result{Err: fmt.Errorf("agent: tcp instrument not configured")}
 		}
@@ -387,7 +387,7 @@ func stageFor(t Target, class string) string {
 	switch t.Instrument {
 	case "tls":
 		return "tls"
-	case "tcp":
+	case "tcp", "tcpping":
 		return "tcp"
 	case "ntp":
 		return "ntp"

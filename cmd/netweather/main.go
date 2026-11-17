@@ -337,7 +337,7 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 		switch t.Probe {
 		case "http":
 			url = targetURL(t.Host, t.Port)
-		case "tls", "tcp", "dns", "ntp":
+		case "tls", "tcp", "tcpping", "dns", "ntp":
 			address = net.JoinHostPort(t.Host, strconv.Itoa(t.Port))
 		case "icmp":
 			// ICMP has no port; config validation already forced port 0.

@@ -500,7 +500,7 @@ func TestInstrumentsDispatch(t *testing.T) {
 	}
 
 	empty := agent.Instruments{}
-	for _, instrument := range []string{"tcp", "tls", "dns", "ntp", "icmp", "http"} {
+	for _, instrument := range []string{"tcp", "tcpping", "tls", "dns", "ntp", "icmp", "http"} {
 		if got := empty.Run(context.Background(), agent.Target{Instrument: instrument}); got.Err == nil {
 			t.Errorf("%s: a missing instrument must be an error, not a silent success", instrument)
 		}

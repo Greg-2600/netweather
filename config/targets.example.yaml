@@ -79,3 +79,14 @@ targets:
   #   class: network
   #   tier: 3
   #   interval_s: 120
+
+  # tcpping is the portable RTT instrument: a TCP connect, no raw socket.
+  # It is explicit rather than an automatic fallback from icmp, because
+  # guessing a port on an anchor would fabricate a measurement.
+  # - name: Portable RTT anchor
+  #   host: 1.1.1.1
+  #   port: 443
+  #   probe: tcpping
+  #   class: network
+  #   tier: 3
+  #   interval_s: 120
