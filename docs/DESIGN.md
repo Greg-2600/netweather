@@ -1067,6 +1067,7 @@ interval: 600s
 status_url: https://www.chasestatus.com/
 expect:
   status: [200, 301, 302]
+  max_redirects: 3          # 0-20; zero uses the instrument's default of 5
 ```
 
 An override is a **change to a target that already exists**, not a way to add one: an unmatched `target` is a startup error, so a file that silently edits nothing cannot ship. The supported keys are the ones above plus `expect`; unknown keys, including a `tags` list the schema does not have, are rejected rather than ignored. `status_min`/`status_max` and a `status` list may coexist; a status admitted by either is accepted.

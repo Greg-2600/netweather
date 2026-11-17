@@ -58,6 +58,11 @@ type Expected struct {
 	// names three codes.
 	StatusMin int
 	StatusMax int
+	// MaxRedirects is the per-target redirect budget. Zero means the
+	// instrument's default (5). It lives on the contract because "how many
+	// hops this target is allowed" is an operator decision about the target,
+	// not a global setting (CLASSIFIER.md §7).
+	MaxRedirects int
 
 	BodyContains    string
 	BodyNotContains string

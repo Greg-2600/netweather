@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"strings"
 	"sync"
@@ -1442,5 +1443,36 @@ func TestRemoveTargetStopsScheduling(t *testing.T) {
 	}
 	if a.RemoveTarget("missing") {
 		t.Fatal("removing an unknown target reported a removal")
+	}
+}
+
+func TestInstrumentsHonourThePerTargetRedirectBudget(t *testing.T) {
+	t.Parallel()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/done", http.StatusFound)
+	})
+	mux.HandleFunc("/done", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "done")
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	inst := agent.Instruments{HTTP: probe.NewHTTPWithTransport(http.DefaultTransport)}
+	ctx := context.Background()
+
+	// A one-hop target stops at the redirect; the same instrument still
+	// follows the default budget for a target that did not set one.
+	limited := agent.Target{ID: "a", URL: srv.URL + "/a", Instrument: "http", MaxRedirects: 1}
+	if got := inst.Run(ctx, limited); got.Status != http.StatusFound {
+		t.Fatalf("limited status = %d, want 302", got.Status)
+	}
+	byDefault := agent.Target{ID: "b", URL: srv.URL + "/a", Instrument: "http"}
+	if got := inst.Run(ctx, byDefault); got.Status != http.StatusOK {
+		t.Fatalf("default status = %d, want 200", got.Status)
+	}
+	if inst.HTTP.MaxRedirects != probe.DefaultMaxRedirects {
+		t.Fatalf("the shared instrument budget changed to %d", inst.HTTP.MaxRedirects)
 	}
 }

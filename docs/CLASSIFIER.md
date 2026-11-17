@@ -215,7 +215,7 @@ redirect", which is more accurate than "network failure".
 
 Before classification:
 
-- Follow redirects up to `max_redirects` (default 5), re-running the private-IP guard on each hop
+- Follow redirects up to `max_redirects` (default 5), re-running the private-IP guard on each hop. **Implemented:** `expect.max_redirects` is per target (0-20; zero uses the instrument's 5), and the budget is scoped to that one exchange through the request context, so a shared HTTP instrument cannot leak one target's limit into a concurrent probe. Exhaustion returns the last 3xx, and the guard is the dialer's, so every hop is a guarded connection.
 - Record every hop: `(status, location, challenge_signature)`
 - Read at most 32 KB of body, decompressed
 - Lowercase headers for matching; preserve original for display

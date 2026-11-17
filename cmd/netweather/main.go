@@ -553,19 +553,20 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 		}
 
 		out = append(out, agent.Target{
-			ID:         t.ID,
-			Name:       t.Name,
-			Host:       t.Host,
-			URL:        url,
-			Address:    address,
-			Query:      t.QName,
-			Resolvers:  resolvers,
-			Instrument: t.Probe,
-			Vantage:    "local",
-			Tier:       schedule.Tier(t.Tier),
-			Interval:   t.Interval(),
-			Expect:     expect,
-			ICMPAnchor: t.ICMPAnchor,
+			ID:           t.ID,
+			Name:         t.Name,
+			Host:         t.Host,
+			URL:          url,
+			Address:      address,
+			Query:        t.QName,
+			Resolvers:    resolvers,
+			Instrument:   t.Probe,
+			Vantage:      "local",
+			Tier:         schedule.Tier(t.Tier),
+			Interval:     t.Interval(),
+			Expect:       expect,
+			MaxRedirects: expect.MaxRedirects,
+			ICMPAnchor:   t.ICMPAnchor,
 		})
 	}
 	return out, nil

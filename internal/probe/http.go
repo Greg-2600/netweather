@@ -162,8 +162,28 @@ func NewHTTPWithDial(dial DialFunc) *HTTP {
 	return NewHTTPWithTransport(TransportForDial(dial))
 }
 
+// redirectLimitKey scopes a redirect budget to one exchange. A per-target
+// budget must not be written onto the shared instrument, because the agent
+// probes several targets with the same HTTP value.
+type redirectLimitKey struct{}
+
+// WithRedirectLimit returns a context carrying this exchange's redirect budget.
+// A non-positive value leaves the instrument's default in place.
+func WithRedirectLimit(ctx context.Context, max int) context.Context {
+	if max <= 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, redirectLimitKey{}, max)
+}
+
 func (h *HTTP) checkRedirect(_ *http.Request, via []*http.Request) error {
-	if len(via) >= h.MaxRedirects {
+	limit := h.MaxRedirects
+	if len(via) > 0 {
+		if max, ok := via[0].Context().Value(redirectLimitKey{}).(int); ok && max > 0 {
+			limit = max
+		}
+	}
+	if len(via) >= limit {
 		// Return the last 3xx rather than an error: the classifier sees the
 		// status and can say "redirects exhausted" instead of "network failure".
 		return http.ErrUseLastResponse

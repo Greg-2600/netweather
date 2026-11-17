@@ -82,8 +82,11 @@ type Expect struct {
 	// StatusMin and StatusMax accept a range without listing every code. The
 	// directory loader uses 200-399 for a sector list, where "any success or
 	// redirect" is the honest default.
-	StatusMin       int    `yaml:"status_min"`
-	StatusMax       int    `yaml:"status_max"`
+	StatusMin int `yaml:"status_min"`
+	StatusMax int `yaml:"status_max"`
+	// MaxRedirects is this target's redirect budget. The default (5) comes
+	// from the instrument; a target that must not wander sets it lower.
+	MaxRedirects    int    `yaml:"max_redirects"`
 	BodyContains    string `yaml:"body_contains"`
 	BodyNotContains string `yaml:"body_not_contains"`
 	BodyRegex       string `yaml:"body_regex"`
@@ -110,6 +113,7 @@ func (e Expect) Classify() (classify.Expected, error) {
 		Status:          e.Status,
 		StatusMin:       e.StatusMin,
 		StatusMax:       e.StatusMax,
+		MaxRedirects:    e.MaxRedirects,
 		BodyContains:    e.BodyContains,
 		BodyNotContains: e.BodyNotContains,
 		TitleContains:   e.TitleContains,
@@ -363,6 +367,9 @@ func validateTarget(t *Target) error {
 		if status < 100 || status > 599 {
 			return fmt.Errorf("expect.status %d is not a valid HTTP status", status)
 		}
+	}
+	if t.Expect.MaxRedirects < 0 || t.Expect.MaxRedirects > 20 {
+		return fmt.Errorf("expect.max_redirects %d must be between 0 and 20", t.Expect.MaxRedirects)
 	}
 	if t.Expect.StatusMin != 0 || t.Expect.StatusMax != 0 {
 		if t.Expect.StatusMin < 100 || t.Expect.StatusMin > 599 {

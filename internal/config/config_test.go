@@ -582,3 +582,51 @@ targets:
 		}
 	}
 }
+
+func TestMaxRedirects(t *testing.T) {
+	t.Parallel()
+
+	path := write(t, `version: 1
+targets:
+  - name: Careful
+    host: example.com
+    port: 443
+    probe: http
+    class: service
+    tier: 2
+    interval_s: 300
+    expect:
+      max_redirects: 2
+`)
+	f, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	expect, err := f.Targets[0].Expect.Classify()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if expect.MaxRedirects != 2 {
+		t.Fatalf("max_redirects = %d, want 2", expect.MaxRedirects)
+	}
+
+	// A negative budget and an absurd one are startup errors: this setting
+	// bounds how far a probe wanders.
+	for _, body := range []string{"-1", "21"} {
+		bad := write(t, `version: 1
+targets:
+  - name: Careful
+    host: example.com
+    port: 443
+    probe: http
+    class: service
+    tier: 2
+    interval_s: 300
+    expect:
+      max_redirects: `+body+`
+`)
+		if _, err := config.Load(bad); err == nil {
+			t.Fatalf("max_redirects %s was accepted", body)
+		}
+	}
+}

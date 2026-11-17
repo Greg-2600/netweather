@@ -39,12 +39,15 @@ type Target struct {
 	// Resolvers is the optional set of DNS servers to ask. Empty or a single
 	// entry means "just Address"; two or more enable the divergence check
 	// (CLASSIFIER.md §3.2).
-	Resolvers  []string
-	Vantage    string
-	Tier       schedule.Tier
-	Interval   time.Duration
-	Expect     classify.Expected
-	ICMPAnchor bool
+	Resolvers []string
+	Vantage   string
+	Tier      schedule.Tier
+	Interval  time.Duration
+	Expect    classify.Expected
+	// MaxRedirects is this target's redirect budget; zero uses the
+	// instrument's default (CLASSIFIER.md §7).
+	MaxRedirects int
+	ICMPAnchor   bool
 }
 
 // Runner executes one target with the right instrument. agent.Instruments is the
@@ -109,7 +112,9 @@ func (i Instruments) Run(ctx context.Context, t Target) probe.Result {
 		if i.HTTP == nil {
 			return probe.Result{Err: fmt.Errorf("agent: http instrument not configured")}
 		}
-		return i.HTTP.Do(ctx, t.URL)
+		// A per-target budget is scoped to this exchange, so concurrent
+		// probes cannot observe each other's limit.
+		return i.HTTP.Do(probe.WithRedirectLimit(ctx, t.MaxRedirects), t.URL)
 	}
 }
 

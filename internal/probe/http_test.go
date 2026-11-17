@@ -398,3 +398,41 @@ func TestHTTPUsesTheConfiguredUserAgent(t *testing.T) {
 		t.Fatalf("default User-Agent = %q", seen)
 	}
 }
+
+func TestRedirectLimitFromContextScopesOneExchange(t *testing.T) {
+	t.Parallel()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/a", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/b", http.StatusFound)
+	})
+	mux.HandleFunc("/b", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/c", http.StatusFound)
+	})
+	mux.HandleFunc("/c", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "done")
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	h := probe.NewHTTPWithTransport(http.DefaultTransport)
+	h.MaxRedirects = 5
+
+	// A one-hop budget returns the first 3xx rather than following to /c.
+	got := h.Do(probe.WithRedirectLimit(context.Background(), 1), srv.URL+"/a")
+	if got.Failed() {
+		t.Fatalf("exhaustion surfaced a transport error: %s", got)
+	}
+	if got.Status != http.StatusFound {
+		t.Fatalf("status with a one-hop budget = %d, want 302", got.Status)
+	}
+
+	// The shared instrument keeps its own budget: the context limit is scoped
+	// to one exchange.
+	if h.MaxRedirects != 5 {
+		t.Fatalf("instrument budget = %d after a scoped call, want 5", h.MaxRedirects)
+	}
+	if got := h.Do(context.Background(), srv.URL+"/a"); got.Status != http.StatusOK {
+		t.Fatalf("status with the instrument budget = %d, want 200", got.Status)
+	}
+}
