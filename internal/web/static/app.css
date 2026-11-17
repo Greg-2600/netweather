@@ -77,6 +77,8 @@ a { color: var(--accent); }
 
 .page-title { font-size: 1.35rem; margin: 0 0 1rem; }
 
+.trend-bar { letter-spacing: -0.1em; color: var(--accent, #7ee2a8); }
+
 ul.targets { margin: 0.25rem 0 1rem; padding-left: 1.1rem; }
 ul.targets li { margin: 0.1rem 0; }
 

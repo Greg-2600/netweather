@@ -27,6 +27,7 @@ type Deps struct {
 	History       History
 	Incidents     IncidentHistory
 	Coverage      Coverage
+	CoverageTrend CoverageHistory
 	Control       Control
 	Vantage       string
 	Token         string
@@ -39,6 +40,12 @@ type Deps struct {
 // than rendering an empty panel that looks like full visibility.
 type Coverage interface {
 	Coverage(ctx context.Context, vantageID string, now time.Time) (store.Coverage, error)
+}
+
+// CoverageHistory supplies the daily trend. Nil means the page says history is
+// not configured rather than drawing an empty chart.
+type CoverageHistory interface {
+	CoverageHistory(ctx context.Context, scope, value string, days int) ([]store.CoveragePoint, error)
 }
 
 // History supplies the drawer's recent observations. Nil means the page says so

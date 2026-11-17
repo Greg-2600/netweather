@@ -659,6 +659,45 @@ type coverageView struct {
 	Sectors      []coverageRow
 	BlindSpots   []coverageRow
 	Stale        []staleRow
+	Trend        []trendRow
+	TrendNote    string
+}
+
+// trendRow is one day of coverage drawn as a block bar. It uses characters
+// rather than CSS widths because the page's CSP does not allow inline styles.
+type trendRow struct {
+	Day      string
+	Bar      string
+	Coverage string
+	Measured string
+}
+
+var trendBlocks = []rune("▁▂▃▄▅▆▇█")
+
+func toTrendRows(points []store.CoveragePoint) []trendRow {
+	out := make([]trendRow, 0, len(points))
+	for _, p := range points {
+		share := 0.0
+		if p.Total > 0 {
+			share = float64(p.Measurable) / float64(p.Total)
+		}
+		idx := int(share * float64(len(trendBlocks)-1))
+		if idx < 0 {
+			idx = 0
+		}
+		if idx >= len(trendBlocks) {
+			idx = len(trendBlocks) - 1
+		}
+		// A repeated character makes a readable bar in a proportional font.
+		bar := strings.Repeat(string(trendBlocks[idx]), 8)
+		out = append(out, trendRow{
+			Day:      p.Bucket.UTC().Format("2006-01-02"),
+			Bar:      bar,
+			Coverage: fmt.Sprintf("%.0f%%", share*100),
+			Measured: fmt.Sprintf("%d/%d", p.Measurable, p.Total),
+		})
+	}
+	return out
 }
 
 func toCoverageRows(buckets []store.CoverageBucket) []coverageRow {
@@ -723,12 +762,27 @@ func (s *server) handleCoverage(w http.ResponseWriter, r *http.Request) {
 		row := staleRow{ID: st.ID, Host: st.Host, State: st.State}
 		if st.LastProbe.IsZero() {
 			row.LastProbe = "never"
-			row.Age = "—"
+			row.Age = "-"
 		} else {
 			row.LastProbe = st.LastProbe.UTC().Format("2006-01-02 15:04")
 			row.Age = now.Sub(st.LastProbe).Round(time.Minute).String()
 		}
 		view.Stale = append(view.Stale, row)
+	}
+
+	if s.deps.CoverageTrend == nil {
+		view.TrendNote = "Coverage history is not configured on this instance."
+	} else {
+		points, err := s.deps.CoverageTrend.CoverageHistory(r.Context(), "global", "", 14)
+		if err != nil {
+			s.deps.Logger.Warn("coverage history failed",
+				"event", "coverage_history_failed", "component", "http", "error", err)
+			view.TrendNote = "Coverage history is temporarily unavailable."
+		} else if len(points) == 0 {
+			view.TrendNote = "No daily snapshots yet; history starts on the first full day."
+		} else {
+			view.Trend = toTrendRows(points)
+		}
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

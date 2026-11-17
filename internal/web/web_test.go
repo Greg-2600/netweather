@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"database/sql"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -859,6 +860,104 @@ func newServerWithCoverage(t *testing.T, token string, m *board.Memory, cov web.
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
 	return ts
+}
+
+type fakeCoverageHistory struct {
+	points []store.CoveragePoint
+	err    error
+}
+
+func (f *fakeCoverageHistory) CoverageHistory(context.Context, string, string, int) ([]store.CoveragePoint, error) {
+	return f.points, f.err
+}
+
+func newServerWithCoverageTrend(t *testing.T, token string, m *board.Memory, cov web.Coverage, trend web.CoverageHistory) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:        m,
+		Watcher:       m,
+		Coverage:      cov,
+		CoverageTrend: trend,
+		Token:         token,
+		Version:       "test",
+		StartedAt:     time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestCoverageTrend(t *testing.T) {
+	t.Parallel()
+
+	cov := &fakeCoverage{cov: store.Coverage{
+		Totals: store.CoverageTotals{Total: 100, Measurable: 80},
+	}}
+	trend := &fakeCoverageHistory{points: []store.CoveragePoint{
+		{Bucket: time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC), Scope: "global", Total: 100, Measurable: 100},
+		{Bucket: time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC), Scope: "global", Total: 100, Measurable: 80},
+	}}
+
+	ts := newServerWithCoverageTrend(t, testToken, fixture(), cov, trend)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if got := strings.Count(page, `data-testid="trend-row"`); got != 2 {
+		t.Fatalf("trend rows = %d, want 2", got)
+	}
+	for _, want := range []string{"2026-11-15", "2026-11-16", "100%", "80%", "80/100"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("trend missing %q", want)
+		}
+	}
+}
+
+func TestCoverageTrendEmptyAndUnavailable(t *testing.T) {
+	t.Parallel()
+
+	cov := &fakeCoverage{cov: store.Coverage{Totals: store.CoverageTotals{Total: 10, Measurable: 9}}}
+
+	ts := newServerWithCoverageTrend(t, testToken, fixture(), cov, &fakeCoverageHistory{})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	if !strings.Contains(page, `data-testid="no-trend"`) {
+		t.Error("empty history did not say so")
+	}
+
+	ts2 := newServerWithCoverageTrend(t, testToken, fixture(), cov,
+		&fakeCoverageHistory{err: errors.New("db down")})
+	client2, _ := newClient(t)
+	login(t, ts2, client2, testToken)
+
+	resp, err = client2.Get(ts2.URL + "/coverage") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = body(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("a history failure should not take the whole panel down: %d", resp.StatusCode)
+	}
+	if !strings.Contains(page, "temporarily unavailable") {
+		t.Error("history failure was not reported")
+	}
 }
 
 func TestCoveragePage(t *testing.T) {
