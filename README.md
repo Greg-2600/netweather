@@ -141,6 +141,32 @@ Container networking is not an afterthought here: Docker's bridge defaults, embe
 
 Targets come from `NETWEATHER_CONFIG=/config/targets.yaml` (see [`config/targets.example.yaml`](config/targets.example.yaml)), or the ten shipped defaults when it is unset. `NETWEATHER_SEED=none` starts with an empty board. State lives in `NETWEATHER_DATA` (default `./data`). Config validation is strict: an unknown field, a blocked port, or an interval under 30s refuses to start.
 
+Every environment variable the binary reads, including the ones that exist for a mirror or a test:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `NETWEATHER_CONFIG` | shipped seed list | target file |
+| `NETWEATHER_SEED` | `default` | `none` starts with an empty board |
+| `NETWEATHER_DATA` | `./data` | SQLite database and rotated log file |
+| `NETWEATHER_UI_LISTEN` | `0.0.0.0:2600` | HTTP bind address |
+| `NETWEATHER_UI_TOKEN` / `NETWEATHER_UI_TOKEN_FILE` | none | session and bearer token, minimum 16 characters; `_FILE` is preferred so the token is not in the environment |
+| `NETWEATHER_UI_SECURE_COOKIES` | `false` | `true` marks the session cookie `Secure`; set it behind TLS |
+| `NETWEATHER_API_URL` | `http://127.0.0.1:2600` | base URL the CLI verbs (`debug`, `doctor`) use |
+| `NETWEATHER_HEALTHCHECK_URL` | derived from `NETWEATHER_UI_LISTEN` | `/healthz` target for `netweather healthcheck`; a non-loopback URL is refused |
+| `NETWEATHER_METRICS` | `false` | mounts `/metrics` (Prometheus text, aggregates only) |
+| `NETWEATHER_INCIDENT_INTERVAL` | `5m` | incident and anomaly evaluation cadence |
+| `NETWEATHER_ENRICH` | on | `false` disables ASN, prefix, and CDN learning |
+| `NETWEATHER_PEERINGDB` / `NETWEATHER_PEERINGDB_URL` | on | exchange-membership labels; `false` disables them without disabling enrichment, and `_URL` points at a mirror |
+| `NETWEATHER_FEEDS` | none | comma list of `ioda`, `radar`, `statuspage`, `aws-status`, `gcp-status`, `azure-status`; empty means no external calls |
+| `NETWEATHER_STATUSPAGE_URLS` | none | status pages for the `statuspage` feed |
+| `NETWEATHER_RADAR_TOKEN` | none | Cloudflare Radar API token; the `radar` feed is skipped with a warning without it |
+| `NETWEATHER_IODA_URL`, `NETWEATHER_RADAR_URL`, `NETWEATHER_AWS_STATUS_URL`, `NETWEATHER_GCP_STATUS_URL`, `NETWEATHER_AZURE_STATUS_URL` | upstream defaults | endpoint overrides, for a mirror or a test |
+| `NETWEATHER_TOR` | off | enables the Tor corroboration vantage |
+| `NETWEATHER_TOR_SOCKS` | `tor:9050` | SOCKS5 entry point; `socks5h` only |
+| `NETWEATHER_TOR_MAX` | `25` | maximum Tor targets |
+| `NETWEATHER_TOR_DAILY_MB` | `50` | Tor daily volume budget; `0` disables it |
+| `NETWEATHER_TOR_EXIT_COUNTRY` | none | two-letter code; the exit is verified through the proxy and a mismatch refuses to start |
+
 ## Safety posture
 
 This tool sends periodic requests to third-party sites. That is dual-use, so the limits are enforced in code rather than documented and hoped for:
