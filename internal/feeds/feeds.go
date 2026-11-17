@@ -1,4 +1,4 @@
-// Package feeds polls external corroboration sources (IODA today) and records
+// Package feeds polls external corroboration sources (IODA and Cloudflare Radar) and records
 // their events plus how the feed itself is doing.
 //
 // The split matters: an outage from IODA is evidence, not a verdict, and a

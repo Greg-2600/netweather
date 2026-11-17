@@ -30,7 +30,9 @@ services:
       # NETWEATHER_TOR_SOCKS: tor:9050
       #
       # External corroboration, also off by default.
-      # NETWEATHER_FEEDS: ioda
+      # NETWEATHER_FEEDS: ioda,radar
+      # Radar also needs a token; it is skipped with a warning without one.
+      # NETWEATHER_RADAR_TOKEN: /run/secrets/radar_token is not supported; use env or a secret-aware wrapper.
 
     read_only: true
     tmpfs: [/tmp]

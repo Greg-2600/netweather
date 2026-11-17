@@ -695,11 +695,13 @@ Georgia Tech's Internet Outage Detection and Analysis. Country-level outage scor
 
 Free with a Cloudflare account token. The BGP feeds are the cyberwar signal.
 
-- `/radar/bgp/hijacks/events` — named hijack events with confidence
-- `/radar/bgp/leaks/events` — route leaks
-- `/radar/traffic_anomalies` — traffic deviations by country/ASN
-- `/radar/annotations/outages` — curated outage annotations
-- Bring your own token. Ship no shared key. Poll every 5–15 minutes.
+- `/radar/bgp/hijacks/events` - named hijack events with confidence
+- `/radar/bgp/leaks/events` - route leaks
+- `/radar/traffic_anomalies` - traffic deviations by country/ASN
+- `/radar/annotations/outages` - curated outage annotations
+- Bring your own token. Ship no shared key. Poll every 5-15 minutes.
+
+**Implemented:** `internal/feeds.Radar` polls hijacks, leaks, and traffic anomalies with the operator's `NETWEATHER_RADAR_TOKEN`, normalises their three severity vocabularies, and stores them as `hijack`, `leak`, and `traffic_anomaly` evidence. Rows without an id get a stable synthetic key so re-polls stay idempotent. A missing token disables the feed with a startup warning rather than polling unauthenticated. Still specified: `/radar/annotations/outages`, which needs a different result shape and is curated rather than automatic.
 
 ### 8.3 RIPE RIS Live - phase 3, not v1
 

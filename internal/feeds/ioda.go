@@ -203,6 +203,13 @@ func floatField(m map[string]any, keys ...string) float64 {
 // versions and a monitor should not care.
 func timeField(m map[string]any, keys ...string) (time.Time, bool) {
 	for _, k := range keys {
+		if s, ok := m[k].(string); ok && s != "" {
+			// Radar returns RFC 3339 timestamps; IODA has used numbers.
+			if parsed, err := time.Parse(time.RFC3339Nano, s); err == nil {
+				return parsed.UTC(), true
+			}
+		}
+
 		v, ok := m[k].(float64)
 		if !ok || v <= 0 {
 			continue

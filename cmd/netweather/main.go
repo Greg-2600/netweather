@@ -194,7 +194,7 @@ func serve(lg *logging.Logger) error {
 
 	// Feeds are opt-in: they are outbound calls to someone else's API, and an
 	// operator should choose that rather than discover it.
-	feedPollers := buildFeedPollers(st)
+	feedPollers := buildFeedPollers(st, lg)
 	for _, p := range feedPollers {
 		go feeds.Loop(ctx, p, lg.Logger)
 	}
@@ -784,7 +784,7 @@ func selectTorTargets(direct []agent.Target, max int) []agent.Target {
 // buildFeedPollers returns a poller per enabled feed. NETWEATHER_FEEDS is a
 // comma-separated list; empty means "no external calls", which is the default
 // because a feed is someone else's API and an operator should opt in.
-func buildFeedPollers(st *store.Store) []*feeds.Poller {
+func buildFeedPollers(st *store.Store, lg *logging.Logger) []*feeds.Poller {
 	enabled := strings.ToLower(strings.TrimSpace(os.Getenv("NETWEATHER_FEEDS")))
 	if enabled == "" || enabled == "none" {
 		return nil
@@ -806,6 +806,25 @@ func buildFeedPollers(st *store.Store) []*feeds.Poller {
 			out = append(out, &feeds.Poller{
 				Feed:   "ioda",
 				Source: ioda,
+				Sink:   st,
+				Every:  10 * time.Minute,
+			})
+		case "radar":
+			token := strings.TrimSpace(os.Getenv("NETWEATHER_RADAR_TOKEN"))
+			if token == "" {
+				// A feed without its credential is a configuration mistake, not
+				// a silent no-op: say so at startup and run without it.
+				lg.Warn("radar feed requested without NETWEATHER_RADAR_TOKEN",
+					"event", "feed_not_configured", "component", "feeds", "feed", "radar")
+				continue
+			}
+			radar := feeds.NewRadar(client, token)
+			if base := strings.TrimSpace(os.Getenv("NETWEATHER_RADAR_URL")); base != "" {
+				radar.BaseURL = base
+			}
+			out = append(out, &feeds.Poller{
+				Feed:   "radar",
+				Source: radar,
 				Sink:   st,
 				Every:  10 * time.Minute,
 			})
