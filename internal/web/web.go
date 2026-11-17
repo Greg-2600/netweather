@@ -26,12 +26,19 @@ type Deps struct {
 	Watcher       board.Watcher
 	History       History
 	Incidents     IncidentHistory
+	Coverage      Coverage
 	Control       Control
 	Vantage       string
 	Token         string
 	SecureCookies bool
 	Version       string
 	StartedAt     time.Time
+}
+
+// Coverage supplies the blind-spot panel. Nil means the page says so rather
+// than rendering an empty panel that looks like full visibility.
+type Coverage interface {
+	Coverage(ctx context.Context, vantageID string, now time.Time) (store.Coverage, error)
 }
 
 // History supplies the drawer's recent observations. Nil means the page says so

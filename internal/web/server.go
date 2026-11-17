@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/board"
+	"github.com/Greg-2600/netweather/internal/store"
 )
 
 type server struct {
@@ -57,6 +58,7 @@ func New(deps Deps) (http.Handler, error) {
 	mux.HandleFunc("/targets/", s.requireSession(http.HandlerFunc(s.handleTarget)).ServeHTTP)
 	mux.HandleFunc("/incidents", s.requireSession(http.HandlerFunc(s.handleIncidents)).ServeHTTP)
 	mux.HandleFunc("/incidents/", s.requireSession(http.HandlerFunc(s.handleIncident)).ServeHTTP)
+	mux.HandleFunc("/coverage", s.requireSession(http.HandlerFunc(s.handleCoverage)).ServeHTTP)
 	mux.HandleFunc("/pause", s.requireSession(http.HandlerFunc(s.handlePause)).ServeHTTP)
 	mux.HandleFunc("/resume", s.requireSession(http.HandlerFunc(s.handleResume)).ServeHTTP)
 	mux.Handle("/", s.requireSession(http.HandlerFunc(s.handleBoard)))
@@ -561,6 +563,112 @@ func (s *server) handleIncident(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "incident.html", view)
+}
+
+// --- coverage --------------------------------------------------------------
+
+type coverageRow struct {
+	Kind      string
+	Value     string
+	Total     int
+	Measured  int
+	Coverage  string
+	CoverageN float64
+}
+
+type staleRow struct {
+	ID        string
+	Host      string
+	State     string
+	LastProbe string
+	Age       string
+}
+
+type coverageView struct {
+	Total        int
+	Measurable   int
+	Unmeasurable int
+	Coverage     string
+	Classes      []coverageRow
+	Sectors      []coverageRow
+	BlindSpots   []coverageRow
+	Stale        []staleRow
+}
+
+func toCoverageRows(buckets []store.CoverageBucket) []coverageRow {
+	out := make([]coverageRow, 0, len(buckets))
+	for _, b := range buckets {
+		row := coverageRow{
+			Kind: b.Kind, Value: b.Value, Total: b.Total, Measured: b.Measurable,
+		}
+		if b.Total > 0 {
+			row.CoverageN = float64(b.Measurable) / float64(b.Total)
+			row.Coverage = fmt.Sprintf("%.0f%%", row.CoverageN*100)
+		} else {
+			row.Coverage = "—"
+		}
+		if row.Value == "" {
+			row.Value = "(none)"
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+// handleCoverage renders the blind-spot panel for humans. It is the same data as
+// GET /api/v1/coverage: measurement, not health.
+func (s *server) handleCoverage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.deps.Coverage == nil {
+		http.Error(w, "coverage is not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	vantage := s.deps.Vantage
+	if vantage == "" {
+		vantage = "local"
+	}
+
+	now := time.Now().UTC()
+	cov, err := s.deps.Coverage.Coverage(r.Context(), vantage, now)
+	if err != nil {
+		s.deps.Logger.Error("coverage read failed", "event", "coverage_failed", "component", "http", "error", err)
+		http.Error(w, "coverage unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	view := coverageView{
+		Total:        cov.Totals.Total,
+		Measurable:   cov.Totals.Measurable,
+		Unmeasurable: cov.Totals.Unmeasurable,
+		Classes:      toCoverageRows(cov.Classes),
+		Sectors:      toCoverageRows(cov.Sectors),
+		BlindSpots:   toCoverageRows(cov.BlindSpots),
+		Stale:        make([]staleRow, 0, len(cov.Stale)),
+	}
+	if cov.Totals.Total > 0 {
+		view.Coverage = fmt.Sprintf("%.0f%%", 100*float64(cov.Totals.Measurable)/float64(cov.Totals.Total))
+	}
+	for _, st := range cov.Stale {
+		row := staleRow{ID: st.ID, Host: st.Host, State: st.State}
+		if st.LastProbe.IsZero() {
+			row.LastProbe = "never"
+			row.Age = "—"
+		} else {
+			row.LastProbe = st.LastProbe.UTC().Format("2006-01-02 15:04")
+			row.Age = now.Sub(st.LastProbe).Round(time.Minute).String()
+		}
+		view.Stale = append(view.Stale, row)
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+	_ = s.tmpl.ExecuteTemplate(w, "coverage.html", view)
 }
 
 // --- events ----------------------------------------------------------------

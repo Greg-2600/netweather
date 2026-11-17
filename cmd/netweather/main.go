@@ -174,6 +174,7 @@ func serve(lg *logging.Logger) error {
 		StartedAt:     time.Now(),
 		History:       st,
 		Incidents:     st,
+		Coverage:      st,
 		Control:       ag,
 		Vantage:       "local",
 	})

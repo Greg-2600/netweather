@@ -726,6 +726,117 @@ func newServerWithControl(t *testing.T, token string, m *board.Memory, control w
 	return ts
 }
 
+type fakeCoverage struct {
+	cov store.Coverage
+	err error
+}
+
+func (f *fakeCoverage) Coverage(context.Context, string, time.Time) (store.Coverage, error) {
+	return f.cov, f.err
+}
+
+func newServerWithCoverage(t *testing.T, token string, m *board.Memory, cov web.Coverage) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		Coverage:  cov,
+		Token:     token,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestCoveragePage(t *testing.T) {
+	t.Parallel()
+
+	cov := &fakeCoverage{cov: store.Coverage{
+		Totals: store.CoverageTotals{Total: 100, Measurable: 80, Unmeasurable: 10},
+		Sectors: []store.CoverageBucket{
+			{Kind: "sector", Value: "airline", Total: 10, Measurable: 9},
+		},
+		BlindSpots: []store.CoverageBucket{
+			{Kind: "country", Value: "NL", Total: 10, Measurable: 2},
+		},
+		Stale: []store.StaleTarget{
+			{ID: "t1", Host: "chase.com", State: string(state.Unknown), IntervalS: 300},
+		},
+	}}
+
+	ts := newServerWithCoverage(t, testToken, fixture(), cov)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	for _, want := range []string{
+		`data-testid="blind-spot"`,
+		`data-value="NL"`,
+		"80 of 100 targets measurable",
+		"airline",
+		"chase.com",
+		`data-testid="stale-row"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("coverage page missing %q", want)
+		}
+	}
+}
+
+func TestCoveragePageEmptyStates(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithCoverage(t, testToken, fixture(), &fakeCoverage{})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="no-blind-spots"`) {
+		t.Error("empty blind spots should be stated explicitly")
+	}
+	if !strings.Contains(page, `data-testid="no-stale"`) {
+		t.Error("empty stale list should be stated explicitly")
+	}
+}
+
+func TestCoveragePageUnavailableWithoutSource(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = body(t, resp)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.StatusCode)
+	}
+}
+
 func TestPauseButtonControlsProbing(t *testing.T) {
 	t.Parallel()
 
