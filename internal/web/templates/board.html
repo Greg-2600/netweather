@@ -14,6 +14,10 @@
     <a class="nav" href="/corridors">Corridors</a>
     <a class="nav" href="/coverage">Coverage</a>
     <a class="nav" href="/incidents">Incidents</a>
+    {{if .Verdict.Verdict}}
+    <span class="verdict verdict-{{.Verdict.Verdict}}" data-testid="verdict"
+          data-verdict="{{.Verdict.Verdict}}" title="{{.Verdict.Detail}}">{{.Verdict.Verdict}}</span>
+    {{end}}
     {{if .Health.OK}}
     <a class="nav ihi-chip" href="/ihi" data-testid="ihi-chip" data-score="{{.Health.Score}}"
        title="Internet Health Index: {{.Health.Score}} of 100">IHI {{.Health.Score}}</a>
@@ -44,6 +48,12 @@
   {{if .Paused}}
   <p class="banner paused" data-testid="paused-banner" role="status">
     Probing is paused. No outbound requests are being made.
+  </p>
+  {{end}}
+
+  {{if eq .Verdict.Verdict "STALE"}}
+  <p class="banner" data-testid="stale-banner" role="status">
+    The monitor is not probing: {{.Verdict.Detail}}. The tiles show the last measurements.
   </p>
   {{end}}
 

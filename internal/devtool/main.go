@@ -275,6 +275,7 @@ func taskCover() error {
 		"/internal/bytecap":      90,
 		"/internal/web":          72,
 		"/cmd/netweather":        30, // serve is wiring; the container smoke test owns it
+		"/internal/verdict":      95,
 		"/internal/version":      70,
 		"/internal/devtool":      15, // profile parser + ldflags tests
 	}

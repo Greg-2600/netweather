@@ -42,6 +42,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/selfcheck"
 	"github.com/Greg-2600/netweather/internal/startup"
 	"github.com/Greg-2600/netweather/internal/store"
+	"github.com/Greg-2600/netweather/internal/verdict"
 	"github.com/Greg-2600/netweather/internal/version"
 	"github.com/Greg-2600/netweather/internal/web"
 )
@@ -272,6 +273,10 @@ func serve(lg *logging.Logger) error {
 	// cannot go stale between ticks (DESIGN.md §11).
 	health := &ihi.Builder{Store: st, Vantage: "local"}
 
+	// The global verdict is the same idea in one sentence: read the signals the
+	// page already reads and say which one wins (DESIGN.md §3.3).
+	globalVerdict := &verdict.Builder{Store: st, Vantage: "local", StartedAt: time.Now()}
+
 	webDeps := web.Deps{
 		Logger:              lg.Logger,
 		Source:              source,
@@ -291,6 +296,7 @@ func serve(lg *logging.Logger) error {
 		Corridors:           st,
 		DNSObservations:     st,
 		Health:              health,
+		Verdict:             globalVerdict,
 		// The ring and the measured logging setup back the diagnostics page
 		// and the drawer's Why panel (LOGGING.md §9).
 		Logs:            lg,
@@ -334,6 +340,7 @@ func serve(lg *logging.Logger) error {
 		Corroboration:   st,
 		Corridors:       st,
 		IHI:             health,
+		Verdict:         globalVerdict,
 		Scopes:          st,
 		Anomalies:       st,
 		Targets:         st,

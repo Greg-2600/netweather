@@ -23,6 +23,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/streamlimit"
+	"github.com/Greg-2600/netweather/internal/verdict"
 )
 
 // Control is the probe kill switch. The agent implements it; a nil Control means
@@ -85,6 +86,12 @@ type CorridorReader interface {
 // the route and the board summary rather than rendering a zero as health.
 type IHIReader interface {
 	Build(ctx context.Context) ihi.Index
+}
+
+// VerdictSource computes the one global verdict (DESIGN.md §3.3). Nil omits the
+// board's verdict block rather than reporting a calm OK it did not measure.
+type VerdictSource interface {
+	Build(ctx context.Context) verdict.Result
 }
 
 // IncidentAnnotator records the operator's ground truth for an incident. It is
@@ -184,6 +191,9 @@ type Deps struct {
 	Corridors CorridorReader
 	// IHI computes the Internet Health Index. Nil disables the route.
 	IHI IHIReader
+	// Verdict computes the one global verdict for the board's meta. Nil omits
+	// the block rather than reporting an unmeasured OK.
+	Verdict VerdictSource
 	// Annotator records the operator's ground truth. Nil disables the route.
 	Annotator IncidentAnnotator
 	// Scopes reads scope health/coverage. Nil disables the route.
@@ -579,7 +589,12 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		out = append(out, item)
 	}
 
-	writeData(w, r, out, &Meta{Count: len(out)})
+	meta := &Meta{Count: len(out)}
+	if s.deps.Verdict != nil {
+		res := s.deps.Verdict.Build(r.Context())
+		meta.Verdict = &VerdictItem{Value: string(res.Verdict), Detail: res.Detail}
+	}
+	writeData(w, r, out, meta)
 }
 
 type probeItem struct {

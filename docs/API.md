@@ -268,12 +268,14 @@ Auth: bearer. The grid's data, straight from the store, in source order.
       "since": "2026-11-16T03:14:15Z"
     }
   ],
-  "meta": {"request_id": "…", "count": 1}
+  "meta": {"request_id": "…", "count": 1,
+           "verdict": {"value": "OK", "detail": "within the baseline band"}}
 }
 ```
 
 - `state` is one of the eight target states, lower-cased (`DESIGN.md` §3.2).
 - `since` is the start of the current state. It is absent for a target that has never been probed, which is different from "up since the epoch".
+- `meta.verdict` is the one global verdict from `DESIGN.md` §3.3, with its sentence. `value` is one of `OK`, `INCIDENT`, `LOCAL`, `REGIONAL`, `TAMPER`, `STALE`, `STARTING`, or `LEARNING`. It is omitted when no verdict source is configured, and `STALE` means probing has stopped rather than that the internet is quiet.
 - No server-side filtering in v1: the list is capped at 2000, and a client that wants only failures can filter locally. Filters arrive with `/api/v1/targets` if they prove necessary.
 - `503 unavailable` when the store is not readable. An empty `data` means "no targets", not "cannot answer".
 

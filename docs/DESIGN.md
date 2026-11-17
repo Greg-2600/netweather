@@ -104,7 +104,13 @@ Exactly one, shown in the top bar.
 
 `DNS_ANOMALY` is deliberately **not** a global verdict. A single resolver disagreeing with its own history is advisory: it appears in the drawer and a collapsed observations strip, never on the top bar. Promoting it to `TAMPER` requires a second signal (`CLASSIFIER.md` §3.2).
 
-`LOCAL` does not overwrite per-target state — targets keep `DOWN` internally, with `attributed_to: local`. The board renders them muted with a "your connection" label instead of red. This preserves history while preventing panic.
+`LOCAL` does not overwrite per-target state - targets keep `DOWN` internally, with `attributed_to: local`. The board renders them muted with a "your connection" label instead of red. This preserves history while preventing panic.
+
+**Implemented:** `internal/verdict` is the table as a pure function, and the board computes it per request from signals that are already on the page: the newest confirmed probe (`STALE`), the confirmed target count (`STARTING`), the newest high-confidence DNS `TAMPER` verdict in the last hour, reference-class failures (`LOCAL`, two of three or more), a target `DOWN` on one vantage and up on another (`REGIONAL`), open incidents (`INCIDENT`), and the global scope's usable baseline samples (`LEARNING`). The badge is in the top bar with the sentence as its title, `STALE` also raises a banner, and `/api/v1/board` carries the same value and sentence in `meta.verdict`.
+
+Priority is explicit because two signals can be true at once: `STALE` outranks every interpretation (a blind monitor cannot speak), `TAMPER` outranks an outage, `LOCAL` outranks the cluster it may be casting, and `INCIDENT` outranks `LEARNING`. A failed read is an absent signal, never evidence: the builder does not invent a failure, a tamper, or a local-path claim from a broken query.
+
+Two limits are stated rather than hidden. The `TAMPER` verdict accepts the DNS ladder's `TAMPER`, which is already the second-signal verdict from `CLASSIFIER.md` §3.2; a certificate anomaly alone remains a drawer signal. And `LOCAL`'s "suppress per-target red" presentation is not a separate wash over tiles yet: the targets keep their confirmed states and the top-bar label names the local path, which is the part that changes the operator's reading.
 
 ---
 

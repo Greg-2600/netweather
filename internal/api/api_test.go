@@ -27,6 +27,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/streamlimit"
+	"github.com/Greg-2600/netweather/internal/verdict"
 )
 
 const testToken = "test-token-0123456789"
@@ -3992,5 +3993,67 @@ func TestIHIEndpointReportsPartsAndDrops(t *testing.T) {
 	}
 	if rec := do(h, http.MethodGet, "/api/v1/ihi", testToken); rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status without an index = %d, want 503", rec.Code)
+	}
+}
+
+type fakeVerdict struct {
+	res verdict.Result
+}
+
+func (f *fakeVerdict) Build(context.Context) verdict.Result { return f.res }
+
+func newBoardHandlerWithVerdict(t *testing.T, src board.Source, v api.VerdictSource) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Source:    src,
+			Verdict:   v,
+			Version:   "test",
+			Commit:    "deadbeef",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func TestBoardMetaCarriesTheGlobalVerdict(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(board.Target{ID: "1", Name: "Chase", Host: "chase.com", State: board.StateUp})
+	rec := do(newBoardHandlerWithVerdict(t, m, &fakeVerdict{res: verdict.Result{
+		Verdict: verdict.Local, Detail: "2 of 3 reference targets failing; this is likely your path",
+	}}), http.MethodGet, "/api/v1/board", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+	}
+
+	var env struct {
+		Meta struct {
+			Verdict *struct {
+				Value  string `json:"value"`
+				Detail string `json:"detail"`
+			} `json:"verdict"`
+		} `json:"meta"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env.Meta.Verdict == nil {
+		t.Fatalf("verdict missing from meta: %s", rec.Body)
+	}
+	if env.Meta.Verdict.Value != "LOCAL" || !strings.Contains(env.Meta.Verdict.Detail, "reference targets") {
+		t.Fatalf("verdict = %+v", env.Meta.Verdict)
+	}
+
+	// Without a source the block is absent, not a calm OK.
+	rec = do(newBoardHandler(t, m), http.MethodGet, "/api/v1/board", testToken)
+	if strings.Contains(rec.Body.String(), `"verdict"`) {
+		t.Fatalf("an unconfigured verdict was reported: %s", rec.Body)
 	}
 }

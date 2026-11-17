@@ -13,6 +13,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/streamlimit"
+	"github.com/Greg-2600/netweather/internal/verdict"
 )
 
 //go:embed templates/*.html
@@ -51,6 +52,9 @@ type Deps struct {
 	// Health computes the Internet Health Index for the board chip and the
 	// /ihi page. Nil omits both rather than showing a zero.
 	Health HealthIndex
+	// Verdict computes the one global verdict for the top bar. Nil omits the
+	// badge rather than inventing an OK.
+	Verdict VerdictSource
 	// DNSObservations supplies the board's collapsed DNS divergence strip.
 	DNSObservations DNSObservations
 	// Logs supplies the ring and logging setup for the diagnostics page and
@@ -169,6 +173,12 @@ type CorridorStatus interface {
 // board chip and the page rather than rendering a zero as if it were health.
 type HealthIndex interface {
 	Build(ctx context.Context) ihi.Index
+}
+
+// VerdictSource computes the one global verdict from DESIGN.md §3.3. Nil omits
+// the top-bar badge rather than inventing a calm OK.
+type VerdictSource interface {
+	Build(ctx context.Context) verdict.Result
 }
 
 // DNSObservations supplies the board's collapsed DNS divergence strip. Nil

@@ -24,6 +24,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/streamlimit"
+	"github.com/Greg-2600/netweather/internal/verdict"
 	"github.com/Greg-2600/netweather/internal/web"
 )
 
@@ -3877,5 +3878,99 @@ func TestBoardAndIHIPageWithoutAnIndex(t *testing.T) {
 	page := body(t, resp)
 	if !strings.Contains(page, `data-testid="ihi-empty"`) || !strings.Contains(page, "No component could be scored") {
 		t.Fatalf("an empty index was not stated:\n%s", page)
+	}
+}
+
+type fakeVerdict struct {
+	res verdict.Result
+}
+
+func (f *fakeVerdict) Build(context.Context) verdict.Result { return f.res }
+
+func newServerWithVerdict(t *testing.T, token string, m *board.Memory, v web.VerdictSource) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		Verdict:   v,
+		Token:     token,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestBoardShowsTheGlobalVerdict(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithVerdict(t, testToken, fixture(), &fakeVerdict{res: verdict.Result{
+		Verdict: verdict.Local, Detail: "2 of 3 reference targets failing; this is likely your path",
+	}})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="verdict"`) || !strings.Contains(page, `data-verdict="LOCAL"`) {
+		t.Fatalf("verdict badge missing:\n%s", page)
+	}
+	if !strings.Contains(page, "2 of 3 reference targets failing") {
+		t.Error("the verdict detail is not carried in the title")
+	}
+	// A LOCAL verdict is not a stale monitor, so no staleness banner.
+	if strings.Contains(page, `data-testid="stale-banner"`) {
+		t.Error("a LOCAL verdict rendered the staleness banner")
+	}
+}
+
+func TestStaleVerdictRaisesAProminentBanner(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithVerdict(t, testToken, fixture(), &fakeVerdict{res: verdict.Result{
+		Verdict: verdict.Stale, Detail: "no probe in 4m0s (reference cadence 30s)",
+	}})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="stale-banner"`) || !strings.Contains(page, "not probing") {
+		t.Fatalf("STALE did not raise a banner:\n%s", page)
+	}
+	if !strings.Contains(page, "no probe in 4m0s") {
+		t.Error("the banner does not explain the lateness")
+	}
+}
+
+func TestBoardWithoutAVerdictShowsNoBadge(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	if strings.Contains(page, `data-testid="verdict"`) {
+		t.Fatal("a verdict badge rendered without a source")
 	}
 }

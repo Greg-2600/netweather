@@ -620,3 +620,24 @@ table.probes td.detail { max-width: 18rem; overflow-wrap: anywhere; }
   font-size: 2rem;
   font-variant-numeric: tabular-nums;
 }
+/* --- global verdict (DESIGN.md 3.3) --------------------------------------- */
+
+/* One label, in the top bar. Text carries the meaning; colour reinforces it. */
+.verdict {
+  font-size: 0.76rem;
+  letter-spacing: 0.06em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.verdict-OK { color: #7ee2a8; border-color: rgba(126, 226, 168, 0.45); }
+.verdict-INCIDENT { color: #ff9c97; border-color: rgba(255, 156, 151, 0.55); }
+.verdict-LOCAL { color: #f0b849; border-color: rgba(240, 184, 73, 0.55); }
+.verdict-REGIONAL { color: #f0b849; border-color: rgba(240, 184, 73, 0.55); }
+.verdict-TAMPER { color: #ff7ad9; border-color: rgba(255, 122, 217, 0.55); }
+.verdict-STALE { color: #ff9c97; border-color: rgba(255, 156, 151, 0.55); }
+.verdict-STARTING,
+.verdict-LEARNING { color: var(--muted); }

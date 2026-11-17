@@ -23,6 +23,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/streamlimit"
+	"github.com/Greg-2600/netweather/internal/verdict"
 )
 
 type server struct {
@@ -281,6 +282,9 @@ type boardView struct {
 	// when nothing could be scored, and the chip then states that instead of
 	// rendering a zero as health.
 	Health healthView
+	// Verdict is the one global verdict from DESIGN.md §3.3 and its sentence.
+	// An empty Verdict means the source is not wired, and the badge is omitted.
+	Verdict verdict.Result
 }
 
 // healthView is the index as a page renders it. Weights are percentages and
@@ -899,6 +903,12 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	// the chip; a builder with nothing scoreable says so instead of showing 0.
 	if s.deps.Health != nil {
 		view.Health = toHealthView(s.deps.Health.Build(r.Context()))
+	}
+
+	// The one global verdict (DESIGN.md §3.3). It is a summary of signals that
+	// are already on the page, so it is computed after they are read.
+	if s.deps.Verdict != nil {
+		view.Verdict = s.deps.Verdict.Build(r.Context())
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

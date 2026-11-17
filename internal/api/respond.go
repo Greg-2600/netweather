@@ -27,6 +27,16 @@ type Meta struct {
 	Count      int    `json:"count,omitempty"`
 	Limit      int    `json:"limit,omitempty"`
 	NextCursor string `json:"next_cursor,omitempty"`
+	// Verdict is the board's one global verdict (DESIGN.md §3.3). It is set
+	// only on the board response; every other endpoint omits it.
+	Verdict *VerdictItem `json:"verdict,omitempty"`
+}
+
+// VerdictItem is the wire shape of the global verdict. Value is one of the
+// eight labels; Detail is the sentence the top bar shows beside it.
+type VerdictItem struct {
+	Value  string `json:"value"`
+	Detail string `json:"detail"`
 }
 
 // Envelope is the success shape: {"data": ..., "meta": ...}.

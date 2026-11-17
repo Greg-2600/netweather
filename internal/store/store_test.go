@@ -3098,3 +3098,109 @@ func TestConfirmationDebounceHoldsASecondChange(t *testing.T) {
 		t.Fatalf("past the debounce = %+v, want UP", got)
 	}
 }
+
+func TestVerdictInputs(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+
+	// No confirmed state yet: the verdict builder reads a zero time.
+	if got, err := s.LastProbeAt(ctx, "local"); err != nil || !got.IsZero() {
+		t.Fatalf("last probe on an empty board = (%v, %v), want zero", got, err)
+	}
+
+	if err := s.Record(ctx, []store.Probe{probeAt(base, state.Up)}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.LastProbeAt(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Equal(base) {
+		t.Fatalf("last probe = %v, want %v", got, base)
+	}
+
+	// A reference set of three with two failures.
+	for _, id := range []string{"ref1", "ref2", "ref3"} {
+		if err := s.UpsertTarget(ctx, store.Target{
+			ID: id, Host: id + ".example", Port: 443, Probe: "http",
+			Name: id, Class: "reference", Tier: 0, IntervalS: 30,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Three failures confirms DOWN for the service class; reference needs two
+	// of three, and these are bootstraps for ref2/ref3.
+	if err := s.Record(ctx, []store.Probe{
+		probeFor("ref1", base, state.Down),
+		probeFor("ref2", base, state.Down),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	refs, err := s.ReferenceStates(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refs[state.Down] != 2 || refs[state.Up] != 0 {
+		t.Fatalf("reference states = %v, want two down", refs)
+	}
+	// The unprobed target has no state at all. It counts toward the reference
+	// set total but is not a failure: only DOWN and UNKNOWN are (DESIGN.md
+	// §7.1), and "never probed" is neither.
+	if refs[state.State("")] != 1 {
+		t.Fatalf("reference states = %v, want one never-probed target", refs)
+	}
+}
+
+func TestCrossVantageDisagreement(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	if err := s.EnsureVantage(ctx, "tor-1", "socks5", "corroboration"); err != nil {
+		t.Fatal(err)
+	}
+
+	// One vantage sees the target down, the other reaches it.
+	if err := s.Record(ctx, []store.Probe{
+		probeAt(base, state.Down),
+		{TargetID: "t1", VantageID: "tor-1", TS: base, State: state.Up, Stage: "http", Confidence: "high"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cross, err := s.CrossVantageDisagreement(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cross {
+		t.Fatal("a down/up split was not reported")
+	}
+
+	// Agreement is not a regional signal. Both vantages must confirm DOWN:
+	// a single failure is held by the service rule, so tor needs three.
+	for i := 1; i <= 3; i++ {
+		if err := s.Record(ctx, []store.Probe{
+			{
+				TargetID: "t1", VantageID: "tor-1", TS: base.Add(time.Duration(i) * time.Minute),
+				State: state.Down, Stage: "http", Confidence: "high",
+			},
+			probeAt(base.Add(time.Duration(i)*time.Minute), state.Down),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cross, err = s.CrossVantageDisagreement(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cross {
+		t.Fatal("agreeing vantages were reported as a disagreement")
+	}
+}
