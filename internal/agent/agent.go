@@ -894,20 +894,30 @@ func stageFor(t Target, class string) string {
 	switch {
 	case strings.HasPrefix(class, "dns_"):
 		return "dns"
+	case strings.HasPrefix(class, "doh_"):
+		return "doh"
 	case strings.HasPrefix(class, "tcp_"):
 		return "tcp"
 	case strings.HasPrefix(class, "tls_"):
 		return "tls"
 	case strings.HasPrefix(class, "ntp_"):
 		return "ntp"
+	case strings.HasPrefix(class, "icmp_"):
+		return "icmp"
 	}
 	switch t.Instrument {
 	case "tls":
 		return "tls"
 	case "tcp", "tcpping":
 		return "tcp"
+	case "dns":
+		return "dns"
+	case "doh":
+		return "doh"
 	case "ntp":
 		return "ntp"
+	case "icmp":
+		return "icmp"
 	default:
 		return "http"
 	}
