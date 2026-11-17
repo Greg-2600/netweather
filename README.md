@@ -125,7 +125,7 @@ networks:
       com.docker.network.driver.mtu: 1400          # VPN uplinks are not 1500
 ```
 
-Ships with ~14 targets across banking, airlines, cloud, social, developer, and reference. Scale is opt-in via `netweather seed`.
+Ships with ~14 targets across banking, airlines, cloud, social, developer, and reference. Scale is opt-in: point `NETWEATHER_CONFIG` at a target file or directory, or add the ~250 ccTLD country anchors with `netweather seed --country-anchors` (one IANA root-zone fetch; `NETWEATHER_ROOT_ZONE_URL` points it at a mirror).
 
 **Verify the image before running it.** Releases are multi-arch, signed with cosign keyless, and carry SBOM and provenance attestations (`docs/IMAGE.md` §6). Pin the digest, not a tag:
 

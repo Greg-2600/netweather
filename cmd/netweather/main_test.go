@@ -1185,3 +1185,90 @@ func TestRateLimitFromEnv(t *testing.T) {
 		})
 	}
 }
+
+func TestSeedCommandCountryAnchors(t *testing.T) {
+	dir := t.TempDir()
+	zone := `; fixture
+.			172800	IN	NS	a.root-servers.net.
+ad.			172800	IN	NS	ns1.nic.ad.
+uk.			172800	IN	NS	nsa.nic.uk.
+com.			172800	IN	NS	a.gtld-servers.net.
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("User-Agent") == "" {
+			t.Error("the root-zone fetch carried no User-Agent")
+		}
+		_, _ = io.WriteString(w, zone)
+	}))
+	t.Cleanup(srv.Close)
+
+	t.Setenv("NETWEATHER_CONFIG", "")
+	t.Setenv("NETWEATHER_DATA", filepath.Join(dir, "data"))
+	t.Setenv("NETWEATHER_ROOT_ZONE_URL", srv.URL)
+
+	var out bytes.Buffer
+	if err := run([]string{"seed", "--country-anchors"}, &out); err != nil {
+		t.Fatalf("run(seed --country-anchors): %v", err)
+	}
+	if !strings.Contains(out.String(), "added 2 ccTLD anchors") {
+		t.Fatalf("output = %q", out.String())
+	}
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(dir, "data", "netweather.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+
+	ids, err := st.TargetIDs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		got[id] = true
+	}
+	if !got["cctld-ad"] || !got["cctld-uk"] {
+		t.Fatalf("ids = %v, want the two ccTLD anchors", ids)
+	}
+	if got["cctld-com"] {
+		t.Fatal("a generic TLD was seeded as a country anchor")
+	}
+
+	// The row is a real DNS target, not an HTTP one with a country label.
+	rows, err := st.TargetsWithState(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, row := range rows {
+		if row.ID != "cctld-ad" {
+			continue
+		}
+		found = true
+		if row.Probe != "dns" || row.Port != 53 || row.Class != "country" {
+			t.Fatalf("cctld-ad = %+v, want a DNS country anchor", row.Target)
+		}
+	}
+	if !found {
+		t.Fatalf("cctld-ad is not in %+v", rows)
+	}
+}
+
+func TestSeedCommandCountryAnchorsRejectsAnEmptyZone(t *testing.T) {
+	dir := t.TempDir()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "; no delegations\ncom.\t172800\tIN\tNS\ta.gtld-servers.net.\n")
+	}))
+	t.Cleanup(srv.Close)
+
+	t.Setenv("NETWEATHER_CONFIG", "")
+	t.Setenv("NETWEATHER_DATA", filepath.Join(dir, "data"))
+	t.Setenv("NETWEATHER_ROOT_ZONE_URL", srv.URL)
+
+	err := run([]string{"seed", "--country-anchors"}, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "no ccTLD delegations") {
+		t.Fatalf("error = %v, want an empty-zone refusal", err)
+	}
+}

@@ -8,7 +8,9 @@ package seed
 
 import "github.com/Greg-2600/netweather/internal/schedule"
 
-// Entry is one starter target.
+// Entry is one starter target. Port, Probe, and Query are zero for the shipped
+// HTTP list and are set by generated entries such as the ccTLD anchors, so an
+// existing entry keeps its meaning without repeating defaults.
 type Entry struct {
 	ID     string
 	Name   string
@@ -17,6 +19,9 @@ type Entry struct {
 	Class  string
 	Sector string
 	Tier   schedule.Tier
+	Port   int
+	Probe  string
+	Query  string
 }
 
 // Default is the shipped starter list. It covers the sectors the product is
@@ -24,19 +29,19 @@ type Entry struct {
 // opt-in through a target file; this list is a working board, not a census.
 func Default() []Entry {
 	return []Entry{
-		{"svc-chase", "Chase", "www.chase.com", "https://www.chase.com/", "service", "financial/banking", schedule.TierService},
-		{"svc-bofa", "Bank of America", "www.bankofamerica.com", "https://www.bankofamerica.com/", "service", "financial/banking", schedule.TierService},
-		{"svc-united", "United", "www.united.com", "https://www.united.com/", "service", "airline", schedule.TierService},
-		{"svc-delta", "Delta", "www.delta.com", "https://www.delta.com/", "service", "airline", schedule.TierService},
-		{"svc-cloudflare", "Cloudflare", "www.cloudflare.com", "https://www.cloudflare.com/", "service", "cloud", schedule.TierCritical},
-		{"svc-aws", "AWS", "aws.amazon.com", "https://aws.amazon.com/", "service", "cloud", schedule.TierCritical},
-		{"svc-facebook", "Facebook", "www.facebook.com", "https://www.facebook.com/", "service", "social", schedule.TierService},
-		{"svc-x", "X", "x.com", "https://x.com/", "service", "social", schedule.TierService},
-		{"svc-instagram", "Instagram", "www.instagram.com", "https://www.instagram.com/", "service", "social", schedule.TierService},
-		{"svc-reddit", "Reddit", "www.reddit.com", "https://www.reddit.com/", "service", "social", schedule.TierService},
-		{"svc-github", "GitHub", "github.com", "https://github.com/", "service", "developer", schedule.TierCritical},
-		{"svc-wikipedia", "Wikipedia", "www.wikipedia.org", "https://www.wikipedia.org/", "service", "reference", schedule.TierService},
-		{"svc-hn", "Hacker News", "news.ycombinator.com", "https://news.ycombinator.com/", "service", "news", schedule.TierService},
-		{"ref-example", "example.com", "example.com", "https://example.com/", "reference", "reference", schedule.TierReference},
+		{ID: "svc-chase", Name: "Chase", Host: "www.chase.com", URL: "https://www.chase.com/", Class: "service", Sector: "financial/banking", Tier: schedule.TierService},
+		{ID: "svc-bofa", Name: "Bank of America", Host: "www.bankofamerica.com", URL: "https://www.bankofamerica.com/", Class: "service", Sector: "financial/banking", Tier: schedule.TierService},
+		{ID: "svc-united", Name: "United", Host: "www.united.com", URL: "https://www.united.com/", Class: "service", Sector: "airline", Tier: schedule.TierService},
+		{ID: "svc-delta", Name: "Delta", Host: "www.delta.com", URL: "https://www.delta.com/", Class: "service", Sector: "airline", Tier: schedule.TierService},
+		{ID: "svc-cloudflare", Name: "Cloudflare", Host: "www.cloudflare.com", URL: "https://www.cloudflare.com/", Class: "service", Sector: "cloud", Tier: schedule.TierCritical},
+		{ID: "svc-aws", Name: "AWS", Host: "aws.amazon.com", URL: "https://aws.amazon.com/", Class: "service", Sector: "cloud", Tier: schedule.TierCritical},
+		{ID: "svc-facebook", Name: "Facebook", Host: "www.facebook.com", URL: "https://www.facebook.com/", Class: "service", Sector: "social", Tier: schedule.TierService},
+		{ID: "svc-x", Name: "X", Host: "x.com", URL: "https://x.com/", Class: "service", Sector: "social", Tier: schedule.TierService},
+		{ID: "svc-instagram", Name: "Instagram", Host: "www.instagram.com", URL: "https://www.instagram.com/", Class: "service", Sector: "social", Tier: schedule.TierService},
+		{ID: "svc-reddit", Name: "Reddit", Host: "www.reddit.com", URL: "https://www.reddit.com/", Class: "service", Sector: "social", Tier: schedule.TierService},
+		{ID: "svc-github", Name: "GitHub", Host: "github.com", URL: "https://github.com/", Class: "service", Sector: "developer", Tier: schedule.TierCritical},
+		{ID: "svc-wikipedia", Name: "Wikipedia", Host: "www.wikipedia.org", URL: "https://www.wikipedia.org/", Class: "service", Sector: "reference", Tier: schedule.TierService},
+		{ID: "svc-hn", Name: "Hacker News", Host: "news.ycombinator.com", URL: "https://news.ycombinator.com/", Class: "service", Sector: "news", Tier: schedule.TierService},
+		{ID: "ref-example", Name: "example.com", Host: "example.com", URL: "https://example.com/", Class: "reference", Sector: "reference", Tier: schedule.TierReference},
 	}
 }

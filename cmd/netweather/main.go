@@ -79,7 +79,7 @@ func run(args []string, stdout io.Writer) error {
 		return healthcheckCommand(args[1:], stdout)
 
 	case "seed":
-		return seedCommand(stdout)
+		return seedCommand(args[1:], stdout)
 
 	case "export":
 		return exportCommand(args[1:], stdout)
@@ -586,17 +586,57 @@ func seedTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 	if os.Getenv("NETWEATHER_SEED") == "none" {
 		return nil, nil
 	}
+	return applySeedEntries(ctx, st, seed.Default())
+}
 
-	entries := seed.Default()
+// applySeedEntries reconciles starter entries into the store and returns the
+// agent's view. It is shared by the shipped list and the generated ccTLD
+// anchors, so both go through one path: an entry that names a probe and a port
+// is stored with them, and an entry that names neither keeps the shipped
+// HTTP-on-443 default.
+func applySeedEntries(ctx context.Context, st *store.Store, entries []seed.Entry) ([]agent.Target, error) {
 	out := make([]agent.Target, 0, len(entries))
 	for _, e := range entries {
 		interval := schedule.DefaultInterval(e.Tier)
 
+		port := e.Port
+		if port == 0 {
+			port = 443
+		}
+		probe := e.Probe
+		if probe == "" {
+			probe = "http"
+		}
+
+		var (
+			url       string
+			address   string
+			resolvers []string
+		)
+		switch probe {
+		case "http":
+			url = e.URL
+			if url == "" {
+				url = targetURL(e.Host, port)
+			}
+		case "tls", "tcp", "tcpping", "dns", "ntp":
+			address = net.JoinHostPort(e.Host, strconv.Itoa(port))
+		case "icmp":
+			address = e.Host
+		default:
+			return nil, fmt.Errorf("seed target %s: probe %q is not implemented yet", e.Host, probe)
+		}
+		if probe == "dns" {
+			// The target server is the first resolver; a second entry enables
+			// the divergence check, exactly as a configured target does.
+			resolvers = append(resolvers, address)
+		}
+
 		if err := st.UpsertTarget(ctx, store.Target{
 			ID:        e.ID,
 			Host:      e.Host,
-			Port:      443,
-			Probe:     "http",
+			Port:      port,
+			Probe:     probe,
 			Name:      e.Name,
 			Class:     e.Class,
 			Sector:    e.Sector,
@@ -607,13 +647,17 @@ func seedTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 		}
 
 		out = append(out, agent.Target{
-			ID:       e.ID,
-			Name:     e.Name,
-			Host:     e.Host,
-			URL:      e.URL,
-			Vantage:  "local",
-			Tier:     e.Tier,
-			Interval: interval,
+			ID:         e.ID,
+			Name:       e.Name,
+			Host:       e.Host,
+			URL:        url,
+			Address:    address,
+			Query:      e.Query,
+			Resolvers:  resolvers,
+			Instrument: probe,
+			Vantage:    "local",
+			Tier:       e.Tier,
+			Interval:   interval,
 		})
 	}
 	return out, nil
@@ -621,10 +665,26 @@ func seedTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 
 // seedCommand loads NETWEATHER_CONFIG into the database without starting a
 // server. It is the populate-and-exit path for images, CI and first installs.
-func seedCommand(out io.Writer) error {
+//
+// --country-anchors is the documented ccTLD seed (DESIGN.md §4.2): one fetch of
+// the IANA root zone, parsed into one DNS target per country and territory.
+// The fetch is explicit rather than automatic at startup, because it is an
+// outbound request to a third party and belongs in an operator-visible action.
+func seedCommand(args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("seed", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	countryAnchors := fs.Bool("country-anchors", false,
+		"fetch the IANA root zone and add one DNS target per ccTLD")
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("seed: %w", err)
+	}
+	if len(fs.Args()) > 0 {
+		return fmt.Errorf("seed: unexpected argument %q", fs.Args()[0])
+	}
+
 	path := strings.TrimSpace(os.Getenv("NETWEATHER_CONFIG"))
-	if path == "" {
-		return errors.New("seed: NETWEATHER_CONFIG must point at a targets file")
+	if path == "" && !*countryAnchors {
+		return errors.New("seed: NETWEATHER_CONFIG must point at a targets file, or pass --country-anchors")
 	}
 
 	dataDir := os.Getenv("NETWEATHER_DATA")
@@ -643,13 +703,77 @@ func seedCommand(out io.Writer) error {
 		return err
 	}
 
-	targets, err := loadTargets(ctx, st)
-	if err != nil {
-		return err
+	total := 0
+	if path != "" {
+		targets, err := loadTargets(ctx, st)
+		if err != nil {
+			return err
+		}
+		total += len(targets)
 	}
 
-	_, err = fmt.Fprintf(out, "seeded %d targets into %s\n", len(targets), st.Path())
+	if *countryAnchors {
+		fetchCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		defer cancel()
+
+		zone, err := fetchRootZone(fetchCtx, rootZoneURL())
+		if err != nil {
+			return fmt.Errorf("seed: country anchors: %w", err)
+		}
+		entries := seed.ParseCountryAnchors(zone)
+		if len(entries) == 0 {
+			return errors.New("seed: country anchors: the root zone contained no ccTLD delegations")
+		}
+		targets, err := applySeedEntries(ctx, st, entries)
+		if err != nil {
+			return err
+		}
+		total += len(targets)
+		if _, err := fmt.Fprintf(out, "added %d ccTLD anchors\n", len(targets)); err != nil {
+			return err
+		}
+	}
+
+	_, err = fmt.Fprintf(out, "seeded %d targets into %s\n", total, st.Path())
 	return err
+}
+
+// rootZoneURL is the one host the country-anchor seed fetches. The override
+// exists for tests and for an operator behind a mirror; the default is IANA's
+// published zone file.
+func rootZoneURL() string {
+	if v := strings.TrimSpace(os.Getenv("NETWEATHER_ROOT_ZONE_URL")); v != "" {
+		return v
+	}
+	return seed.RootZoneURL
+}
+
+// fetchRootZone downloads the zone with the operator contact, a timeout, and a
+// size cap. The root zone is a couple of megabytes; 8 MiB is generous and still
+// refuses a response that is not a zone file.
+func fetchRootZone(ctx context.Context, url string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent",
+		probe.BuildUserAgent(version.Version, os.Getenv("NETWEATHER_CONTACT")))
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("%s returned %s", url, resp.Status)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
 }
 
 // versionCommand prints build identity. The plain form is one line for a human

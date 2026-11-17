@@ -161,9 +161,11 @@ Why this works:
 
 Auto-seed: fetch `https://www.internic.net/domain/root.zone`, extract ccTLD NS records, emit one target per country/territory.
 
+**Implemented:** `netweather seed --country-anchors` performs that one fetch and writes the anchors. The parser (`internal/seed.ParseCountryAnchors`) accepts the master-file shapes that matter for NS records, keeps only two-letter TLDs and IDN ccTLDs (`xn--...`), ignores `com`/`arpa`/multi-label names, and picks the lexicographically first nameserver per territory so two runs against the same zone produce the same list. Each anchor is a `dns` target on port 53 whose query is the TLD, class `country`, sector `country`, tier 3. The fetch is an explicit command rather than a startup side effect, because it is an outbound request to a third party; `NETWEATHER_ROOT_ZONE_URL` points it at a mirror and `NETWEATHER_CONTACT` identifies it. The command refuses an empty parse instead of reporting success with no targets.
+
 Limitation to document honestly: a DNS probe from your house measures *the path from your house to that country's DNS*, which conflates your ISP's peering with that country's health. Mitigations:
 
-- Label these `confidence: reachability` and `path: transit`
+- These anchors are reachability measurements by construction: a DNS probe has no content assertion, so its confidence is the classifier's reachability path rather than `high`. There is no separate `path: transit` field; the drawer and `CLASSIFIER.md` name the transit-path limitation instead, and the confidence value is what a reader can filter on.
 - Cross-check with IODA (§8.1), which has real in-country vantage points
 - Optional: RIPE Atlas (§8.6) for genuine in-country measurement
 

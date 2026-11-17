@@ -916,7 +916,7 @@ The binary is also scriptable, and its contract matters as much as HTTP:
 | `netweather version` | 0 | one line |
 | `netweather healthcheck` | 0 healthy, 1 unhealthy | silent |
 | `netweather serve` | 0 clean shutdown, 1 startup or runtime failure | logs to stdout |
-| `netweather seed` | 0 applied, 1 rejected | summary |
+| `netweather seed [--country-anchors]` | 0 applied, 1 rejected | summary; `--country-anchors` fetches the IANA root zone and adds one DNS target per ccTLD |
 | `netweather export` | 0 success, 1 error | data to stdout, logs to stderr |
 | `netweather disable <host-or-id>` | 0 success, 1 error | one line, or an envelope with `-json` |
 | `netweather debug enable\|status\|disable` | 0 success, 1 error | one line per scope |
