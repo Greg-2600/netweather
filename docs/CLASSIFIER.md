@@ -121,7 +121,7 @@ Baselines are per-resolver, per-target, rebuilt on every answer, and reset when 
 - The ladder is applied as written: two strong signals, or strong plus medium on the same target, is `TAMPER`; one strong is `DNS_ANOMALY`. A verdict is stored with its detail and resolvers, appears in the drawer as "DNS divergence", and is exposed on the target API. It never changes the tile's state.
 - When the primary resolver fails but another one answers, the recorded probe is `UNKNOWN` with `dns_divergence` rather than `DOWN`: our resolver or path is talking, not the name disappearing. When every resolver fails the same way, the normal `DOWN` stands.
 
-Still specified: the parent-delegation baseline, which needs an authoritative query per answer; and resetting baselines on `VANTAGE_CHANGED` (the learned sets age out on the seven-day window instead). The collapsed "DNS observations" strip is implemented on the board: the newest verdicts, collapsed by default, with a failed query stated rather than silent.
+**Implemented:** maintenance resets the DNS baselines when the egress identity changes (`VANTAGE_CHANGED`): the same resolver reached from a different address is a different path, so the old answers are not this vantage's history. Verdicts are kept, because they are what happened rather than a baseline to compare against. Still specified: the parent-delegation baseline, which needs an authoritative query per answer. The collapsed "DNS observations" strip is implemented on the board: the newest verdicts, collapsed by default, with a failed query stated rather than silent.
 
 ### 3.3 TCP
 

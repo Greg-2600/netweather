@@ -2615,3 +2615,54 @@ func TestProviderCorroborationMatchesTheDeclaredPage(t *testing.T) {
 		t.Fatal("an empty status URL was accepted")
 	}
 }
+
+func TestResetDNSBaselinesClearsAnswersAndKeepsVerdicts(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+
+	if err := s.RecordDNSAnswer(ctx, "t1", dnsdiv.Answer{
+		Resolver: "a:53", At: base,
+		Addresses: []string{"192.0.2.1"}, ASNs: []int{13335},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordDNSDivergence(ctx, "t1", dnsdiv.Verdict{
+		Kind: "DNS_ANOMALY", Confidence: "medium", Detail: "before the move",
+	}, base); err != nil {
+		t.Fatal(err)
+	}
+
+	dropped, err := s.ResetDNSBaselines(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dropped == 0 {
+		t.Fatal("the reset removed nothing")
+	}
+
+	baselines, err := s.DNSBaselines(ctx, "t1", base.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(baselines) != 0 {
+		t.Fatalf("baselines after reset = %+v", baselines)
+	}
+
+	// Verdicts are history, not a baseline, so they survive the reset.
+	records, err := s.RecentDNSDivergences(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 || records[0].Detail != "before the move" {
+		t.Fatalf("verdicts after reset = %+v", records)
+	}
+
+	// A second reset is a no-op rather than an error.
+	if dropped, err := s.ResetDNSBaselines(ctx); err != nil || dropped != 0 {
+		t.Fatalf("second reset = %d, %v", dropped, err)
+	}
+}

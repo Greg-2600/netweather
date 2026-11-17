@@ -212,3 +212,20 @@ func (s *Store) RecentDNSDivergences(ctx context.Context, limit int) ([]DNSDiver
 	}
 	return out, nil
 }
+
+// ResetDNSBaselines drops every learned DNS answer. It is what VANTAGE_CHANGED
+// calls: a different egress address can see a different resolver path, so the
+// old answers are not the same vantage's history (CLASSIFIER.md §3.2). Verdicts
+// are kept, because they are what happened rather than a baseline to compare
+// against.
+func (s *Store) ResetDNSBaselines(ctx context.Context) (int64, error) {
+	res, err := s.writer.ExecContext(ctx, `DELETE FROM dns_observation`)
+	if err != nil {
+		return 0, fmt.Errorf("store: reset dns baselines: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("store: reset dns baselines: %w", err)
+	}
+	return n, nil
+}

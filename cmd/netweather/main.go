@@ -1408,6 +1408,16 @@ func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger, s
 				if changed, detail := selfcheck.VantageChange(previous["egress-ip"], res); changed {
 					lg.Warn("vantage changed",
 						"event", "vantage_changed", "component", "maintenance", "detail", detail)
+					// A different egress address is a different resolver path,
+					// so the learned DNS answers are no longer this vantage's
+					// history (CLASSIFIER.md §3.2). Verdicts are kept.
+					if dropped, err := st.ResetDNSBaselines(ctx); err != nil {
+						lg.Warn("dns baseline reset failed",
+							"event", "dns_baseline_reset_failed", "component", "maintenance", "error", err)
+					} else {
+						lg.Info("dns baselines reset after a vantage change",
+							"event", "dns_baselines_reset", "component", "maintenance", "rows", dropped)
+					}
 				}
 			}
 			if res.OK {
