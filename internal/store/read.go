@@ -101,6 +101,53 @@ func (s *Store) ProbeDetail(ctx context.Context, targetID, vantageID string) (st
 	return detail, nil
 }
 
+// TargetRow is a target joined with its latest state for one vantage.
+type TargetRow struct {
+	Target
+	State state.State
+	Since time.Time
+}
+
+// TargetsWithState is the board query: every enabled target plus its current
+// state, defaulting to UNKNOWN when it has never been probed.
+func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]TargetRow, error) {
+	rows, err := s.reader.QueryContext(ctx, `
+		SELECT t.id, t.host, t.port, t.probe, t.name, t.class,
+		       COALESCE(t.sector, ''), COALESCE(t.country, ''), t.tier, t.interval_s,
+		       COALESCE(ts.state, 'unknown'), COALESCE(ts.since, 0)
+		FROM target t
+		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
+		WHERE t.enabled = 1
+		ORDER BY t.class, COALESCE(t.sector, ''), t.name`, vantageID)
+	if err != nil {
+		return nil, fmt.Errorf("store: targets with state: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []TargetRow
+	for rows.Next() {
+		var (
+			row   TargetRow
+			since int64
+		)
+		if err := rows.Scan(
+			&row.ID, &row.Host, &row.Port, &row.Probe, &row.Name, &row.Class,
+			&row.Sector, &row.Country, &row.Tier, &row.IntervalS,
+			&row.State, &since,
+		); err != nil {
+			return nil, fmt.Errorf("store: scan target: %w", err)
+		}
+		if since > 0 {
+			row.Since = time.UnixMilli(since).UTC()
+		}
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: targets with state: %w", err)
+	}
+	return out, nil
+}
+
 // Rollup is one 5-minute bucket.
 type Rollup struct {
 	Bucket   time.Time

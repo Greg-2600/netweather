@@ -2,9 +2,14 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Greg-2600/netweather/internal/state"
+	"github.com/Greg-2600/netweather/internal/store"
 )
 
 func TestRunVersion(t *testing.T) {
@@ -61,5 +66,61 @@ func TestRunServeRejectsBadListenAddress(t *testing.T) {
 
 	if err := run([]string{"serve"}, io.Discard); err == nil {
 		t.Fatal("an unparseable listen address must fail before binding")
+	}
+}
+
+func TestSeedTargetsDisabled(t *testing.T) {
+	t.Setenv("NETWEATHER_SEED", "none")
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "seed.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+
+	got, err := seedTargets(ctx, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("targets = %v, want none", got)
+	}
+}
+
+func TestSeedTargetsSeedsTheDefaultList(t *testing.T) {
+	t.Setenv("NETWEATHER_SEED", "")
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "seed.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+
+	got, err := seedTargets(ctx, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 10 {
+		t.Fatalf("agent targets = %d, want 10", len(got))
+	}
+	for _, tg := range got {
+		if tg.Interval <= 0 || tg.URL == "" || tg.Vantage != "local" {
+			t.Errorf("incomplete agent target: %+v", tg)
+		}
+	}
+
+	rows, err := st.TargetsWithState(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 10 {
+		t.Fatalf("stored targets = %d, want 10", len(rows))
+	}
+	for _, r := range rows {
+		if r.State != state.Unknown {
+			t.Errorf("%s state = %s before any probe, want unknown", r.ID, r.State)
+		}
 	}
 }

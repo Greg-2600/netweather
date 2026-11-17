@@ -283,3 +283,137 @@ func TestStatesIsEmptyOnAFreshDatabase(t *testing.T) {
 		t.Fatalf("states = %v", states)
 	}
 }
+
+func TestTargetsWithState(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	if err := s.Record(ctx, []store.Probe{probeAt(now, state.Up)}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := s.TargetsWithState(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(rows))
+	}
+	if rows[0].State != state.Up || rows[0].Name != "Chase" {
+		t.Fatalf("row = %+v", rows[0])
+	}
+	if rows[0].Since.IsZero() {
+		t.Error("since was not populated")
+	}
+
+	// A target that has never been probed is present and UNKNOWN, not absent.
+	if err := s.UpsertTarget(ctx, store.Target{
+		ID: "t2", Host: "united.com", Port: 443, Probe: "http",
+		Name: "United", Class: "service", Tier: 2, IntervalS: 300,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err = s.TargetsWithState(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows = %d, want 2", len(rows))
+	}
+	for _, r := range rows {
+		if r.ID == "t2" && r.State != state.Unknown {
+			t.Fatalf("unprobed target state = %s, want unknown", r.State)
+		}
+	}
+}
+
+func TestUpsertTargetUpdatesExisting(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+
+	if err := s.UpsertTarget(context.Background(), store.Target{
+		ID: "t1", Host: "chase.com", Port: 443, Probe: "http",
+		Name: "Chase Bank", Class: "service", Tier: 1, IntervalS: 120,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := s.TargetsWithState(context.Background(), "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows[0].Name != "Chase Bank" || rows[0].Tier != 1 {
+		t.Fatalf("row = %+v", rows[0])
+	}
+}
+
+func TestEnsureVantageIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	ctx := context.Background()
+
+	if err := s.EnsureVantage(ctx, "local", "direct", "primary"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnsureVantage(ctx, "local", "socks5", "corroboration"); err != nil {
+		t.Fatalf("second upsert: %v", err)
+	}
+}
+
+func TestRecordEmptyBatch(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	if err := s.Record(context.Background(), nil); err != nil {
+		t.Fatalf("empty batch: %v", err)
+	}
+}
+
+func TestProbeDetailWithoutProbes(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	if _, err := s.ProbeDetail(context.Background(), "t1", "local"); err == nil {
+		t.Fatal("a missing probe should be an error, not an empty detail")
+	}
+}
+
+func TestReadsFailAfterClose(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "closed.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.States(ctx, "local"); err == nil {
+		t.Error("States on a closed store should fail")
+	}
+	if _, err := s.TargetsWithState(ctx, "local"); err == nil {
+		t.Error("TargetsWithState on a closed store should fail")
+	}
+	if _, err := s.RollupAt(ctx, "t1", "local", time.Now()); err == nil {
+		t.Error("RollupAt on a closed store should fail")
+	}
+	if _, err := s.ProbeDetail(ctx, "t1", "local"); err == nil {
+		t.Error("ProbeDetail on a closed store should fail")
+	}
+	if _, err := s.Stats(ctx); err == nil {
+		t.Error("Stats on a closed store should fail")
+	}
+	if _, err := s.SchemaVersion(ctx); err == nil {
+		t.Error("SchemaVersion on a closed store should fail")
+	}
+}

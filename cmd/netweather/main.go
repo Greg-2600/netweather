@@ -12,13 +12,20 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
+	"github.com/Greg-2600/netweather/internal/agent"
 	"github.com/Greg-2600/netweather/internal/api"
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/logging"
+	"github.com/Greg-2600/netweather/internal/netx"
+	"github.com/Greg-2600/netweather/internal/probe"
+	"github.com/Greg-2600/netweather/internal/schedule"
+	"github.com/Greg-2600/netweather/internal/seed"
 	"github.com/Greg-2600/netweather/internal/startup"
+	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/version"
 	"github.com/Greg-2600/netweather/internal/web"
 )
@@ -87,9 +94,9 @@ func run(args []string, stdout io.Writer) error {
 	}
 }
 
-// serve binds the listener and blocks until a signal arrives. Configuration and
-// the exposure guardrail are validated before the socket is opened, so a
-// misconfigured bind fails loudly instead of serving anonymously.
+// serve wires the pipeline: store -> seed targets -> agent loop -> board, and
+// the HTTP surface on top. Configuration and the exposure guardrail are
+// validated before the socket is opened.
 func serve(lg *logging.Logger) error {
 	cfg, err := api.FromEnv(os.Getenv)
 	if err != nil {
@@ -97,9 +104,36 @@ func serve(lg *logging.Logger) error {
 		return err
 	}
 
-	// The store is phase 0 work. Until it lands the board is genuinely empty;
-	// seeding fake targets here would make the dashboard lie.
-	source := board.NewMemory()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	dataDir := os.Getenv("NETWEATHER_DATA")
+	if dataDir == "" {
+		dataDir = "./data"
+	}
+
+	st, err := store.Open(ctx, filepath.Join(dataDir, "netweather.db"))
+	if err != nil {
+		lg.Error("store unavailable", "event", "store_open_failed", "error", err)
+		return err
+	}
+	defer func() {
+		if err := st.Close(); err != nil {
+			lg.Warn("store close failed", "event", "store_close_failed", "error", err)
+		}
+	}()
+
+	if err := st.EnsureVantage(ctx, "local", "direct", "primary"); err != nil {
+		return err
+	}
+
+	targets, err := seedTargets(ctx, st)
+	if err != nil {
+		return err
+	}
+
+	changes := board.NewBroadcast()
+	source := &board.StoreSource{Store: st, Vantage: "local", Changes: changes}
 
 	ui, err := web.New(web.Deps{
 		Logger:        lg.Logger,
@@ -126,9 +160,6 @@ func serve(lg *logging.Logger) error {
 		return err
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", cfg.Listen)
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", cfg.Listen, err)
@@ -145,6 +176,8 @@ func serve(lg *logging.Logger) error {
 		ErrorLog:       slog.NewLogLogger(lg.Handler(), slog.LevelWarn),
 	}
 
+	go probeLoop(ctx, lg, agent.New(targets, probe.NewHTTP(netx.New()), st), changes)
+
 	go func() {
 		<-ctx.Done()
 		// Shutdown needs its own deadline, but must inherit the parent's values
@@ -158,6 +191,8 @@ func serve(lg *logging.Logger) error {
 		"event", "startup",
 		"addr", cfg.Listen,
 		"auth", cfg.AuthMode(),
+		"targets", len(targets),
+		"db", st.Path(),
 	)
 
 	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -166,4 +201,65 @@ func serve(lg *logging.Logger) error {
 
 	lg.Info("stopped", "event", "shutdown")
 	return nil
+}
+
+// seedTargets reconciles the shipped list into the store and returns the agent's
+// view. NETWEATHER_SEED=none disables seeding (tests, air-gapped installs).
+func seedTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
+	if os.Getenv("NETWEATHER_SEED") == "none" {
+		return nil, nil
+	}
+
+	entries := seed.Default()
+	out := make([]agent.Target, 0, len(entries))
+	for _, e := range entries {
+		interval := schedule.DefaultInterval(e.Tier)
+
+		if err := st.UpsertTarget(ctx, store.Target{
+			ID:        e.ID,
+			Host:      e.Host,
+			Port:      443,
+			Probe:     "http",
+			Name:      e.Name,
+			Class:     e.Class,
+			Sector:    e.Sector,
+			Tier:      int(e.Tier),
+			IntervalS: int(interval / time.Second),
+		}); err != nil {
+			return nil, err
+		}
+
+		out = append(out, agent.Target{
+			ID:       e.ID,
+			Name:     e.Name,
+			Host:     e.Host,
+			URL:      e.URL,
+			Vantage:  "local",
+			Tier:     e.Tier,
+			Interval: interval,
+		})
+	}
+	return out, nil
+}
+
+func probeLoop(ctx context.Context, lg *logging.Logger, ag *agent.Agent, changes *board.Broadcast) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			ran, err := ag.Step(ctx)
+			if err != nil {
+				lg.Warn("probe step failed",
+					"event", "probe_step_failed", "component", "agent", "error", err)
+				continue
+			}
+			if ran > 0 {
+				changes.Notify()
+			}
+		}
+	}
 }

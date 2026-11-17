@@ -10,7 +10,7 @@ A self-hosted internet weather station. One small container that answers three q
 
 Most monitors answer only #2, and answer it badly: `curl != 200` becomes "down." That produces enough false alarms that people stop looking. This one classifies bot protection instead of evading it, and refuses to call a single vantage point a global truth.
 
-**Status: phase 0, early.** The documents in [`docs/`](docs/) are the specification. The binary currently serves the API contract (`/healthz`, `/api/v1/meta`, `/api/v1/logs`) and a board skeleton — login, grid, SSE deltas — backed by an in-memory source. No container image yet. The probe engine and the store are next.
+**Status: phase 0, spine running.** The binary probes the ten shipped targets over HTTPS on the tiered scheduler, classifies each result, writes to SQLite, and serves a store-backed board with live SSE updates plus the versioned API. `NETWEATHER_SEED=none` starts with an empty board. DNS/TCP/TLS instruments, country anchors, feeds, incident correlation, and the container image are next.
 
 Build and test with one command: `go run ./internal/devtool verify`.
 
