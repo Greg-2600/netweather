@@ -1166,3 +1166,113 @@ func TestLowMTUGateReachesTheClassifier(t *testing.T) {
 		t.Fatalf("state = %s without the gate, want down", got.State)
 	}
 }
+
+func TestGlobalRateCeilingPacesProbes(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	targets := []agent.Target{
+		target("a1", "a.example"),
+		target("a2", "b.example"),
+		target("a3", "c.example"),
+	}
+	p := newProber()
+	for _, tg := range targets {
+		p.set(tg.URL, probe.Result{Status: 200})
+	}
+
+	now := base
+	var waits []time.Duration
+	a := agent.New(targets, p, &fakeSink{})
+	a.Now = func() time.Time { return now }
+	a.Rand = zeroRand
+	a.RateCeiling = 2
+	a.RateStart = 2
+	a.RateSince = base
+	a.Sleep = func(d time.Duration) {
+		waits = append(waits, d)
+		now = now.Add(d)
+	}
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Three probes at 2 req/s: the first starts immediately, the next two wait
+	// half a second each.
+	if len(waits) != 2 {
+		t.Fatalf("waits = %v, want two gaps", waits)
+	}
+	for _, wait := range waits {
+		if wait != 500*time.Millisecond {
+			t.Fatalf("wait = %v, want 500ms at 2 req/s", wait)
+		}
+	}
+}
+
+func TestGlobalRateCeilingRampsToTheCeiling(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	targets := []agent.Target{
+		target("a1", "a.example"),
+		target("a2", "b.example"),
+		target("a3", "c.example"),
+	}
+	p := newProber()
+	for _, tg := range targets {
+		p.set(tg.URL, probe.Result{Status: 200})
+	}
+
+	// Ten minutes after the first target the ramp is complete, so the gap is
+	// the steady-state 50ms rather than the cold-start 500ms.
+	now := base.Add(10 * time.Minute)
+	var waits []time.Duration
+	a := agent.New(targets, p, &fakeSink{})
+	a.Now = func() time.Time { return now }
+	a.Rand = zeroRand
+	a.RateCeiling = 20
+	a.RateStart = 2
+	a.RateRamp = 10 * time.Minute
+	a.RateSince = base
+	a.Sleep = func(d time.Duration) {
+		waits = append(waits, d)
+		now = now.Add(d)
+	}
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(waits) != 2 {
+		t.Fatalf("waits = %v, want two gaps", waits)
+	}
+	for _, wait := range waits {
+		if wait != 50*time.Millisecond {
+			t.Fatalf("wait = %v, want 50ms at 20 req/s", wait)
+		}
+	}
+}
+
+func TestNoRatePacingWithoutACeiling(t *testing.T) {
+	t.Parallel()
+
+	targets := []agent.Target{
+		target("a1", "a.example"),
+		target("a2", "b.example"),
+	}
+	p := newProber()
+	for _, tg := range targets {
+		p.set(tg.URL, probe.Result{Status: 200})
+	}
+
+	a := agent.New(targets, p, &fakeSink{})
+	a.Rand = zeroRand
+	a.RateCeiling = 0
+	a.Sleep = func(time.Duration) {
+		t.Fatal("paced without a ceiling")
+	}
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}

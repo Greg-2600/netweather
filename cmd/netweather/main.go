@@ -208,6 +208,19 @@ func serve(lg *logging.Logger) error {
 		ag.Suspend = directBudget.Exhausted
 	}
 
+	// The global request ceiling from DESIGN.md §6.2: 20 req/s steady, ramping
+	// from 2 req/s over the first ten minutes. The ramp is measured from the
+	// database's first target so a restart resumes at the current rate instead
+	// of repeating it (DESIGN.md §6.5).
+	ag.RateCeiling = 20
+	ag.RateStart = 2
+	ag.RateRamp = 10 * time.Minute
+	if coldStart, err := st.ColdStartAt(ctx); err == nil && !coldStart.IsZero() {
+		ag.RateSince = coldStart
+	} else {
+		ag.RateSince = time.Now()
+	}
+
 	// The monitor must be able to see before its board is believable, so the
 	// self-checks run at startup and with maintenance, not only on request.
 	// They share the agent's dialer, so their traffic counts against the same

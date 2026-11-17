@@ -2674,3 +2674,31 @@ func TestResetDNSBaselinesClearsAnswersAndKeepsVerdicts(t *testing.T) {
 		t.Fatalf("second reset = %d, %v", dropped, err)
 	}
 }
+
+func TestColdStartAt(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	ctx := context.Background()
+
+	// An empty database has no start time, which the caller treats as "now".
+	empty, err := s.ColdStartAt(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !empty.IsZero() {
+		t.Fatalf("cold start on an empty database = %v, want zero", empty)
+	}
+
+	seed(t, s)
+	start, err := s.ColdStartAt(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if start.IsZero() {
+		t.Fatal("cold start missing after seeding")
+	}
+	if start.After(time.Now().Add(time.Minute)) {
+		t.Fatalf("cold start = %v, in the future", start)
+	}
+}

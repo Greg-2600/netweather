@@ -149,6 +149,17 @@ type Agent struct {
 	// the direct vantage and non-zero for Tor, where bursty traffic is both
 	// abusive and a fingerprint.
 	Pace time.Duration
+	// RateCeiling is the global requests-per-second ceiling (DESIGN.md §6.2).
+	// Zero disables pacing. RateStart and RateRamp describe the cold-start
+	// ramp, and RateSince is when that ramp began, so a restart resumes at the
+	// current rate instead of repeating it (DESIGN.md §6.5).
+	RateCeiling float64
+	RateStart   float64
+	RateRamp    time.Duration
+	RateSince   time.Time
+	// Sleep replaces the real wait during rate pacing. Nil uses a timer; tests
+	// inject a recorder so pacing is asserted without sleeping.
+	Sleep func(time.Duration)
 	// DNSBlocked reports whether this vantage's egress port 53 is known to be
 	// blocked. Nil means unknown, and an unknown path is treated as working:
 	// a missing health signal must not suppress real DOWN states.
@@ -179,7 +190,10 @@ type Agent struct {
 	targets []Target
 	next    map[string]time.Time
 	primed  bool
-	paused  atomic.Bool
+	// lastProbe is the start time of the most recent probe, for the global rate
+	// ceiling. It is zero before the first probe of the process.
+	lastProbe time.Time
+	paused    atomic.Bool
 }
 
 // New builds an agent. Now and Rand default to the real clock and math/rand;
@@ -281,6 +295,18 @@ func (a *Agent) Step(ctx context.Context) (int, error) {
 			continue
 		}
 
+		// Global rate ceiling: wait out the remainder of the gap before this
+		// probe starts, then record the start. A slow probe only lowers the
+		// effective rate, never raises it.
+		if wait := a.paceGap(now); wait > 0 {
+			if err := sleepCtx(ctx, wait, a.Sleep); err != nil {
+				release()
+				return ran, err
+			}
+			now = a.now()
+		}
+		a.markProbe(now)
+
 		res := a.Runner.Run(ctx, t)
 		release()
 
@@ -354,6 +380,59 @@ func (a *Agent) Step(ctx context.Context) (int, error) {
 		return ran, fmt.Errorf("agent: record: %w", err)
 	}
 	return ran, nil
+}
+
+// paceGap reports how long to wait before the next probe may start. The
+// ceiling ramps from RateStart to RateCeiling over RateRamp measured from
+// RateSince, which is the database's first target, so a restart resumes at the
+// current rate rather than repeating the ramp (DESIGN.md §6.5).
+func (a *Agent) paceGap(now time.Time) time.Duration {
+	if a.RateCeiling <= 0 {
+		return 0
+	}
+	rate := schedule.RampRate(now.Sub(a.RateSince), a.RateRamp, a.RateStart, a.RateCeiling)
+	if rate <= 0 {
+		return 0
+	}
+	gap := time.Duration(float64(time.Second) / rate)
+
+	a.mu.RLock()
+	last := a.lastProbe
+	a.mu.RUnlock()
+
+	if last.IsZero() {
+		return 0
+	}
+	elapsed := now.Sub(last)
+	if elapsed >= gap {
+		return 0
+	}
+	return gap - elapsed
+}
+
+// markProbe records when a probe started. It is the reference for the next
+// gap, so a probe that takes longer than the gap simply runs slower.
+func (a *Agent) markProbe(now time.Time) {
+	a.mu.Lock()
+	a.lastProbe = now
+	a.mu.Unlock()
+}
+
+// sleepCtx waits for d while honouring cancellation. An injected sleep is a
+// test recorder and returns immediately, so only the real path needs a timer.
+func sleepCtx(ctx context.Context, d time.Duration, sleep func(time.Duration)) error {
+	if sleep != nil {
+		sleep(d)
+		return ctx.Err()
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // NextRun reports when a target is next due. Zero means "never scheduled".

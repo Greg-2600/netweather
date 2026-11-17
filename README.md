@@ -191,7 +191,7 @@ Every environment variable the binary reads, including the ones that exist for a
 This tool sends periodic requests to third-party sites. That is dual-use, so the limits are enforced in code rather than documented and hoped for:
 
 - 30s minimum interval per host, not configurable lower
-- Per-host concurrency 1, global rate ceiling, 2 GB/day egress budget with a hard stop
+- Per-host concurrency 1, a global rate ceiling (20 req/s steady, ramped from 2 req/s over ten minutes so a restart is not a burst), and a 2 GB/day egress budget with a hard stop
 - Outbound ports 80/443/53/123/853 only
 - Inbound: `2600` only, and a non-loopback bind requires auth
 - Private ranges blocked after DNS resolution **and** after every redirect

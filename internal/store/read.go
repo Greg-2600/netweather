@@ -88,6 +88,21 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 	return out, nil
 }
 
+// ColdStartAt reports when this database first received a target. The global
+// rate ramp is measured from here so a restart resumes at the current rate and
+// only a cold database repeats the ramp (DESIGN.md §6.5). A database with no
+// targets returns the zero time.
+func (s *Store) ColdStartAt(ctx context.Context) (time.Time, error) {
+	var ts sql.NullInt64
+	if err := s.reader.QueryRowContext(ctx, `SELECT MIN(created_at) FROM target`).Scan(&ts); err != nil {
+		return time.Time{}, fmt.Errorf("store: cold start: %w", err)
+	}
+	if !ts.Valid || ts.Int64 <= 0 {
+		return time.Time{}, nil
+	}
+	return time.UnixMilli(ts.Int64).UTC(), nil
+}
+
 // ProbeDetail returns the most recent stored detail line for a target. It is
 // used by diagnostics and tests; the drawer uses a list query that lands later.
 func (s *Store) ProbeDetail(ctx context.Context, targetID, vantageID string) (string, error) {
