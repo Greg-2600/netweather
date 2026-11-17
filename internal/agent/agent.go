@@ -64,7 +64,10 @@ func (i Instruments) Run(ctx context.Context, t Target) probe.Result {
 			return probe.Result{Err: fmt.Errorf("agent: tls instrument not configured")}
 		}
 		r := i.TLS.Do(ctx, t.Address)
-		return probe.Result{Latency: r.Latency, ErrorClass: r.ErrorClass, Err: r.Err}
+		return probe.Result{
+			Latency: r.Latency, ErrorClass: r.ErrorClass, Err: r.Err,
+			CertIssuer: r.Issuer, CertNotAfter: r.NotAfter,
+		}
 	case "tcp", "tcpping":
 		if i.TCP == nil {
 			return probe.Result{Err: fmt.Errorf("agent: tcp instrument not configured")}

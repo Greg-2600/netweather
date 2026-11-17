@@ -496,7 +496,9 @@ Auth: bearer. One target with its current state and metadata.
     "sector": "financial/banking",
     "country": "US",
     "state": "down",
-    "since": "2026-11-17T12:00:00Z"
+    "since": "2026-11-17T12:00:00Z",
+    "cert_issuer": "CN=R11,O=Let's Encrypt,C=US",
+    "cert_not_after": "2027-01-16T12:00:00Z"
   },
   "meta": {"request_id": "…"}
 }
@@ -504,7 +506,7 @@ Auth: bearer. One target with its current state and metadata.
 
 - `404` for an unknown or disabled target.
 - `since` is absent for a target that has never been probed; the state is then `unknown`.
-- This is the target's identity and state, not its history: use `/probes` or `/series` for that.
+- Certificate fields come from the last TLS observation and are absent when the last probe was not TLS. They describe the leaf certificate; pinning is a separate, later feature.
 
 ### 6.14 `GET /api/v1/coverage` — stable
 

@@ -42,9 +42,13 @@ type Result struct {
 	Offset time.Duration
 	// Loss is set only by the ICMP instrument: unanswered echoes out of the
 	// configured count.
-	Loss       int
-	ErrorClass string
-	Err        error
+	Loss int
+	// CertIssuer and CertNotAfter are set only by the TLS instrument: the leaf
+	// certificate's issuer DN and expiry. Pinning is not implied.
+	CertIssuer   string
+	CertNotAfter time.Time
+	ErrorClass   string
+	Err          error
 }
 
 // Failed reports whether the exchange produced a transport-class failure.

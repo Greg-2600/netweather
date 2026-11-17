@@ -215,6 +215,60 @@ func TestTargetDetailShowsASLabels(t *testing.T) {
 	}
 }
 
+func TestTargetDetailShowsCertificateObservation(t *testing.T) {
+	t.Parallel()
+
+	expiry := time.Date(2027, 1, 16, 12, 0, 0, 0, time.UTC)
+	m := board.NewMemory(board.Target{
+		ID: "2", Name: "United", Host: "united.com", Class: "service",
+		Sector: "airline", Country: "US", State: board.StateUp,
+		Port: 443, Probe: "tls", Tier: 2, IntervalS: 300,
+		CertIssuer: "CN=R11,O=Let's Encrypt,C=US", CertNotAfter: expiry,
+	})
+
+	ts := newServerWithDetails(t, testToken, m, &fakeChanges{})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	for _, want := range []string{
+		">Certificate issuer<", "CN=R11,O=Let&#39;s Encrypt,C=US",
+		">Certificate expires<", "2027-01-16",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("certificate row missing %q", want)
+		}
+	}
+}
+
+func TestTargetDetailCertificateRowsWithoutTLS(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(board.Target{
+		ID: "2", Name: "United", Host: "united.com", Class: "service",
+		State: board.StateUp, Port: 443, Probe: "http", Tier: 2, IntervalS: 300,
+	})
+
+	ts := newServerWithDetails(t, testToken, m, &fakeChanges{})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if got := strings.Count(page, "not a TLS probe"); got != 2 {
+		t.Fatalf("non-TLS rows = %d, want both certificate rows stated as absent", got)
+	}
+}
+
 func TestTargetDetailShowsStateChanges(t *testing.T) {
 	t.Parallel()
 

@@ -853,8 +853,8 @@ Click any tile:
 
 - **Implemented:** state + why (the classifier's reason), the host, the 24-hour hourly strip, and the last 20 probes with stage, status, ms, error class and the detail line.
 - **Implemented:** the 24-hour strip's bar shows the healthy share per hour and each cell's title carries the counts and EWMA latency. It is not a p50/p95 chart: the rollups hold EWMAs, not percentiles (`SCHEMA.md` §6.2), and calling the smoothing a percentile would be the quiet lie the project avoids. A true percentile chart waits on the histogram.
-- **Implemented:** the metadata block (class, sector, country, probe, port, tier, interval, ASN, prefix, CDN, measurability) and the last 20 state transitions with their stored reason. Empty enrichment reads "not learned yet" rather than an empty cell; the enrichment passes themselves are still specified.
-- **Specified:** official status, DNS divergence, and certificate issuer/pin status.
+- **Implemented:** the metadata block (class, sector, country, probe, port, tier, interval, ASN, prefix, CDN, measurability), the leaf certificate issuer and expiry from the last TLS observation, and the last 20 state transitions with their stored reason. Empty enrichment reads "not learned yet" rather than an empty cell; a non-TLS target states "not a TLS probe" for the certificate rows.
+- **Specified:** official status, DNS divergence, and certificate pinning. Issuer and expiry are recorded per TLS probe (migration `0011`); a pin set and its grace rule are not implemented. The enrichment passes' PeeringDB labels are also still specified.
 
 ### 10.6 Coverage panel
 

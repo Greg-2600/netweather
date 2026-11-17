@@ -111,6 +111,10 @@ type TargetRow struct {
 	Stage      string
 	ErrorClass string
 	HTTPStatus int
+	// Leaf certificate from the last TLS observation. Zero values mean the
+	// last probe was not TLS, not that the certificate is unknown.
+	CertIssuer   string
+	CertNotAfter time.Time
 }
 
 // TargetsWithState is the board query: every enabled target plus its current
@@ -122,7 +126,8 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 		       COALESCE(t.asn, 0), COALESCE(t.prefix, ''), COALESCE(t.cdn, ''), t.measurability,
 		       COALESCE(t.as_country, ''), COALESCE(t.as_name, ''),
 		       COALESCE(ts.state, 'unknown'), COALESCE(ts.since, 0),
-		       COALESCE(p.stage, ''), COALESCE(p.error_class, ''), COALESCE(p.http_status, 0)
+		       COALESCE(p.stage, ''), COALESCE(p.error_class, ''), COALESCE(p.http_status, 0),
+		       COALESCE(p.cert_issuer, ''), COALESCE(p.cert_not_after, 0)
 		FROM target t
 		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
 		LEFT JOIN probe p ON p.id = (
@@ -140,8 +145,9 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 	var out []TargetRow
 	for rows.Next() {
 		var (
-			row   TargetRow
-			since int64
+			row      TargetRow
+			since    int64
+			notAfter int64
 		)
 		if err := rows.Scan(
 			&row.ID, &row.Host, &row.Port, &row.Probe, &row.Name, &row.Class,
@@ -150,11 +156,15 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 			&row.ASCountry, &row.ASName,
 			&row.State, &since,
 			&row.Stage, &row.ErrorClass, &row.HTTPStatus,
+			&row.CertIssuer, &notAfter,
 		); err != nil {
 			return nil, fmt.Errorf("store: scan target: %w", err)
 		}
 		if since > 0 {
 			row.Since = time.UnixMilli(since).UTC()
+		}
+		if notAfter > 0 {
+			row.CertNotAfter = time.UnixMilli(notAfter).UTC()
 		}
 		out = append(out, row)
 	}
@@ -265,29 +275,42 @@ func (s *Store) DisableTarget(ctx context.Context, id string) error {
 // TargetByID returns one enabled target with its latest state.
 func (s *Store) TargetByID(ctx context.Context, vantageID, id string) (TargetRow, error) {
 	var (
-		row   TargetRow
-		since int64
+		row      TargetRow
+		since    int64
+		notAfter int64
 	)
 	err := s.reader.QueryRowContext(ctx, `
 		SELECT t.id, t.host, t.port, t.probe, t.name, t.class,
 		       COALESCE(t.sector, ''), COALESCE(t.country, ''), t.tier, t.interval_s,
 		       COALESCE(t.asn, 0), COALESCE(t.prefix, ''), COALESCE(t.cdn, ''), t.measurability,
 		       COALESCE(t.as_country, ''), COALESCE(t.as_name, ''),
-		       COALESCE(ts.state, 'unknown'), COALESCE(ts.since, 0)
+		       COALESCE(ts.state, 'unknown'), COALESCE(ts.since, 0),
+		       COALESCE(p.stage, ''), COALESCE(p.error_class, ''), COALESCE(p.http_status, 0),
+		       COALESCE(p.cert_issuer, ''), COALESCE(p.cert_not_after, 0)
 		FROM target t
 		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
-		WHERE t.id = ? AND t.enabled = 1`, vantageID, id).Scan(
+		LEFT JOIN probe p ON p.id = (
+			SELECT p2.id FROM probe p2
+			WHERE p2.target_id = t.id AND p2.vantage_id = ?
+			ORDER BY p2.ts DESC, p2.id DESC LIMIT 1
+		)
+		WHERE t.id = ? AND t.enabled = 1`, vantageID, vantageID, id).Scan(
 		&row.ID, &row.Host, &row.Port, &row.Probe, &row.Name, &row.Class,
 		&row.Sector, &row.Country, &row.Tier, &row.IntervalS,
 		&row.ASN, &row.Prefix, &row.CDN, &row.Measurability,
 		&row.ASCountry, &row.ASName,
 		&row.State, &since,
+		&row.Stage, &row.ErrorClass, &row.HTTPStatus,
+		&row.CertIssuer, &notAfter,
 	)
 	if err != nil {
 		return TargetRow{}, err
 	}
 	if since > 0 {
 		row.Since = time.UnixMilli(since).UTC()
+	}
+	if notAfter > 0 {
+		row.CertNotAfter = time.UnixMilli(notAfter).UTC()
 	}
 	return row, nil
 }

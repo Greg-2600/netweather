@@ -1727,6 +1727,7 @@ func TestTargetDetail(t *testing.T) {
 	t.Parallel()
 
 	since := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	expiry := time.Date(2027, 1, 16, 12, 0, 0, 0, time.UTC)
 	targets := &fakeTargets{rows: map[string]store.TargetRow{
 		"t1": {
 			Target: store.Target{
@@ -1734,8 +1735,10 @@ func TestTargetDetail(t *testing.T) {
 				Name: "Chase", Class: "service", Sector: "financial/banking",
 				Country: "US", Tier: 2, IntervalS: 300,
 			},
-			State: state.Down,
-			Since: since,
+			State:        state.Down,
+			Since:        since,
+			CertIssuer:   "CN=R11,O=Let's Encrypt,C=US",
+			CertNotAfter: expiry,
 		},
 	}}
 
@@ -1749,12 +1752,14 @@ func TestTargetDetail(t *testing.T) {
 		t.Fatal(err)
 	}
 	var item struct {
-		ID     string `json:"id"`
-		Host   string `json:"host"`
-		Class  string `json:"class"`
-		Sector string `json:"sector"`
-		State  string `json:"state"`
-		Since  string `json:"since"`
+		ID           string `json:"id"`
+		Host         string `json:"host"`
+		Class        string `json:"class"`
+		Sector       string `json:"sector"`
+		State        string `json:"state"`
+		Since        string `json:"since"`
+		CertIssuer   string `json:"cert_issuer"`
+		CertNotAfter string `json:"cert_not_after"`
 	}
 	if err := json.Unmarshal(env.Data, &item); err != nil {
 		t.Fatal(err)
@@ -1764,6 +1769,12 @@ func TestTargetDetail(t *testing.T) {
 	}
 	if item.State != "down" || item.Since != "2026-11-17T12:00:00Z" {
 		t.Fatalf("state/since = %+v", item)
+	}
+	if item.CertIssuer != "CN=R11,O=Let's Encrypt,C=US" {
+		t.Fatalf("cert_issuer = %q", item.CertIssuer)
+	}
+	if item.CertNotAfter != "2027-01-16T12:00:00Z" {
+		t.Fatalf("cert_not_after = %q", item.CertNotAfter)
 	}
 }
 

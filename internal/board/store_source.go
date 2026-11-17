@@ -45,6 +45,8 @@ func (s *StoreSource) Snapshot(ctx context.Context) ([]Target, error) {
 			ASCountry:     r.ASCountry,
 			ASName:        r.ASName,
 			Measurability: r.Measurability,
+			CertIssuer:    r.CertIssuer,
+			CertNotAfter:  r.CertNotAfter,
 		})
 	}
 	return out, nil

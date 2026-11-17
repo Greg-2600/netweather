@@ -209,6 +209,8 @@ type tileView struct {
 	ASCountry     string
 	ASName        string
 	Measurability string
+	CertIssuer    string
+	CertNotAfter  string
 }
 
 type countView struct {
@@ -412,7 +414,18 @@ func toTile(t board.Target) tileView {
 		Port: t.Port, Probe: t.Probe, Tier: t.Tier, IntervalS: t.IntervalS,
 		ASN: t.ASN, Prefix: t.Prefix, CDN: t.CDN, Measurability: t.Measurability,
 		ASCountry: t.ASCountry, ASName: t.ASName,
+		CertIssuer: t.CertIssuer, CertNotAfter: formatCertExpiry(t.CertNotAfter),
 	}
+}
+
+// formatCertExpiry prints a date rather than a timestamp: "when does this
+// lapse" is a day-scale question, and an empty value means the last probe was
+// not TLS.
+func formatCertExpiry(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format("2006-01-02")
 }
 
 // badgeFor is the corner marker from DESIGN.md §10.2: the stage or status that
@@ -600,6 +613,8 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 			{"AS country", displayOr(t.ASCountry, "not learned yet")},
 			{"Prefix", displayOr(t.Prefix, "not learned yet")},
 			{"CDN", displayOr(t.CDN, "not learned yet")},
+			{"Certificate issuer", displayOr(t.CertIssuer, "not a TLS probe")},
+			{"Certificate expires", displayOr(formatCertExpiry(t.CertNotAfter), "not a TLS probe")},
 			{"Measurability", displayOr(t.Measurability, "ok")},
 		}
 

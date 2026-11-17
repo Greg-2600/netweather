@@ -30,6 +30,9 @@ type Probe struct {
 	Confidence string
 	Detail     string
 	Reason     string
+	// TLS observations only. Zero values mean "not a TLS probe", not "unknown".
+	CertIssuer   string
+	CertNotAfter time.Time
 }
 
 // Target is the persisted materialisation of a config entry.
@@ -124,12 +127,15 @@ func recordOne(ctx context.Context, tx *sql.Tx, p Probe) error {
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO probe (
 			target_id, vantage_id, ts, bucket_30s, state, stage, error_class,
-			http_status, latency_ms, family, cdn, asn, confidence, detail
+			http_status, latency_ms, family, cdn, asn, confidence, detail,
+			cert_issuer, cert_not_after
 		) VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, 0), NULLIF(?, 0),
-		          NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, 0), ?, NULLIF(?, ''))`,
+		          NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, 0), ?, NULLIF(?, ''),
+		          NULLIF(?, ''), NULLIF(?, 0))`,
 		p.TargetID, p.VantageID, ts, ts/30000, string(p.State), p.Stage,
 		p.ErrorClass, p.HTTPStatus, p.LatencyMS, p.Family, p.CDN, p.ASN,
-		confidenceOrDefault(p.Confidence), detail); err != nil {
+		confidenceOrDefault(p.Confidence), detail,
+		p.CertIssuer, certExpiry(p.CertNotAfter)); err != nil {
 		return fmt.Errorf("store: probe %s: %w", p.TargetID, err)
 	}
 
@@ -286,6 +292,15 @@ func nullInt(v int) any {
 		return nil
 	}
 	return v
+}
+
+// certExpiry stores a zero time as NULL: "not a TLS probe" and "expires at the
+// epoch" are different claims.
+func certExpiry(t time.Time) any {
+	if t.IsZero() {
+		return nil
+	}
+	return t.UnixMilli()
 }
 
 // sanitizeDetail enforces the 200-byte, control-character-free contract from

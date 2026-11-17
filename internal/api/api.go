@@ -343,6 +343,10 @@ type targetItem struct {
 	Country string `json:"country,omitempty"`
 	State   string `json:"state"`
 	Since   string `json:"since,omitempty"`
+	// Certificate observations from the last TLS probe. Absent for non-TLS
+	// targets, never guessed.
+	CertIssuer   string `json:"cert_issuer,omitempty"`
+	CertNotAfter string `json:"cert_not_after,omitempty"`
 }
 
 // handleTargets is the filtered list. Unknown class/sector/country values are
@@ -389,6 +393,7 @@ func (s *server) handleTargets(w http.ResponseWriter, r *http.Request) {
 		item := targetItem{
 			ID: t.ID, Name: t.Name, Host: t.Host, Class: t.Class,
 			Sector: t.Sector, Country: t.Country, State: string(t.State),
+			CertIssuer: t.CertIssuer, CertNotAfter: certNotAfterJSON(t.CertNotAfter),
 		}
 		if !t.Since.IsZero() {
 			item.Since = t.Since.UTC().Format(time.RFC3339)
@@ -534,12 +539,22 @@ func (s *server) serveTarget(w http.ResponseWriter, r *http.Request, id string) 
 	item := targetItem{
 		ID: row.ID, Name: row.Name, Host: row.Host, Class: row.Class,
 		Sector: row.Sector, Country: row.Country, State: string(row.State),
+		CertIssuer: row.CertIssuer, CertNotAfter: certNotAfterJSON(row.CertNotAfter),
 	}
 	if !row.Since.IsZero() {
 		item.Since = row.Since.UTC().Format(time.RFC3339)
 	}
 
 	writeData(w, r, item, nil)
+}
+
+// certNotAfterJSON formats a certificate expiry for the API, leaving it absent
+// when the last probe was not TLS.
+func certNotAfterJSON(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
 }
 
 func (s *server) serveProbes(w http.ResponseWriter, r *http.Request, id string) {

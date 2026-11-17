@@ -67,8 +67,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 10 {
-		t.Errorf("schema version = %d, want 10", stats.SchemaVersion)
+	if stats.SchemaVersion != 11 {
+		t.Errorf("schema version = %d, want 11", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -96,7 +96,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 10 {
+	if err != nil || version != 11 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -1710,5 +1710,60 @@ func TestCorroborationMatchesScopeAndWindow(t *testing.T) {
 		if e.ExternalID == "late" {
 			t.Fatalf("an event after the close leaked in: %+v", got)
 		}
+	}
+}
+
+func TestCertificateObservationsRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	tlsProbe := probeAt(now, state.Up)
+	tlsProbe.Stage = "tls"
+	tlsProbe.CertIssuer = "CN=R11,O=Let's Encrypt,C=US"
+	tlsProbe.CertNotAfter = now.Add(60 * 24 * time.Hour)
+
+	if err := s.Record(ctx, []store.Probe{tlsProbe}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := s.TargetsWithState(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := rows[0]
+	if got.CertIssuer != tlsProbe.CertIssuer {
+		t.Fatalf("issuer = %q", got.CertIssuer)
+	}
+	if !got.CertNotAfter.Equal(tlsProbe.CertNotAfter) {
+		t.Fatalf("not_after = %v, want %v", got.CertNotAfter, tlsProbe.CertNotAfter)
+	}
+
+	// The detail query carries the same observation, and the stage.
+	row, err := s.TargetByID(ctx, "local", "t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.CertIssuer != tlsProbe.CertIssuer || !row.CertNotAfter.Equal(tlsProbe.CertNotAfter) {
+		t.Fatalf("detail cert = %q %v", row.CertIssuer, row.CertNotAfter)
+	}
+	if row.Stage != "tls" {
+		t.Fatalf("detail stage = %q", row.Stage)
+	}
+
+	// A later non-TLS probe must not resurrect the old certificate.
+	plain := probeAt(now.Add(time.Minute), state.Up)
+	if err := s.Record(ctx, []store.Probe{plain}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = s.TargetsWithState(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows[0].CertIssuer != "" || !rows[0].CertNotAfter.IsZero() {
+		t.Fatalf("a non-TLS probe carried a certificate: %+v", rows[0])
 	}
 }

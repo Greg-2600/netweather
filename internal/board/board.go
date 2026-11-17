@@ -52,6 +52,9 @@ type Target struct {
 	ASCountry     string
 	ASName        string
 	Measurability string
+	// Leaf certificate from the last TLS observation.
+	CertIssuer   string
+	CertNotAfter time.Time
 }
 
 // Source returns the current board. It must be safe for concurrent use.
