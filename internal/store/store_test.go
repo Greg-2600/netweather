@@ -583,3 +583,53 @@ func TestIncidentByIDMissing(t *testing.T) {
 		t.Fatal("missing incident should be an error")
 	}
 }
+
+func TestCloseIncident(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+
+	inc := store.Incident{
+		ID: "inc-close", OpenedAt: now, Verdict: "INCIDENT",
+		Scope: "sector", ScopeValue: "airline", Headline: "x", Confidence: "high",
+	}
+	if err := s.OpenIncident(ctx, inc, []string{"t1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	closedAt := now.Add(10 * time.Minute)
+	if err := s.CloseIncident(ctx, "inc-close", "cluster cleared", closedAt); err != nil {
+		t.Fatal(err)
+	}
+
+	if open, _ := s.HasOpenIncident(ctx, "sector", "airline"); open {
+		t.Fatal("incident still reported open")
+	}
+
+	openList, err := s.OpenIncidents(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(openList) != 0 {
+		t.Fatalf("open incidents = %d", len(openList))
+	}
+
+	all, err := s.Incidents(ctx, false, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 1 {
+		t.Fatalf("incidents = %d", len(all))
+	}
+	if all[0].ClosedAt.IsZero() || all[0].ClosedReason != "cluster cleared" {
+		t.Fatalf("closed incident = %+v", all[0])
+	}
+
+	// Closing twice is a no-op, not an error.
+	if err := s.CloseIncident(ctx, "inc-close", "again", closedAt); err != nil {
+		t.Fatalf("second close: %v", err)
+	}
+}

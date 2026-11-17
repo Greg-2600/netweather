@@ -25,17 +25,16 @@ type Sink interface {
 	OpenIncident(ctx context.Context, inc store.Incident, targetIDs []string, attrs []store.Attribution) error
 }
 
-// Evaluate runs one detection cycle. It returns the opened incident, or false
-// when nothing cleared the gates or the cluster was already open.
-func Evaluate(ctx context.Context, src Source, sink Sink, vantage string, now time.Time) (store.Incident, bool, error) {
-	observations, err := src.Observations(ctx, vantage)
-	if err != nil {
-		return store.Incident{}, false, err
-	}
+// Reconciler is the close side: it lists open incidents and closes them.
+type Reconciler interface {
+	OpenIncidents(ctx context.Context) ([]store.Incident, error)
+	CloseIncident(ctx context.Context, id, reason string, at time.Time) error
+}
 
-	correlated := make([]correlate.Observation, 0, len(observations))
+func toCorrelate(observations []store.Observation) []correlate.Observation {
+	out := make([]correlate.Observation, 0, len(observations))
 	for _, o := range observations {
-		correlated = append(correlated, correlate.Observation{
+		out = append(out, correlate.Observation{
 			TargetID: o.TargetID,
 			CDN:      o.CDN,
 			ASN:      o.ASN,
@@ -46,6 +45,18 @@ func Evaluate(ctx context.Context, src Source, sink Sink, vantage string, now ti
 			Failing:  o.Failing,
 		})
 	}
+	return out
+}
+
+// Evaluate runs one detection cycle. It returns the opened incident, or false
+// when nothing cleared the gates or the cluster was already open.
+func Evaluate(ctx context.Context, src Source, sink Sink, vantage string, now time.Time) (store.Incident, bool, error) {
+	observations, err := src.Observations(ctx, vantage)
+	if err != nil {
+		return store.Incident{}, false, err
+	}
+
+	correlated := toCorrelate(observations)
 
 	ranked := correlate.Rank(correlated)
 	var winner correlate.Candidate
@@ -123,9 +134,47 @@ func NewID() string {
 	return "inc-" + hex.EncodeToString(b[:])
 }
 
+// Reconcile closes open incidents whose cluster no longer clears the gates. An
+// incident stays open while its scope/value still appears among passing
+// candidates, even if the failing targets changed.
+func Reconcile(ctx context.Context, src Source, sink Reconciler, vantage string, now time.Time) (int, error) {
+	open, err := sink.OpenIncidents(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if len(open) == 0 {
+		return 0, nil
+	}
+
+	observations, err := src.Observations(ctx, vantage)
+	if err != nil {
+		return 0, err
+	}
+
+	passing := make(map[string]struct{})
+	for _, c := range correlate.Rank(toCorrelate(observations)) {
+		if c.Passes() {
+			passing[string(c.Dimension)+"|"+c.Value] = struct{}{}
+		}
+	}
+
+	closed := 0
+	for _, inc := range open {
+		key := inc.Scope + "|" + inc.ScopeValue
+		if _, still := passing[key]; still {
+			continue
+		}
+		if err := sink.CloseIncident(ctx, inc.ID, "cluster cleared", now); err != nil {
+			return closed, err
+		}
+		closed++
+	}
+	return closed, nil
+}
+
 // Loop evaluates every interval until ctx is done. A single failed evaluation is
 // logged and retried on the next tick; it never stops the loop.
-func Loop(ctx context.Context, src Source, sink Sink, vantage string, every time.Duration, logger *slog.Logger) {
+func Loop(ctx context.Context, src Source, sink Sink, reconciler Reconciler, vantage string, every time.Duration, logger *slog.Logger) {
 	if every <= 0 {
 		every = 5 * time.Minute
 	}
@@ -156,6 +205,17 @@ func Loop(ctx context.Context, src Source, sink Sink, vantage string, every time
 					"value", inc.ScopeValue,
 					"headline", inc.Headline,
 				)
+			}
+
+			closed, err := Reconcile(ctx, src, reconciler, vantage, time.Now())
+			if err != nil {
+				logger.Warn("incident reconciliation failed",
+					"event", "incident_reconcile_failed", "component", "incidents", "error", err)
+				continue
+			}
+			if closed > 0 {
+				logger.Info("incidents closed",
+					"event", "incidents_closed", "component", "incidents", "count", closed)
 			}
 		}
 	}

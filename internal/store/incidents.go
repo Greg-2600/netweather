@@ -149,6 +149,24 @@ func (s *Store) OpenIncident(ctx context.Context, inc Incident, targetIDs []stri
 	return nil
 }
 
+// OpenIncidents returns unclosed incidents, newest first. The detector uses it
+// to avoid reopening a cluster that is already being tracked.
+func (s *Store) OpenIncidents(ctx context.Context) ([]Incident, error) {
+	return s.Incidents(ctx, true, 200)
+}
+
+// CloseIncident closes an incident. Closing an already-closed incident is a
+// no-op, not an error: reconciliation may race with a manual close.
+func (s *Store) CloseIncident(ctx context.Context, id, reason string, at time.Time) error {
+	_, err := s.writer.ExecContext(ctx, `
+		UPDATE incident SET closed_at = ?, closed_reason = ?
+		WHERE id = ? AND closed_at IS NULL`, at.UnixMilli(), reason, id)
+	if err != nil {
+		return fmt.Errorf("store: close incident: %w", err)
+	}
+	return nil
+}
+
 // Incidents lists incidents newest first; openOnly filters to unclosed ones.
 func (s *Store) Incidents(ctx context.Context, openOnly bool, limit int) ([]Incident, error) {
 	if limit <= 0 {

@@ -195,7 +195,7 @@ func serve(lg *logging.Logger) error {
 			incidentInterval = d
 		}
 	}
-	go incidents.Loop(ctx, st, st, "local", incidentInterval, lg.Logger)
+	go incidents.Loop(ctx, st, st, st, "local", incidentInterval, lg.Logger)
 
 	go func() {
 		<-ctx.Done()

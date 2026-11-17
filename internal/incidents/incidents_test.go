@@ -26,6 +26,7 @@ type fakeSink struct {
 	incidents []store.Incident
 	targets   [][]string
 	attrs     [][]store.Attribution
+	closed    []string
 	err       error
 }
 
@@ -49,6 +50,26 @@ func (f *fakeSink) OpenIncident(_ context.Context, inc store.Incident, targetIDs
 	f.targets = append(f.targets, targetIDs)
 	f.attrs = append(f.attrs, attrs)
 	f.open[inc.Scope+"|"+inc.ScopeValue] = true
+	return nil
+}
+
+func (f *fakeSink) OpenIncidents(context.Context) ([]store.Incident, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]store.Incident(nil), f.incidents...), nil
+}
+
+func (f *fakeSink) CloseIncident(_ context.Context, id, _ string, _ time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.closed = append(f.closed, id)
+	for i, inc := range f.incidents {
+		if inc.ID == id {
+			delete(f.open, inc.Scope+"|"+inc.ScopeValue)
+			f.incidents = append(f.incidents[:i], f.incidents[i+1:]...)
+			break
+		}
+	}
 	return nil
 }
 
@@ -178,14 +199,68 @@ func TestNewIDIsUnique(t *testing.T) {
 	}
 }
 
+func TestReconcileClosesClearedCluster(t *testing.T) {
+	t.Parallel()
+
+	sink := newSink()
+	sink.incidents = []store.Incident{{ID: "inc-1", Scope: "sector", ScopeValue: "airline"}}
+
+	src := &fakeSource{obs: airlineFailures(0, 6)}
+	closed, err := incidents.Reconcile(context.Background(), src, sink, "local", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if closed != 1 || len(sink.closed) != 1 || sink.closed[0] != "inc-1" {
+		t.Fatalf("closed = %d, ids = %v", closed, sink.closed)
+	}
+}
+
+func TestReconcileKeepsAnActiveCluster(t *testing.T) {
+	t.Parallel()
+
+	sink := newSink()
+	sink.incidents = []store.Incident{{ID: "inc-1", Scope: "sector", ScopeValue: "airline"}}
+
+	src := &fakeSource{obs: airlineFailures(5, 6)}
+	closed, err := incidents.Reconcile(context.Background(), src, sink, "local", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if closed != 0 || len(sink.closed) != 0 {
+		t.Fatalf("closed = %d, ids = %v", closed, sink.closed)
+	}
+}
+
+func TestReconcileWithNothingOpen(t *testing.T) {
+	t.Parallel()
+
+	closed, err := incidents.Reconcile(context.Background(), &fakeSource{}, newSink(), "local", time.Now())
+	if err != nil || closed != 0 {
+		t.Fatalf("closed = %d, err = %v", closed, err)
+	}
+}
+
+func TestReconcilePropagatesSourceFailure(t *testing.T) {
+	t.Parallel()
+
+	sink := newSink()
+	sink.incidents = []store.Incident{{ID: "inc-1", Scope: "sector", ScopeValue: "airline"}}
+
+	src := &fakeSource{err: errors.New("store down")}
+	if _, err := incidents.Reconcile(context.Background(), src, sink, "local", time.Now()); err == nil {
+		t.Fatal("a source failure must surface")
+	}
+}
+
 func TestLoopStopsOnCancel(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
+	sink := newSink()
 
 	go func() {
-		incidents.Loop(ctx, &fakeSource{obs: airlineFailures(5, 6)}, newSink(), "local", time.Millisecond, nil)
+		incidents.Loop(ctx, &fakeSource{obs: airlineFailures(5, 6)}, sink, sink, "local", time.Millisecond, nil)
 		close(done)
 	}()
 
