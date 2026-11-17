@@ -7,10 +7,18 @@ import (
 	"github.com/Greg-2600/netweather/internal/state"
 )
 
-// StateCounts returns the number of targets per state for one vantage.
+// StateCounts returns the number of enabled targets per state for one vantage.
+// A target disabled by a config reload keeps its history and its last state,
+// but it is not part of the live fleet: the IHI, the verdict, the fleet line,
+// and the metrics all read this, so an included disabled row would outlive its
+// target in every summary.
 func (s *Store) StateCounts(ctx context.Context, vantageID string) (map[state.State]int, error) {
 	rows, err := s.reader.QueryContext(ctx, `
-		SELECT state, COUNT(*) FROM target_state WHERE vantage_id = ? GROUP BY state`,
+		SELECT ts.state, COUNT(*)
+		FROM target_state ts
+		JOIN target t ON t.id = ts.target_id AND t.enabled = 1
+		WHERE ts.vantage_id = ?
+		GROUP BY ts.state`,
 		vantageID)
 	if err != nil {
 		return nil, fmt.Errorf("store: state counts: %w", err)

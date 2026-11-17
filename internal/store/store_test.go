@@ -3724,3 +3724,46 @@ func TestRefreshMeasurability(t *testing.T) {
 		}
 	}
 }
+
+func TestStateCountsExcludesDisabledTargets(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	if err := s.UpsertTarget(ctx, store.Target{
+		ID: "t2", Host: "united.com", Port: 443, Probe: "http",
+		Name: "United", Class: "service", Tier: 2, IntervalS: 300,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	up := probeAt(base, state.Up)
+	down := probeAt(base, state.Down)
+	down.TargetID = "t2"
+	if err := s.Record(ctx, []store.Probe{up, down}); err != nil {
+		t.Fatal(err)
+	}
+	counts, err := s.StateCounts(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts[state.Up] != 1 || counts[state.Down] != 1 {
+		t.Fatalf("counts = %v, want one up and one down", counts)
+	}
+
+	// A config reload disables a removed target; its history stays, but no
+	// summary should keep counting it.
+	if err := s.DisableTarget(ctx, "t2"); err != nil {
+		t.Fatal(err)
+	}
+	counts, err = s.StateCounts(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts[state.Up] != 1 || counts[state.Down] != 0 {
+		t.Fatalf("counts after disable = %v, want only the enabled target", counts)
+	}
+}
