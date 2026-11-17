@@ -181,6 +181,28 @@ func (d *Detector) Push(health float64, s Stats) (bool, string) {
 	return true, "below baseline for two consecutive buckets"
 }
 
+// PushFloor implements the absolute floor used while a scope is LEARNING
+// (DESIGN.md §7.2): two consecutive evaluations below the floor trigger, with
+// no baseline comparison at all. The floor depends on the scope kind (0.90 for
+// global, 0.75 for a sector), so the caller supplies it.
+//
+// It is a separate method rather than a synthetic Stats because "no baseline
+// exists" is exactly the case a Stats cannot represent: a fabricated median
+// would make the trigger look statistical when it is not.
+func (d *Detector) PushFloor(health, floor float64) (bool, string) {
+	d.last = append(d.last, health)
+	if len(d.last) > 2 {
+		d.last = d.last[1:]
+	}
+	if len(d.last) < 2 {
+		return false, ""
+	}
+	if d.last[0] < floor && d.last[1] < floor {
+		return true, "below the absolute floor for two consecutive buckets while learning"
+	}
+	return false, ""
+}
+
 // Reset clears the consecutive-bucket state.
 func (d *Detector) Reset() { d.last = nil }
 

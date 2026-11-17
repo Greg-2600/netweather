@@ -119,6 +119,39 @@ func (e *Evaluator) Evaluate(ctx context.Context) (int, error) {
 		}
 		stats := baseline.Compute(history)
 		if !stats.Usable() {
+			// DESIGN.md §7.2's LEARNING row: with no usable baseline the
+			// detector still applies an absolute floor, so a monitor does not
+			// wait 21 weeks before saying that half the internet is down. It
+			// stays an anomaly, not an incident: §3.3 says LEARNING never
+			// emits INCIDENT.
+			floor, ok := learningFloor(ref.Scope)
+			if !ok {
+				continue
+			}
+			detector := e.detector(key)
+			fired, _ := detector.PushFloor(health, floor)
+			if !fired {
+				continue
+			}
+			detector.Reset()
+
+			if last, ok := e.last[key]; ok && now.Sub(last) < e.cooldown() {
+				continue
+			}
+			e.last[key] = now
+
+			if err := e.Sink.RecordAnomaly(ctx, store.Anomaly{
+				TS:         now,
+				Scope:      ref.Scope,
+				ScopeValue: ref.Value,
+				Kind:       "health_floor",
+				Observed:   health,
+				Baseline:   floor,
+				Buckets:    2,
+			}); err != nil {
+				return triggered, fmt.Errorf("anomaly: record floor: %w", err)
+			}
+			triggered++
 			continue
 		}
 
@@ -169,6 +202,20 @@ func (e *Evaluator) now() time.Time {
 		return time.Now()
 	}
 	return e.Now()
+}
+
+// learningFloor is the absolute health floor used while a scope's hour-of-week
+// baseline is not yet usable (DESIGN.md §7.2). Only the two scopes with a
+// documented floor get one: a country or ASN with no baseline stays silent
+// rather than being judged against a number the design never gave it.
+func learningFloor(scope string) (float64, bool) {
+	switch scope {
+	case "global":
+		return 0.90, true
+	case "sector":
+		return 0.75, true
+	}
+	return 0, false
 }
 
 func (e *Evaluator) cooldown() time.Duration {

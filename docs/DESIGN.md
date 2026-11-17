@@ -522,8 +522,10 @@ The global token bucket additionally ramps from 2 req/s to the configured ceilin
 | Age | Mode | Detection | UI |
 |---|---|---|---|
 | < 1 full cycle | `STARTING` | none | skeleton |
-| 1 cycle – 28 days | `LEARNING` | absolute floor only: global health < 90%, sector < 75%, 2 consecutive buckets | "learning — 12/28 days, no incidents yet" |
+| 1 cycle – 28 weeks | `LEARNING` | absolute floor only: global health < 90%, sector < 75%, 2 consecutive buckets | "learning — 12/28 samples, no incidents yet" |
 | 28 weeks | normal | baseline-relative (7.2) | normal |
+
+**Implemented:** the absolute-floor row is real, not aspirational. `internal/anomaly` runs the floor whenever a scope's history is below the 21-of-28 usability threshold: a global health share under 0.90 or a sector under 0.75 on two consecutive evaluations records an anomaly with kind `health_floor` and the floor as its baseline. Country and ASN scopes get no floor, because the design gives them none, and the detector stays silent rather than inventing a number. It remains an anomaly, never an `INCIDENT` or an opened incident, which is what the next paragraph requires.
 
 `LEARNING` never emits `INCIDENT`. It can still emit `STALE`, `LOCAL`, and `TAMPER`, because none of those depend on a baseline. The mode is tracked **per scope**, not globally: a newly added sector is in `LEARNING` while the rest of the board is not, and the confidence badge follows the scope, not the process.
 

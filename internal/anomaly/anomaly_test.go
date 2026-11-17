@@ -127,7 +127,9 @@ func TestEvaluateTriggersAfterTwoBuckets(t *testing.T) {
 func TestEvaluateStaysSilentWhileLearning(t *testing.T) {
 	t.Parallel()
 
-	src := newSource(map[state.State]int{state.Up: 40, state.Down: 10})
+	// Above the global absolute floor: a young baseline must not invent an
+	// incident from an ordinary wobble (DESIGN.md §7.2).
+	src := newSource(map[state.State]int{state.Up: 47, state.Down: 3}) // health 0.94
 	src.history["global|"] = normalHistory()[:10]
 	sink := &fakeSink{}
 
