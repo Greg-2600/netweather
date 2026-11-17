@@ -3,19 +3,22 @@ package store
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/dnsdiv"
 )
 
 // RecordDNSAnswer folds one resolver's observation into its baseline. Only
-// successful addresses are stored: the baseline answers "what did this resolver
+// successful answers are stored: the baseline answers "what did this resolver
 // say last time", and a failure says nothing about that (CLASSIFIER.md §3.2).
+// Addresses are the primary key; the origin ASNs and CNAME suffixes recorded
+// alongside them are the hosting labels the divergence rule needs.
 func (s *Store) RecordDNSAnswer(ctx context.Context, targetID string, ans dnsdiv.Answer) error {
 	if ans.Resolver == "" {
 		return fmt.Errorf("store: dns answer needs a resolver")
 	}
-	if len(ans.Addresses) == 0 {
+	if len(ans.Addresses) == 0 && len(ans.ASNs) == 0 && len(ans.CNAMESuffixes) == 0 {
 		return nil
 	}
 
@@ -30,34 +33,55 @@ func (s *Store) RecordDNSAnswer(ctx context.Context, targetID string, ans dnsdiv
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	for _, addr := range ans.Addresses {
-		if addr == "" {
-			continue
+	record := func(kind, value string) error {
+		if value == "" {
+			return nil
 		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO dns_observation (target_id, resolver, kind, value, first_seen, last_seen)
-			VALUES (?, ?, 'address', ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?)
 			ON CONFLICT (target_id, resolver, kind, value) DO UPDATE SET
 				last_seen = excluded.last_seen`,
-			targetID, ans.Resolver, addr, now, now); err != nil {
+			targetID, ans.Resolver, kind, value, now, now); err != nil {
 			return fmt.Errorf("store: dns answer %q: %w", targetID, err)
 		}
+		return nil
 	}
+
+	for _, addr := range ans.Addresses {
+		if err := record("address", addr); err != nil {
+			return err
+		}
+	}
+	for _, asn := range ans.ASNs {
+		if asn <= 0 {
+			continue
+		}
+		if err := record("asn", strconv.Itoa(asn)); err != nil {
+			return err
+		}
+	}
+	for _, suffix := range ans.CNAMESuffixes {
+		if err := record("cname_suffix", suffix); err != nil {
+			return err
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("store: dns answer: %w", err)
 	}
 	return nil
 }
 
-// DNSBaselines returns each resolver's learned address set within the window.
-// A resolver with no rows is simply absent, which the engine treats as
-// "learning", never as a deviation.
+// DNSBaselines returns each resolver's learned address, ASN, and hosting-suffix
+// sets within the window. A resolver with no rows is simply absent, which the
+// engine treats as "learning", never as a deviation.
 func (s *Store) DNSBaselines(ctx context.Context, targetID string, since time.Time) (map[string]dnsdiv.Baseline, error) {
 	rows, err := s.reader.QueryContext(ctx, `
-		SELECT resolver, value, last_seen
+		SELECT resolver, kind, value, last_seen
 		FROM dns_observation
-		WHERE target_id = ? AND kind = 'address' AND last_seen >= ?
-		ORDER BY resolver, value`, targetID, since.UnixMilli())
+		WHERE target_id = ? AND last_seen >= ?
+		ORDER BY resolver, kind, value`, targetID, since.UnixMilli())
 	if err != nil {
 		return nil, fmt.Errorf("store: dns baselines: %w", err)
 	}
@@ -67,18 +91,36 @@ func (s *Store) DNSBaselines(ctx context.Context, targetID string, since time.Ti
 	for rows.Next() {
 		var (
 			resolver string
+			kind     string
 			value    string
 			lastSeen int64
 		)
-		if err := rows.Scan(&resolver, &value, &lastSeen); err != nil {
+		if err := rows.Scan(&resolver, &kind, &value, &lastSeen); err != nil {
 			return nil, fmt.Errorf("store: scan dns baseline: %w", err)
 		}
 		base := out[resolver]
-		if base.Addresses == nil {
-			base.Addresses = make(map[string]struct{})
+		switch kind {
+		case "asn":
+			asn, err := strconv.Atoi(value)
+			if err != nil || asn <= 0 {
+				continue
+			}
+			if base.ASNs == nil {
+				base.ASNs = make(map[int]struct{})
+			}
+			base.ASNs[asn] = struct{}{}
+		case "cname_suffix":
+			if base.CNAMESuffixes == nil {
+				base.CNAMESuffixes = make(map[string]struct{})
+			}
+			base.CNAMESuffixes[value] = struct{}{}
+		default:
+			if base.Addresses == nil {
+				base.Addresses = make(map[string]struct{})
+			}
+			base.Addresses[value] = struct{}{}
+			base.Samples++
 		}
-		base.Addresses[value] = struct{}{}
-		base.Samples++
 		at := time.UnixMilli(lastSeen).UTC()
 		if at.After(base.LastSeen) {
 			base.LastSeen = at

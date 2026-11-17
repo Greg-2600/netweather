@@ -112,14 +112,16 @@ Baselines are per-resolver, per-target, rebuilt on every answer, and reset when 
 
 **Do not** classify `dns_nxdomain` as DOWN when the other resolvers resolve the name. That is divergence, not an outage.
 
-**Implemented:** `internal/dnsdiv` is the pure rule engine and `internal/store` keeps the baselines. A DNS target may declare `resolvers:` (up to four `host:53` entries); the agent asks each one every probe, records each resolver's address set for seven days (pruned with the other retention work), and compares each answer only against that resolver's own history:
+**Implemented:** `internal/dnsdiv` is the pure rule engine and `internal/store` keeps the baselines. A DNS target may declare `resolvers:` (up to four `host:53` entries); the agent asks each one every probe, records each resolver's address set, origin ASNs, and CNAME hosting suffixes for seven days (pruned with the other retention work), and compares each answer only against that resolver's own history:
 
-- `NXDOMAIN` where the resolver answered within the window is **strong**; `NODATA`, `SERVFAIL`, and `REFUSED` are **medium**; a successful address outside the learned set is **weak** (CDN rotation, never a verdict). A timeout stays path health and is already the classifier's job.
+- `NXDOMAIN` where the resolver answered within the window is **strong**; `NODATA`, `SERVFAIL`, and `REFUSED` are **medium**; a timeout stays path health and is already the classifier's job.
+- A successful address that is already in the learned set is normal. A new address is **weak** unless its origin ASN and its hosting suffix are both already in that resolver's baseline, which is CDN edge rotation and is ignored. ASNs are looked up with Cymru only for addresses the resolver has never returned, capped at four per probe so a churny answer cannot become a TXT-query amplifier. The suffix is the last two labels of the CNAME chain: a label, not an eTLD+1, because without a public-suffix list "co.uk" would be wrong and this indicator never claims more than it is.
+- A weak signal is recorded but never carries the ladder on its own.
 - A target asked by three or more resolvers where exactly one deviates and the rest are clean treats that signal as strong, which is the "different answer from one resolver only" case.
 - The ladder is applied as written: two strong signals, or strong plus medium on the same target, is `TAMPER`; one strong is `DNS_ANOMALY`. A verdict is stored with its detail and resolvers, appears in the drawer as "DNS divergence", and is exposed on the target API. It never changes the tile's state.
 - When the primary resolver fails but another one answers, the recorded probe is `UNKNOWN` with `dns_divergence` rather than `DOWN`: our resolver or path is talking, not the name disappearing. When every resolver fails the same way, the normal `DOWN` stands.
 
-Still specified: the ASN-set, CNAME-suffix, and parent-delegation baselines, which need an authoritative query and an origin lookup per answer; and resetting baselines on `VANTAGE_CHANGED` (the address sets age out on the seven-day window instead). The collapsed "DNS observations" strip is implemented on the board: the newest verdicts, collapsed by default, with a failed query stated rather than silent.
+Still specified: the parent-delegation baseline, which needs an authoritative query per answer; and resetting baselines on `VANTAGE_CHANGED` (the learned sets age out on the seven-day window instead). The collapsed "DNS observations" strip is implemented on the board: the newest verdicts, collapsed by default, with a failed query stated rather than silent.
 
 ### 3.3 TCP
 

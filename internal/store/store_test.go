@@ -2444,6 +2444,33 @@ func TestDNSBaselinesAndDivergence(t *testing.T) {
 		t.Fatalf("windowed baseline = %+v", future["a:53"])
 	}
 
+	// Origin ASNs and hosting suffixes live in the same baseline, keyed by
+	// kind, and are read back into the sets the engine compares.
+	if err := s.RecordDNSAnswer(ctx, "t1", dnsdiv.Answer{
+		Resolver: "a:53", At: base,
+		Addresses:     []string{"192.0.2.9"},
+		ASNs:          []int{13335, 0},
+		CNAMESuffixes: []string{"cloudflare.net", "cloudflare.net", ""},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	withLabels, err := s.DNSBaselines(ctx, "t1", base.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := withLabels["a:53"].ASNs[13335]; !ok {
+		t.Fatalf("ASN set = %+v", withLabels["a:53"].ASNs)
+	}
+	if len(withLabels["a:53"].CNAMESuffixes) != 1 {
+		t.Fatalf("suffix set = %+v", withLabels["a:53"].CNAMESuffixes)
+	}
+	if _, dup := withLabels["a:53"].CNAMESuffixes[""]; dup {
+		t.Fatal("an empty suffix was stored")
+	}
+	if len(withLabels["a:53"].Addresses) != 3 {
+		t.Fatalf("address set = %+v", withLabels["a:53"].Addresses)
+	}
+
 	// An answer without a resolver is a programming error; no addresses is a
 	// legitimate no-op (a failure says nothing about the baseline).
 	if err := s.RecordDNSAnswer(ctx, "t1", dnsdiv.Answer{Addresses: []string{"192.0.2.9"}}); err == nil {

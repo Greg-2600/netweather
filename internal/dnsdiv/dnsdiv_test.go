@@ -173,3 +173,63 @@ func TestEvaluateIsDeterministicAndNamesResolvers(t *testing.T) {
 		t.Fatalf("resolvers = %q, want a stable sorted list", got)
 	}
 }
+
+func TestCompareUsesTheLearnedHostingLabels(t *testing.T) {
+	t.Parallel()
+
+	base := baseline("192.0.2.1")
+	base.ASNs = map[int]struct{}{13335: {}}
+	base.CNAMESuffixes = map[string]struct{}{"cloudflare.net": {}}
+
+	// A new address inside the learned ASN and suffix is CDN edge rotation.
+	got := dnsdiv.Compare(dnsdiv.Answer{
+		Resolver: "a", Addresses: []string{"192.0.2.9"},
+		ASNs: []int{13335}, CNAMESuffixes: []string{"cloudflare.net"},
+	}, base)
+	if got.Strength != dnsdiv.None {
+		t.Fatalf("known hosting = %v (%s), want no signal", got.Strength, got.Reason)
+	}
+
+	// A new origin ASN is new hosting or interception: weak, never a verdict.
+	got = dnsdiv.Compare(dnsdiv.Answer{
+		Resolver: "a", Addresses: []string{"192.0.2.9"},
+		ASNs: []int{64500}, CNAMESuffixes: []string{"cloudflare.net"},
+	}, base)
+	if got.Strength != dnsdiv.Weak || !strings.Contains(got.Reason, "ASN") {
+		t.Fatalf("new ASN = %v (%s), want a weak ASN signal", got.Strength, got.Reason)
+	}
+
+	// A new suffix under a known ASN is new hosting too.
+	got = dnsdiv.Compare(dnsdiv.Answer{
+		Resolver: "a", Addresses: []string{"192.0.2.9"},
+		ASNs: []int{13335}, CNAMESuffixes: []string{"other.example"},
+	}, base)
+	if got.Strength != dnsdiv.Weak || !strings.Contains(got.Reason, "suffix") {
+		t.Fatalf("new suffix = %v (%s), want a weak suffix signal", got.Strength, got.Reason)
+	}
+
+	// No lookup means the labels cannot vouch for the address.
+	got = dnsdiv.Compare(dnsdiv.Answer{
+		Resolver: "a", Addresses: []string{"192.0.2.9"},
+	}, base)
+	if got.Strength != dnsdiv.Weak {
+		t.Fatalf("unlabelled new address = %v, want weak", got.Strength)
+	}
+}
+
+func TestRegistrableSuffix(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct{ in, want string }{
+		{"foo.cloudfront.net.", "cloudfront.net"},
+		{"CLOUDFRONT.NET", "cloudfront.net"},
+		{"edge.foo.bar.example.com", "example.com"},
+		{"localhost", "localhost"},
+		{"", ""},
+	}
+	for _, tc := range tests {
+		if got := dnsdiv.RegistrableSuffix(tc.in); got != tc.want {
+			t.Errorf("RegistrableSuffix(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}

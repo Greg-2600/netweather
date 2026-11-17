@@ -650,6 +650,13 @@ func newAgent(targets []agent.Target, st *store.Store, lg *logging.Logger) *agen
 	ag.DNSQuery = func(ctx context.Context, server, name string) probe.DNSResult {
 		return instruments.DNS.Do(ctx, server, name)
 	}
+	// Origin ASNs for new DNS answers, so a CDN rotation inside a known
+	// network is not treated as new hosting (CLASSIFIER.md §3.2).
+	asnResolver := cymruResolver()
+	ag.LookupASN = func(ctx context.Context, addr netip.Addr) (int, error) {
+		asn, _, err := enrich.ASN(ctx, asnResolver, addr)
+		return asn, err
+	}
 	return ag
 }
 
@@ -1061,13 +1068,20 @@ const (
 // cymruLookup returns an ASN and country resolver for an egress address. The
 // query goes to one well-known resolver over the guarded dialer, so the host's
 // resolver is not part of the measurement.
-func cymruLookup() func(context.Context, netip.Addr) (int, string) {
-	resolver := &net.Resolver{
+// cymruResolver returns a resolver that sends its queries to one well-known
+// server over the guarded dialer, so the host's resolver is not part of the
+// measurement.
+func cymruResolver() *net.Resolver {
+	return &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return netx.New().DialContext(ctx, "udp", "1.1.1.1:53")
 		},
 	}
+}
+
+func cymruLookup() func(context.Context, netip.Addr) (int, string) {
+	resolver := cymruResolver()
 	return func(ctx context.Context, addr netip.Addr) (int, string) {
 		asn, _, err := enrich.ASN(ctx, resolver, addr)
 		if err != nil {

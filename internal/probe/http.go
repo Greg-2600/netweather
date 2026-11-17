@@ -58,7 +58,10 @@ type Result struct {
 	CertLeafFingerprint string
 	// Addresses is set only by the DNS instrument: the A/AAAA answers. The
 	// divergence path needs them, and the classifier does not.
-	Addresses  []netip.Addr
+	Addresses []netip.Addr
+	// CNAMEs is the answer-section CNAME chain, used for the divergence
+	// baseline s hosting label.
+	CNAMEs     []string
 	ErrorClass string
 	Err        error
 }

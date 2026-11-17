@@ -20,14 +20,24 @@ import (
 type Answer struct {
 	Resolver  string
 	Addresses []string
-	Failure   string
-	At        time.Time
+	// ASNs are the origin ASNs for the addresses, when the caller looked them
+	// up. Empty means "not looked up", which is not the same as "no ASN".
+	ASNs []int
+	// CNAMESuffixes are the registrable suffixes of the answer-section CNAME
+	// chain, e.g. "cloudfront.net".
+	CNAMESuffixes []string
+	Failure       string
+	At            time.Time
 }
 
 // Baseline is what one resolver has done for one target.
 type Baseline struct {
 	// Addresses is the set of addresses this resolver has returned.
 	Addresses map[string]struct{}
+	// ASNs is the set of origin ASNs seen for those addresses.
+	ASNs map[int]struct{}
+	// CNAMESuffixes is the set of hosting suffixes seen in the CNAME chain.
+	CNAMESuffixes map[string]struct{}
 	// Samples is how many learned address rows exist.
 	Samples int
 	// LastSeen is the newest observation of the baseline.
@@ -73,13 +83,36 @@ func Compare(a Answer, b Baseline) Signal {
 		if !answeredBefore {
 			return signal
 		}
+		newAddress := false
 		for _, addr := range a.Addresses {
-			if _, known := b.Addresses[addr]; known {
-				return signal
+			if _, known := b.Addresses[addr]; !known {
+				newAddress = true
+				break
 			}
 		}
-		// An unknown address is weak: CDN edge rotation is the normal case,
-		// and this package cannot see the ASN or CNAME suffix yet.
+		if !newAddress {
+			return signal
+		}
+		// A new address is normal when both the origin ASN and the hosting
+		// suffix are already in the baseline: that is CDN edge rotation. Any
+		// ASN or suffix this resolver has never shown is weak, because it is
+		// either new hosting or interception and this rule cannot tell them
+		// apart.
+		if len(b.ASNs) > 0 && len(a.ASNs) > 0 {
+			for _, asn := range a.ASNs {
+				if _, known := b.ASNs[asn]; !known {
+					signal.Strength = Weak
+					signal.Reason = "address outside the learned ASN set"
+					return signal
+				}
+			}
+			if len(b.CNAMESuffixes) > 0 && !anySuffixKnown(a.CNAMESuffixes, b.CNAMESuffixes) {
+				signal.Strength = Weak
+				signal.Reason = "address behind a new hosting suffix"
+				return signal
+			}
+			return signal
+		}
 		signal.Strength = Weak
 		signal.Reason = "address outside the learned set"
 		return signal
@@ -212,4 +245,28 @@ func (v Verdict) Resolvers() string {
 	}
 	sort.Strings(names)
 	return strings.Join(names, ",")
+}
+
+// anySuffixKnown reports whether one of the observed suffixes is already in the
+// baseline set.
+func anySuffixKnown(observed []string, baseline map[string]struct{}) bool {
+	for _, suffix := range observed {
+		if _, ok := baseline[suffix]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// RegistrableSuffix returns the last two labels of a DNS name, lower-cased and
+// without a trailing dot. It is a label, not an eTLD+1: without a public-suffix
+// list "co.uk" would be wrong, but for a hosting indicator the last two labels
+// are stable and good enough, and they never claim more than they are.
+func RegistrableSuffix(name string) string {
+	name = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(name), "."))
+	parts := strings.Split(name, ".")
+	if len(parts) < 2 {
+		return name
+	}
+	return strings.Join(parts[len(parts)-2:], ".")
 }

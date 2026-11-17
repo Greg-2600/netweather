@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"net/netip"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -88,7 +89,7 @@ func (i Instruments) Run(ctx context.Context, t Target) probe.Result {
 		r := i.DNS.Do(ctx, t.Address, t.Query)
 		return probe.Result{
 			Latency: r.Latency, ErrorClass: r.ErrorClass, Err: r.Err,
-			Addresses: r.Addresses,
+			Addresses: r.Addresses, CNAMEs: r.CNAMEs,
 		}
 	case "ntp":
 		if i.NTP == nil {
@@ -162,6 +163,9 @@ type Agent struct {
 	// Divergence reads and writes the per-resolver DNS baselines. Nil disables
 	// divergence.
 	Divergence Divergence
+	// LookupASN resolves an address's origin ASN for a new answer. Nil leaves a
+	// new address weak, which never carries a verdict on its own.
+	LookupASN func(ctx context.Context, addr netip.Addr) (int, error)
 
 	mu      sync.RWMutex
 	targets []Target
@@ -408,6 +412,16 @@ func (a *Agent) logProbe(t Target, p store.Probe) {
 // talking, not the name disappearing, so it becomes a divergence advisory
 // instead of DOWN (CLASSIFIER.md §3.2).
 func (a *Agent) divergeDNS(ctx context.Context, t Target, primary probe.Result, now time.Time) probe.Result {
+	// The baselines are read first: a new address needs the resolver's learned
+	// ASN and hosting suffix before the answer can be judged.
+	baselines, err := a.Divergence.DNSBaselines(ctx, t.ID, now.Add(-dnsBaselineWindow))
+	if err != nil {
+		a.logger().Debug("dns baseline read failed",
+			"event", "dns_baseline_read_failed", "component", "agent",
+			"target", t.Host, "error", err)
+		baselines = map[string]dnsdiv.Baseline{}
+	}
+
 	answers := make([]dnsdiv.Answer, 0, len(t.Resolvers))
 	answered := 0
 	for _, server := range t.Resolvers {
@@ -418,23 +432,17 @@ func (a *Agent) divergeDNS(ctx context.Context, t Target, primary probe.Result, 
 			Addresses: dnsAddresses(r),
 			Failure:   dnsFailure(r),
 		}
-		answers = append(answers, ans)
 		if ans.Failure == "" {
 			answered++
+			ans.CNAMESuffixes = dnsSuffixes(r.CNAMEs)
+			ans.ASNs = a.lookupNewASNs(ctx, r.Addresses, baselines[server])
 		}
+		answers = append(answers, ans)
 		if err := a.Divergence.RecordDNSAnswer(ctx, t.ID, ans); err != nil {
 			a.logger().Debug("dns baseline write failed",
 				"event", "dns_baseline_failed", "component", "agent",
 				"target", t.Host, "resolver", server, "error", err)
 		}
-	}
-
-	baselines, err := a.Divergence.DNSBaselines(ctx, t.ID, now.Add(-dnsBaselineWindow))
-	if err != nil {
-		a.logger().Debug("dns baseline read failed",
-			"event", "dns_baseline_read_failed", "component", "agent",
-			"target", t.Host, "error", err)
-		return primary
 	}
 
 	verdict := dnsdiv.Evaluate(answers, baselines)
@@ -455,6 +463,58 @@ func (a *Agent) divergeDNS(ctx context.Context, t Target, primary probe.Result, 
 		primary.Err = fmt.Errorf("agent: %s failed while %d resolver(s) answered", t.Resolvers[0], answered)
 	}
 	return primary
+}
+
+// dnsASNLookupsPerProbe caps origin lookups: a resolver returning thirty new
+// addresses must not turn one probe into thirty TXT queries.
+const dnsASNLookupsPerProbe = 4
+
+// lookupNewASNs resolves the origin ASN only for addresses this resolver has
+// never returned. A known address already has its ASN in the baseline, and the
+// cap keeps a churny CDN from becoming a lookup amplifier.
+func (a *Agent) lookupNewASNs(ctx context.Context, addrs []netip.Addr, base dnsdiv.Baseline) []int {
+	if a.LookupASN == nil {
+		return nil
+	}
+	out := make([]int, 0, len(addrs))
+	seen := make(map[int]struct{}, len(addrs))
+	for _, addr := range addrs {
+		if _, known := base.Addresses[addr.String()]; known {
+			continue
+		}
+		if len(out) >= dnsASNLookupsPerProbe {
+			break
+		}
+		asn, err := a.LookupASN(ctx, addr)
+		if err != nil || asn <= 0 {
+			continue
+		}
+		if _, dup := seen[asn]; dup {
+			continue
+		}
+		seen[asn] = struct{}{}
+		out = append(out, asn)
+	}
+	return out
+}
+
+// dnsSuffixes reduces the CNAME chain to the distinct registrable suffixes the
+// divergence rule compares. The suffixes are a hosting label, never a verdict.
+func dnsSuffixes(cnames []string) []string {
+	out := make([]string, 0, len(cnames))
+	seen := make(map[string]struct{}, len(cnames))
+	for _, name := range cnames {
+		suffix := dnsdiv.RegistrableSuffix(name)
+		if suffix == "" {
+			continue
+		}
+		if _, dup := seen[suffix]; dup {
+			continue
+		}
+		seen[suffix] = struct{}{}
+		out = append(out, suffix)
+	}
+	return out
 }
 
 // dnsBaselineWindow is the seven days CLASSIFIER.md §3.2 names.

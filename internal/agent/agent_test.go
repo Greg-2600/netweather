@@ -1013,3 +1013,101 @@ func TestDNSDivergenceNeedsMoreThanOneResolver(t *testing.T) {
 		t.Fatalf("a single resolver ran divergence: %+v %+v", div.answers, div.verdicts)
 	}
 }
+
+func TestDNSDivergenceLearnsNewAddressLabels(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	tg := dnsTarget("1.1.1.1:53", "9.9.9.9:53")
+
+	p := newProber()
+	p.set("", probe.Result{
+		Addresses: []netip.Addr{netip.MustParseAddr("192.0.2.9")},
+		CNAMEs:    []string{"edge.foo.cloudflare.net."},
+	})
+
+	// Both resolvers know an address in AS13335 behind cloudflare.net, so the
+	// new address is edge rotation, not a signal.
+	baselines := make(map[string]dnsdiv.Baseline, len(tg.Resolvers))
+	for _, server := range tg.Resolvers {
+		baselines[server] = dnsdiv.Baseline{
+			Addresses:     map[string]struct{}{"192.0.2.1": {}},
+			ASNs:          map[int]struct{}{13335: {}},
+			CNAMESuffixes: map[string]struct{}{"cloudflare.net": {}},
+			Samples:       1,
+		}
+	}
+
+	div := &fakeDivergence{baselines: baselines}
+	sink := &fakeSink{}
+	a := agent.New([]agent.Target{tg}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+	a.Divergence = div
+	looked := 0
+	a.LookupASN = func(context.Context, netip.Addr) (int, error) {
+		looked++
+		return 13335, nil
+	}
+	a.DNSQuery = func(context.Context, string, string) probe.DNSResult {
+		return probe.DNSResult{
+			Addresses: []netip.Addr{netip.MustParseAddr("192.0.2.9")},
+			CNAMEs:    []string{"edge.foo.cloudflare.net."},
+		}
+	}
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// One lookup per resolver, because the address is new to each of them.
+	if looked != len(tg.Resolvers) {
+		t.Fatalf("lookups = %d, want %d", looked, len(tg.Resolvers))
+	}
+	if got := sink.batch()[0]; got.State != state.UpReachability {
+		t.Fatalf("state = %s, want reachability", got.State)
+	}
+	if len(div.verdicts) != 0 {
+		t.Fatalf("verdicts = %+v, want none for a known host", div.verdicts)
+	}
+	for _, ans := range div.answers {
+		if len(ans.ASNs) != 1 || ans.ASNs[0] != 13335 {
+			t.Fatalf("answer ASNs = %+v", ans.ASNs)
+		}
+		if len(ans.CNAMESuffixes) != 1 || ans.CNAMESuffixes[0] != "cloudflare.net" {
+			t.Fatalf("answer suffixes = %+v", ans.CNAMESuffixes)
+		}
+	}
+
+	// A known address does not trigger a lookup at all.
+	div2 := &fakeDivergence{baselines: map[string]dnsdiv.Baseline{
+		tg.Resolvers[0]: {
+			Addresses: map[string]struct{}{"192.0.2.9": {}},
+			ASNs:      map[int]struct{}{13335: {}},
+			Samples:   1,
+		},
+		tg.Resolvers[1]: {
+			Addresses: map[string]struct{}{"192.0.2.9": {}},
+			ASNs:      map[int]struct{}{13335: {}},
+			Samples:   1,
+		},
+	}}
+	looked = 0
+	a2 := agent.New([]agent.Target{tg}, p, &fakeSink{})
+	a2.Now = at(now)
+	a2.Rand = zeroRand
+	a2.Divergence = div2
+	a2.LookupASN = func(context.Context, netip.Addr) (int, error) {
+		looked++
+		return 64500, nil
+	}
+	a2.DNSQuery = func(context.Context, string, string) probe.DNSResult {
+		return probe.DNSResult{Addresses: []netip.Addr{netip.MustParseAddr("192.0.2.9")}}
+	}
+	if _, err := a2.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if looked != 0 {
+		t.Fatalf("lookups for a known address = %d, want 0", looked)
+	}
+}

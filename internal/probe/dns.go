@@ -16,8 +16,11 @@ import (
 
 // DNSResult is one resolver observation.
 type DNSResult struct {
-	Latency    time.Duration
-	Addresses  []netip.Addr
+	Latency   time.Duration
+	Addresses []netip.Addr
+	// CNAMEs is the chain seen in the answer section. It is evidence about
+	// hosting, used by the divergence baseline; it is not a target state.
+	CNAMEs     []string
 	ErrorClass string
 	Err        error
 }
@@ -144,6 +147,7 @@ func (p *DNS) Do(ctx context.Context, server, name string) DNSResult {
 		return out
 	}
 
+	out.CNAMEs = answerCNAMEs(msg)
 	addrs := answerAddresses(msg)
 	if len(addrs) == 0 {
 		// NOERROR with no records is a real answer, but not a usable one.
@@ -328,4 +332,20 @@ func ClassifyDNSError(err error) string {
 		}
 	}
 	return "dns_error"
+}
+
+// answerCNAMEs collects the CNAME targets in the answer section. A resolver
+// usually returns the whole chain, so the final name is the useful one; the
+// caller takes its registrable suffix.
+func answerCNAMEs(msg dnsmessage.Message) []string {
+	var out []string
+	for _, resource := range msg.Answers {
+		if body, ok := resource.Body.(*dnsmessage.CNAMEResource); ok {
+			name := body.CNAME.String()
+			if name != "" {
+				out = append(out, name)
+			}
+		}
+	}
+	return out
 }
