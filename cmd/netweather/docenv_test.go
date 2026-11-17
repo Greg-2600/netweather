@@ -10,10 +10,12 @@ import (
 	"testing"
 )
 
-// envVarPattern matches a literal os.Getenv read of a NETWEATHER_ variable.
-// The prefix filter is deliberate: SOURCE_DATE_EPOCH is a build knob, not a
-// runtime setting an operator has to know about.
-var envVarPattern = regexp.MustCompile(`os\.Getenv\("(NETWEATHER_[A-Z0-9_]+)"\)`)
+// envVarPattern matches both ways a NETWEATHER_ variable is read: directly
+// with os.Getenv, and through the injected getenv function the logging and
+// startup config loaders use so their tests never touch the process
+// environment. The prefix filter is deliberate: SOURCE_DATE_EPOCH is a build
+// knob, not a runtime setting an operator has to know about.
+var envVarPattern = regexp.MustCompile(`(?:os\.Getenv|getenv)\("(NETWEATHER_[A-Z0-9_]+)"\)`)
 
 // TestEveryEnvironmentVariableIsDocumented is the guard against configuration
 // drift: every NETWEATHER_ variable the binary reads must appear in the

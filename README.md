@@ -151,6 +151,14 @@ Every environment variable the binary reads, including the ones that exist for a
 | `NETWEATHER_UI_LISTEN` | `0.0.0.0:2600` | HTTP bind address |
 | `NETWEATHER_UI_TOKEN` / `NETWEATHER_UI_TOKEN_FILE` | none | session and bearer token, minimum 16 characters; `_FILE` is preferred so the token is not in the environment |
 | `NETWEATHER_UI_SECURE_COOKIES` | `false` | `true` marks the session cookie `Secure`; set it behind TLS |
+| `NETWEATHER_UI_ALLOW_PUBLIC` | `false` | allows a non-loopback bind with no token; without it the process refuses to start, because the board discloses the target list |
+| `NETWEATHER_LOG_LEVEL` | `info` | `trace`, `debug`, `info`, `warn`, `error` |
+| `NETWEATHER_LOG_FORMAT` | `auto` | `auto` (text on a TTY, JSON otherwise), `text`, `json` |
+| `NETWEATHER_LOG_FILE` | none | rotated file sink, written 0600; empty keeps logs on stdout only |
+| `NETWEATHER_LOG_MAX_MB` | `50` | size before rotation |
+| `NETWEATHER_LOG_KEEP` | `3` | rotated files retained |
+| `NETWEATHER_LOG_RING` | `2000` | in-memory ring records; `0` disables the ring and its pages |
+| `NETWEATHER_LOG_SOURCE` | unset | `1` adds `source=file.go:line` to every record |
 | `NETWEATHER_API_URL` | `http://127.0.0.1:2600` | base URL the CLI verbs (`debug`, `doctor`) use |
 | `NETWEATHER_HEALTHCHECK_URL` | derived from `NETWEATHER_UI_LISTEN` | `/healthz` target for `netweather healthcheck`; a non-loopback URL is refused |
 | `NETWEATHER_METRICS` | `false` | mounts `/metrics` (Prometheus text, aggregates only) |
