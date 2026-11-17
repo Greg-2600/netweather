@@ -1143,6 +1143,154 @@ func TestBoardGroupingPreservesFocusMode(t *testing.T) {
 	}
 }
 
+func TestWorldGroupsByCountry(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(
+		board.Target{ID: "1", Name: "Chase", Host: "chase.com", Country: "US", State: board.StateUp},
+		board.Target{ID: "2", Name: "United", Host: "united.com", Country: "US", State: board.StateDown},
+		board.Target{ID: "3", Name: "Deutsche", Host: "de.example", Country: "DE", State: board.StateUp},
+		board.Target{ID: "4", Name: "NoGeo", Host: "nogeo.example", State: board.StateUp},
+	)
+
+	ts := newServer(t, testToken, m)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/world") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if got := strings.Count(page, `data-testid="country"`); got != 2 {
+		t.Fatalf("country tiles = %d, want 2 (a missing country is not a country)", got)
+	}
+	for _, want := range []string{
+		`data-country="US"`, `data-country="DE"`,
+		`href="/?group=country&amp;country=US"`,
+		"Down</span>", // the US bucket's worst state is named on the tile
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("world page missing %q", want)
+		}
+	}
+	if !strings.Contains(page, `data-testid="world-unplaced"`) {
+		t.Error("a target with no country was not counted as unplaced")
+	}
+
+	// Worst state first: the US bucket holds a DOWN target, so it precedes DE.
+	us := strings.Index(page, `data-country="US"`)
+	de := strings.Index(page, `data-country="DE"`)
+	if us < 0 || de < 0 || us > de {
+		t.Fatalf("country order = US:%d DE:%d, want worst-first", us, de)
+	}
+}
+
+func TestWorldEmptyAndSessionProtected(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(
+		board.Target{ID: "1", Name: "NoGeo", Host: "nogeo.example", State: board.StateUp},
+	)
+	ts := newServer(t, testToken, m)
+
+	_, jar := newClient(t)
+	anon := noRedirectClient(jar)
+	resp, err := anon.Get(ts.URL + "/world") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = body(t, resp)
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("anonymous status = %d, want a redirect to login", resp.StatusCode)
+	}
+
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err = client.Get(ts.URL + "/world") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	if !strings.Contains(page, `data-testid="empty-world"`) {
+		t.Fatalf("empty world did not say why:\n%s", page)
+	}
+	if strings.Contains(page, `data-testid="country"`) {
+		t.Error("a target with no country rendered as a country tile")
+	}
+}
+
+func TestBoardCountryFilter(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(
+		board.Target{ID: "1", Name: "Chase", Host: "chase.com", Country: "US", State: board.StateUp},
+		board.Target{ID: "2", Name: "Deutsche", Host: "de.example", Country: "DE", State: board.StateUp},
+	)
+	ts := newServer(t, testToken, m)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	// Lowercase is normalised: a link that happens to be lowercase still works.
+	resp, err := client.Get(ts.URL + "/?country=us") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="country-filter"`) || !strings.Contains(page, ">US<") {
+		t.Fatalf("filter chip missing:\n%s", page)
+	}
+	if !strings.Contains(page, `data-target="chase.com"`) {
+		t.Error("the filtered-in target is missing")
+	}
+	if strings.Contains(page, `data-target="de.example"`) {
+		t.Error("a target outside the country filter rendered")
+	}
+	if !strings.Contains(page, `data-testid="clear-country"`) {
+		t.Error("the filter cannot be cleared")
+	}
+
+	// The clear link keeps the grouping lens and focus state.
+	resp, err = client.Get(ts.URL + "/?country=us&group=cdn&focus=problems") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = body(t, resp)
+	if !strings.Contains(page, `href="/?group=cdn&amp;focus=problems"`) {
+		t.Fatalf("clear link dropped the other view state:\n%s", page)
+	}
+}
+
+func TestBoardCountryFilterWithNoMatches(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/?country=ZZ") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if !strings.Contains(page, `data-testid="empty-board"`) {
+		t.Fatalf("an empty filter result did not explain itself:\n%s", page)
+	}
+	if !strings.Contains(page, `data-testid="country-filter"`) {
+		t.Error("an empty result hid the active filter")
+	}
+}
+
 func TestLoginAndBoardRender(t *testing.T) {
 	t.Parallel()
 

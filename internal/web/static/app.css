@@ -231,6 +231,41 @@ body.auth {
   font-weight: 600;
 }
 
+/* A country filter is visible, not silent: a filtered board must say so. */
+.filter-note {
+  margin: 0 0 0.8rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.filter-note a { color: var(--accent); }
+
+/* World view: one compact tile per country (DESIGN.md §10.3). */
+.world-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.6rem;
+}
+
+.tile.country {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.6rem 0.7rem;
+  text-decoration: none;
+}
+
+.tile.country .country-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.tile.country .country-count {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 /* Feed staleness: text and border, not only colour (DESIGN.md P5, 10.7). */
 .feeds {
   display: flex;

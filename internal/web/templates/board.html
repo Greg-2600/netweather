@@ -10,6 +10,7 @@
 <body>
   <header class="bar">
     <a class="brand" href="/">netweather</a>
+    <a class="nav" href="/world">World</a>
     <a class="nav" href="/coverage">Coverage</a>
     <a class="nav" href="/incidents">Incidents</a>
     <span class="muted small" data-testid="version">{{.Version}}</span>
@@ -62,6 +63,13 @@
          {{if .Active}}aria-current="true"{{end}}>{{.Label}}</a>
       {{end}}
     </nav>
+
+    {{if .Country}}
+    <p class="filter-note" data-testid="country-filter">
+      Country filter: <b class="mono">{{.Country}}</b>
+      <a href="{{.CountryOff}}" data-testid="clear-country">clear</a>
+    </p>
+    {{end}}
 
     {{if .Feeds}}
     <p class="feeds" aria-label="Feed health" data-testid="feed-health">

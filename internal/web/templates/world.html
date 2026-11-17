@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>World · netweather</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="/">netweather</a>
+    <a class="nav" href="/world">World</a>
+    <a class="nav" href="/coverage">Coverage</a>
+    <a class="nav" href="/incidents">Incidents</a>
+  </header>
+
+  <main>
+    <h1 class="page-title">World</h1>
+    <p class="muted" data-testid="world-summary">
+      One tile per country with at least one target, worst state first.
+      Click a country to see its targets on the board.
+    </p>
+
+    {{if .Countries}}
+    <section class="board world-grid" aria-label="Countries" data-testid="world">
+      {{range .Countries}}
+      <a class="tile country {{.WorstCls}}" href="{{.Href}}"
+         data-testid="country" data-country="{{.Code}}" data-state="{{.WorstCls}}"
+         aria-label="{{.Code}}: {{.Count}} target(s), worst {{.Worst}}">
+        <span class="country-code">{{.Code}}</span>
+        <span class="country-count">{{.Count}} target(s)</span>
+        <span class="state"><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Worst}}</span>
+      </a>
+      {{end}}
+    </section>
+    {{else}}
+    <p class="empty" data-testid="empty-world">
+      No target has a learned country yet. Enrichment fills this in on the first pass.
+    </p>
+    {{end}}
+
+    {{if .Unplaced}}
+    <p class="muted small" data-testid="world-unplaced">
+      {{.Unplaced}} target(s) have no learned country and are not shown as a country.
+    </p>
+    {{end}}
+
+    <p class="muted small">
+      This view answers "which countries look unhappy?". It is not a map and does
+      not claim a country-wide outage from one vantage: a tile with every target
+      DOWN is still one path's view of that country.
+    </p>
+  </main>
+</body>
+</html>

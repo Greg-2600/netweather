@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -67,6 +68,7 @@ func New(deps Deps) (http.Handler, error) {
 	mux.HandleFunc("/incidents", s.requireSession(http.HandlerFunc(s.handleIncidents)).ServeHTTP)
 	mux.HandleFunc("/incidents/", s.requireSession(http.HandlerFunc(s.handleIncident)).ServeHTTP)
 	mux.HandleFunc("/coverage", s.requireSession(http.HandlerFunc(s.handleCoverage)).ServeHTTP)
+	mux.HandleFunc("/world", s.requireSession(http.HandlerFunc(s.handleWorld)).ServeHTTP)
 	mux.HandleFunc("/icon/", s.requireSession(http.HandlerFunc(s.handleIcon)).ServeHTTP)
 	mux.HandleFunc("/pause", s.requireSession(http.HandlerFunc(s.handlePause)).ServeHTTP)
 	mux.HandleFunc("/resume", s.requireSession(http.HandlerFunc(s.handleResume)).ServeHTTP)
@@ -232,6 +234,10 @@ type boardView struct {
 	// board is about "airlines are down" only when the reader chose that lens.
 	Group        string
 	GroupOptions []groupOption
+	// Country is the active country filter, uppercase ISO-3166-1 when set.
+	// The clear link drops it without dropping focus or the grouping lens.
+	Country    string
+	CountryOff string
 	// Focus hides everything that is not DOWN or DEGRADED. The counts still
 	// describe the whole fleet, so the summary does not lie about what is
 	// hidden.
@@ -395,15 +401,18 @@ func groupKey(t board.Target, mode string) (name, label string) {
 	}
 }
 
-// groupOptions builds the toggle with the active entry marked. Focus mode is
-// preserved when switching lenses, because the two controls answer different
-// questions and silently resetting one is hostile.
-func groupOptions(active string, focus bool) []groupOption {
+// groupOptions builds the toggle with the active entry marked. Focus mode and
+// the country filter are preserved when switching lenses, because the controls
+// answer different questions and silently resetting one is hostile.
+func groupOptions(active string, focus bool, country string) []groupOption {
 	out := make([]groupOption, 0, len(groupModes))
 	for _, m := range groupModes {
 		href := "/?group=" + m.Key
 		if focus {
 			href += "&focus=problems"
+		}
+		if country != "" {
+			href += "&country=" + url.QueryEscape(country)
 		}
 		out = append(out, groupOption{
 			Key: m.Key, Label: m.Label, Active: m.Key == active, Href: href,
@@ -461,6 +470,19 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		targets = filtered
 	}
 
+	// A country filter is what a world-view tile links to. It is applied after
+	// the counts so the summary still describes the whole fleet.
+	country := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("country")))
+	if country != "" {
+		filtered := make([]board.Target, 0, len(targets))
+		for _, t := range targets {
+			if strings.EqualFold(t.Country, country) {
+				filtered = append(filtered, t)
+			}
+		}
+		targets = filtered
+	}
+
 	csrf, _ := s.auth.csrfFrom(r)
 	group := normaliseGroupMode(r.URL.Query().Get("group"))
 	view := boardView{
@@ -470,7 +492,14 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		Control:      s.deps.Control != nil,
 		Focus:        focus,
 		Group:        group,
-		GroupOptions: groupOptions(group, focus),
+		GroupOptions: groupOptions(group, focus, country),
+		Country:      country,
+	}
+	if country != "" {
+		view.CountryOff = "/?group=" + group
+		if focus {
+			view.CountryOff += "&focus=problems"
+		}
 	}
 	if s.deps.Control != nil {
 		view.Paused = s.deps.Control.Paused()
@@ -1230,6 +1259,129 @@ func (s *server) handleCoverage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "coverage.html", view)
+}
+
+// --- world -----------------------------------------------------------------
+
+// worldView is the country-level board (DESIGN.md §10.3). It answers "which
+// countries look unhappy?" before the target grid answers "which host?".
+type worldView struct {
+	Version   string
+	CSRF      string
+	Countries []countryView
+	Unplaced  int
+}
+
+// countryView is one country tile. State is carried as text and glyph as well
+// as colour, like every other state surface.
+type countryView struct {
+	Code     string
+	Count    int
+	Worst    string
+	WorstCls string
+	Glyph    string
+	Healthy  bool
+	Counts   []countView
+	Href     string
+}
+
+// handleWorld aggregates the board by country. A target with no learned
+// country is counted separately rather than folded into a real code, because
+// "unknown" is not a country.
+func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	targets, err := s.deps.Source.Snapshot(r.Context())
+	if err != nil {
+		s.deps.Logger.Error("world snapshot failed", "event", "world_failed", "component", "http", "error", err)
+		http.Error(w, "board unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	byCountry := make(map[string][]board.Target)
+	unplaced := 0
+	for _, t := range targets {
+		code := strings.ToUpper(strings.TrimSpace(t.Country))
+		if code == "" {
+			unplaced++
+			continue
+		}
+		byCountry[code] = append(byCountry[code], t)
+	}
+
+	csrf, _ := s.auth.csrfFrom(r)
+	view := worldView{Version: s.deps.Version, CSRF: csrf, Unplaced: unplaced}
+
+	for code, members := range byCountry {
+		counts := make(map[board.State]int)
+		worst := board.StateUp
+		healthy := true
+		for _, t := range members {
+			counts[t.State]++
+			if board.SeverityRank(t.State) < board.SeverityRank(worst) {
+				worst = t.State
+			}
+			if t.State != board.StateUp && t.State != board.StateUpReachability {
+				healthy = false
+			}
+		}
+
+		row := countryView{
+			Code:     code,
+			Count:    len(members),
+			Worst:    worst.Text(),
+			WorstCls: worst.CSSClass(),
+			Glyph:    worst.Glyph(),
+			Healthy:  healthy,
+			Href:     "/?group=country&country=" + url.QueryEscape(code),
+		}
+		for _, st := range []board.State{
+			board.StateDown, board.StateDegraded, board.StateBlocked,
+			board.StateUnknown, board.StateConfigError, board.StateUnmeasurable,
+			board.StateUpReachability, board.StateUp,
+		} {
+			if n := counts[st]; n > 0 {
+				row.Counts = append(row.Counts, countView{
+					State: string(st), Label: st.Text(), Glyph: st.Glyph(),
+					Class: st.CSSClass(), Count: n,
+				})
+			}
+		}
+		view.Countries = append(view.Countries, row)
+	}
+
+	sort.SliceStable(view.Countries, func(i, j int) bool {
+		ri, rj := board.SeverityRank(worstStateFromClass(view.Countries[i].WorstCls)),
+			board.SeverityRank(worstStateFromClass(view.Countries[j].WorstCls))
+		if ri != rj {
+			return ri < rj
+		}
+		return view.Countries[i].Code < view.Countries[j].Code
+	})
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+	_ = s.tmpl.ExecuteTemplate(w, "world.html", view)
+}
+
+// worstStateFromClass reverses the CSS class a country tile carries. It keeps
+// the ordering logic in one place instead of storing a second enum on the view.
+func worstStateFromClass(class string) board.State {
+	for _, st := range []board.State{
+		board.StateDown, board.StateDegraded, board.StateBlocked,
+		board.StateUnknown, board.StateConfigError, board.StateUnmeasurable,
+		board.StateUpReachability, board.StateUp,
+	} {
+		if st.CSSClass() == class {
+			return st
+		}
+	}
+	return board.StateUnknown
 }
 
 // --- events ----------------------------------------------------------------

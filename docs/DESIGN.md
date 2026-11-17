@@ -846,6 +846,8 @@ The wall of favicons. Grouping is a toggle: **sector (default)** · state · CDN
 
 One tile per country: ccTLD code + flag, coloured by reachability, with an IODA score overlay when available. This is the view that makes a cyberwar legible, and it reuses the same visual language as the board.
 
+**Implemented:** `/world` renders one tile per learned country, worst state first, with the target count and per-state chips; the code, state text, and glyph carry the meaning alongside colour. A target with no learned country is counted separately as "unplaced", never folded into a real code. Clicking a tile opens the board filtered to that country (`/?group=country&country=US`), and the board shows the active filter with a clear link that preserves the grouping lens and focus mode. Still specified: the flag graphic and the IODA score overlay.
+
 ### 10.4 Corridors
 
 Ten rows: RTT sparkline, loss bar, baseline band, step-change highlight.
