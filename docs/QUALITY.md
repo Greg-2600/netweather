@@ -154,22 +154,22 @@ Four layers, because they catch different things.
 | Layer | Tool | Gate |
 |---|---|---|
 | Source rules | `gosec` (via golangci-lint) | blocking |
-| Dependency CVEs | `govulncheck ./...` | blocking, call-graph aware |
-| Dependency + SBOM | `osv-scanner` on `go.sum` | blocking |
+| Dependency CVEs | `go tool govulncheck ./...` | blocking, call-graph aware |
 | Container | `grype` on the built image | blocking on `HIGH`/`CRITICAL` |
-| Secrets | `gitleaks` | blocking |
-| Dockerfile | `hadolint` | blocking |
-| Workflows | `actionlint`, `zizmor` | blocking |
-| Custom rules | `semgrep` with project rules | advisory |
+| Secrets | full-history `gitleaks` | blocking |
+| Dockerfile | `hadolint` on both files | blocking |
 
-Custom `semgrep` rules worth writing, because they encode decisions this project has made:
+The workflows themselves are pinned by `TestWorkflowFilesParse`, which parses every workflow and the Dependabot config with the project's YAML library. That catches a file GitHub would reject; it is not a substitute for `actionlint`, which is not wired in.
+
+Decisions the linters cannot express stay review rules:
 
 ```
-- pattern: http.Get(...)                  → use the instrument's context-aware client
-- pattern: tls.Config{InsecureSkipVerify: true}  → forbidden
-- pattern: os.Getenv("...")                → config must come from the config file
-- pattern: math/rand.Read                  → crypto/rand for anything security-relevant
-- pattern: fmt.Errorf($X)  (no %w)         → wrap errors so errors.Is works
+- http.Get(...)                         → use the instrument's context-aware client
+- tls.Config{InsecureSkipVerify: true}  → forbidden (gosec also refuses it)
+- os.Getenv("...")                      → runtime settings come from env by design;
+                                          a new one needs a README row and a test
+- math/rand                             → crypto/rand for anything security-relevant
+- fmt.Errorf($X) without %w             → errorlint (enabled) blocks it
 ```
 
 `govulncheck` deserves a note: unlike `pip-audit`, it builds a call graph, so a CVE in a package you import but never call does not fail the build. Fewer false positives, higher signal.
