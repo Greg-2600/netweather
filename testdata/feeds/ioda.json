@@ -1,0 +1,17 @@
+{
+  "data": [
+    {
+      "id": "1001",
+      "start": 1763373600,
+      "end": 1763377200,
+      "score": 0.87,
+      "entity": { "type": "country", "code": "IR" }
+    },
+    {
+      "id": "1002",
+      "start": 1763370000,
+      "score": 0.42,
+      "entity": { "type": "asn", "code": "64500" }
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "result": {
+    "annotations": [
+      {
+        "id": "ann-1",
+        "start_time": "2026-11-17T10:00:00Z",
+        "end_time": "2026-11-17T12:00:00Z",
+        "location_code": "IR",
+        "origin_asn": 64500,
+        "confidence": 0.8,
+        "description": "fibre cut affecting international transit"
+      }
+    ]
+  }
+}

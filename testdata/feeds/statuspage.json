@@ -1,0 +1,21 @@
+{
+  "incidents": [
+    {
+      "id": "inc-1",
+      "name": "Elevated error rates on the payments API",
+      "status": "investigating",
+      "impact": "major",
+      "created_at": "2026-11-17T10:00:00Z",
+      "resolved_at": "2026-11-17T11:00:00Z",
+      "shortlink": "https://stspg.io/example"
+    },
+    {
+      "id": "inc-2",
+      "name": "Scheduled maintenance completed",
+      "status": "resolved",
+      "impact": "maintenance",
+      "created_at": "2026-11-16T02:00:00Z",
+      "resolved_at": "2026-11-16T03:00:00Z"
+    }
+  ]
+}

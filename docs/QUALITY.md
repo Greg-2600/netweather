@@ -353,13 +353,15 @@ Still specified: a probe whose payload is black-holed by a low MTU asserted at t
 
 ### 5.6 Contract tests for external feeds
 
-IODA and Radar will change their JSON. Record one real response per endpoint into `testdata/feeds/`, then:
+IODA and Radar will change their JSON. `testdata/feeds/` holds one recorded payload per adapter — IODA, Radar, Statuspage, GCP, AWS RSS, and Azure RSS — and `internal/feeds/contract_test.go` runs three checks per feed:
 
-- parse it → assert the fields we depend on
-- parse a mutated version → assert we degrade gracefully rather than crash
-- parse a truncated version → assert `(data, observed_at, err)` returns an error and the UI shows `stale`
+- parse the shipped shape → assert the fields the product depends on (id, kind, severity, country or ASN, start and end times, and the bounded payload)
+- parse a mutated shape with a required field removed → assert the event is skipped and the other events survive, with no error and no panic
+- parse a truncated body → assert the feed returns an error so the poller records `stale` rather than "no outages"
 
-Recorded, never live, in CI.
+Recorded, never live, in CI. The fixtures are captured shapes rather than live calls: `testdata/feeds/README.md` says how to refresh one, and a refresh that moves a field fails the test on that field's name.
+
+**Implemented:** all six adapters above, with the mutations chosen per feed (a missing id for IODA, Statuspage, and GCP; a missing start time for Radar; an unparseable `pubDate` for the RSS pair). The truncation case also pins the error path the poller turns into a stale feed.
 
 ### 5.7 Mutation testing (optional, high value)
 

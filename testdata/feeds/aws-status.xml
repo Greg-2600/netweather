@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Amazon Web Services Service Status</title>
+    <link>https://status.aws.amazon.com/</link>
+    <description>Current and recent service events</description>
+    <item>
+      <title>Service disruption: Amazon S3 (us-east-1)</title>
+      <description>We are investigating increased error rates for requests to S3 in us-east-1.</description>
+      <pubDate>Mon, 17 Nov 2026 10:00:00 GMT</pubDate>
+      <guid>https://status.aws.amazon.com/#s3-us-east-1</guid>
+      <link>https://status.aws.amazon.com/</link>
+    </item>
+    <item>
+      <title>Service is operating normally: Amazon S3 (us-east-1)</title>
+      <description>Service is operating normally.</description>
+      <pubDate>Mon, 17 Nov 2026 12:00:00 GMT</pubDate>
+      <guid>https://status.aws.amazon.com/#s3-us-east-1-resolved</guid>
+      <link>https://status.aws.amazon.com/</link>
+    </item>
+  </channel>
+</rss>

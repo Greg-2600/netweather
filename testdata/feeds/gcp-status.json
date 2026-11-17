@@ -1,0 +1,21 @@
+[
+  {
+    "id": "gcp-inc-1",
+    "begin": "2026-11-17T09:00:00Z",
+    "end": "2026-11-17T10:00:00Z",
+    "status_impact": "SERVICE_OUTAGE",
+    "service_name": "Cloud Storage",
+    "external_desc": "Elevated error rates in a subset of requests",
+    "currently_affected_locations": [
+      { "title": "us-central1" },
+      { "title": "europe-west1" }
+    ]
+  },
+  {
+    "id": "gcp-inc-2",
+    "begin": "2026-11-16T04:00:00Z",
+    "status_impact": "SERVICE_MAINTENANCE",
+    "service_name": "Cloud SQL",
+    "external_desc": "Scheduled maintenance"
+  }
+]

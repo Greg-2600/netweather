@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Azure Status</title>
+    <link>https://azure.status.microsoft/</link>
+    <description>Current and recent service events</description>
+    <item>
+      <title>Service issue: Virtual Machines</title>
+      <description>We are investigating an issue affecting a subset of Virtual Machines in West Europe.</description>
+      <pubDate>Mon, 17 Nov 2026 11:00:00 GMT</pubDate>
+      <guid>azure-vm-west-europe-1</guid>
+      <link>https://azure.status.microsoft/</link>
+    </item>
+    <item>
+      <title>All services are healthy</title>
+      <description>No issues are being reported.</description>
+      <pubDate>Mon, 17 Nov 2026 12:30:00 GMT</pubDate>
+      <guid>azure-healthy-1</guid>
+      <link>https://azure.status.microsoft/</link>
+    </item>
+  </channel>
+</rss>
