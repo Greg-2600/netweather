@@ -166,6 +166,24 @@ NTP never produces a target state at all. It feeds `DESIGN.md` §7.5 self-health
 
 ---
 
+### 3.7 HTTP transport
+
+These classes come from the HTTP instrument (`internal/probe`) and are checked
+after the TLS classes, because Go wraps TLS failures inside `*url.Error`.
+
+| Class | Condition | Candidate state |
+|---|---|---|
+| `http_timeout` | response deadline exceeded | DOWN |
+| `http_reset` | connection reset while reading/writing | DOWN |
+| `http_request` | request could not be constructed (bad URL) | CONFIG_ERROR |
+| `http_error` | any other HTTP-layer failure | UNKNOWN |
+
+A redirect budget of 5 that is exhausted is **not** an error class: the
+instrument returns the last 3xx so the status table can say "unexpected
+redirect", which is more accurate than "network failure".
+
+---
+
 ## 4. Response normalization
 
 Before classification:

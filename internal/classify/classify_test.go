@@ -36,6 +36,10 @@ func TestTransportClassification(t *testing.T) {
 		{"icmp unreachable", "icmp_unreachable", errors.New("unreachable"), false, state.Down, classify.High},
 		{"ntp offset", "ntp_offset", errors.New("offset"), false, state.Unknown, classify.Low},
 		{"ntp unreachable", "ntp_unreachable", errors.New("no reply"), false, state.Unknown, classify.Low},
+		{"http timeout", "http_timeout", errors.New("timeout"), false, state.Down, classify.High},
+		{"http reset", "http_reset", errors.New("reset"), false, state.Down, classify.High},
+		{"http request", "http_request", errors.New("bad url"), false, state.ConfigError, classify.High},
+		{"http other", "http_error", errors.New("?"), false, state.Unknown, classify.Low},
 		{"unknown class", "weird", errors.New("?"), false, state.Unknown, classify.Low},
 		{"error without class", "", errors.New("?"), false, state.Unknown, classify.Low},
 	}

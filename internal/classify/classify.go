@@ -150,6 +150,12 @@ func transport(t Expected, r Response) Result {
 		return Result{state.Unknown, Low, class + ": not a service signal"}
 	case strings.HasPrefix(class, "ntp_"):
 		return Result{state.Unknown, Low, class + ": self-health only"}
+	case class == "http_timeout", class == "http_reset":
+		return Result{state.Down, High, class}
+	case class == "http_request":
+		return Result{state.ConfigError, High, class}
+	case strings.HasPrefix(class, "http_"):
+		return Result{state.Unknown, Low, class}
 	case strings.HasPrefix(class, "dns_"):
 		return Result{state.Down, Medium, class}
 	case strings.HasPrefix(class, "tcp_"), strings.HasPrefix(class, "tls_"), class == "icmp_unreachable":
