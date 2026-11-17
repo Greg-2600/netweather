@@ -568,7 +568,7 @@ So:
 
 The absolute floors matter as much as the ratio. A scope of 10 targets at `coverage = 1.0` has a perfect ratio and almost no information; `measurable < 8` is not a healthy scope, it is a scope that cannot support a verdict.
 
-**Implemented, the low-coverage band:** when `measurable < 20` or `coverage < 0.80`, the health detector's band is widened 1.5x before the trigger is evaluated, exactly as the middle row says. The widening is applied after the atypical-day widener and before `Detector.Push`, so a small or partly measurable scope needs a larger drop before it can alarm; the floors below still stop detection entirely.
+**Implemented, the low-coverage band:** when `measurable < 20` or `coverage < 0.80`, the health detector's band is widened 1.5x before the trigger is evaluated, exactly as the middle row says. The widening is applied after the atypical-day widener and before `Detector.Push`, so a small or partly measurable scope needs a larger drop before it can alarm; the floors below still stop detection entirely. The coverage panel also marks the band: a sector row in it carries a `low` badge and a hatch, so a partly measurable scope is visible where the operator reads coverage rather than only as a quieter detector.
 
 A collapse in coverage is itself an event: if `coverage` for a scope falls below `median - 3σ` of its own baseline, emit `COVERAGE_DROP` as an **advisory**, never `INCIDENT`. A mass bot-wall rollout and a mass outage look identical in the health number, and only the coverage line tells them apart.
 

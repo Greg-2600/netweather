@@ -697,3 +697,24 @@ table.probes td.detail { max-width: 18rem; overflow-wrap: anywhere; }
   color: var(--muted);
   white-space: nowrap;
 }
+/* --- low coverage in the coverage panel (DESIGN.md 7.2) ------------------- */
+
+/* A computed scope with a small or partly measurable denominator. The badge
+   carries the meaning; the hatch makes the row legible without colour. */
+tr.low-coverage {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(240, 184, 73, 0.06) 0,
+    rgba(240, 184, 73, 0.06) 6px,
+    transparent 6px,
+    transparent 12px
+  );
+}
+
+.low-coverage-badge {
+  font-size: 0.68rem;
+  border: 1px dashed rgba(240, 184, 73, 0.6);
+  border-radius: 4px;
+  padding: 0 0.25rem;
+  color: #f0b849;
+}

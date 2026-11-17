@@ -1766,6 +1766,10 @@ type coverageRow struct {
 	Measured  int
 	Coverage  string
 	CoverageN float64
+	// Low marks the middle band from DESIGN.md §7.2: coverage below 0.80, or
+	// fewer than 20 measurable targets, is computed but noisy. It is a badge
+	// and a hatch, not a second colour scale.
+	Low bool
 }
 
 type staleRow struct {
@@ -1835,8 +1839,9 @@ func toCoverageRows(buckets []store.CoverageBucket) []coverageRow {
 		if b.Total > 0 {
 			row.CoverageN = float64(b.Measurable) / float64(b.Total)
 			row.Coverage = fmt.Sprintf("%.0f%%", row.CoverageN*100)
+			row.Low = row.CoverageN < 0.80 || b.Measurable < 20
 		} else {
-			row.Coverage = "—"
+			row.Coverage = "-"
 		}
 		if row.Value == "" {
 			row.Value = "(none)"

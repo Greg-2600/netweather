@@ -4110,3 +4110,37 @@ func TestLocalVerdictMutesDownTiles(t *testing.T) {
 		t.Error("an OK verdict muted a down tile")
 	}
 }
+
+func TestCoveragePanelMarksTheLowCoverageBand(t *testing.T) {
+	t.Parallel()
+
+	cov := &fakeCoverage{cov: store.Coverage{
+		Totals: store.CoverageTotals{Total: 35, Measurable: 24, Unmeasurable: 11},
+		Sectors: []store.CoverageBucket{
+			{Kind: "sector", Value: "airline", Total: 10, Measurable: 2, Unmeasurable: 8},
+			{Kind: "sector", Value: "cloud", Total: 25, Measurable: 22, Unmeasurable: 3},
+		},
+	}}
+	ts := newServerWithCoverage(t, testToken, fixture(), cov)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	// Only the 2-of-10 sector is in the documented middle band; the 22-of-25
+	// sector clears both the ratio and the absolute floor.
+	if got := strings.Count(page, `data-testid="low-coverage"`); got != 1 {
+		t.Fatalf("low-coverage markers = %d, want 1:\n%s", got, page)
+	}
+	if !strings.Contains(page, `class="low-coverage"`) {
+		t.Error("the low-coverage row does not carry the hatch class")
+	}
+	// The markup names the band in text, not only in colour.
+	if !strings.Contains(page, ">low</span>") {
+		t.Error("the badge does not say low")
+	}
+}
