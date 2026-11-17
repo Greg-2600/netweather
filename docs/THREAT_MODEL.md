@@ -155,7 +155,7 @@ The critical property is that **B2 is the only place a connection is created**. 
 | T11 | Clickjacking | `X-Frame-Options: DENY` + `frame-ancestors 'none'` | Enforced |
 | T12 | MIME sniffing | `X-Content-Type-Options: nosniff`, explicit `Content-Type` on every response | Enforced |
 | T13 | Token file readable by others | Refuse to start if the token file is group/world-readable (POSIX); on Windows, warn | Enforced (POSIX) |
-| T14 | Secrets in the image or env | Token from a file or secret mount; env var accepted but flagged; `.dockerignore` and `gitleaks` in CI | Enforced |
+| T14 | Secrets in the image or env | Token from a file or secret mount is preferred; an inline env token is accepted and logged once as `event=auth_token_env`, because anything that can read the process environment can read it; `.dockerignore` and full-history `gitleaks` in CI | Enforced |
 | T15 | Error pages leaking paths/SQL | Generic error page with a request ID; details only in logs | Enforced |
 
 Residual: a public bind with `ui.allow_public: true` and a weak token is the operator's choice. The startup banner states it once, loudly, and the badge never goes away.

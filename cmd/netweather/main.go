@@ -139,6 +139,13 @@ func serve(lg *logging.Logger) error {
 		lg.Error("invalid ui configuration", "event", "config_invalid", "error", err)
 		return err
 	}
+	if cfg.TokenFromEnv {
+		// An inline environment value is readable by anything that can inspect
+		// the process environment; a mounted file need not be. Accept it, but
+		// say so once (THREAT_MODEL.md T14).
+		lg.Warn("UI token came from the environment; a token file or secret mount is preferred",
+			"event", "auth_token_env", "component", "startup")
+	}
 
 	// Per-client limits and log lines are only meaningful behind a correctly
 	// configured proxy. An empty list keeps the peer address, which is the

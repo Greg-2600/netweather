@@ -158,3 +158,32 @@ func TestIsLoopbackThroughValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigRecordsWhetherTheTokenCameFromEnv(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := api.FromEnv(env(map[string]string{
+		"NETWEATHER_UI_TOKEN": "an-inline-token-value",
+	}))
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if !cfg.TokenFromEnv {
+		t.Fatal("an inline token was not flagged as coming from the environment")
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ui_token")
+	if err := os.WriteFile(path, []byte("a-long-enough-token-value"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = api.FromEnv(env(map[string]string{
+		"NETWEATHER_UI_TOKEN_FILE": path,
+	}))
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if cfg.TokenFromEnv {
+		t.Fatal("a token read from a file was flagged as coming from the environment")
+	}
+}

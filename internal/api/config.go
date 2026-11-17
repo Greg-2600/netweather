@@ -14,9 +14,14 @@ const MinTokenLen = 16
 
 // Config is the HTTP listener configuration.
 type Config struct {
-	Listen      string
-	Token       string
-	AllowPublic bool
+	Listen string
+	Token  string
+	// TokenFromEnv records that the token came from NETWEATHER_UI_TOKEN rather
+	// than a file. It is not a secret; serve logs one warning because an inline
+	// environment value is visible to anything that can read the process
+	// environment, while a mounted file need not be (THREAT_MODEL.md T14).
+	TokenFromEnv bool
+	AllowPublic  bool
 }
 
 // FromEnv reads NETWEATHER_UI_* variables. The token file wins over the inline
@@ -50,6 +55,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		}
 	} else {
 		c.Token = strings.TrimSpace(getenv("NETWEATHER_UI_TOKEN"))
+		c.TokenFromEnv = c.Token != ""
 	}
 
 	return c, c.Validate()
