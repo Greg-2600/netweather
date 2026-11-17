@@ -1476,3 +1476,52 @@ func TestInstrumentsHonourThePerTargetRedirectBudget(t *testing.T) {
 		t.Fatalf("the shared instrument budget changed to %d", inst.HTTP.MaxRedirects)
 	}
 }
+
+func TestInstrumentsAskForHeadersOnlyOnlyWhenNoAssertion(t *testing.T) {
+	t.Parallel()
+
+	var ranges []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ranges = append(ranges, r.Header.Get("Range"))
+		if r.Header.Get("Range") != "" {
+			w.WriteHeader(http.StatusPartialContent)
+		}
+		_, _ = io.WriteString(w, strings.Repeat("x", 64))
+	}))
+	defer srv.Close()
+
+	inst := agent.Instruments{HTTP: probe.NewHTTPWithTransport(http.DefaultTransport)}
+	ctx := context.Background()
+
+	// No content assertion: a ranged request is enough, and the contract
+	// admits the 206.
+	if got := inst.Run(ctx, agent.Target{
+		ID: "plain", URL: srv.URL, Instrument: "http",
+		Expect: classify.Expected{PartialOK: true},
+	}); got.Status != http.StatusPartialContent {
+		t.Fatalf("plain status = %d, want 206", got.Status)
+	}
+
+	// A body assertion needs the body, so no range.
+	if got := inst.Run(ctx, agent.Target{
+		ID: "body", URL: srv.URL, Instrument: "http",
+		Expect: classify.Expected{BodyContains: "welcome"},
+	}); got.Status != http.StatusOK {
+		t.Fatalf("body status = %d, want 200", got.Status)
+	}
+
+	// A status list that excludes 206 must not be sent a ranged request.
+	if got := inst.Run(ctx, agent.Target{
+		ID: "strict", URL: srv.URL, Instrument: "http",
+		Expect: classify.Expected{Status: []int{200}},
+	}); got.Status != http.StatusOK {
+		t.Fatalf("strict status = %d, want 200", got.Status)
+	}
+
+	if len(ranges) != 3 {
+		t.Fatalf("requests = %v", ranges)
+	}
+	if ranges[0] != "bytes=0-2047" || ranges[1] != "" || ranges[2] != "" {
+		t.Fatalf("ranges = %v, want only the plain target ranged", ranges)
+	}
+}

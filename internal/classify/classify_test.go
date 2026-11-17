@@ -543,3 +543,35 @@ func TestStatusRange(t *testing.T) {
 		t.Fatal("the default status set changed")
 	}
 }
+
+func TestPartialContentRequiresTheOptIn(t *testing.T) {
+	t.Parallel()
+
+	// A ranged request earns a 206; the default status set does not include it
+	// unless the target opted in.
+	if !(classify.Expected{PartialOK: true}).StatusAllowed(206) {
+		t.Error("PartialOK did not admit 206")
+	}
+	if (classify.Expected{}).StatusAllowed(206) {
+		t.Error("206 was admitted without PartialOK")
+	}
+
+	// An explicit list decides for itself, and AllowsPartial mirrors it.
+	if !(classify.Expected{Status: []int{200, 206}}).AllowsPartial() {
+		t.Error("a list containing 206 did not allow partial content")
+	}
+	if (classify.Expected{Status: []int{200}}).AllowsPartial() {
+		t.Error("a list without 206 allowed partial content")
+	}
+	// A range that covers 206 allows it; one that stops at 299 does not.
+	if !(classify.Expected{StatusMin: 200, StatusMax: 399}).AllowsPartial() {
+		t.Error("a 200-399 range did not allow 206")
+	}
+	if (classify.Expected{StatusMin: 200, StatusMax: 205}).AllowsPartial() {
+		t.Error("a 200-205 range allowed 206")
+	}
+	// No status contract uses the defaults, which PartialOK can widen.
+	if !(classify.Expected{}).AllowsPartial() {
+		t.Error("the default contract did not allow the opt-in")
+	}
+}

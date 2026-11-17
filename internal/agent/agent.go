@@ -112,6 +112,13 @@ func (i Instruments) Run(ctx context.Context, t Target) probe.Result {
 		if i.HTTP == nil {
 			return probe.Result{Err: fmt.Errorf("agent: http instrument not configured")}
 		}
+		// A target with no content assertion only needs status and headers, so
+		// ask for a small ranged body. The contract admits the 206 that earns
+		// (DESIGN.md §5.2); a target with a body or header assertion keeps the
+		// full body it needs.
+		if !t.Expect.HasSemantic() && t.Expect.AllowsPartial() {
+			ctx = probe.WithHeadersOnly(ctx)
+		}
 		// A per-target budget is scoped to this exchange, so concurrent
 		// probes cannot observe each other's limit.
 		return i.HTTP.Do(probe.WithRedirectLimit(ctx, t.MaxRedirects), t.URL)

@@ -244,6 +244,8 @@ expect:
 
 A status admitted by the range **or** the list is accepted; with neither, the default set above applies. The directory loader (`DESIGN.md` §13.2) gives its `sites/*.txt` targets the 200-399 range, because a sector list is a "does it answer" list rather than a per-site contract. `status_min` must be a valid HTTP status and `status_max` must be between it and 599; anything else is a startup error.
 
+**Implemented, partial content:** a target with no content assertion and a status contract that admits `206` is probed with `Range: bytes=0-2047` (`DESIGN.md` §5.2). The expected set gains `206` through `PartialOK`; a named status list without `206`, or any body/header assertion, disables the ranged request. A `206` therefore only ever explains a success the operator asked for, never a failure.
+
 ### 5.2 Status table
 
 | Status | Classification | Rationale |

@@ -436,3 +436,41 @@ func TestRedirectLimitFromContextScopesOneExchange(t *testing.T) {
 		t.Fatalf("status with the instrument budget = %d, want 200", got.Status)
 	}
 }
+
+func TestHeadersOnlyAsksForASmallRange(t *testing.T) {
+	t.Parallel()
+
+	var seen string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.Header.Get("Range")
+		if seen != "" {
+			w.WriteHeader(http.StatusPartialContent)
+		}
+		_, _ = io.WriteString(w, strings.Repeat("x", 4096))
+	}))
+	defer srv.Close()
+
+	h := probe.NewHTTPWithTransport(http.DefaultTransport)
+
+	// A normal exchange asks for no range and reads the full bounded body.
+	got := h.Do(context.Background(), srv.URL)
+	if seen != "" {
+		t.Fatalf("a normal probe sent Range %q", seen)
+	}
+	if got.Status != http.StatusOK || len(got.Body) != 4096 {
+		t.Fatalf("normal = %d, %d bytes", got.Status, len(got.Body))
+	}
+
+	// Headers-only asks for 2 KiB and accepts the 206 that earns.
+	seen = ""
+	got = h.Do(probe.WithHeadersOnly(context.Background()), srv.URL)
+	if seen != "bytes=0-2047" {
+		t.Fatalf("Range = %q, want bytes=0-2047", seen)
+	}
+	if got.Status != http.StatusPartialContent {
+		t.Fatalf("status = %d, want 206", got.Status)
+	}
+	if len(got.Body) > 2048 {
+		t.Fatalf("headers-only read %d bytes, want at most 2048", len(got.Body))
+	}
+}

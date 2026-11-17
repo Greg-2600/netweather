@@ -630,3 +630,60 @@ targets:
 		}
 	}
 }
+
+func TestPartialContentOptInFollowsTheContract(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"no assertion", "", true},
+		{"status range", "      status_min: 200\n      status_max: 399\n", true},
+		{"range excluding 206", "      status_min: 200\n      status_max: 205\n", false},
+		{"status list with 206", "      status: [200, 206]\n", true},
+		{"status list without 206", "      status: [200]\n", false},
+		{"content assertion", "      body_contains: welcome\n", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := write(t, `version: 1
+targets:
+  - name: Example
+    host: example.com
+    port: 443
+    probe: http
+    class: service
+    tier: 2
+    interval_s: 300
+`+prefixLines(tc.body, "    expect:\n"))
+			f, err := config.Load(path)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			expect, err := f.Targets[0].Expect.Classify()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if expect.PartialOK != tc.want {
+				t.Fatalf("PartialOK = %v, want %v", expect.PartialOK, tc.want)
+			}
+		})
+	}
+}
+
+// prefixLines indents a non-empty block by indent, so the table above can focus
+// on the expectation body.
+func prefixLines(body, indent string) string {
+	if body == "" {
+		return ""
+	}
+	out := indent
+	for _, line := range strings.Split(strings.TrimSuffix(body, "\n"), "\n") {
+		out += line + "\n"
+	}
+	return out
+}

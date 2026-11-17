@@ -27,6 +27,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/api"
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/bytecap"
+	"github.com/Greg-2600/netweather/internal/classify"
 	"github.com/Greg-2600/netweather/internal/config"
 	"github.com/Greg-2600/netweather/internal/corridor"
 	"github.com/Greg-2600/netweather/internal/enrich"
@@ -633,6 +634,14 @@ func applySeedEntries(ctx context.Context, st *store.Store, entries []seed.Entry
 			resolvers = append(resolvers, address)
 		}
 
+		// A generated HTTP target has no content assertion, so it is probed
+		// for status and headers and a 206 is a success. The shipped seed
+		// entries and the ccTLD anchors both come through here.
+		expect := classify.Expected{}
+		if probe == "http" {
+			expect.PartialOK = true
+		}
+
 		if err := st.UpsertTarget(ctx, store.Target{
 			ID:        e.ID,
 			Host:      e.Host,
@@ -659,6 +668,7 @@ func applySeedEntries(ctx context.Context, st *store.Store, entries []seed.Entry
 			Vantage:    "local",
 			Tier:       e.Tier,
 			Interval:   interval,
+			Expect:     expect,
 		})
 	}
 	return out, nil

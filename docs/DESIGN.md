@@ -238,12 +238,12 @@ Not every target needs HTTP. A bank that bot-walls you is better measured with `
 
 ### 5.2 HTTP probe specifics
 
-- **`GET`, not `HEAD`.** Many sites 405/403 `HEAD`. Use `GET` with `Range: bytes=0-2047` and close after headers when no body marker is configured.
-- Browser-like header set, but **no fingerprint spoofing**: `User-Agent` (identifying, see below), `Accept`, `Accept-Language`, `Accept-Encoding: gzip`.
+- **`GET`, not `HEAD`.** Many sites 405/403 `HEAD`. Use `GET` with `Range: bytes=0-2047` when no body marker is configured. **Implemented:** the agent asks for the 2 KiB range only when the target has no content assertion and its status contract admits `206`; a compliant server answers `206`, and `PartialOK` admits it as a success. A target with a body or header assertion keeps the full body, and a named status list without `206` disables the range so a partial response cannot masquerade as the code the operator asked for.
+- Identifying headers, but **no fingerprint spoofing**: the operator `User-Agent` (see below) and `Accept: */*`. No browser-specific `Accept-Language`, and no header order tricks. The transport negotiates `Accept-Encoding: gzip` and decompresses, so the classifier sees text rather than gzip bytes.
 - **Identify yourself.** `User-Agent: netweather/0.1 (+https://github.com/<owner>/netweather)`. This is both polite and a deliberate anti-evasion stance: operators can see who you are and block you if they want.
 - Follow ≤5 redirects. Re-run the private-IP check **on every hop** (§14).
 - HTTP/2 where offered. No TLS session-ticket tricks beyond the standard client cache.
-- Per-target timeout 8s default, 15s ceiling. Body read cap 32 KB.
+- 15s end-to-end ceiling, shared by the Tor vantage (its 2s probe spacing is the slower constraint). Body read cap 32 KB, or 2 KiB when only status and headers are needed.
 
 ### 5.3 The robots.txt trick
 

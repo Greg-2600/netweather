@@ -131,6 +131,10 @@ func (e Expect) Classify() (classify.Expected, error) {
 		}
 		out.BodyRegex = re
 	}
+	// Only a target with no content assertion can be probed for headers alone,
+	// and only when its status contract admits the 206 that a ranged request
+	// earns (DESIGN.md §5.2).
+	out.PartialOK = !out.HasSemantic() && out.AllowsPartial()
 	return out, nil
 }
 

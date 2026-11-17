@@ -63,6 +63,11 @@ type Expected struct {
 	// hops this target is allowed" is an operator decision about the target,
 	// not a global setting (CLASSIFIER.md §7).
 	MaxRedirects int
+	// PartialOK admits 206 Partial Content as a success. The instrument asks
+	// for a ranged body only when no content assertion needs it, and a
+	// compliant server answers 206; without this flag the default status set
+	// would call a served partial response unexpected (DESIGN.md §5.2).
+	PartialOK bool
 
 	BodyContains    string
 	BodyNotContains string
@@ -114,7 +119,31 @@ func (e Expected) StatusAllowed(status int) bool {
 			return true
 		}
 	}
+	// A ranged request has a 206 answer; it is a success only when the target
+	// has no content assertion that needs the whole body.
+	if status == 206 && e.PartialOK {
+		return true
+	}
 	return false
+}
+
+// AllowsPartial reports whether this target's status contract can admit a 206.
+// A named status list that does not include 206 cannot; a range that covers it
+// can; and the default set is widened by PartialOK when the caller decides a
+// ranged request is appropriate.
+func (e Expected) AllowsPartial() bool {
+	if len(e.Status) > 0 {
+		for _, s := range e.Status {
+			if s == 206 {
+				return true
+			}
+		}
+		return false
+	}
+	if e.StatusMin > 0 && e.StatusMax >= e.StatusMin {
+		return 206 >= e.StatusMin && 206 <= e.StatusMax
+	}
+	return true
 }
 
 // Decide applies the rule table. It never mutates its inputs and never fails.

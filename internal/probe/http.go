@@ -162,6 +162,23 @@ func NewHTTPWithDial(dial DialFunc) *HTTP {
 	return NewHTTPWithTransport(TransportForDial(dial))
 }
 
+// headersOnlyKey scopes "status and headers are enough" to one exchange. The
+// agent sets it for a target with no content assertion; the instrument then
+// asks for a 2 KiB ranged body and caps the read, which keeps the probe polite
+// without changing what the classifier can see (DESIGN.md §5.2). A per-target
+// decision must not be written onto the shared instrument.
+type headersOnlyKey struct{}
+
+// WithHeadersOnly marks one exchange as needing only status and headers.
+func WithHeadersOnly(ctx context.Context) context.Context {
+	return context.WithValue(ctx, headersOnlyKey{}, true)
+}
+
+func wantsHeadersOnly(ctx context.Context) bool {
+	only, _ := ctx.Value(headersOnlyKey{}).(bool)
+	return only
+}
+
 // redirectLimitKey scopes a redirect budget to one exchange. A per-target
 // budget must not be written onto the shared instrument, because the agent
 // probes several targets with the same HTTP value.
@@ -217,6 +234,17 @@ func (h *HTTP) Do(ctx context.Context, target string) Result {
 	req.Header.Set("User-Agent", ua)
 	req.Header.Set("Accept", "*/*")
 
+	// A target with no content assertion only needs to know that the origin
+	// serves. Ask for 2 KiB rather than the whole page; a compliant server
+	// answers 206, which the target's contract admits in that case.
+	bodyLimit := h.MaxBytes
+	if wantsHeadersOnly(ctx) {
+		req.Header.Set("Range", "bytes=0-2047")
+		if bodyLimit == 0 || bodyLimit > 2048 {
+			bodyLimit = 2048
+		}
+	}
+
 	resp, err := h.Client.Do(req)
 	res.Latency = time.Since(start)
 	if err != nil {
@@ -226,7 +254,7 @@ func (h *HTTP) Do(ctx context.Context, target string) Result {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, h.MaxBytes))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, bodyLimit))
 	if err != nil {
 		res.ErrorClass = ClassifyError(err)
 		res.Err = err
