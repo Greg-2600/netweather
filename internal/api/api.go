@@ -75,6 +75,13 @@ type Exporter interface {
 	ExportProbes(ctx context.Context, from, to time.Time, fn func(store.ExportRow) error) error
 }
 
+// FeedReader is the read side of external corroboration feeds: their health and
+// their most recent events.
+type FeedReader interface {
+	FeedStates(ctx context.Context) ([]store.FeedState, error)
+	ExternalEvents(ctx context.Context, limit int) ([]store.ExternalEvent, error)
+}
+
 // Deps is everything the HTTP layer needs. It is deliberately small: the API
 // reads state, it does not own it.
 type Deps struct {
@@ -106,6 +113,8 @@ type Deps struct {
 	SelfChecks SelfCheckReader
 	// Exporter streams observations. Nil disables the route.
 	Exporter Exporter
+	// Feeds reads external corroboration. Nil disables the route.
+	Feeds FeedReader
 	// Metrics is the Prometheus handler. Nil keeps /metrics unmounted, which is
 	// the default: exposing it is an operator decision.
 	Metrics http.Handler
@@ -151,6 +160,7 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	apiMux.HandleFunc("/api/v1/selfcheck", onlyGET(s.handleSelfCheck))
 	apiMux.HandleFunc("/api/v1/export", onlyGET(s.handleExport))
 	apiMux.HandleFunc("/api/v1/events", onlyGET(s.handleEvents))
+	apiMux.HandleFunc("/api/v1/feeds", onlyGET(s.handleFeeds))
 	apiMux.HandleFunc("/api/v1/incidents", onlyGET(s.handleIncidents))
 	apiMux.HandleFunc("/api/v1/incidents/", onlyGET(s.handleIncidentByID))
 	apiMux.HandleFunc("/", s.handleNotFound)
@@ -247,7 +257,7 @@ type metaResponse struct {
 
 // capabilities is the runtime truth. A client should feature-detect here rather
 // than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events"}
+var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds"}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}
@@ -1335,6 +1345,100 @@ func (s *server) heartbeat(w http.ResponseWriter, r *http.Request, flusher http.
 			flusher.Flush()
 		}
 	}
+}
+
+type feedStateItem struct {
+	Feed                string `json:"feed"`
+	LastOKAt            string `json:"last_ok_at,omitempty"`
+	LastErr             string `json:"last_err,omitempty"`
+	ConsecutiveFailures int    `json:"consecutive_failures"`
+	NextPollAt          string `json:"next_poll_at,omitempty"`
+	Stale               bool   `json:"stale"`
+}
+
+type externalEventItem struct {
+	Feed       string  `json:"feed"`
+	ExternalID string  `json:"external_id"`
+	Kind       string  `json:"kind"`
+	Severity   float64 `json:"severity,omitempty"`
+	Country    string  `json:"country,omitempty"`
+	ASN        int     `json:"asn,omitempty"`
+	StartedAt  string  `json:"started_at"`
+	EndedAt    string  `json:"ended_at,omitempty"`
+	ObservedAt string  `json:"observed_at"`
+}
+
+type feedsResponse struct {
+	Feeds  []feedStateItem     `json:"feeds"`
+	Events []externalEventItem `json:"events"`
+}
+
+// handleFeeds reports feed health and recent external events. Staleness is
+// computed here, not stored: a feed is stale when its last success is older than
+// three default poll intervals, and a stale feed's events are evidence with an
+// expiry date, which the client can see.
+func (s *server) handleFeeds(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Feeds == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "feeds are not configured")
+		return
+	}
+
+	limit, err := parseLimit(r.URL.Query().Get("limit"), 50, 200)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, err.Error())
+		return
+	}
+
+	states, err := s.deps.Feeds.FeedStates(r.Context())
+	if err != nil {
+		s.deps.Logger.Error("feed states failed", "event", "feed_states_failed", "component", "http", "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "feeds unavailable")
+		return
+	}
+	events, err := s.deps.Feeds.ExternalEvents(r.Context(), limit)
+	if err != nil {
+		s.deps.Logger.Error("external events failed", "event", "feed_events_failed", "component", "http", "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "feeds unavailable")
+		return
+	}
+
+	now := time.Now().UTC()
+	staleAfter := 30 * time.Minute
+
+	out := feedsResponse{
+		Feeds:  make([]feedStateItem, 0, len(states)),
+		Events: make([]externalEventItem, 0, len(events)),
+	}
+	for _, st := range states {
+		item := feedStateItem{
+			Feed: st.Feed, LastErr: st.LastErr,
+			ConsecutiveFailures: st.ConsecutiveFailures,
+		}
+		if !st.LastOKAt.IsZero() {
+			item.LastOKAt = st.LastOKAt.UTC().Format(time.RFC3339)
+			item.Stale = now.Sub(st.LastOKAt) > staleAfter
+		} else {
+			item.Stale = true
+		}
+		if !st.NextPollAt.IsZero() {
+			item.NextPollAt = st.NextPollAt.UTC().Format(time.RFC3339)
+		}
+		out.Feeds = append(out.Feeds, item)
+	}
+	for _, e := range events {
+		item := externalEventItem{
+			Feed: e.Feed, ExternalID: e.ExternalID, Kind: e.Kind,
+			Severity: e.Severity, Country: e.Country, ASN: e.ASN,
+			StartedAt:  e.StartedAt.UTC().Format(time.RFC3339),
+			ObservedAt: e.ObservedAt.UTC().Format(time.RFC3339),
+		}
+		if !e.EndedAt.IsZero() {
+			item.EndedAt = e.EndedAt.UTC().Format(time.RFC3339)
+		}
+		out.Events = append(out.Events, item)
+	}
+
+	writeData(w, r, out, &Meta{Count: len(out.Events), Limit: limit})
 }
 
 func (s *server) handleControl(w http.ResponseWriter, r *http.Request) {

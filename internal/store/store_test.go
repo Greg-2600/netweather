@@ -67,8 +67,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 6 {
-		t.Errorf("schema version = %d, want 6", stats.SchemaVersion)
+	if stats.SchemaVersion != 7 {
+		t.Errorf("schema version = %d, want 7", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -96,7 +96,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 6 {
+	if err != nil || version != 7 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -1248,5 +1248,107 @@ func TestSelfCheckRoundTripAndLatest(t *testing.T) {
 	}
 	if len(none) != 0 {
 		t.Fatalf("fresh database returned %d self checks", len(none))
+	}
+}
+
+func TestExternalEventsDeduplicateByFeedAndID(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC)
+	event := store.ExternalEvent{
+		Feed: "ioda", ExternalID: "evt-1", Kind: "outage", Severity: 0.8,
+		Country: "IR", StartedAt: base, ObservedAt: base, Payload: `{"id":"evt-1"}`,
+	}
+	if err := s.UpsertExternalEvents(ctx, []store.ExternalEvent{event}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The same feed id with a new severity updates the row, not duplicates it.
+	event.Severity = 0.95
+	event.ObservedAt = base.Add(time.Minute)
+	if err := s.UpsertExternalEvents(ctx, []store.ExternalEvent{event}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.ExternalEvents(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("events = %d, want one", len(got))
+	}
+	if got[0].Severity != 0.95 || got[0].Country != "IR" {
+		t.Fatalf("event = %+v", got[0])
+	}
+
+	// A different feed may reuse the same external id.
+	other := event
+	other.Feed = "radar"
+	if err := s.UpsertExternalEvents(ctx, []store.ExternalEvent{other}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.ExternalEvents(ctx, 10)
+	if len(got) != 2 {
+		t.Fatalf("events = %d, want two feeds kept apart", len(got))
+	}
+}
+
+func TestFeedStateTracksFailuresAndRecovery(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	ctx := context.Background()
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+
+	if err := s.RecordFeedSuccess(ctx, "ioda", now); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := s.RecordFeedFailure(ctx, "ioda", "503 from upstream", now.Add(time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	states, err := s.FeedStates(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(states) != 1 {
+		t.Fatalf("states = %d", len(states))
+	}
+	got := states[0]
+	if got.Feed != "ioda" || got.ConsecutiveFailures != 2 {
+		t.Fatalf("state = %+v", got)
+	}
+	if !got.LastOKAt.Equal(now) {
+		t.Fatalf("last ok = %v, want the earlier success preserved", got.LastOKAt)
+	}
+	if got.LastErr != "503 from upstream" {
+		t.Fatalf("last err = %q", got.LastErr)
+	}
+
+	// A success clears the error and the streak.
+	if err := s.RecordFeedSuccess(ctx, "ioda", now.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	states, _ = s.FeedStates(ctx)
+	if states[0].ConsecutiveFailures != 0 || states[0].LastErr != "" {
+		t.Fatalf("state after recovery = %+v", states[0])
+	}
+
+	if err := s.SetFeedNextPoll(ctx, "ioda", now.Add(10*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	states, _ = s.FeedStates(ctx)
+	if !states[0].NextPollAt.Equal(now.Add(10 * time.Minute)) {
+		t.Fatalf("next poll = %v", states[0].NextPollAt)
+	}
+
+	// Upserting an empty batch is a no-op, not an error.
+	if err := s.UpsertExternalEvents(ctx, nil); err != nil {
+		t.Fatalf("empty batch: %v", err)
 	}
 }

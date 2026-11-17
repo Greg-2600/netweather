@@ -472,6 +472,8 @@ CREATE TABLE feed_state (
 
 `feed_state` is what makes `Radar: stale (2h)` possible instead of a silent blank (`DESIGN.md` §8.7).
 
+**Implemented in migration `0007`:** `external_event` and `feed_state` are written by `internal/feeds`, with IODA as the first source (`NETWEATHER_FEEDS=ioda`). Events are deduplicated on `(feed, external_id)`, so a re-poll updates rather than duplicates. `feed_state.last_ok_at` is preserved across failures, because "stale since 09:58" is the fact worth keeping; the stale flag itself is computed on read so a clock change cannot freeze it.
+
 ---
 
 ## 10. Coverage

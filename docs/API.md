@@ -200,7 +200,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
-    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events"],
+    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -595,6 +595,37 @@ data: {"target":"united.com","name":"United","state":"down","state_text":"Down",
 
 For browser `EventSource`, which cannot set an `Authorization` header, use the UI's cookie-authenticated `/events`; an API client should use a `fetch`-based SSE reader instead.
 
+### 6.18 `GET /api/v1/feeds` — stable
+
+Auth: bearer. Feed health and recent external events. Feeds are opt-in (`NETWEATHER_FEEDS=ioda`), because they are outbound calls to someone else's API.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `limit` | 50 | 1–200, applies to events |
+
+```json
+{
+  "data": {
+    "feeds": [
+      {"feed": "ioda", "last_ok_at": "2026-11-17T11:58:00Z", "consecutive_failures": 0,
+       "next_poll_at": "2026-11-17T12:08:00Z", "stale": false},
+      {"feed": "radar", "last_ok_at": "2026-11-17T09:58:00Z", "last_err": "503 from upstream",
+       "consecutive_failures": 3, "stale": true}
+    ],
+    "events": [
+      {"feed": "ioda", "external_id": "1001", "kind": "outage", "severity": 0.87,
+       "country": "IR", "started_at": "2026-11-17T10:00:00Z", "observed_at": "2026-11-17T12:00:00Z"}
+    ]
+  },
+  "meta": {"request_id": "…", "count": 1, "limit": 50}
+}
+```
+
+- `stale` is true when the last success is older than 30 minutes, or when the feed has never succeeded. Staleness is computed on read, not stored, so a clock change cannot freeze it.
+- `last_ok_at` is preserved across failures: "stale since 09:58" is the useful fact.
+- `severity` is the feed's own score. It is evidence, not a verdict, and it never changes a target's state on its own.
+- An unknown feed name in `NETWEATHER_FEEDS` is ignored rather than fatal; the list is operator input, not a security boundary.
+
 ---
 
 ## 7. Specified, not implemented
@@ -603,9 +634,7 @@ Each of these is a promise about shape, not a claim that it works. `GET /api/v1/
 
 ### 7.1 Read surface
 
-| Endpoint | Tier | Purpose |
-|---|---|---|
-| `GET /api/v1/feeds` | stable | Feed state: last success, staleness, consecutive failures |
+Nothing remains on the read surface. Every read endpoint in this document is implemented; the section is kept so cross-references do not silently break.
 
 ### 7.2 Live updates
 

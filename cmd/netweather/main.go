@@ -24,6 +24,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/api"
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/config"
+	"github.com/Greg-2600/netweather/internal/feeds"
 	"github.com/Greg-2600/netweather/internal/incidents"
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/metrics"
@@ -159,6 +160,13 @@ func serve(lg *logging.Logger) error {
 		selfcheck.ClockCheck(instruments.HTTP, "https://www.cloudflare.com/", time.Minute),
 	}}
 
+	// Feeds are opt-in: they are outbound calls to someone else's API, and an
+	// operator should choose that rather than discover it.
+	feedPollers := buildFeedPollers(st)
+	for _, p := range feedPollers {
+		go feeds.Loop(ctx, p, lg.Logger)
+	}
+
 	var metricsHandler http.Handler
 	if os.Getenv("NETWEATHER_METRICS") == "true" {
 		metricsHandler = metrics.Handler(st, "local")
@@ -198,6 +206,7 @@ func serve(lg *logging.Logger) error {
 		Coverage:   st,
 		SelfChecks: st,
 		Exporter:   st,
+		Feeds:      st,
 		Metrics:    metricsHandler,
 		Vantage:    "local",
 		Fallback:   ui,
@@ -476,6 +485,39 @@ func newAgent(targets []agent.Target, st *store.Store, lg *logging.Logger) *agen
 	ag := agent.New(targets, newInstruments(), st)
 	ag.Logger = lg.Logger
 	return ag
+}
+
+// buildFeedPollers returns a poller per enabled feed. NETWEATHER_FEEDS is a
+// comma-separated list; empty means "no external calls", which is the default
+// because a feed is someone else's API and an operator should opt in.
+func buildFeedPollers(st *store.Store) []*feeds.Poller {
+	enabled := strings.ToLower(strings.TrimSpace(os.Getenv("NETWEATHER_FEEDS")))
+	if enabled == "" || enabled == "none" {
+		return nil
+	}
+
+	client := &http.Client{
+		Transport: probe.Transport(netx.New()),
+		Timeout:   20 * time.Second,
+	}
+
+	var out []*feeds.Poller
+	for _, name := range strings.Split(enabled, ",") {
+		switch strings.TrimSpace(name) {
+		case "ioda":
+			ioda := feeds.NewIODA(client)
+			if endpoint := strings.TrimSpace(os.Getenv("NETWEATHER_IODA_URL")); endpoint != "" {
+				ioda.Endpoint = endpoint
+			}
+			out = append(out, &feeds.Poller{
+				Feed:   "ioda",
+				Source: ioda,
+				Sink:   st,
+				Every:  10 * time.Minute,
+			})
+		}
+	}
+	return out
 }
 
 // maintenanceLoop folds closed rollups, applies retention, and runs the

@@ -2144,6 +2144,139 @@ func TestEventsHeartbeatOnlyWithoutWatcher(t *testing.T) {
 	}
 }
 
+type fakeFeeds struct {
+	states []store.FeedState
+	events []store.ExternalEvent
+	err    error
+}
+
+func (f *fakeFeeds) FeedStates(context.Context) ([]store.FeedState, error) {
+	return f.states, f.err
+}
+
+func (f *fakeFeeds) ExternalEvents(context.Context, int) ([]store.ExternalEvent, error) {
+	return f.events, f.err
+}
+
+func newFeedsHandler(t *testing.T, reader api.FeedReader) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Feeds:     reader,
+			Version:   "test",
+			Commit:    "deadbeef",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func feedsFixture() *fakeFeeds {
+	now := time.Now().UTC()
+	return &fakeFeeds{
+		states: []store.FeedState{
+			{
+				Feed: "ioda", LastOKAt: now.Add(-2 * time.Minute),
+				NextPollAt: now.Add(8 * time.Minute),
+			},
+			{
+				Feed: "radar", LastOKAt: now.Add(-2 * time.Hour),
+				LastErr: "503 from upstream", ConsecutiveFailures: 3,
+			},
+		},
+		events: []store.ExternalEvent{
+			{
+				ID: 1, Feed: "ioda", ExternalID: "evt-1", Kind: "outage",
+				Severity: 0.87, Country: "IR",
+				StartedAt: now.Add(-time.Hour), ObservedAt: now,
+			},
+		},
+	}
+}
+
+func TestFeedsList(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newFeedsHandler(t, feedsFixture()), http.MethodGet, "/api/v1/feeds", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Feeds []struct {
+			Feed                string `json:"feed"`
+			LastOKAt            string `json:"last_ok_at"`
+			LastErr             string `json:"last_err"`
+			ConsecutiveFailures int    `json:"consecutive_failures"`
+			Stale               bool   `json:"stale"`
+		} `json:"feeds"`
+		Events []struct {
+			Feed       string  `json:"feed"`
+			ExternalID string  `json:"external_id"`
+			Kind       string  `json:"kind"`
+			Severity   float64 `json:"severity"`
+			Country    string  `json:"country"`
+			StartedAt  string  `json:"started_at"`
+		} `json:"events"`
+	}
+	if err := json.Unmarshal(env.Data, &got); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(got.Feeds) != 2 {
+		t.Fatalf("feeds = %+v", got.Feeds)
+	}
+	if got.Feeds[0].Feed != "ioda" || got.Feeds[0].Stale {
+		t.Fatalf("ioda = %+v", got.Feeds[0])
+	}
+	if !got.Feeds[1].Stale || got.Feeds[1].ConsecutiveFailures != 3 {
+		t.Fatalf("radar = %+v", got.Feeds[1])
+	}
+	if len(got.Events) != 1 || got.Events[0].Country != "IR" || got.Events[0].Kind != "outage" {
+		t.Fatalf("events = %+v", got.Events)
+	}
+	if got.Events[0].StartedAt == "" {
+		t.Error("started_at missing")
+	}
+	if env.Meta.Count != 1 {
+		t.Errorf("meta.count = %d", env.Meta.Count)
+	}
+}
+
+func TestFeedsUnavailableBadLimitAndAuth(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/api/v1/feeds", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+
+	rec = do(newFeedsHandler(t, feedsFixture()), http.MethodGet, "/api/v1/feeds?limit=0", testToken)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+
+	rec = do(newFeedsHandler(t, &fakeFeeds{err: errors.New("db down")}), http.MethodGet, "/api/v1/feeds", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 on a read failure", rec.Code)
+	}
+
+	rec = do(newFeedsHandler(t, feedsFixture()), http.MethodGet, "/api/v1/feeds", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
 func TestSecurityHeaders(t *testing.T) {
 	t.Parallel()
 
