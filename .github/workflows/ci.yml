@@ -54,3 +54,26 @@ jobs:
       - uses: golangci/golangci-lint-action@v6
         with:
           version: latest
+
+  uitest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: install browser
+        run: go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6401.0 install --with-deps chromium
+
+      - name: browser tests
+        run: go test -tags=uitest -count=1 ./internal/web/uitest -timeout 10m
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: uitest-artifacts
+          path: testdata/out/
+          if-no-files-found: ignore
+          retention-days: 7

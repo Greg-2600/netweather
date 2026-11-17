@@ -178,7 +178,7 @@ Custom `semgrep` rules worth writing, because they encode decisions this project
 
 ## 5. Testing strategy
 
-Six layers. Each answers a question the layer below cannot.
+Six layers run by default. Each answers a question the layer below cannot. A seventh, opt-in browser layer (§5.8) proves the UI wiring and is deliberately outside the default loop.
 
 ```
         ┌──────────────────────────────┐
@@ -344,6 +344,70 @@ Recorded, never live, in CI.
 `gremlins` mutates the classifier and checks whether the fixture suite notices. This is the only way to prove the tests are not vacuous — a rule table with 40 fixtures can still have 20 fixtures that assert nothing.
 
 Scope it to `internal/classify` only; it is slow and the classifier is where correctness lives. Advisory in CI, not blocking.
+
+### 5.8 Browser UI tests
+
+The layers above never execute JavaScript, never apply CSS, and never press Tab. A page can pass every HTTP test and still show a blank grid because a `querySelector` broke or a CSP header blocked an asset. This layer exists for that gap only.
+
+**Tool: Playwright for Go** (`github.com/mxschmitt/playwright-go`), not Selenium.
+
+| | Playwright | Selenium/WebDriver |
+|---|---|---|
+| Driver management | one bundled driver, `playwright install` | a driver binary per browser, version-matched to the installed browser |
+| Waiting | auto-waiting assertions (`ToHaveAttribute`, `ToBeVisible`) with retry | explicit waits; the classic source of flakes |
+| Failure evidence | screenshot, trace, video, console log capture built in | assembled by hand |
+| Selectors | `data-testid`, role, accessible name | same, but no accessibility assertions |
+| Multi-browser | chromium, firefox, webkit from one API | one driver each |
+
+The deciding factor is the assertion model: `expect(locator).ToHaveAttribute("data-state", "up")` replaces `sleep(500); assert(getAttribute())`, which is how browser suites become untrustworthy.
+
+**Opt-in by build tag.** The suite lives in `internal/web/uitest` and starts with `//go:build uitest`.
+
+```sh
+go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6401.0 install chromium
+go test -tags=uitest ./internal/web/uitest -timeout 10m
+```
+
+Reasons for the tag: `go test ./...` stays under a second per package, contributors without a browser are not blocked, and the release image never gains a test dependency. CI runs the tagged suite as its own job.
+
+What it asserts, and nothing more:
+
+| Test | Proves |
+|---|---|
+| `TestLoginRejectsWrongTokenThenAccepts` | the form errors in place and still works after a failure |
+| `TestBoardRendersStatesAccessibly` | one tile per target, correct `data-state`, accessible name contains the state, every state has a glyph |
+| `TestLiveUpdateArrivesOverSSE` | a server-side change reaches the DOM over SSE, the label and the summary chip update, without reload |
+| `TestKeyboardReachesTiles` | tiles are in the tab order |
+| `TestTargetDetailNavigation` | tile → detail → back works |
+| `TestMobileViewportDoesNotOverflow` | no horizontal overflow at 390 px |
+
+It also fails on any `console.error` or uncaught page error, with one documented exception: the deliberate `401` from a failed login, which is asserted by the error box instead.
+
+**Selector contract.** Tests address elements by `data-testid`, never by CSS class or DOM position:
+
+| Test id | Element |
+|---|---|
+| `login-token`, `login-submit`, `login-error` | login form |
+| `board` | grid container |
+| `tile` | one target tile (`data-target`, `data-state`) |
+| `count-<state>` | summary chip |
+| `connection` | live/paused indicator (`data-state=live\|retrying`) |
+| `target-detail`, `target-state` | detail page |
+| `empty-board` | no targets configured |
+
+Renaming a test id is a deliberate act; changing a class is not. That asymmetry is the point.
+
+**Flake policy.** No `sleep` anywhere in the suite; Playwright retries assertions, not tests. Locally: zero retries, so a flake is visible. CI: one retry of the whole job, and a retry that passes is logged as a known flake, not silently accepted. A test that needs a retry three runs in a row is quarantined or deleted, because a browser suite nobody trusts is worse than none.
+
+**Artifacts.** On failure, a screenshot goes to `testdata/out/<TestName>.png` (gitignored), and CI uploads that directory. Traces are off by default because they are large; enable them locally with `PWDEBUG=1` or a tracing option when chasing something specific.
+
+**Not tested here.** Classification, formatting, boundary logic, API envelopes, and anything that does not need a DOM. Those belong in §5.1–§5.3. Browser tests are slow and brittle by nature; putting logic in them is how a suite becomes a 20-minute gate people skip.
+
+**Cross-browser.** Chromium is required. Firefox and WebKit run in the weekly job only, because the UI uses no exotic APIs and a per-PR matrix would triple the gate for near-zero signal. If a browser-specific bug appears, it earns a permanent matrix entry.
+
+**Accessibility.** The suite already asserts accessible names and glyph presence; the plan is `axe-core` via `page.AddScriptTag` for a rules pass on board, login, and detail. Not in the first cut: axe findings need a triage policy, and an un-triaged accessibility gate gets muted.
+
+**Cost.** ~4 s locally for six tests, ~40 s in CI including browser install. Acceptable for what it catches.
 
 ---
 

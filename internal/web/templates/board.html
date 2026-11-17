@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>netweather</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="/">netweather</a>
+    <span class="muted small" data-testid="version">{{.Version}}</span>
+    {{if .CSRF}}
+    <form method="post" action="/logout" class="spacer">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button type="submit" class="link" data-testid="logout">Sign out</button>
+    </form>
+    {{end}}
+  </header>
+
+  <main>
+    <section class="summary" aria-label="State summary">
+      {{range .Counts}}
+      <span class="chip {{.Class}}" data-count-state="{{.State}}" data-testid="count-{{.State}}">
+        <span class="glyph" aria-hidden="true">{{.Glyph}}</span>
+        <span class="label">{{.Label}}</span>
+        <b>{{.Count}}</b>
+      </span>
+      {{end}}
+    </section>
+
+    <section class="board" aria-label="Target status" data-testid="board">
+      {{if not .Targets}}
+      <p class="empty" data-testid="empty-board">
+        No targets yet. The probe store arrives in phase 0; until then the board is empty by design.
+      </p>
+      {{end}}
+      {{range .Targets}}
+      <a class="tile {{.Class}}"
+         href="/targets/{{.ID}}"
+         data-testid="tile"
+         data-target="{{.Host}}"
+         data-state="{{.State}}"
+         aria-label="{{.Aria}}">
+        <span class="glyph" aria-hidden="true">{{.Glyph}}</span>
+        <span class="name">{{.Name}}</span>
+        <span class="host">{{.Host}}</span>
+        <span class="state">{{.Text}}</span>
+      </a>
+      {{end}}
+    </section>
+  </main>
+
+  <p class="conn" data-testid="connection" data-state="connecting" aria-live="polite">Connecting…</p>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

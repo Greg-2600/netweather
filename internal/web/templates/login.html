@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · netweather</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="auth">
+  <main class="card">
+    <h1 class="brand">netweather</h1>
+    <p class="muted">This instance requires an access token.</p>
+
+    {{if .Error}}
+    <p class="error" role="alert" data-testid="login-error">{{.Error}}</p>
+    {{end}}
+
+    <form method="post" action="/login">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label for="token">Access token</label>
+      <input id="token" name="token" type="password" autocomplete="current-password" required autofocus
+             data-testid="login-token">
+      <button type="submit" data-testid="login-submit">Sign in</button>
+    </form>
+
+    <p class="muted small">The token is the contents of <code>NETWEATHER_UI_TOKEN_FILE</code> on the server.</p>
+  </main>
+</body>
+</html>

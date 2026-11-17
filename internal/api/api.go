@@ -19,6 +19,9 @@ type Deps struct {
 	Version   string
 	Commit    string
 	StartedAt time.Time
+	// Fallback serves everything that is not /healthz or /api/. It is the UI.
+	// Nil means "JSON 404", which is the right default for tests.
+	Fallback http.Handler
 }
 
 type server struct {
@@ -49,7 +52,11 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	root := http.NewServeMux()
 	root.HandleFunc("/healthz", onlyGET(s.handleHealthz))
 	root.Handle("/api/", withBearerAuth(cfg.Token, apiMux))
-	root.HandleFunc("/", s.handleNotFound)
+	if deps.Fallback != nil {
+		root.Handle("/", deps.Fallback)
+	} else {
+		root.HandleFunc("/", s.handleNotFound)
+	}
 
 	return withRequestID(
 		withAccessLog(deps.Logger,

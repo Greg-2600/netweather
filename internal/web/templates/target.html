@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Name}} · netweather</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="/">netweather</a>
+  </header>
+
+  <main>
+    <article class="card" data-testid="target-detail">
+      <h1>{{.Name}}</h1>
+      <p class="mono muted">{{.Host}}</p>
+      <p class="detail-state {{.Class}}">
+        <span class="glyph" aria-hidden="true">{{.Glyph}}</span>
+        <b data-testid="target-state">{{.Text}}</b>
+        {{if .Since}}<span class="muted">since {{.Since}}</span>{{end}}
+      </p>
+      <p class="muted">Probe history, attribution, and the trace drawer live here once the store lands.</p>
+      <p><a href="/">← Back to the board</a></p>
+    </article>
+  </main>
+</body>
+</html>

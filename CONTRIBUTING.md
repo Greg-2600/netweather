@@ -27,6 +27,17 @@ CI additionally runs `golangci-lint`, `gosec`, and `govulncheck`. Run them local
 
 `go test -race` needs a C compiler. On Windows without cgo, `go test ./...` is still valid; CI runs the race detector on Linux.
 
+### Browser tests
+
+The UI suite is opt-in so the default loop stays fast:
+
+```sh
+go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6401.0 install chromium
+go test -tags=uitest ./internal/web/uitest -timeout 10m
+```
+
+No `sleep` and no class-based selectors: use `data-testid` and Playwright's auto-waiting assertions. A failure writes a screenshot to `testdata/out/`. See `docs/QUALITY.md` §5.8.
+
 ## Rules that are not negotiable
 
 1. **No evasion.** No User-Agent rotation, TLS fingerprint impersonation, CAPTCHA solving, or residential proxy pools. `BLOCKED` is a valid, useful answer.

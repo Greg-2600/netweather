@@ -16,9 +16,11 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/api"
+	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/startup"
 	"github.com/Greg-2600/netweather/internal/version"
+	"github.com/Greg-2600/netweather/internal/web"
 )
 
 func main() {
@@ -95,12 +97,30 @@ func serve(lg *logging.Logger) error {
 		return err
 	}
 
+	// The store is phase 0 work. Until it lands the board is genuinely empty;
+	// seeding fake targets here would make the dashboard lie.
+	source := board.NewMemory()
+
+	ui, err := web.New(web.Deps{
+		Logger:        lg.Logger,
+		Source:        source,
+		Watcher:       source,
+		Token:         cfg.Token,
+		SecureCookies: os.Getenv("NETWEATHER_UI_SECURE_COOKIES") == "true",
+		Version:       version.Version,
+		StartedAt:     time.Now(),
+	})
+	if err != nil {
+		return err
+	}
+
 	handler, err := api.New(cfg, api.Deps{
 		Logger:    lg.Logger,
 		Ring:      lg.Ring,
 		Version:   version.Version,
 		Commit:    version.Commit,
 		StartedAt: time.Now(),
+		Fallback:  ui,
 	})
 	if err != nil {
 		return err

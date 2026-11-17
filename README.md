@@ -10,7 +10,7 @@ A self-hosted internet weather station. One small container that answers three q
 
 Most monitors answer only #2, and answer it badly: `curl != 200` becomes "down." That produces enough false alarms that people stop looking. This one classifies bot protection instead of evading it, and refuses to call a single vantage point a global truth.
 
-**Status: design phase.** No code yet. The documents in [`docs/`](docs/) are the specification.
+**Status: phase 0, early.** The documents in [`docs/`](docs/) are the specification. The binary currently serves the API contract (`/healthz`, `/api/v1/meta`, `/api/v1/logs`) and a board skeleton — login, grid, SSE deltas — backed by an in-memory source. The probe engine and the store are next.
 
 ---
 
@@ -75,7 +75,7 @@ The through-line: `censor_sensor` asked *"can I reach it?"*, `global_packet_thro
 
 **External intelligence** — IODA, Cloudflare Radar, RIPE RIS, Statuspage family. All optional; the core works with zero feeds.
 
-**Stack** — Go, SQLite (pure Go), server-rendered HTML + HTMX + SSE. One binary. No JS build step.
+**Stack** - Go, SQLite (pure Go), server-rendered HTML + SSE. One binary. No JS build step, no framework. Browser tests use Playwright.
 
 ---
 
