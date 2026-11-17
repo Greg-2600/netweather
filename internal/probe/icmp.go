@@ -52,12 +52,25 @@ const (
 	DefaultPingTimeout = 2 * time.Second
 )
 
-// NewICMP returns a ping instrument with the production defaults.
+// NewICMP returns a ping instrument with the production defaults. It prefers an
+// unprivileged ping socket and falls back to a raw one, so a host with
+// ping_group_range enabled needs no capability and a host without it still works
+// when CAP_NET_RAW is granted (THREAT_MODEL.md T53).
 func NewICMP() *ICMP {
 	return &ICMP{
 		Count:   DefaultPingCount,
 		Timeout: DefaultPingTimeout,
-		Open:    func() (EchoTransport, error) { return openICMPTrace() },
+		Open: func() (EchoTransport, error) {
+			ping, pingErr := openICMPPing()
+			if pingErr == nil {
+				return ping, nil
+			}
+			raw, rawErr := openICMPTrace()
+			if rawErr != nil {
+				return nil, fmt.Errorf("probe: no ICMP socket: unprivileged: %w; raw: %w", pingErr, rawErr)
+			}
+			return raw, nil
+		},
 	}
 }
 
