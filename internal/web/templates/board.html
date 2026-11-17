@@ -12,13 +12,31 @@
     <a class="brand" href="/">netweather</a>
     <a class="nav" href="/incidents">Incidents</a>
     <span class="muted small" data-testid="version">{{.Version}}</span>
-    {{if .CSRF}}
-    <form method="post" action="/logout" class="spacer">
-      <input type="hidden" name="csrf" value="{{.CSRF}}">
-      <button type="submit" class="link" data-testid="logout">Sign out</button>
-    </form>
+    {{if or .CSRF .Control}}
+    <div class="controls">
+      {{if .Control}}
+      <form method="post" action="{{if .Paused}}/resume{{else}}/pause{{end}}">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button type="submit" class="link" data-testid="probe-toggle">
+          {{if .Paused}}Resume probing{{else}}Pause probing{{end}}
+        </button>
+      </form>
+      {{end}}
+      {{if .CSRF}}
+      <form method="post" action="/logout">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button type="submit" class="link" data-testid="logout">Sign out</button>
+      </form>
+      {{end}}
+    </div>
     {{end}}
   </header>
+
+  {{if .Paused}}
+  <p class="banner paused" data-testid="paused-banner" role="status">
+    Probing is paused. No outbound requests are being made.
+  </p>
+  {{end}}
 
   <main>
     <section class="summary" aria-label="State summary">

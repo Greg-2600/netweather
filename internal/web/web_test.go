@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -621,6 +622,134 @@ func incidentsFixture() *fakeIncidentHistory {
 			{Rank: 1, Kind: "sector", Value: "airline", Failing: 5, Total: 6, Share: 5.0 / 6.0, Score: 1.5},
 		},
 		targets: []string{"svc-united", "svc-delta"},
+	}
+}
+
+type fakeControl struct {
+	mu     sync.Mutex
+	paused bool
+}
+
+func (f *fakeControl) Pause() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.paused = true
+}
+
+func (f *fakeControl) Resume() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.paused = false
+}
+
+func (f *fakeControl) Paused() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.paused
+}
+
+func newServerWithControl(t *testing.T, token string, m *board.Memory, control web.Control) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		Control:   control,
+		Token:     token,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestPauseButtonControlsProbing(t *testing.T) {
+	t.Parallel()
+
+	control := &fakeControl{}
+	ts := newServerWithControl(t, testToken, fixture(), control)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	if !strings.Contains(page, `data-testid="probe-toggle"`) || !strings.Contains(page, "Pause probing") {
+		t.Fatalf("pause control missing:\n%s", page)
+	}
+	if strings.Contains(page, `data-testid="paused-banner"`) {
+		t.Fatal("paused banner shown while running")
+	}
+
+	csrf := csrfFrom(t, page)
+	resp, err = client.PostForm(ts.URL+"/pause", url.Values{"csrf": {csrf}}) //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = body(t, resp)
+	if !control.Paused() {
+		t.Fatal("control was not paused")
+	}
+	if !strings.Contains(page, `data-testid="paused-banner"`) || !strings.Contains(page, "Resume probing") {
+		t.Fatalf("paused state not rendered:\n%s", page)
+	}
+
+	resp, err = client.PostForm(ts.URL+"/resume", url.Values{"csrf": {csrf}}) //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = body(t, resp)
+	if control.Paused() {
+		t.Fatal("control was not resumed")
+	}
+	if strings.Contains(page, `data-testid="paused-banner"`) {
+		t.Fatal("banner survived resume")
+	}
+}
+
+func TestPauseRequiresCSRF(t *testing.T) {
+	t.Parallel()
+
+	control := &fakeControl{}
+	ts := newServerWithControl(t, testToken, fixture(), control)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.PostForm(ts.URL+"/pause", url.Values{}) //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = body(t, resp)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	if control.Paused() {
+		t.Fatal("a CSRF-less request paused probing")
+	}
+}
+
+func TestPauseRequiresSession(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithControl(t, testToken, fixture(), &fakeControl{})
+	_, jar := newClient(t)
+	client := noRedirectClient(jar)
+
+	resp, err := client.PostForm(ts.URL+"/pause", url.Values{}) //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = body(t, resp)
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("status = %d, want a redirect to login", resp.StatusCode)
 	}
 }
 

@@ -162,6 +162,7 @@ func serve(lg *logging.Logger) error {
 		StartedAt:     time.Now(),
 		History:       st,
 		Incidents:     st,
+		Control:       ag,
 		Vantage:       "local",
 	})
 	if err != nil {

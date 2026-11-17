@@ -26,6 +26,7 @@ type Deps struct {
 	Watcher       board.Watcher
 	History       History
 	Incidents     IncidentHistory
+	Control       Control
 	Vantage       string
 	Token         string
 	SecureCookies bool
@@ -43,6 +44,13 @@ type History interface {
 type IncidentHistory interface {
 	Incidents(ctx context.Context, openOnly bool, limit int) ([]store.Incident, error)
 	IncidentByID(ctx context.Context, id string) (store.Incident, []store.Attribution, []string, error)
+}
+
+// Control is the probe kill switch, shared with the API.
+type Control interface {
+	Pause()
+	Resume()
+	Paused() bool
 }
 
 func loadTemplates() (*template.Template, error) {

@@ -57,6 +57,8 @@ func New(deps Deps) (http.Handler, error) {
 	mux.HandleFunc("/targets/", s.requireSession(http.HandlerFunc(s.handleTarget)).ServeHTTP)
 	mux.HandleFunc("/incidents", s.requireSession(http.HandlerFunc(s.handleIncidents)).ServeHTTP)
 	mux.HandleFunc("/incidents/", s.requireSession(http.HandlerFunc(s.handleIncident)).ServeHTTP)
+	mux.HandleFunc("/pause", s.requireSession(http.HandlerFunc(s.handlePause)).ServeHTTP)
+	mux.HandleFunc("/resume", s.requireSession(http.HandlerFunc(s.handleResume)).ServeHTTP)
 	mux.Handle("/", s.requireSession(http.HandlerFunc(s.handleBoard)))
 	return mux, nil
 }
@@ -138,6 +140,38 @@ func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
+// --- probe control ---------------------------------------------------------
+
+func (s *server) handlePause(w http.ResponseWriter, r *http.Request)  { s.setPaused(w, r, true) }
+func (s *server) handleResume(w http.ResponseWriter, r *http.Request) { s.setPaused(w, r, false) }
+
+func (s *server) setPaused(w http.ResponseWriter, r *http.Request, paused bool) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.deps.Control == nil {
+		http.Error(w, "probe control is not configured", http.StatusServiceUnavailable)
+		return
+	}
+	if err := r.ParseForm(); err != nil || !s.auth.csrfMatches(r, r.PostFormValue("csrf")) {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	if paused {
+		s.deps.Control.Pause()
+	} else {
+		s.deps.Control.Resume()
+	}
+
+	s.deps.Logger.Info("probe control",
+		"event", "probe_control", "component", "http", "paused", paused)
+
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
 // --- board -----------------------------------------------------------------
 
 type tileView struct {
@@ -166,6 +200,8 @@ type boardView struct {
 	CSRF    string
 	Targets []tileView
 	Counts  []countView
+	Paused  bool
+	Control bool
 }
 
 func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
@@ -189,6 +225,10 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		Version: s.deps.Version,
 		CSRF:    csrf,
 		Targets: make([]tileView, 0, len(targets)),
+		Control: s.deps.Control != nil,
+	}
+	if s.deps.Control != nil {
+		view.Paused = s.deps.Control.Paused()
 	}
 	counts := make(map[board.State]int)
 	for _, t := range targets {
