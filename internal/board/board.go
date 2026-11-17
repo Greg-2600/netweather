@@ -51,6 +51,7 @@ type Target struct {
 	CDN           string
 	ASCountry     string
 	ASName        string
+	IXNames       string
 	Measurability string
 	// Leaf certificate from the last TLS observation.
 	CertIssuer   string

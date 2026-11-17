@@ -67,8 +67,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 11 {
-		t.Errorf("schema version = %d, want 11", stats.SchemaVersion)
+	if stats.SchemaVersion != 12 {
+		t.Errorf("schema version = %d, want 12", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -96,7 +96,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 11 {
+	if err != nil || version != 12 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -1545,6 +1545,7 @@ func TestEnrichmentRoundTrip(t *testing.T) {
 	if err := s.UpdateEnrichment(ctx, "t1", store.Enrichment{
 		ASN: 64500, Prefix: "203.0.113.0/24", CDN: "akamai",
 		ASCountry: "US", ASName: "EXAMPLE-AS, US",
+		IXNames: []string{"AMS-IX", "DE-CIX Frankfurt"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1558,6 +1559,18 @@ func TestEnrichmentRoundTrip(t *testing.T) {
 	}
 	if rows[0].ASCountry != "US" || rows[0].ASName != "EXAMPLE-AS, US" {
 		t.Fatalf("AS labels = %+v", rows[0])
+	}
+	if rows[0].IXNames != "AMS-IX, DE-CIX Frankfurt" {
+		t.Fatalf("ix_names = %q", rows[0].IXNames)
+	}
+
+	// The detail query carries the same labels, not only the board query.
+	detail, err := s.TargetByID(ctx, "local", "t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.IXNames != rows[0].IXNames {
+		t.Fatalf("detail ix_names = %q, board = %q", detail.IXNames, rows[0].IXNames)
 	}
 
 	// A learned target is no longer in the queue.

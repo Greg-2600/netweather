@@ -54,6 +54,7 @@ type Target struct {
 	CDN           string
 	ASCountry     string
 	ASName        string
+	IXNames       string
 	Measurability string
 }
 

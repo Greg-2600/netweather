@@ -110,6 +110,7 @@ CREATE TABLE target (
     cdn          TEXT,
     as_country   TEXT,                        -- ISO-3166-1 alpha-2 from asn.cymru.com
     as_name      TEXT,                        -- registered organisation name
+    ix_names     TEXT,                        -- PeeringDB exchanges, comma-separated, capped
     measurability TEXT NOT NULL DEFAULT 'ok'
                  CHECK (measurability IN ('ok','mostly_blocked','unmeasurable')),
     last_validated_at INTEGER,
@@ -150,6 +151,8 @@ for each enabled row not in config:
 A changed `(host, port, probe)` produces a new row by construction. That is intentional: repointing a target is not the same target.
 
 **Migration `0010`** added `as_country` and `as_name` to `target`. They are written only by `store.UpdateEnrichment`, never by `UpsertTarget`, so a config reconciliation pass and an enrichment pass cannot erase each other's work.
+
+**Migration `0012`** added `ix_names`, the PeeringDB exchange membership for the target's ASN, joined with `, ` and capped by the client. It follows the same ownership rule as the other enrichment columns.
 
 ---
 

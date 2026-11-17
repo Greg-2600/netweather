@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -20,6 +21,9 @@ type Enrichment struct {
 	CDN       string
 	ASCountry string
 	ASName    string
+	// IXNames is PeeringDB internet-exchange membership for the ASN. It is a
+	// label, never a signal (DESIGN.md §8.5).
+	IXNames []string
 }
 
 // TargetsNeedingEnrichment returns enabled hostname targets with no ASN yet.
@@ -118,9 +122,11 @@ func (s *Store) UpdateEnrichment(ctx context.Context, id string, e Enrichment) e
 			cdn = NULLIF(?, ''),
 			as_country = NULLIF(?, ''),
 			as_name = NULLIF(?, ''),
+			ix_names = NULLIF(?, ''),
 			updated_at = ?
 		WHERE id = ?`,
-		e.ASN, e.Prefix, e.CDN, e.ASCountry, e.ASName, time.Now().UnixMilli(), id)
+		e.ASN, e.Prefix, e.CDN, e.ASCountry, e.ASName,
+		strings.Join(e.IXNames, ", "), time.Now().UnixMilli(), id)
 	if err != nil {
 		return fmt.Errorf("store: enrichment %q: %w", id, err)
 	}

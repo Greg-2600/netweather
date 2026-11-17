@@ -189,7 +189,8 @@ func TestTargetDetailShowsASLabels(t *testing.T) {
 		Sector: "airline", Country: "US", State: board.StateDown,
 		Port: 443, Probe: "tls", Tier: 2, IntervalS: 300,
 		ASN: 13335, Prefix: "203.0.113.0/24", CDN: "cloudflare",
-		ASCountry: "US", ASName: "CLOUDFLARENET, US", Measurability: "ok",
+		ASCountry: "US", ASName: "CLOUDFLARENET, US",
+		IXNames: "AMS-IX, DE-CIX Frankfurt", Measurability: "ok",
 	})
 
 	ts := newServerWithDetails(t, testToken, m, &fakeChanges{})
@@ -206,6 +207,7 @@ func TestTargetDetailShowsASLabels(t *testing.T) {
 		">ASN<", ">AS13335<",
 		">AS name<", ">CLOUDFLARENET, US<",
 		">AS country<", ">US<",
+		">Internet exchanges<", ">AMS-IX, DE-CIX Frankfurt<",
 		">Prefix<", ">203.0.113.0/24<",
 		">CDN<", ">cloudflare<",
 	} {

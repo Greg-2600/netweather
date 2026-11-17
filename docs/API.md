@@ -514,7 +514,8 @@ Auth: bearer. One target with its current state and metadata.
     "state": "down",
     "since": "2026-11-17T12:00:00Z",
     "cert_issuer": "CN=R11,O=Let's Encrypt,C=US",
-    "cert_not_after": "2027-01-16T12:00:00Z"
+    "cert_not_after": "2027-01-16T12:00:00Z",
+    "ix_names": "AMS-IX, DE-CIX Frankfurt"
   },
   "meta": {"request_id": "…"}
 }
@@ -523,6 +524,7 @@ Auth: bearer. One target with its current state and metadata.
 - `404` for an unknown or disabled target.
 - `since` is absent for a target that has never been probed; the state is then `unknown`.
 - Certificate fields come from the last TLS observation and are absent when the last probe was not TLS. They describe the leaf certificate; pinning is a separate, later feature.
+- `ix_names` is PeeringDB exchange membership for the target's ASN: enrichment only, never a signal. It is absent until enrichment has learned it.
 
 ### 6.14 `GET /api/v1/coverage` — stable
 

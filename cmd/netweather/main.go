@@ -629,6 +629,34 @@ func enrichmentLoop(ctx context.Context, st *store.Store, lg *logging.Logger) {
 		},
 	}
 
+	// IX membership is a label, never a signal, and one ASN can sit behind many
+	// targets: the client caches per ASN so a run costs one request per network.
+	// NETWEATHER_PEERINGDB=false disables it without disabling enrichment.
+	var peerdb *enrich.PeerDB
+	if !strings.EqualFold(strings.TrimSpace(os.Getenv("NETWEATHER_PEERINGDB")), "false") {
+		peerdb = enrich.NewPeerDB(&http.Client{
+			Transport: probe.Transport(netx.New()),
+			Timeout:   20 * time.Second,
+		})
+		if base := strings.TrimSpace(os.Getenv("NETWEATHER_PEERINGDB_URL")); base != "" {
+			peerdb.BaseURL = base
+		}
+	}
+
+	ixFor := func(ctx context.Context, asn int) []string {
+		if peerdb == nil || asn <= 0 {
+			return nil
+		}
+		names, err := peerdb.IXNames(ctx, asn)
+		if err != nil {
+			lg.Debug("peeringdb lookup failed",
+				"event", "peeringdb_lookup_failed", "component", "enrich",
+				"asn", asn, "error", err)
+			return nil
+		}
+		return names
+	}
+
 	run := func() {
 		targets, err := st.TargetsNeedingEnrichment(ctx, 50)
 		if err != nil {
@@ -658,6 +686,7 @@ func enrichmentLoop(ctx context.Context, st *store.Store, lg *logging.Logger) {
 			if err := st.UpdateEnrichment(ctx, t.ID, store.Enrichment{
 				ASN: res.ASN, Prefix: res.Prefix, CDN: res.CDN,
 				ASCountry: res.ASCountry, ASName: res.ASName,
+				IXNames: ixFor(ctx, res.ASN),
 			}); err != nil {
 				lg.Warn("enrichment write failed",
 					"event", "enrichment_write_failed", "component", "enrich",
@@ -716,6 +745,7 @@ func enrichmentLoop(ctx context.Context, st *store.Store, lg *logging.Logger) {
 			if err := st.UpdateEnrichment(ctx, t.ID, store.Enrichment{
 				ASN: res.ASN, Prefix: res.Prefix, CDN: res.CDN,
 				ASCountry: res.ASCountry, ASName: res.ASName,
+				IXNames: ixFor(ctx, res.ASN),
 			}); err != nil {
 				lg.Warn("enrichment refresh write failed",
 					"event", "enrichment_refresh_write_failed", "component", "enrich",

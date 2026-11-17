@@ -371,6 +371,8 @@ type targetItem struct {
 	// targets, never guessed.
 	CertIssuer   string `json:"cert_issuer,omitempty"`
 	CertNotAfter string `json:"cert_not_after,omitempty"`
+	// IXNames is PeeringDB exchange membership: enrichment only.
+	IXNames string `json:"ix_names,omitempty"`
 }
 
 // handleTargets is the filtered list. Unknown class/sector/country values are
@@ -418,6 +420,7 @@ func (s *server) handleTargets(w http.ResponseWriter, r *http.Request) {
 			ID: t.ID, Name: t.Name, Host: t.Host, Class: t.Class,
 			Sector: t.Sector, Country: t.Country, State: string(t.State),
 			CertIssuer: t.CertIssuer, CertNotAfter: certNotAfterJSON(t.CertNotAfter),
+			IXNames: t.IXNames,
 		}
 		if !t.Since.IsZero() {
 			item.Since = t.Since.UTC().Format(time.RFC3339)
@@ -564,6 +567,7 @@ func (s *server) serveTarget(w http.ResponseWriter, r *http.Request, id string) 
 		ID: row.ID, Name: row.Name, Host: row.Host, Class: row.Class,
 		Sector: row.Sector, Country: row.Country, State: string(row.State),
 		CertIssuer: row.CertIssuer, CertNotAfter: certNotAfterJSON(row.CertNotAfter),
+		IXNames: row.IXNames,
 	}
 	if !row.Since.IsZero() {
 		item.Since = row.Since.UTC().Format(time.RFC3339)

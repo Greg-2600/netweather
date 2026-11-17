@@ -210,6 +210,7 @@ type tileView struct {
 	CDN           string
 	ASCountry     string
 	ASName        string
+	IXNames       string
 	Measurability string
 	CertIssuer    string
 	CertNotAfter  string
@@ -590,7 +591,7 @@ func toTile(t board.Target) tileView {
 		Badge: badge, BadgeTitle: badgeTitle, Icon: iconURL(t.ID),
 		Port: t.Port, Probe: t.Probe, Tier: t.Tier, IntervalS: t.IntervalS,
 		ASN: t.ASN, Prefix: t.Prefix, CDN: t.CDN, Measurability: t.Measurability,
-		ASCountry: t.ASCountry, ASName: t.ASName,
+		ASCountry: t.ASCountry, ASName: t.ASName, IXNames: t.IXNames,
 		CertIssuer: t.CertIssuer, CertNotAfter: formatCertExpiry(t.CertNotAfter),
 	}
 }
@@ -788,6 +789,7 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 			{"ASN", asnLabel(t.ASN)},
 			{"AS name", displayOr(t.ASName, "not learned yet")},
 			{"AS country", displayOr(t.ASCountry, "not learned yet")},
+			{"Internet exchanges", displayOr(t.IXNames, "not learned yet")},
 			{"Prefix", displayOr(t.Prefix, "not learned yet")},
 			{"CDN", displayOr(t.CDN, "not learned yet")},
 			{"Certificate issuer", displayOr(t.CertIssuer, "not a TLS probe")},

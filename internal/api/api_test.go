@@ -1889,6 +1889,7 @@ func TestTargetDetail(t *testing.T) {
 				ID: "t1", Host: "chase.com", Port: 443, Probe: "http",
 				Name: "Chase", Class: "service", Sector: "financial/banking",
 				Country: "US", Tier: 2, IntervalS: 300,
+				IXNames: "AMS-IX, DE-CIX Frankfurt",
 			},
 			State:        state.Down,
 			Since:        since,
@@ -1915,6 +1916,7 @@ func TestTargetDetail(t *testing.T) {
 		Since        string `json:"since"`
 		CertIssuer   string `json:"cert_issuer"`
 		CertNotAfter string `json:"cert_not_after"`
+		IXNames      string `json:"ix_names"`
 	}
 	if err := json.Unmarshal(env.Data, &item); err != nil {
 		t.Fatal(err)
@@ -1930,6 +1932,9 @@ func TestTargetDetail(t *testing.T) {
 	}
 	if item.CertNotAfter != "2027-01-16T12:00:00Z" {
 		t.Fatalf("cert_not_after = %q", item.CertNotAfter)
+	}
+	if item.IXNames != "AMS-IX, DE-CIX Frankfurt" {
+		t.Fatalf("ix_names = %q", item.IXNames)
 	}
 }
 

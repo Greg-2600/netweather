@@ -189,7 +189,7 @@ Every target gets `asn`, `as_country`, `prefix` via **Team Cymru DNS** (`origin.
 
 **Implemented (migration-era phase 0):** `internal/enrich` resolves the target through the guarded dialer, asks `origin.asn.cymru.com` / `origin6.asn.cymru.com` over DNS to `1.1.1.1:53`, and records the ASN and covering prefix. It also asks `AS<n>.asn.cymru.com` for the registered organisation name and country (`as_name`, `as_country`), and maps the CNAME chain to a known CDN suffix (Cloudflare, Akamai, CloudFront, Fastly, Azure, Google, CDN77). A direct answer leaves `cdn` empty rather than guessing, and a missing organisation answer leaves the labels empty rather than inventing them. `NETWEATHER_ENRICH=false` disables the loop; it runs once at startup and every six hours, paced at 150 ms per target.
 
-Implemented, including the daily recheck: a learned target older than 24 hours is re-resolved, and if its address leaves the learned prefix the ASN, prefix, CDN, and AS labels are refreshed. If it is still inside the prefix, the row is only touched, so a no-op update cannot blank the labels. Still specified: PeeringDB labels (§8.5). Empty enrichment in the drawer reads "not learned yet", so the gap is visible instead of fabricated.
+Implemented, including the daily recheck: a learned target older than 24 hours is re-resolved, and if its address leaves the learned prefix the ASN, prefix, CDN, and AS labels are refreshed. If it is still inside the prefix, the row is only touched, so a no-op update cannot blank the labels. PeeringDB exchange labels are learned from the same pass and cached per ASN (§8.5), so the drawer can answer "which exchanges does this network sit at?" without a request per target. Empty enrichment in the drawer reads "not learned yet", so a gap is visible instead of fabricated.
 
 This powers the coverage panel (§10.6) and the attribution engine (§7.3).
 
@@ -724,9 +724,13 @@ Used for **corroboration**, producing the most interesting sentence in the produ
 
 > **You:** unreachable · **Official:** operational → likely you, your region, or a bot-wall.
 
-### 8.5 PeeringDB — enrichment only
+### 8.5 PeeringDB - enrichment only
 
 ASN → organisation, country, IX membership. Cached locally, refreshed weekly. Labels the ASN view; never a monitoring signal.
+
+**Implemented:** `internal/enrich.PeerDB` reads `/netixlan?asn=N` for internet-exchange membership, dedupes and sorts the names, and caps the list so the drawer row stays readable. The client caches per ASN for the process lifetime, because hundreds of targets share a handful of networks and one request per target would be both slow and rude. `NETWEATHER_PEERINGDB=false` disables it without disabling the rest of enrichment, and `NETWEATHER_PEERINGDB_URL` overrides the API root.
+
+The labels are stored on `target.ix_names` (migration `0012`), written only by `UpdateEnrichment`, and shown as "Internet exchanges" in the drawer and as `ix_names` on the target API. An empty value means "not learned yet", never "not at an exchange", because the two are different claims. Freshness follows the enrichment loop (startup, then every six hours) rather than a separate weekly timer; the earlier "refreshed weekly" line described an intent that a single loop now satisfies more often, not less.
 
 ### 8.6 RIPE Atlas — optional profile
 
@@ -859,7 +863,7 @@ Click any tile:
 - **Implemented:** state + why (the classifier's reason), the host, the 24-hour hourly strip, and the last 20 probes with stage, status, ms, error class and the detail line.
 - **Implemented:** the 24-hour strip's bar shows the healthy share per hour and each cell's title carries the counts and EWMA latency. It is not a p50/p95 chart: the rollups hold EWMAs, not percentiles (`SCHEMA.md` §6.2), and calling the smoothing a percentile would be the quiet lie the project avoids. A true percentile chart waits on the histogram.
 - **Implemented:** the metadata block (class, sector, country, probe, port, tier, interval, ASN, prefix, CDN, measurability), the leaf certificate issuer and expiry from the last TLS observation, and the last 20 state transitions with their stored reason. Empty enrichment reads "not learned yet" rather than an empty cell; a non-TLS target states "not a TLS probe" for the certificate rows.
-- **Specified:** official status, DNS divergence, and certificate pinning. Issuer and expiry are recorded per TLS probe (migration `0011`); a pin set and its grace rule are not implemented. The enrichment passes' PeeringDB labels are also still specified.
+- **Specified:** official status, DNS divergence, and certificate pinning. Issuer and expiry are recorded per TLS probe (migration `0011`); a pin set and its grace rule are not implemented. The enrichment passes also carry PeeringDB exchange labels (migration `0012`).
 
 ### 10.6 Coverage panel
 
