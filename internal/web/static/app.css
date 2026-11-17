@@ -335,6 +335,11 @@ body.auth {
 .sector-title.state-degraded .sector-worst { color: var(--degraded); }
 .sector-title.state-blocked .sector-worst { color: var(--muted); }
 
+/* Unmeasurable targets sit at the bottom, collapsed and quiet: a visibility
+   fact is not a failure to shout about (DESIGN.md §10.2). */
+.muted-group { opacity: 0.75; }
+.muted-group .sector-title { font-weight: 500; }
+
 .tiles {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));

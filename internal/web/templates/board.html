@@ -106,7 +106,7 @@
       </p>
       {{end}}
       {{range .Groups}}
-      <details class="sector" data-testid="sector" data-sector="{{.Name}}" {{if not .Healthy}}open{{end}}>
+      <details class="sector{{if .Muted}} muted-group{{end}}" data-testid="sector" data-sector="{{.Name}}" {{if not .Healthy}}open{{end}}>
         <summary class="sector-title {{.WorstCls}}">
           <span class="glyph" aria-hidden="true">{{.Glyph}}</span>
           <span class="sector-name">{{.Label}}</span>

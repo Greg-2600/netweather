@@ -275,7 +275,10 @@ type groupView struct {
 	WorstCls string
 	Glyph    string
 	Healthy  bool
-	Targets  []tileView
+	// Muted marks the unmeasurable bucket, which sits at the bottom and is
+	// styled quietly: it is a visibility fact, not a failure (DESIGN.md §10.2).
+	Muted   bool
+	Targets []tileView
 }
 
 // toggleOption is one entry in a board toggle (grouping or density).
@@ -431,6 +434,24 @@ func groupBy(targets []board.Target, mode string) []groupView {
 // groupKey returns the stable identity and the human label for one target under
 // a grouping mode. An empty value is a fact ("not learned yet"), so it gets its
 // own bucket rather than being folded into a named one.
+// unmeasurableGroup is the quiet bucket at the bottom of the board. It is
+// marked healthy so the template leaves it collapsed: a target the monitor
+// cannot see is not an outage to expand.
+func unmeasurableGroup(targets []board.Target) groupView {
+	members := board.Order(targets)
+	state := board.StateUnmeasurable
+	group := groupView{
+		Name: "unmeasurable", Label: "Unmeasurable", Count: len(members),
+		Worst: state.Text(), WorstCls: state.CSSClass(), Glyph: state.Glyph(),
+		Healthy: true, Muted: true,
+		Targets: make([]tileView, 0, len(members)),
+	}
+	for _, t := range members {
+		group.Targets = append(group.Targets, toTile(t))
+	}
+	return group
+}
+
 func groupKey(t board.Target, mode string) (name, label string) {
 	switch mode {
 	case "state":
@@ -547,10 +568,27 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		Country: country,
 		Density: normaliseDensity(r.URL.Query().Get("density")),
 	}
+	// Unmeasurable targets are a visibility fact, not a failure: give them their
+	// own quiet section at the bottom instead of letting them sit among a
+	// sector's problems (DESIGN.md §10.2).
+	measurable := make([]board.Target, 0, len(targets))
+	var unmeasurable []board.Target
+	for _, t := range targets {
+		if t.State == board.StateUnmeasurable {
+			unmeasurable = append(unmeasurable, t)
+			continue
+		}
+		measurable = append(measurable, t)
+	}
+	groups := groupBy(measurable, params.Group)
+	if len(unmeasurable) > 0 {
+		groups = append(groups, unmeasurableGroup(unmeasurable))
+	}
+
 	view := boardView{
 		Version:        s.deps.Version,
 		CSRF:           csrf,
-		Groups:         groupBy(targets, params.Group),
+		Groups:         groups,
 		Control:        s.deps.Control != nil,
 		Focus:          focus,
 		Group:          params.Group,

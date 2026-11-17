@@ -2807,3 +2807,52 @@ func TestCorridorPageNotes(t *testing.T) {
 		})
 	}
 }
+
+func TestBoardCollectsUnmeasurableIntoItsOwnQuietSection(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(
+		board.Target{ID: "1", Name: "Chase", Host: "chase.com", Sector: "banking", State: board.StateUp},
+		board.Target{
+			ID: "2", Name: "Country anchor", Host: "anchor.example", Sector: "banking",
+			State: board.StateUnmeasurable,
+		},
+	)
+	ts := newServer(t, testToken, m)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-sector="unmeasurable"`) {
+		t.Fatalf("unmeasurable section missing:\n%s", page)
+	}
+	if !strings.Contains(page, `muted-group`) {
+		t.Error("the unmeasurable section is not marked quiet")
+	}
+
+	// The unmeasurable target is not folded into its sector group.
+	bankingStart := strings.Index(page, `data-sector="banking"`)
+	unmeasurableStart := strings.Index(page, `data-sector="unmeasurable"`)
+	if bankingStart < 0 || unmeasurableStart < 0 {
+		t.Fatalf("groups missing: banking=%d unmeasurable=%d", bankingStart, unmeasurableStart)
+	}
+	if unmeasurableStart < bankingStart {
+		t.Error("the unmeasurable section is not last")
+	}
+	bankingBlock := page[bankingStart:unmeasurableStart]
+	if strings.Contains(bankingBlock, `data-target="anchor.example"`) {
+		t.Error("the unmeasurable target is still in its sector group")
+	}
+
+	// It is collapsed: a target the monitor cannot see is not a problem to expand.
+	sectionStart := strings.LastIndex(page[:unmeasurableStart], "<details")
+	sectionTag := page[sectionStart:unmeasurableStart]
+	if strings.Contains(sectionTag, " open") {
+		t.Error("the unmeasurable section starts expanded")
+	}
+}

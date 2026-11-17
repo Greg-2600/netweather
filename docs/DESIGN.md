@@ -848,7 +848,7 @@ The wall of favicons. Grouping is a toggle: **sector (default)** · state · CDN
 - Healthy groups collapsed by default. Problems expanded.
 - The feed-health strip shows each external feed as `ok`, `stale`, `failing`, or `never`; a stale or never-succeeded feed adds a banner, because a dead corroboration source must be visible on the board, not only in the API (P5).
 - Focus mode: hide everything not `DOWN`/`DEGRADED`/`TAMPER`.
-- `UNMEASURABLE` collapsed into its own muted section at the bottom.
+- `UNMEASURABLE` collapsed into its own muted section at the bottom. **Implemented:** those targets are removed from their sector group and rendered last in a quiet, collapsed section, so a permanent blind spot cannot keep a healthy sector looking broken; the summary counts still include them.
 
 ### 10.3 World
 
