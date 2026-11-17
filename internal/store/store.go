@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite" // pure-Go driver, no cgo
 )
@@ -200,6 +201,13 @@ func (s *Store) migrate(ctx context.Context) error {
 	}
 	if current > len(migrations) {
 		return fmt.Errorf("store: database schema v%d is newer than this binary (v%d); refusing to start", current, len(migrations))
+	}
+
+	// SCHEMA.md §15 promises a rollback point before a migration changes the
+	// schema. It runs before the loop so a failure leaves the database
+	// untouched rather than half-migrated.
+	if _, err := s.backupBeforeMigration(ctx, current, len(migrations), time.Now()); err != nil {
+		return fmt.Errorf("store: refusing to migrate without a backup: %w", err)
 	}
 
 	for _, m := range migrations {

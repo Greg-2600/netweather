@@ -815,7 +815,7 @@ WHERE t.enabled = 1;
 
 - Forward-only, numbered (`0001_init.sql`, `0002_…`), embedded in the binary.
 - `schema_meta.schema_version` records the applied version.
-- Run at startup, inside a transaction, with a pre-migration `VACUUM INTO` backup.
+- Run at startup, inside a transaction, with a pre-migration `VACUUM INTO` backup. The copy is written beside the database as `netweather.db.pre-migration-v<from>-<UTC timestamp>.db` and kept; a database at v0 (fresh) has nothing to copy, and a failed copy refuses the migration instead of changing the schema without a rollback point.
 - **Refuse to start if the database version is newer than the binary.** A downgrade silently dropping columns is worse than a refusal to boot.
 - Every migration must be tested against a database populated by the previous release, not only against an empty one. The `internal/store` tests (`QUALITY.md` §5.1) own this.
 
