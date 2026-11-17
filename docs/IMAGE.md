@@ -12,7 +12,7 @@
 |---|---|
 | `cgr.dev/chainguard/static` | **Release image.** No shell, no package manager, no libc tooling. CA certs + tzdata only. |
 | `cgr.dev/chainguard/wolfi-base` | **Debug image** (`:debug` tag). glibc, `apk`, and network tools for troubleshooting. |
-| `ghcr.io/<owner>/netweather-tor` | **Tor sidecar.** Built on Wolfi so we control the `torrc` and the rebuild cadence. **Published and signed** by the release job; `compose.yaml` builds the same Dockerfile locally by default. |
+| `ghcr.io/<owner>/netweather-tor` | **Tor sidecar.** Built on Alpine, not Wolfi: Chainguard's Wolfi base does not package `tor`. Alpine 3.20 packages it, is small, and keeps the `torrc` baked in and the rebuild cadence ours. **Published and signed** by the release job; `compose.yaml` builds the same Dockerfile locally by default. |
 
 Why Wolfi rather than a pentest distro:
 
@@ -209,7 +209,7 @@ Cheap for a Go project, and expected of a tool that asks people to run it:
 | Vulnerability scan | `govulncheck` for the module graph, `grype` for the image | **Implemented:** `govulncheck` blocks CI; `grype` scans the release image, advisory, with SARIF uploaded |
 | Dependency updates | Dependabot, grouped weekly | **Implemented:** `.github/dependabot.yml`, one grouped PR per ecosystem |
 | Pin by digest | `image@sha256:…` in the documented production compose | **Documented:** the README verify snippet and `compose.yaml` both say to pin the digest |
-| Base image currency | Wolfi's daily rebuilds, pulled automatically | **Implemented:** the Dockerfile follows the moving `cgr.dev/chainguard/*:latest` tags, and Dependabot watches them |
+| Base image currency | Upstream rebuilds, pulled deliberately | **Implemented:** every `FROM` is pinned by digest (`cgr.dev/chainguard/*` for the main image, `alpine` for the Tor sidecar, which Wolfi does not package), and Dependabot opens a weekly digest update. A moving `:latest` tag is a dependency the release cannot reproduce, so `TestDockerfilesPinBaseImages` fails if one returns. |
 
 The README carries the `cosign verify` one-liner, so a user can check the signature instead of trusting a tag. A release that fails to sign does not finish: publishing an unverifiable image is worse than publishing nothing.
 
@@ -220,13 +220,13 @@ The README carries the `cosign verify` one-liner, so a user can check the signat
 Build it ourselves rather than depending on a third-party Tor image, for three reasons:
 
 1. **We control the `torrc`.** `ClientOnly 1` and `ExitPolicy reject *:*` must be non-negotiable, not a mount the user might forget (`DESIGN.md` §5.7).
-2. **Rebuild cadence.** Tor is a security-sensitive component; it should track Wolfi's daily rebuilds.
-3. **Size.** A Wolfi + `tor` image is tens of MB, not hundreds.
+2. **Rebuild cadence.** Tor is a security-sensitive component, so the sidecar base is pinned by digest and updated deliberately rather than following whatever a vendor tag points at today.
+3. **Size.** An Alpine + `tor` image is tens of MB, not hundreds.
 
 ```dockerfile
-FROM cgr.dev/chainguard/wolfi-base:latest
+FROM alpine:3.20@sha256:<digest>
 RUN apk add --no-cache tor ca-certificates-bundle
-COPY torrc /etc/tor/torrc
+COPY --chmod=0644 torrc /etc/tor/torrc
 USER 65532:65532
 EXPOSE 9050
 ENTRYPOINT ["tor", "-f", "/etc/tor/torrc"]
@@ -254,4 +254,4 @@ The Dockerfile keeps the build stage separate from the runtime stage specificall
 
 1. **Do we publish the debug image at all?** It is useful, but it is also the image someone will run in production by mistake. Leaning yes, with a `-debug` suffix and a warning banner in the UI when it detects a shell is present.
 2. **Should the release image include `tzdata`?** Needed for correct local-time display; adds ~2 MB. Currently yes.
-3. **Wolfi vs. Alpine for the Tor sidecar.** Wolfi for consistency and daily rebuilds; Alpine if we want the widest compatibility for people building their own.
+3. **Wolfi vs. Alpine for the Tor sidecar - resolved: Alpine.** Chainguard's Wolfi base does not package `tor`, so the sidecar would not build there; Alpine 3.20 does, is small, and is pinned by digest like the main image.

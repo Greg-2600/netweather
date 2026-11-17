@@ -235,7 +235,7 @@ Residual: encryption at rest is the host's responsibility. The document says so 
 | T58 | Malicious or hijacked dependency | `go.sum` + checksum DB, minimal dependency set, `govulncheck` + `osv-scanner` in CI, new-dependency review rule | Enforced (process) |
 | T59 | Typosquatted module | Dependency allowlist reviewed in `go.mod`; `gomodguard` blocks non-allowlisted domains | Enforced |
 | T60 | Tampered image | Images referenced by digest in docs and compose examples; cosign signature + SBOM published with releases | Enforced (release) |
-| T61 | Compromised base image | Chainguard/Wolfi minimal base, digest-pinned, rebuilt weekly, `grype` gate on HIGH/CRITICAL | Enforced (CI) |
+| T61 | Compromised base image | Chainguard static/Wolfi for the main image and Alpine for the Tor sidecar (Wolfi does not package `tor`); every `FROM` is digest-pinned, Dependabot updates the digest weekly, and `grype` gates the release image on HIGH/CRITICAL. `TestDockerfilesPinBaseImages` fails if an unpinned `FROM` returns. | Enforced (CI) |
 | T62 | Secrets in the build | `gitleaks` on every commit and in the image build; no build args carrying secrets | Enforced |
 | T63 | Dockerfile mistakes | `hadolint`, no `ADD` from URLs, no `latest`, explicit non-root `USER`, no secrets in layers | Enforced |
 | T64 | Malicious contribution | `semgrep` + review rules: PRs adding evasion, scraping, or new outbound ports are rejected on sight (`ACCEPTABLE_USE.md` §9) | Policy |
