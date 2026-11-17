@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Diagnostics - netweather</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="/">netweather</a>
+    <a class="nav" href="/world">World</a>
+    <a class="nav" href="/corridors">Corridors</a>
+    <a class="nav" href="/coverage">Coverage</a>
+    <a class="nav" href="/incidents">Incidents</a>
+    <span class="muted small" data-testid="version">{{.Version}}</span>
+  </header>
+
+  <main>
+    <h1 class="page-title">Diagnostics</h1>
+    <p class="muted" data-testid="diagnostics-summary">
+      The log ring and the logging setup. The release image has no shell, so
+      this page is how an operator sees the ring without the host's
+      <code>docker logs</code>.
+    </p>
+
+    {{if .Note}}
+    <p class="muted" data-testid="diagnostics-note">{{.Note}}</p>
+    {{else}}
+    <h2 class="section-title">Logging setup</h2>
+    <table class="probes" data-testid="diagnostics-stats">
+      <tbody>
+        {{range .Stats}}
+        <tr data-testid="diagnostics-stat">
+          <th scope="row">{{.Label}}</th>
+          <td class="mono">{{.Value}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+
+    <h2 class="section-title">Active debug scopes</h2>
+    {{if .Scopes}}
+    <table class="probes" data-testid="diagnostics-scopes">
+      <thead><tr><th>ID</th><th>Selectors</th><th>Level</th><th>Expires</th></tr></thead>
+      <tbody>
+        {{range .Scopes}}
+        <tr data-testid="diagnostics-scope">
+          <td class="mono">{{.ID}}</td>
+          <td class="mono">{{.Selector}}</td>
+          <td class="mono">{{.Level}}</td>
+          <td class="mono">{{.Expires}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="muted" data-testid="no-diagnostics-scopes">
+      No debug scope is active. Scopes are time-boxed at one hour and never
+      global, so verbose logging cannot be left on by accident.
+    </p>
+    {{end}}
+
+    <h2 class="section-title">Recent records</h2>
+    {{if .Records}}
+    <table class="probes log-table" data-testid="diagnostics-records">
+      <thead><tr><th>Time</th><th>Level</th><th>Message</th><th>Attributes</th></tr></thead>
+      <tbody>
+        {{range .Records}}
+        <tr data-testid="diagnostics-record" data-level="{{.Level}}">
+          <td class="mono">{{.Time}}</td>
+          <td class="mono">{{.Level}}</td>
+          <td>{{.Message}}</td>
+          <td class="mono detail">{{.Attrs}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="muted" data-testid="no-diagnostics-records">{{.RecordsNote}}</p>
+    {{end}}
+    {{end}}
+
+    <p class="muted small">
+      A bearer-authenticated, machine-readable copy lives at
+      <code>/api/v1/logs</code>. This page is the human view and carries no
+      more than the API does.
+    </p>
+  </main>
+</body>
+</html>

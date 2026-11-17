@@ -131,6 +131,27 @@
       <p class="muted" data-testid="no-history">Probe history is not configured on this instance.</p>
       {{end}}
 
+      <h2 class="section-title">Why?</h2>
+      {{if .Why}}
+      <table class="probes log-table" data-testid="target-why">
+        <thead><tr><th>Time</th><th>Level</th><th>Message</th><th>Attributes</th></tr></thead>
+        <tbody>
+          {{range .Why}}
+          <tr data-testid="target-why-row" data-level="{{.Level}}">
+            <td class="mono">{{.Time}}</td>
+            <td class="mono">{{.Level}}</td>
+            <td>{{.Message}}</td>
+            <td class="mono detail">{{.Attrs}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      <p class="muted small">The newest ring lines that name this target, with the
+        state-change reasons above. The ring holds minutes, not days.</p>
+      {{else}}
+      <p class="muted" data-testid="no-target-why">{{.WhyNote}}</p>
+      {{end}}
+
       <p><a href="/">← Back to the board</a></p>
     </article>
   </main>

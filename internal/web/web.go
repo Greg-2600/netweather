@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/board"
+	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/streamlimit"
 )
@@ -45,6 +46,9 @@ type Deps struct {
 	Corridors CorridorStatus
 	// DNSObservations supplies the board's collapsed DNS divergence strip.
 	DNSObservations DNSObservations
+	// Logs supplies the ring and logging setup for the diagnostics page and
+	// the drawer's Why panel (LOGGING.md §9).
+	Logs LogDiagnostics
 	// IncidentWatcher wakes the UI stream when an incident opens or closes.
 	IncidentWatcher board.Watcher
 	Coverage        Coverage
@@ -147,6 +151,16 @@ type CorridorStatus interface {
 // omits the strip rather than implying nothing was observed.
 type DNSObservations interface {
 	RecentDNSDivergences(ctx context.Context, limit int) ([]store.DNSDivergenceRecord, error)
+}
+
+// LogDiagnostics supplies the in-memory ring and the logging setup for the
+// in-app diagnostics surfaces (LOGGING.md §9). Nil omits those surfaces; the
+// release image has no shell, so an instance that never wires it has no way to
+// read its own logs but the host's.
+type LogDiagnostics interface {
+	LogRecords(minLevel slog.Level, contains string, limit int) []logging.Record
+	Diagnostics() logging.Diagnostics
+	ActiveScopes() []logging.Scope
 }
 
 // IncidentAnnotator records the operator's ground truth for an incident.

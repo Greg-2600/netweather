@@ -22,9 +22,69 @@ type Logger struct {
 	scoped *scopedHandler
 	Scopes *Scopes
 
+	cfg     Config
 	console *AsyncWriter
 	file    *AsyncWriter
 	rot     *RotatingFile
+}
+
+// Diagnostics is the operator-facing view of the logging setup. It exists
+// because the release image has no shell: level, sinks, and backpressure have
+// to be readable from the UI (LOGGING.md §9).
+type Diagnostics struct {
+	Level        string
+	Format       string
+	File         string
+	RingRecords  int
+	RingCapacity int
+	Dropped      uint64
+	WriteErrors  uint64
+	Scopes       int
+}
+
+// Diagnostics reports the current logging setup and its backpressure counters.
+func (l *Logger) Diagnostics() Diagnostics {
+	if l == nil {
+		return Diagnostics{}
+	}
+	format := l.cfg.Format
+	d := Diagnostics{
+		Level:  LevelName(l.cfg.Level),
+		Format: format,
+		File:   l.cfg.File,
+		Scopes: 0,
+	}
+	if l.Ring != nil {
+		d.RingRecords = l.Ring.Len()
+		d.RingCapacity = l.Ring.Capacity()
+	}
+	if l.rot != nil {
+		d.File = l.rot.path
+	}
+	if l.Scopes != nil {
+		d.Scopes = len(l.Scopes.List())
+	}
+	d.Dropped = l.Dropped()
+	d.WriteErrors = l.WriteErrors()
+	return d
+}
+
+// LogRecords reads the ring with the same filters the API uses. Nil ring means
+// no records, which the caller states rather than rendering an empty table.
+func (l *Logger) LogRecords(minLevel slog.Level, contains string, limit int) []Record {
+	if l == nil || l.Ring == nil {
+		return nil
+	}
+	return l.Ring.Query(minLevel, contains, limit)
+}
+
+// ActiveScopes returns the time-boxed debug scopes in force. The UI lists them
+// so an operator can see a scope that is still on without reading a file.
+func (l *Logger) ActiveScopes() []Scope {
+	if l == nil || l.Scopes == nil {
+		return nil
+	}
+	return l.Scopes.List()
 }
 
 // New builds a logger for cfg writing to stdout. Format "auto" is text on a TTY
@@ -41,7 +101,7 @@ func New(cfg Config, stdout io.Writer) (*Logger, error) {
 	}
 
 	handlers := make([]slog.Handler, 0, 3)
-	out := &Logger{}
+	out := &Logger{cfg: cfg}
 
 	out.console = NewAsyncWriter(stdout, 4096)
 	if format == "json" {

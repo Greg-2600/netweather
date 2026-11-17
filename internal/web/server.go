@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/board"
+	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/streamlimit"
 )
@@ -71,6 +72,7 @@ func New(deps Deps) (http.Handler, error) {
 	mux.HandleFunc("/coverage", s.requireSession(http.HandlerFunc(s.handleCoverage)).ServeHTTP)
 	mux.HandleFunc("/world", s.requireSession(http.HandlerFunc(s.handleWorld)).ServeHTTP)
 	mux.HandleFunc("/corridors", s.requireSession(http.HandlerFunc(s.handleCorridors)).ServeHTTP)
+	mux.HandleFunc("/diagnostics", s.requireSession(http.HandlerFunc(s.handleDiagnostics)).ServeHTTP)
 	mux.HandleFunc("/icon/", s.requireSession(http.HandlerFunc(s.handleIcon)).ServeHTTP)
 	mux.HandleFunc("/pause", s.requireSession(http.HandlerFunc(s.handlePause)).ServeHTTP)
 	mux.HandleFunc("/resume", s.requireSession(http.HandlerFunc(s.handleResume)).ServeHTTP)
@@ -1066,6 +1068,11 @@ type targetView struct {
 	Provider     []targetCorroborationView
 	ProviderNote string
 	StatusURL    string
+	// Why is the drawer's "Why?" panel: the newest log lines that name this
+	// target (LOGGING.md §9). The state-change reasons above are the other half
+	// of that answer.
+	Why     []diagnosticsRecord
+	WhyNote string
 }
 
 // targetCorroborationView is one feed event near the target's scope.
@@ -1188,6 +1195,21 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 			{"Leaf certificate", leafLabel(t.CertLeafFingerprint)},
 			{"DNS divergence", dnsLabel(t.DNSVerdict, t.DNSConfidence, t.DNSDetail, formatTimestamp(t.DNSAt))},
 			{"Measurability", displayOr(t.Measurability, "ok")},
+		}
+
+		// Why: the newest log lines that name this target. The state-change
+		// reasons below are the other half of the answer, and a report without
+		// both usually starts with "it went down and I do not know why".
+		if s.deps.Logs == nil {
+			view.WhyNote = "The log ring is not wired on this instance."
+		} else {
+			records := s.deps.Logs.LogRecords(slog.LevelDebug, t.Host, 50)
+			if len(records) == 0 {
+				view.WhyNote = "No recent log line names this target."
+			}
+			for i := len(records) - 1; i >= 0; i-- {
+				view.Why = append(view.Why, toDiagnosticsRecord(records[i]))
+			}
 		}
 
 		if s.deps.TargetCorroboration == nil {
@@ -1982,6 +2004,122 @@ func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "corridors.html", view)
+}
+
+// diagnosticsView is the in-app logging inspection page (LOGGING.md §9). The
+// release image has no shell, so this is the only way to see the ring, the
+// backpressure counters, and the debug scopes that are still on.
+type diagnosticsView struct {
+	Version     string
+	CSRF        string
+	Note        string
+	Stats       []metaRow
+	Scopes      []diagnosticsScope
+	Records     []diagnosticsRecord
+	RecordsNote string
+}
+
+type diagnosticsScope struct {
+	ID       string
+	Selector string
+	Level    string
+	Expires  string
+}
+
+type diagnosticsRecord struct {
+	Time    string
+	Level   string
+	Message string
+	Attrs   string
+}
+
+func (s *server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	csrf, _ := s.auth.csrfFrom(r)
+	view := diagnosticsView{Version: s.deps.Version, CSRF: csrf}
+
+	if s.deps.Logs == nil {
+		view.Note = "The log ring is not wired on this instance."
+	} else {
+		d := s.deps.Logs.Diagnostics()
+		view.Stats = []metaRow{
+			{"Log level", d.Level},
+			{"Log format", d.Format},
+			{"Log file", displayOr(d.File, "console only")},
+			{"Ring", fmt.Sprintf("%d of %d records", d.RingRecords, d.RingCapacity)},
+			{"Dropped lines", fmt.Sprintf("%d", d.Dropped)},
+			{"Write errors", fmt.Sprintf("%d", d.WriteErrors)},
+			{"Active debug scopes", fmt.Sprintf("%d", d.Scopes)},
+		}
+
+		for _, scope := range s.deps.Logs.ActiveScopes() {
+			view.Scopes = append(view.Scopes, diagnosticsScope{
+				ID:       scope.ID,
+				Selector: scopeSelector(scope),
+				Level:    scope.Level,
+				Expires:  scope.ExpiresAt.UTC().Format("2006-01-02 15:04"),
+			})
+		}
+
+		records := s.deps.Logs.LogRecords(slog.LevelDebug, "", 100)
+		if len(records) == 0 {
+			view.RecordsNote = "The ring holds no records at debug or above."
+		}
+		// Newest first: the line that explains the failure is almost always the
+		// last one written.
+		for i := len(records) - 1; i >= 0; i-- {
+			view.Records = append(view.Records, toDiagnosticsRecord(records[i]))
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+	_ = s.tmpl.ExecuteTemplate(w, "diagnostics.html", view)
+}
+
+// scopeSelector renders the selectors a scope names. A scope always names at
+// least one; "everything" is not expressible (LOGGING.md §6).
+func scopeSelector(scope logging.Scope) string {
+	parts := make([]string, 0, 4)
+	if scope.Target != "" {
+		parts = append(parts, "target="+scope.Target)
+	}
+	if scope.Vantage != "" {
+		parts = append(parts, "vantage="+scope.Vantage)
+	}
+	if scope.Component != "" {
+		parts = append(parts, "component="+scope.Component)
+	}
+	if scope.ErrorClass != "" {
+		parts = append(parts, "error_class="+scope.ErrorClass)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// toDiagnosticsRecord flattens one ring record for display. Attributes are
+// sorted so the same line always renders the same way.
+func toDiagnosticsRecord(rec logging.Record) diagnosticsRecord {
+	keys := make([]string, 0, len(rec.Attrs))
+	for key := range rec.Attrs {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, key+"="+rec.Attrs[key])
+	}
+	return diagnosticsRecord{
+		Time:    rec.Time.UTC().Format("15:04:05.000"),
+		Level:   rec.LevelName,
+		Message: rec.Message,
+		Attrs:   strings.Join(parts, " "),
+	}
 }
 
 // rollupSpark renders up to 24 hourly buckets as block characters by healthy

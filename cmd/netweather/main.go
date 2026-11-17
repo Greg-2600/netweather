@@ -238,14 +238,17 @@ func serve(lg *logging.Logger) error {
 		CountryEvents:       st,
 		Corridors:           st,
 		DNSObservations:     st,
-		IncidentWatcher:     incidentChanges,
-		Coverage:            st,
-		CoverageTrend:       st,
-		Series:              st,
-		SeriesBatch:         st,
-		Changes:             st,
-		Control:             ag,
-		Vantage:             "local",
+		// The ring and the measured logging setup back the diagnostics page
+		// and the drawer's Why panel (LOGGING.md §9).
+		Logs:            lg,
+		IncidentWatcher: incidentChanges,
+		Coverage:        st,
+		CoverageTrend:   st,
+		Series:          st,
+		SeriesBatch:     st,
+		Changes:         st,
+		Control:         ag,
+		Vantage:         "local",
 	})
 	if err != nil {
 		return err

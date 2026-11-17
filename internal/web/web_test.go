@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/board"
+	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/streamlimit"
@@ -3419,5 +3420,166 @@ func TestCorridorPageMarksOutOfBandBuckets(t *testing.T) {
 	}
 	if !strings.Contains(page, "·") {
 		t.Error("an in-band bucket was not marked inside the band")
+	}
+}
+
+type fakeLogs struct {
+	records []logging.Record
+	diag    logging.Diagnostics
+	scopes  []logging.Scope
+}
+
+func (f *fakeLogs) LogRecords(slog.Level, string, int) []logging.Record { return f.records }
+func (f *fakeLogs) Diagnostics() logging.Diagnostics                    { return f.diag }
+func (f *fakeLogs) ActiveScopes() []logging.Scope                       { return f.scopes }
+
+func newServerWithLogs(t *testing.T, token string, m *board.Memory, logs web.LogDiagnostics) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		Logs:      logs,
+		Vantage:   "local",
+		Token:     token,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestDiagnosticsPageShowsSetupAndRecords(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	logs := &fakeLogs{
+		diag: logging.Diagnostics{
+			Level: "INFO", Format: "json", File: "/data/netweather.log",
+			RingRecords: 120, RingCapacity: 2000, Dropped: 3, WriteErrors: 1, Scopes: 1,
+		},
+		scopes: []logging.Scope{{
+			ID: "sc-1", Target: "chase.com", Level: "debug",
+			CreatedAt: at, ExpiresAt: at.Add(time.Hour),
+		}},
+		records: []logging.Record{
+			{Time: at, Level: slog.LevelInfo, LevelName: "INFO", Message: "older line", Attrs: map[string]string{"target": "chase.com"}},
+			{Time: at.Add(time.Minute), Level: slog.LevelWarn, LevelName: "WARN", Message: "newest line", Attrs: map[string]string{"target": "chase.com", "error": "timeout"}},
+		},
+	}
+
+	ts := newServerWithLogs(t, testToken, fixture(), logs)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/diagnostics") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	for _, want := range []string{
+		`data-testid="diagnostics-stats"`,
+		"INFO", "json", "/data/netweather.log",
+		"120 of 2000 records", "Dropped lines", ">3<", ">1<",
+		"sc-1", "target=chase.com", "debug",
+		"newest line", "older line", "error=timeout",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("diagnostics page missing %q", want)
+		}
+	}
+
+	// Newest first: the line that explains a failure is the last one written.
+	newest := strings.Index(page, "newest line")
+	older := strings.Index(page, "older line")
+	if newest < 0 || older < 0 || newest > older {
+		t.Errorf("records are not newest-first (newest=%d older=%d)", newest, older)
+	}
+	// The severity is in the row's data attribute, so a reader that cannot see
+	// the colour still gets it.
+	if !strings.Contains(page, `data-level="WARN"`) {
+		t.Error("the record row does not carry its level")
+	}
+}
+
+func TestDiagnosticsPageWithoutLogs(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/diagnostics") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want the page to render without a ring", resp.StatusCode)
+	}
+	if !strings.Contains(page, `data-testid="diagnostics-note"`) || !strings.Contains(page, "not wired") {
+		t.Fatal("an unwired ring was silent")
+	}
+	if strings.Contains(page, `data-testid="diagnostics-stats"`) {
+		t.Error("stats rendered without a ring")
+	}
+}
+
+func TestTargetDrawerShowsWhyLogLines(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	m := board.NewMemory(board.Target{
+		ID: "2", Name: "Chase", Host: "chase.com", State: board.StateDown,
+	})
+	logs := &fakeLogs{records: []logging.Record{{
+		Time: at, Level: slog.LevelWarn, LevelName: "WARN",
+		Message: "probe failed", Attrs: map[string]string{"target": "chase.com", "error_class": "tcp_refused"},
+	}}}
+
+	ts := newServerWithLogs(t, testToken, m, logs)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="target-why"`) {
+		t.Fatalf("Why panel missing:\n%s", page)
+	}
+	for _, want := range []string{"probe failed", "error_class=tcp_refused", ">Why?<"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("Why panel missing %q", want)
+		}
+	}
+}
+
+func TestTargetDrawerWhyWithoutLogs(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(board.Target{ID: "2", Name: "Chase", Host: "chase.com", State: board.StateDown})
+	ts := newServerWithDetails(t, testToken, m, &fakeChanges{})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="no-target-why"`) || !strings.Contains(page, "not wired") {
+		t.Fatal("an unwired ring was not stated in the drawer")
 	}
 }

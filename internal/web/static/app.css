@@ -551,3 +551,18 @@ table.probes td.detail { max-width: 18rem; overflow-wrap: anywhere; }
   color: var(--muted);
   font-size: 0.72rem;
 }
+/* --- diagnostics (LOGGING.md 9) ------------------------------------------ */
+
+.footer-nav a { color: var(--muted); }
+.footer-nav a:hover { color: var(--accent); }
+
+/* The ring's records are dense on purpose: an operator reads this page to
+   find one line, not to browse. The attribute column wraps instead of
+   widening the table. */
+.log-table td.detail {
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.log-table tr[data-level="ERROR"] td { color: #ff9c97; }
+.log-table tr[data-level="WARN"] td { color: #f0b849; }

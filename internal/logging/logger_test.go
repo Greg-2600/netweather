@@ -212,3 +212,64 @@ func TestConfigValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestDiagnosticsReportsSetupAndRecords(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	cfg := logging.DefaultConfig()
+	cfg.Format = "json"
+	cfg.Level = slog.LevelInfo
+	cfg.RingRecords = 10
+
+	lg, err := logging.New(cfg, &out)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = lg.Close() }()
+
+	lg.Info("probe failed", "target", "chase.com", "error_class", "tcp_refused")
+	lg.Debug("not retained at INFO", "target", "chase.com")
+
+	d := lg.Diagnostics()
+	if d.Level != "INFO" || d.Format != "json" {
+		t.Fatalf("diagnostics = %+v", d)
+	}
+	if d.RingRecords != 1 || d.RingCapacity != 10 {
+		t.Fatalf("ring = %d/%d, want 1/10", d.RingRecords, d.RingCapacity)
+	}
+	if d.File != "" {
+		t.Fatalf("file = %q, want console only", d.File)
+	}
+	if d.Dropped != 0 || d.WriteErrors != 0 {
+		t.Fatalf("counters = %+v", d)
+	}
+
+	records := lg.LogRecords(slog.LevelInfo, "chase.com", 10)
+	if len(records) != 1 {
+		t.Fatalf("records = %+v, want the retained INFO line", records)
+	}
+	if records[0].LevelName != "INFO" || records[0].Attrs["error_class"] != "tcp_refused" {
+		t.Fatalf("record = %+v", records[0])
+	}
+
+	// The debug line was filtered before the ring, so a trace read cannot
+	// conjure it back.
+	if got := lg.LogRecords(logging.LevelTrace, "", 0); len(got) != 1 {
+		t.Fatalf("trace read = %d records, want 1", len(got))
+	}
+
+	// With no scope registry the list is empty rather than nil-dereferencing.
+	if scopes := lg.ActiveScopes(); scopes != nil {
+		t.Fatalf("scopes = %+v, want nil", scopes)
+	}
+
+	// A nil logger reports an empty setup instead of panicking.
+	var nilLogger *logging.Logger
+	if d := nilLogger.Diagnostics(); d != (logging.Diagnostics{}) {
+		t.Fatalf("nil diagnostics = %+v", d)
+	}
+	if got := nilLogger.LogRecords(slog.LevelInfo, "", 0); got != nil {
+		t.Fatalf("nil records = %+v", got)
+	}
+}
