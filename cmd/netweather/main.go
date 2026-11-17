@@ -611,6 +611,8 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 		switch t.Probe {
 		case "http":
 			url = targetURL(t.Host, t.Port)
+		case "doh":
+			url = dohEndpoint(t.Host, t.Port, t.URL)
 		case "tls", "tcp", "tcpping", "dns", "ntp":
 			address = net.JoinHostPort(t.Host, strconv.Itoa(t.Port))
 		case "icmp":
@@ -683,6 +685,16 @@ func targetURL(host string, port int) string {
 		scheme = "https"
 	}
 	return scheme + "://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/"
+}
+
+// dohEndpoint is the DoH JSON endpoint for a target. An operator can name it
+// explicitly because providers disagree on the path (Google uses /resolve,
+// Cloudflare /dns-query); otherwise the common shape is used.
+func dohEndpoint(host string, port int, explicit string) string {
+	if explicit != "" {
+		return explicit
+	}
+	return "https://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/dns-query"
 }
 
 // seedTargets reconciles the shipped list into the store and returns the agent's
@@ -792,6 +804,8 @@ func applySeedEntries(ctx context.Context, st *store.Store, entries []seed.Entry
 			if url == "" {
 				url = targetURL(e.Host, port)
 			}
+		case "doh":
+			url = dohEndpoint(e.Host, port, e.URL)
 		case "tls", "tcp", "tcpping", "dns", "ntp":
 			address = net.JoinHostPort(e.Host, strconv.Itoa(port))
 		case "icmp":
@@ -1184,11 +1198,15 @@ func newInstrumentsWithDialer(dialer *netx.Dialer, userAgent string) agent.Instr
 	httpProbe := probe.NewHTTP(dialer)
 	httpProbe.UserAgent = userAgent
 
+	dohProbe := probe.NewDoH(dialer)
+	dohProbe.UserAgent = userAgent
+
 	return agent.Instruments{
 		HTTP: httpProbe,
 		TLS:  probe.NewTLS(dialer),
 		TCP:  probe.NewTCP(dialer),
 		DNS:  probe.NewDNS(dialer.DialContext),
+		DoH:  dohProbe,
 		NTP:  probe.NewNTP(dialer),
 		ICMP: ping,
 	}

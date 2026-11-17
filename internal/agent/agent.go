@@ -63,6 +63,7 @@ type Instruments struct {
 	TLS  *probe.TLS
 	TCP  *probe.TCP
 	DNS  *probe.DNS
+	DoH  *probe.DoH
 	NTP  *probe.NTP
 	ICMP *probe.ICMP
 }
@@ -95,6 +96,15 @@ func (i Instruments) Run(ctx context.Context, t Target) probe.Result {
 		return probe.Result{
 			Latency: r.Latency, ErrorClass: r.ErrorClass, Err: r.Err,
 			Addresses: r.Addresses, CNAMEs: r.CNAMEs,
+		}
+	case "doh":
+		if i.DoH == nil {
+			return probe.Result{Err: fmt.Errorf("agent: doh instrument not configured")}
+		}
+		r := i.DoH.Do(ctx, t.URL, t.Query)
+		return probe.Result{
+			Latency: r.Latency, ErrorClass: r.ErrorClass, Err: r.Err,
+			Addresses: r.Addresses,
 		}
 	case "ntp":
 		if i.NTP == nil {

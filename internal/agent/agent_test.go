@@ -1525,3 +1525,33 @@ func TestInstrumentsAskForHeadersOnlyOnlyWhenNoAssertion(t *testing.T) {
 		t.Fatalf("ranges = %v, want only the plain target ranged", ranges)
 	}
 }
+
+func TestInstrumentsDispatchDoH(t *testing.T) {
+	t.Parallel()
+
+	var gotQuery string
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query().Get("name")
+		_, _ = io.WriteString(w, `{"Status":0,"Answer":[{"type":1,"data":"203.0.113.9"}]}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	inst := agent.Instruments{DoH: probe.NewDoHWithClient(srv.Client())}
+	got := inst.Run(context.Background(), agent.Target{
+		ID: "doh", URL: srv.URL + "/dns-query", Query: "example.com", Instrument: "doh",
+	})
+	if got.Failed() {
+		t.Fatalf("doh dispatch failed: %s", got.ErrorClass)
+	}
+	if gotQuery != "example.com" {
+		t.Fatalf("query = %q", gotQuery)
+	}
+	if len(got.Addresses) != 1 || got.Addresses[0].String() != "203.0.113.9" {
+		t.Fatalf("addresses = %v", got.Addresses)
+	}
+
+	// A missing instrument is a configuration error, not a silent success.
+	if bad := (agent.Instruments{}).Run(context.Background(), agent.Target{Instrument: "doh"}); bad.Err == nil {
+		t.Fatal("a nil doh instrument returned success")
+	}
+}

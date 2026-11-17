@@ -238,6 +238,8 @@ Protocol choice is a **diagnostic** choice, not a coverage choice. Each instrume
 
 Not every target needs HTTP. A bank that bot-walls you is better measured with `tls` + `robots.txt` than with a fake browser (§5.3).
 
+**Implemented:** `dns`, `doh`, `tcp`, `tcpping`, `tls`, `http`, `icmp`, `ntp`, and on-demand `trace` are instruments in `internal/probe`, dispatched by `agent.Instruments`. The `doh` instrument is one HTTPS `GET` to a JSON endpoint (`?name=…&type=A`) through the same guarded dialer as every other probe; it requires `qname`, accepts an explicit `url` because providers disagree on the path (Google `/resolve`, Cloudflare `/dns-query`, and the default `https://host:port/dns-query` otherwise), refuses a plaintext endpoint, does not follow redirects, and reports NXDOMAIN as a real DOWN while SERVFAIL, a malformed answer, and a missing A record are UNKNOWN rather than an outage. `quic` is phase 3 and not built; `corridor` is not a per-target instrument but the corridor sampler in §9.
+
 ### 5.2 HTTP probe specifics
 
 - **`GET`, not `HEAD`.** Many sites 405/403 `HEAD`. Use `GET` with `Range: bytes=0-2047` when no body marker is configured. **Implemented:** the agent asks for the 2 KiB range only when the target has no content assertion and its status contract admits `206`; a compliant server answers `206`, and `PartialOK` admits it as a success. A target with a body or header assertion keeps the full body, and a named status list without `206` disables the range so a partial response cannot masquerade as the code the operator asked for.

@@ -229,6 +229,16 @@ func transport(t Expected, r Response) Result {
 			return Result{state.Unknown, High, class + ": one resolver disagrees with its own baseline"}
 		}
 		return Result{state.Down, Medium, class}
+	case strings.HasPrefix(class, "doh_"):
+		// A DoH endpoint is an HTTPS resolver, not the target's origin. An
+		// NXDOMAIN is a real answer that the name is gone; a bad answer or a
+		// SERVFAIL means we could not get one, which is visibility, not an
+		// outage. Timeouts arrive as http_timeout above and keep their
+		// endpoint-unreachable meaning.
+		if class == "doh_nxdomain" {
+			return Result{state.Down, Medium, class + ": name does not resolve"}
+		}
+		return Result{state.Unknown, Low, class}
 	case class == "policy_blocked", class == "policy_blocked_port":
 		// The destination is refused by this monitor's own outbound policy, so
 		// the probe never reached the network. That measures us, not the

@@ -66,7 +66,11 @@ type Target struct {
 	// StatusURL is the operator's status page for this target, in the same
 	// shape the Statuspage feed accepts. Empty means "no provider mapping",
 	// which the drawer states rather than guessing.
-	StatusURL  string `yaml:"status_url"`
+	StatusURL string `yaml:"status_url"`
+	// URL is the DoH endpoint for a doh target ("https://dns.google/resolve").
+	// Empty uses https://host:port/dns-query, which is the common shape. It is
+	// a config field rather than a fixed path because providers disagree.
+	URL        string `yaml:"url"`
 	Class      string `yaml:"class"`
 	Sector     string `yaml:"sector"`
 	Country    string `yaml:"country"`
@@ -196,6 +200,7 @@ var (
 		"tcpping": {80: {}, 443: {}},
 		"tls":     {443: {}},
 		"dns":     {53: {}},
+		"doh":     {443: {}},
 		"ntp":     {123: {}},
 		"icmp":    {},
 	}
@@ -301,19 +306,32 @@ func validateTarget(t *Target) error {
 			t.Host, strings.Join(ntpAllowlistNames(), ", "))
 	}
 
-	// qname is the name a DNS anchor asks its server about. It is required for
-	// dns targets and meaningless for every other instrument, so a stray value
-	// is a config mistake rather than something to ignore.
+	// qname is the name a DNS or DoH target asks about. It is required for both
+	// and meaningless for every other instrument, so a stray value is a config
+	// mistake rather than something to ignore.
 	t.QName = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(t.QName), "."))
-	if t.Probe == "dns" {
+	if t.Probe == "dns" || t.Probe == "doh" {
 		if t.QName == "" {
-			return errors.New("dns targets require qname")
+			return fmt.Errorf("%s targets require qname", t.Probe)
 		}
 		if !validHostname(t.QName) {
 			return fmt.Errorf("invalid qname %q", t.QName)
 		}
 	} else if t.QName != "" {
-		return fmt.Errorf("qname is only valid for dns targets, not %q", t.Probe)
+		return fmt.Errorf("qname is only valid for dns and doh targets, not %q", t.Probe)
+	}
+
+	// url is the DoH endpoint, and only a DoH target has one. It must be HTTPS:
+	// a plaintext resolver answer is not evidence (CLASSIFIER.md §9).
+	t.URL = strings.TrimSpace(t.URL)
+	if t.URL != "" {
+		if t.Probe != "doh" {
+			return fmt.Errorf("url is only valid for doh targets, not %q", t.Probe)
+		}
+		u, err := url.Parse(t.URL)
+		if err != nil || !strings.EqualFold(u.Scheme, "https") || u.Host == "" {
+			return fmt.Errorf("doh url %q is not an HTTPS URL", t.URL)
+		}
 	}
 
 	// resolvers are a DNS-only list: each is a resolver the target asks, and

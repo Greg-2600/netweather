@@ -687,3 +687,74 @@ func prefixLines(body, indent string) string {
 	}
 	return out
 }
+
+func TestDoHTarget(t *testing.T) {
+	t.Parallel()
+
+	path := write(t, `version: 1
+targets:
+  - name: Cloudflare DoH
+    host: cloudflare-dns.com
+    port: 443
+    probe: doh
+    qname: example.com
+    class: reference
+    tier: 0
+    url: https://cloudflare-dns.com/dns-query
+`)
+	f, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if f.Targets[0].URL != "https://cloudflare-dns.com/dns-query" {
+		t.Fatalf("url = %q", f.Targets[0].URL)
+	}
+	if f.Targets[0].QName != "example.com" {
+		t.Fatalf("qname = %q", f.Targets[0].QName)
+	}
+
+	// qname is the question; a doh target without one is not a probe.
+	missing := write(t, `version: 1
+targets:
+  - name: No question
+    host: cloudflare-dns.com
+    port: 443
+    probe: doh
+    class: reference
+    tier: 0
+`)
+	if _, err := config.Load(missing); err == nil {
+		t.Fatal("a doh target without qname was accepted")
+	}
+
+	// A plaintext endpoint is not evidence.
+	plaintext := write(t, `version: 1
+targets:
+  - name: Plaintext
+    host: cloudflare-dns.com
+    port: 443
+    probe: doh
+    qname: example.com
+    class: reference
+    tier: 0
+    url: http://cloudflare-dns.com/dns-query
+`)
+	if _, err := config.Load(plaintext); err == nil {
+		t.Fatal("an HTTP doh endpoint was accepted")
+	}
+
+	// url belongs to doh, not to an HTTP target.
+	wrongTarget := write(t, `version: 1
+targets:
+  - name: HTTP with url
+    host: example.com
+    port: 443
+    probe: http
+    class: reference
+    tier: 0
+    url: https://example.com/
+`)
+	if _, err := config.Load(wrongTarget); err == nil {
+		t.Fatal("url was accepted on an http target")
+	}
+}
