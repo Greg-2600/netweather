@@ -70,7 +70,11 @@ type Target struct {
 	// URL is the DoH endpoint for a doh target ("https://dns.google/resolve").
 	// Empty uses https://host:port/dns-query, which is the common shape. It is
 	// a config field rather than a fixed path because providers disagree.
-	URL        string `yaml:"url"`
+	URL string `yaml:"url"`
+	// Path is the request path for an http target. Empty is "/". It exists so
+	// the documented robots.txt recipe (DESIGN.md §5.3) is expressible as an
+	// override instead of a rewrite the binary performs silently.
+	Path       string `yaml:"path"`
 	Class      string `yaml:"class"`
 	Sector     string `yaml:"sector"`
 	Country    string `yaml:"country"`
@@ -331,6 +335,27 @@ func validateTarget(t *Target) error {
 		u, err := url.Parse(t.URL)
 		if err != nil || !strings.EqualFold(u.Scheme, "https") || u.Host == "" {
 			return fmt.Errorf("doh url %q is not an HTTPS URL", t.URL)
+		}
+	}
+
+	// path is the request path for an http target. It exists so the documented
+	// robots.txt recipe (DESIGN.md §5.3) is a configuration choice rather than a
+	// silent rewrite. It is http-only, must be a path, and cannot smuggle a
+	// scheme, authority, query, or control character.
+	t.Path = strings.TrimSpace(t.Path)
+	if t.Path != "" {
+		if t.Probe != "http" {
+			return fmt.Errorf("path is only valid for http targets, not %q", t.Probe)
+		}
+		if !strings.HasPrefix(t.Path, "/") || strings.HasPrefix(t.Path, "//") {
+			return fmt.Errorf("path %q must start with a single /", t.Path)
+		}
+		if strings.ContainsAny(t.Path, "\\?#\r\n\x00 ") {
+			return fmt.Errorf("path %q contains a scheme, query, or control character", t.Path)
+		}
+		u, err := url.Parse(t.Path)
+		if err != nil || u.IsAbs() || u.Host != "" || u.RawQuery != "" || u.Fragment != "" {
+			return fmt.Errorf("path %q is not a request path", t.Path)
 		}
 	}
 

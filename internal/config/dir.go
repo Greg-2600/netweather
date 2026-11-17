@@ -160,6 +160,7 @@ type override struct {
 	Probe     string  `yaml:"probe"`
 	QName     string  `yaml:"qname"`
 	URL       string  `yaml:"url"`
+	Path      string  `yaml:"path"`
 	Interval  string  `yaml:"interval"`
 	StatusURL string  `yaml:"status_url"`
 	Expect    *Expect `yaml:"expect"`
@@ -228,6 +229,11 @@ func applyOverrides(dir string, targets []Target) error {
 		}
 		if o.URL != "" {
 			t.URL = o.URL
+		}
+		// path belongs to an http override: the robots.txt recipe from
+		// DESIGN.md §5.3 is exactly the case a sector list cannot express.
+		if o.Path != "" {
+			t.Path = o.Path
 		}
 		if o.StatusURL != "" {
 			t.StatusURL = o.StatusURL

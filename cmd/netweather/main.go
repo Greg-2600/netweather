@@ -620,7 +620,7 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 		)
 		switch t.Probe {
 		case "http":
-			url = targetURL(t.Host, t.Port)
+			url = targetURL(t.Host, t.Port, t.Path)
 		case "doh":
 			url = dohEndpoint(t.Host, t.Port, t.URL)
 		case "tls", "tcp", "tcpping", "dns", "ntp":
@@ -689,12 +689,15 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 	return out, nil
 }
 
-func targetURL(host string, port int) string {
+func targetURL(host string, port int, path string) string {
 	scheme := "http"
 	if port == 443 {
 		scheme = "https"
 	}
-	return scheme + "://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/"
+	if path == "" {
+		path = "/"
+	}
+	return scheme + "://" + net.JoinHostPort(host, strconv.Itoa(port)) + path
 }
 
 // dohEndpoint is the DoH JSON endpoint for a target. An operator can name it
@@ -821,7 +824,7 @@ func applySeedEntries(ctx context.Context, st *store.Store, entries []seed.Entry
 		case "http":
 			url = e.URL
 			if url == "" {
-				url = targetURL(e.Host, port)
+				url = targetURL(e.Host, port, "")
 			}
 		case "doh":
 			url = dohEndpoint(e.Host, port, e.URL)

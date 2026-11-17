@@ -261,7 +261,7 @@ Default recipe for targets that are mostly blocked:
 
 This measures **reachability** honestly instead of pretending to measure content.
 
-**Implemented as operator guidance, not an automatic rewrite.** netweather does not silently change a target's URL or instrument: the calibration marks a permanently blocked target `unmeasurable` (so it stops dragging health down), and an operator who wants the robots or TLS recipe configures it as an override (`DESIGN.md` §13.2). Rewriting the probe would change what the target measures without saying so, which is the kind of quiet reinterpretation the project rejects.
+**Implemented as operator guidance, not an automatic rewrite.** netweather does not silently change a target's URL or instrument: the calibration marks a permanently blocked target `unmeasurable` (so it stops dragging health down), and an operator who wants the robots or TLS recipe configures it as an override (`DESIGN.md` §13.2). For the first step that is `path: /robots.txt` on an `http` target; `path` is http-only, must start with a single `/`, and may not carry a scheme, authority, query, fragment, or whitespace. For the second it is `probe: tls`. Rewriting the probe would change what the target measures without saying so, which is the kind of quiet reinterpretation the project rejects.
 
 ### 5.4 What each instrument cannot tell you
 
@@ -1106,7 +1106,7 @@ expect:
   max_redirects: 3          # 0-20; zero uses the instrument's default of 5
 ```
 
-An override is a **change to a target that already exists**, not a way to add one: an unmatched `target` is a startup error, so a file that silently edits nothing cannot ship. The supported keys are the ones above plus `qname` and `url` for a `doh` override (the question and the HTTPS endpoint, which providers locate differently), plus `expect`; unknown keys, including a `tags` list the schema does not have, are rejected rather than ignored. `status_min`/`status_max` and a `status` list may coexist; a status admitted by either is accepted.
+An override is a **change to a target that already exists**, not a way to add one: an unmatched `target` is a startup error, so a file that silently edits nothing cannot ship. The supported keys are the ones above plus `qname` and `url` for a `doh` override (the question and the HTTPS endpoint, which providers locate differently), `path` for an `http` override (the request path, which is how the robots.txt recipe in §5.3 is expressed), plus `expect`; unknown keys, including a `tags` list the schema does not have, are rejected rather than ignored. `status_min`/`status_max` and a `status` list may coexist; a status admitted by either is accepted.
 
 ### 13.3 Hot reload
 

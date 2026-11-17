@@ -234,13 +234,19 @@ func TestSeedTargetsSeedsTheDefaultList(t *testing.T) {
 func TestTargetURL(t *testing.T) {
 	t.Parallel()
 
-	tests := map[int]string{
-		443: "https://example.com:443/",
-		80:  "http://example.com:80/",
+	tests := []struct {
+		port int
+		path string
+		want string
+	}{
+		{443, "", "https://example.com:443/"},
+		{80, "", "http://example.com:80/"},
+		{443, "/robots.txt", "https://example.com:443/robots.txt"},
+		{80, "/health", "http://example.com:80/health"},
 	}
-	for port, want := range tests {
-		if got := targetURL("example.com", port); got != want {
-			t.Errorf("targetURL(%d) = %q, want %q", port, got, want)
+	for _, tc := range tests {
+		if got := targetURL("example.com", tc.port, tc.path); got != tc.want {
+			t.Errorf("targetURL(%d, %q) = %q, want %q", tc.port, tc.path, got, tc.want)
 		}
 	}
 }

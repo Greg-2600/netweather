@@ -74,6 +74,22 @@ targets:
     tier: 0
     interval_s: 600
 
+  # An http target may name a request path. It exists for the robots.txt
+  # recipe (DESIGN.md 5.3): a hard target is often bot-walled on /, while
+  # /robots.txt is published for automated clients. The path is http-only and
+  # must start with a single /; the default is /.
+  - name: Chase robots
+    host: www.chase.com
+    port: 443
+    probe: http
+    path: /robots.txt
+    class: service
+    sector: financial/banking
+    tier: 1
+    interval_s: 300
+    expect:
+      status: [200, 404]
+
   # NTP is self-health: it records this vantage's clock offset and never
   # produces UP or DOWN. A large offset is visible in the reason, not as an
   # outage.

@@ -758,3 +758,67 @@ targets:
 		t.Fatal("url was accepted on an http target")
 	}
 }
+
+func TestHTTPPath(t *testing.T) {
+	t.Parallel()
+
+	// The robots.txt recipe (DESIGN.md 5.3) is an operator choice, so the path
+	// has to be configurable rather than silently rewritten.
+	path := write(t, `version: 1
+targets:
+  - name: Robots
+    host: chase.com
+    port: 443
+    probe: http
+    path: /robots.txt
+    class: service
+    tier: 2
+`)
+	f, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if f.Targets[0].Path != "/robots.txt" {
+		t.Fatalf("path = %q", f.Targets[0].Path)
+	}
+
+	// path belongs to http, not to another instrument.
+	badProbe := write(t, `version: 1
+targets:
+  - name: TLS with path
+    host: chase.com
+    port: 443
+    probe: tls
+    path: /robots.txt
+    class: service
+    tier: 2
+`)
+	if _, err := config.Load(badProbe); err == nil || !strings.Contains(err.Error(), "only valid for http") {
+		t.Fatalf("error = %v, want a probe refusal", err)
+	}
+
+	// A path cannot smuggle a scheme, authority, query, fragment, space, or a
+	// relative form.
+	for _, bad := range []string{
+		"//evil.example/x",
+		"https://evil.example/",
+		"/a?b=c",
+		"/a#frag",
+		"/a b",
+		"relative",
+	} {
+		body := fmt.Sprintf(`version: 1
+targets:
+  - name: Bad
+    host: chase.com
+    port: 443
+    probe: http
+    path: %q
+    class: service
+    tier: 2
+`, bad)
+		if _, err := config.Load(write(t, body)); err == nil {
+			t.Errorf("path %q was accepted", bad)
+		}
+	}
+}

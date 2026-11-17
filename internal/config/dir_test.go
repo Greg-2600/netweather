@@ -350,3 +350,33 @@ interval: 600s
 		t.Fatalf("error = %v, want a qname refusal", err)
 	}
 }
+
+func TestLoadDirectoryHTTPPathOverride(t *testing.T) {
+	t.Parallel()
+
+	root := writeDir(t, map[string]string{
+		"sites/financial/banking.txt": "chase.com\n",
+		"overrides/robots.yaml":       "target: chase.com\npath: /robots.txt\ninterval: 600s\n",
+	})
+	f, err := config.Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	got := f.Targets[0]
+	if got.Path != "/robots.txt" {
+		t.Fatalf("path = %q, want the override", got.Path)
+	}
+	if got.IntervalS != 600 {
+		t.Fatalf("interval = %d", got.IntervalS)
+	}
+
+	// An override still goes through validation: a path on a non-http probe is
+	// refused with the file context the operator needs.
+	bad := writeDir(t, map[string]string{
+		"sites/banking.txt":     "chase.com\n",
+		"overrides/robots.yaml": "target: chase.com\nprobe: tls\npath: /robots.txt\n",
+	})
+	if _, err := config.Load(bad); err == nil {
+		t.Fatal("a path on a tls target was accepted")
+	}
+}
