@@ -14,7 +14,8 @@ Honesty first, because a spec that implies more than the binary does is worse th
 |---|---|
 | `GET /healthz` | **implemented** — liveness only, no auth, no data |
 | `GET /api/v1/meta` | **implemented** — build, uptime, auth mode, capabilities |
-| `GET /api/v1/logs` | **implemented** — reads the in-memory ring (`LOGGING.md` §9) |
+| `GET /api/v1/logs` | **implemented** - reads the in-memory ring (`LOGGING.md` §9) |
+| `GET /events` | **implemented** - the UI's SSE stream; session cookie auth, not bearer. The API-facing counterpart is specified in §7.2 |
 | Everything else in §7 | **specified, not implemented** |
 | `/metrics` (`DESIGN.md` §6.4) | **specified, not implemented** — see §7.4 for why it is separate from `/api/v1` |
 
@@ -156,6 +157,7 @@ Health probes should not have to unwrap an envelope, and orchestrators parse raw
 - Time filters use `from` / `to`, inclusive of `from`, exclusive of `to`, RFC 3339.
 - Filtering by target accepts a registrable hostname, not a URL and not a wildcard.
 - Unknown `sort` values are rejected; `sort` is a closed enum per endpoint.
+- `GET /api/v1/logs` is the exception: it returns the newest N after filtering and does not paginate. Cursors apply to the list endpoints in §7.1 when they land.
 
 ---
 
@@ -261,7 +263,16 @@ Each of these is a promise about shape, not a claim that it works. `GET /api/v1/
 
 ### 7.2 Live updates
 
-`GET /api/v1/events` — SSE, `stable`.
+`GET /api/v1/events` - SSE, `stable`. **Specified, not implemented.**
+
+There are two paths for one stream:
+
+| Path | Auth | Audience | Status |
+|---|---|---|---|
+| `/events` | session cookie | the browser UI | **implemented** |
+| `/api/v1/events` | bearer, or session cookie | API clients | specified |
+
+`EventSource` cannot set an `Authorization` header, which is why the UI path uses the cookie. An API client that wants bearer auth uses a `fetch`-based SSE reader rather than `EventSource`. Both paths emit exactly the schema below; there is one handler, not two.
 
 ```
 event: state
@@ -308,11 +319,11 @@ Prometheus text exposition lives at `/metrics`, **not** under `/api/v1`:
 | Concern | Behaviour |
 |---|---|
 | Request ID | `X-Request-Id` honoured if 1–64 `[A-Za-z0-9_-]`; otherwise generated. Always echoed and always present in logs |
-| Security headers | `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` |
-| Compression | gzip/br for JSON over 1 KB; SSE never compressed |
+| Security headers | `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow`, `Cache-Control: no-store` |
+| Compression | gzip/br for JSON over 1 KB; SSE never compressed. Specified: not implemented yet |
 | CORS | None. Same-origin only. No `Access-Control-Allow-*` headers are emitted |
 | Rate limit | 60 requests/minute per token, burst 20; `429` with `Retry-After` |
-| Body limit | 64 KB for JSON actions; `413` beyond |
+| Body limit | 64 KB for JSON actions; `413` beyond. Applies when the first POST route lands |
 | Timeouts | Header 5 s, read 15 s, write 30 s (SSE excepted), idle 60 s |
 | Panics | Recovered, logged with stack, returned as `500 internal` with the request ID |
 | Method handling | Wrong method on a known path → JSON `405` + `Allow` |
@@ -328,8 +339,10 @@ The binary is also scriptable, and its contract matters as much as HTTP:
 | `netweather version` | 0 | one line |
 | `netweather healthcheck` | 0 healthy, 1 unhealthy | silent |
 | `netweather serve` | 0 clean shutdown, 1 startup or runtime failure | logs to stdout |
-| `netweather seed` | 0 applied, 1 rejected | summary |
-| `netweather export` | 0 success, 1 error | data to stdout, logs to stderr |
+| `netweather seed` | 0 applied, 1 rejected | summary *(specified)* |
+| `netweather export` | 0 success, 1 error | data to stdout, logs to stderr *(specified)* |
+
+Commands that exist in the binary today: `serve`, `version`, `healthcheck`. `seed`, `export`, and the `debug`/`pause` verbs are specified and return an error until implemented.
 
 Rules:
 

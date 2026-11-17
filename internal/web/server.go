@@ -43,6 +43,10 @@ func New(deps Deps) (http.Handler, error) {
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = io.WriteString(w, "User-agent: *\nDisallow: /\n")
+	})
 	mux.HandleFunc("/login", s.handleLogin)
 	mux.HandleFunc("/logout", s.requireSession(http.HandlerFunc(s.handleLogout)).ServeHTTP)
 	mux.Handle("/static/", http.FileServer(http.FS(staticFS)))
@@ -187,7 +191,8 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 
 	for _, st := range []board.State{
 		board.StateDown, board.StateDegraded, board.StateBlocked,
-		board.StateUnknown, board.StateConfigError, board.StateUnmeasurable, board.StateUp,
+		board.StateUnknown, board.StateConfigError, board.StateUnmeasurable,
+		board.StateUpReachability, board.StateUp,
 	} {
 		if n := counts[st]; n > 0 {
 			view.Counts = append(view.Counts, countView{

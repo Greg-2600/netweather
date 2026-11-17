@@ -8,7 +8,7 @@ Project name: **netweather** (decided — see `DESIGN.md` §16).
 | [`CLASSIFIER.md`](CLASSIFIER.md) | ✅ | The rule table that turns a response into a state. Error classes, challenge signatures, precedence, confidence, hard-target recipes, golden fixtures |
 | [`IMAGE.md`](IMAGE.md) | ✅ | Base image decision (Chainguard/Wolfi), two-image strategy, hardening, capabilities, supply chain, Tor sidecar |
 | [`NETWORKING.md`](NETWORKING.md) | ✅ | Docker network topology, MTU/PMTU, embedded DNS, SSRF reachability, Tailscale and proxy access, Tor sidecar wiring, platform matrix |
-| [`QUALITY.md`](QUALITY.md) | ✅ | Linters, security scanning, the six test layers, fuzz targets, the fake internet, coverage gates, CI |
+| [`QUALITY.md`](QUALITY.md) | ✅ | Linters, security scanning, the six backend test layers plus the opt-in browser layer, fuzz targets, the fake internet, coverage gates, CI |
 | [`SCHEMA.md`](SCHEMA.md) | ✅ | SQLite tables, pragmas and pools, incremental rollups, retention jobs, query shapes, backup and export, sizing |
 | [`LOGGING.md`](LOGGING.md) | ✅ | Levels and volume, the decision-record field schema, redaction, sinks, backpressure, the in-memory ring, debug bundle |
 | [`API.md`](API.md) | ✅ | `/api/v1` contract, envelope and error codes, auth, pagination, SSE, implemented vs specified endpoints, CLI contract |

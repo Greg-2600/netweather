@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -244,6 +245,22 @@ func TestLogsFiltering(t *testing.T) {
 	if len(records) != 1 || records[0].Message != "probe" {
 		t.Fatalf("limit should keep the newest record, got %#v", records)
 	}
+
+	future := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	none := do(h, http.MethodGet, "/api/v1/logs?since="+url.QueryEscape(future), testToken)
+	_ = json.Unmarshal(none.Body.Bytes(), &env)
+	_ = json.Unmarshal(env.Data, &records)
+	if len(records) != 0 {
+		t.Fatalf("since in the future returned %d records", len(records))
+	}
+
+	past := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	sincePast := do(h, http.MethodGet, "/api/v1/logs?since="+url.QueryEscape(past), testToken)
+	_ = json.Unmarshal(sincePast.Body.Bytes(), &env)
+	_ = json.Unmarshal(env.Data, &records)
+	if len(records) != 3 {
+		t.Fatalf("since an hour ago returned %d records, want 3", len(records))
+	}
 }
 
 func TestLogsRejectsBadParameters(t *testing.T) {
@@ -325,6 +342,28 @@ func TestHostileRequestIDIsReplaced(t *testing.T) {
 	}
 }
 
+func TestAPIRejectsBurstWith429(t *testing.T) {
+	t.Parallel()
+
+	h := newHandler(t, testToken, nil)
+
+	for i := 0; i < 21; i++ {
+		rec := do(h, http.MethodGet, "/api/v1/meta", testToken)
+		if i < 20 {
+			if rec.Code != http.StatusOK {
+				t.Fatalf("request %d: status %d, want 200", i+1, rec.Code)
+			}
+			continue
+		}
+		if rec.Code != http.StatusTooManyRequests {
+			t.Fatalf("request 21: status %d, want 429", rec.Code)
+		}
+		if rec.Header().Get("Retry-After") == "" {
+			t.Error("429 without Retry-After")
+		}
+	}
+}
+
 func TestSecurityHeaders(t *testing.T) {
 	t.Parallel()
 
@@ -334,6 +373,7 @@ func TestSecurityHeaders(t *testing.T) {
 		"X-Frame-Options":        "DENY",
 		"Referrer-Policy":        "no-referrer",
 		"Cache-Control":          "no-store",
+		"X-Robots-Tag":           "noindex, nofollow",
 	}
 	for k, v := range want {
 		if got := rec.Header().Get(k); got != v {

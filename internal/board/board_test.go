@@ -103,6 +103,7 @@ func TestStateLabels(t *testing.T) {
 		class string
 	}{
 		{board.StateUp, "Up", "state-up"},
+		{board.StateUpReachability, "Up (reachability only)", "state-up_reachability"},
 		{board.StateDegraded, "Degraded", "state-degraded"},
 		{board.StateDown, "Down", "state-down"},
 		{board.StateBlocked, "Blocked", "state-blocked"},

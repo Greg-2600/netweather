@@ -61,6 +61,7 @@ func withSecurityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Cache-Control", "no-store")
+		h.Set("X-Robots-Tag", "noindex, nofollow")
 		next.ServeHTTP(w, r)
 	})
 }

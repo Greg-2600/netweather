@@ -49,9 +49,12 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	apiMux.HandleFunc("/api/v1/logs", onlyGET(s.handleLogs))
 	apiMux.HandleFunc("/", s.handleNotFound)
 
+	// 60 requests/minute sustained, 20 burst (docs/API.md §8).
+	limiter := newBucket(1, 20, time.Now)
+
 	root := http.NewServeMux()
 	root.HandleFunc("/healthz", onlyGET(s.handleHealthz))
-	root.Handle("/api/", withBearerAuth(cfg.Token, apiMux))
+	root.Handle("/api/", withRateLimit(limiter, withBearerAuth(cfg.Token, apiMux)))
 	if deps.Fallback != nil {
 		root.Handle("/", deps.Fallback)
 	} else {

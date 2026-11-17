@@ -862,7 +862,9 @@ Every state carries a **shape or glyph** as well as colour: ring style (solid/da
 
 ### 10.8 Live updates
 
-SSE stream of state deltas only — not full page. Fallback to 10s polling if the stream drops. Visible "live/paused" indicator.
+SSE stream of state deltas only - not full page. The UI consumes it at `GET /events` with the session cookie; API clients use `/api/v1/events` with a bearer token or the same cookie (`API.md` §7.2).
+
+Reconnect is automatic: the server sends `retry: 3000`, and the badge distinguishes `live` from `retrying`. There is no separate polling fallback - a second code path for a rare case is more likely to break than to help, and a page reload always recovers. If `EventSource` is unavailable the badge says so instead of pretending to be live.
 
 ---
 
@@ -1007,6 +1009,7 @@ Config files are watched; a valid change applies without restart. Invalid change
 | Global rate ceiling | 20 req/s default |
 | Allowed ports (outbound) | 80, 443, 53 (DNS), 123 (NTP, fixed allowlist), 853 (DoT, phase 3). **22 and everything else excluded.** |
 | Inbound port | `2600` only; no other listener. Non-loopback bind requires auth (`NETWORKING.md` §7.1) |
+| API rate limit | 60 req/min per token, burst 20, `429` with `Retry-After` (`API.md` §8) |
 | Allowed methods | GET, HEAD |
 | ICMP | Echo request only, never to private ranges, never the sole up/down signal |
 | Traceroute | On-demand or anomaly-triggered only; ≤10 runs/hour; never to private ranges |

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 )
 
@@ -29,6 +30,15 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	c.AllowPublic = strings.EqualFold(getenv("NETWEATHER_UI_ALLOW_PUBLIC"), "true")
 
 	if path := strings.TrimSpace(getenv("NETWEATHER_UI_TOKEN_FILE")); path != "" {
+		info, statErr := os.Stat(path)
+		if statErr != nil {
+			return c, fmt.Errorf("token file: %w", statErr)
+		}
+		// A token the whole host can read is not a secret. Windows has no POSIX
+		// modes, so the check applies where it means something.
+		if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+			return c, fmt.Errorf("token file %q is group/world readable (%04o); chmod 600 it", path, info.Mode().Perm())
+		}
 		// #nosec G304 -- operator-supplied config path, by design.
 		b, err := os.ReadFile(path)
 		if err != nil {

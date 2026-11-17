@@ -33,6 +33,32 @@ Companion documents: [`NETWORKING.md`](NETWORKING.md) (topology and reachability
 
 Assets → adversaries → trust boundaries → threats per boundary → mitigation → residual risk → the invariant that makes the mitigation testable. Every mitigation listed as "enforced" has a corresponding test in `QUALITY.md` §5 or a startup assertion; a mitigation that is only a sentence in a document is listed as *policy*, not *enforced*.
 
+**The tables describe the finished system.** The status column is a specification of what the code must enforce, not a report on today's binary. §1.1 is the report.
+
+### 1.1 Implementation status
+
+What exists in code today, and therefore what "enforced" currently means:
+
+| Area | Status | Evidence |
+|---|---|---|
+| Startup guardrail (non-loopback + no token) | **implemented** | `internal/api/config.go`, `config_test.go` |
+| Refuse to run as root | **implemented** | `internal/startup`, `startup_test.go` |
+| API bearer auth, constant-time compare | **implemented** | `internal/api/middleware.go`, `api_test.go` |
+| Per-token rate limit (60/min, burst 20) | **implemented** | `internal/api/ratelimit.go` |
+| Session cookies, CSRF, login rate limit | **implemented** | `internal/web/auth.go`, `web_test.go` |
+| Security headers, request IDs, JSON errors, panic recovery | **implemented** | `internal/api` |
+| Robots/noindex (`robots.txt`, `X-Robots-Tag`) | **implemented** | `internal/web`, `internal/api` |
+| Token file permission check (POSIX) | **implemented** | `internal/api/config.go` |
+| Handler timeouts and header limits | **implemented** | `cmd/netweather/main.go` |
+| Log redaction, ring, non-blocking sink | **implemented** | `internal/logging`, `redact_test.go`, `async_test.go` |
+| Target escaping in HTML | **implemented** | `internal/web/web_test.go` |
+| Probe dialer, SSRF rules, port allowlist | **not implemented** | `internal/netx` is the next component |
+| Store, migrations, retention, backups | **not implemented** | `docs/SCHEMA.md` is the spec |
+| Container image, compose, capabilities, read-only rootfs | **not implemented** | `docs/IMAGE.md`, `docs/NETWORKING.md` are the specs |
+| Feeds, Tor sidecar, RIPE Atlas profile | **not implemented** | `docs/DESIGN.md` §8, §6 |
+
+Until the dialer exists, the SSRF rules in §5.2 are **requirements on code that has not been written**, not properties of the running binary. That distinction matters more than any table row: a threat model that reads as "done" when the probe engine does not exist is the failure mode this section prevents.
+
 ---
 
 ## 2. Assets, ranked by what an attacker actually wants

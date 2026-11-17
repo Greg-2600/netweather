@@ -110,6 +110,24 @@ func login(t *testing.T, ts *httptest.Server, client *http.Client, token string)
 	}
 }
 
+func TestRobotsDisallowsEverything(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testToken, fixture())
+
+	resp, err := http.Get(ts.URL + "/robots.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if !strings.Contains(page, "Disallow: /") {
+		t.Fatalf("robots.txt does not disallow crawling: %q", page)
+	}
+}
+
 func TestBoardRequiresLogin(t *testing.T) {
 	t.Parallel()
 

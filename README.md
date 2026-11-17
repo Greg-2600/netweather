@@ -10,7 +10,7 @@ A self-hosted internet weather station. One small container that answers three q
 
 Most monitors answer only #2, and answer it badly: `curl != 200` becomes "down." That produces enough false alarms that people stop looking. This one classifies bot protection instead of evading it, and refuses to call a single vantage point a global truth.
 
-**Status: phase 0, early.** The documents in [`docs/`](docs/) are the specification. The binary currently serves the API contract (`/healthz`, `/api/v1/meta`, `/api/v1/logs`) and a board skeleton — login, grid, SSE deltas — backed by an in-memory source. The probe engine and the store are next.
+**Status: phase 0, early.** The documents in [`docs/`](docs/) are the specification. The binary currently serves the API contract (`/healthz`, `/api/v1/meta`, `/api/v1/logs`) and a board skeleton — login, grid, SSE deltas — backed by an in-memory source. No container image yet. The probe engine and the store are next.
 
 ---
 
@@ -45,7 +45,7 @@ The through-line: `censor_sensor` asked *"can I reach it?"*, `global_packet_thro
 | [`docs/CLASSIFIER.md`](docs/CLASSIFIER.md) | The rule table that turns a response into a state — error classes, WAF signatures, precedence, confidence, hard-target recipes, golden fixtures |
 | [`docs/IMAGE.md`](docs/IMAGE.md) | Container base image, two-image strategy, hardening, capabilities, supply chain |
 | [`docs/NETWORKING.md`](docs/NETWORKING.md) | Docker topology, MTU/PMTU, embedded DNS, SSRF reachability, Tailscale and proxy access, Tor sidecar wiring |
-| [`docs/QUALITY.md`](docs/QUALITY.md) | Linters, security scanning, six test layers, fuzzing, the fake internet, container smoke tests, coverage gates, CI |
+| [`docs/QUALITY.md`](docs/QUALITY.md) | Linters, security scanning, six backend test layers plus the opt-in Playwright browser layer, fuzzing, the fake internet, coverage gates, CI |
 | [`docs/SCHEMA.md`](docs/SCHEMA.md) | SQLite tables, pragmas and pools, incremental rollups, retention jobs, query shapes, backup and export |
 | [`docs/LOGGING.md`](docs/LOGGING.md) | Levels and volume, decision-record fields, redaction, sinks, backpressure, the in-memory ring, debug bundle |
 | [`docs/API.md`](docs/API.md) | `/api/v1` contract: envelope, error codes, auth, pagination, SSE, implemented vs specified endpoints, CLI contract |
@@ -65,9 +65,9 @@ The through-line: `censor_sensor` asked *"can I reach it?"*, `global_packet_thro
 | Network anchor | 100 | Root servers, public resolvers, IXP route servers |
 | Reference | 10–100 | The "is it me?" baseline |
 
-**States** — `UP` · `UP_REACHABILITY` · `DEGRADED` · `DOWN` · `BLOCKED` · `UNKNOWN` · `CONFIG_ERROR`. `BLOCKED` and `CONFIG_ERROR` never count against health, which is what keeps the board from being permanently on fire.
+**States** - `UP` · `UP_REACHABILITY` · `DEGRADED` · `DOWN` · `BLOCKED` · `UNKNOWN` · `CONFIG_ERROR` · `UNMEASURABLE`. `BLOCKED`, `CONFIG_ERROR`, and `UNMEASURABLE` never count against health, which is what keeps the board from being permanently on fire.
 
-**Verdicts** — `OK` · `INCIDENT` · `REGIONAL` · `LOCAL` · `TAMPER` · `STALE`.
+**Verdicts** - `OK` · `INCIDENT` · `REGIONAL` · `LOCAL` · `TAMPER` · `STALE` · `LEARNING`.
 
 **Instruments** — DNS, DoH, TCP, TLS, HTTP(S), ICMP, TCP-ping, NTP, traceroute (on-demand only).
 
@@ -82,6 +82,8 @@ The through-line: `censor_sensor` asked *"can I reach it?"*, `global_packet_thro
 ## Container
 
 Single container, read-only rootfs, non-root, no shell in the release image. Outbound for probes; **inbound only on 2600** for the dashboard.
+
+The image and compose file do not exist yet — this is the deployment contract, not a description of an artefact you can pull.
 
 ```yaml
 services:

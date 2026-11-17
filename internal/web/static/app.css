@@ -165,6 +165,7 @@ body.auth {
 
 /* Shape, not only colour: DESIGN.md 10.7 */
 .tile.state-up { border-left: 4px solid var(--up); }
+.tile.state-up_reachability { border-left: 4px solid var(--up); border-top: 1px dashed var(--up); }
 .tile.state-degraded { border-left: 4px dashed var(--degraded); }
 .tile.state-down {
   border-left: 4px solid var(--down);

@@ -14,8 +14,8 @@ linters:
     - testpackage
   settings:
     testpackage:
-      # main packages are tested in-package so run() stays callable without exporting it.
-      skip-regexp: "(main|export_test)\\.go"
+      # main packages and the unexported token-bucket test stay in-package.
+      skip-regexp: "(main|export_test|ratelimit_test)\\.go"
 
 formatters:
   enable:

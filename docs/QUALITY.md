@@ -460,7 +460,8 @@ Always `-race -covermode=atomic`. Coverage is uploaded per-PR and diffed, so a P
 | format | `gofmt -l`, `goimports -l` | ✅ |
 | vet | `go vet ./...` | ✅ |
 | lint | `golangci-lint run` | ✅ |
-| test | `go test -race -covermode=atomic ./...` | ✅ |
+| test | `go test -race ./...` | ✅ |
+| ui test (browser) | Playwright + chromium, `-tags=uitest` | ✅ (paths touching `internal/web`, `internal/board`, templates) |
 | fuzz (short) | `go test -fuzz=FuzzClassify -fuzztime=30s` | ✅ |
 | vuln | `govulncheck ./...`, `osv-scanner` | ✅ |
 | secrets | `gitleaks` | ✅ |

@@ -15,13 +15,14 @@ import (
 type State string
 
 const (
-	StateUp           State = "up"
-	StateDegraded     State = "degraded"
-	StateDown         State = "down"
-	StateBlocked      State = "blocked"
-	StateUnknown      State = "unknown"
-	StateConfigError  State = "config_error"
-	StateUnmeasurable State = "unmeasurable"
+	StateUp             State = "up"
+	StateUpReachability State = "up_reachability"
+	StateDegraded       State = "degraded"
+	StateDown           State = "down"
+	StateBlocked        State = "blocked"
+	StateUnknown        State = "unknown"
+	StateConfigError    State = "config_error"
+	StateUnmeasurable   State = "unmeasurable"
 )
 
 // Text is the human label. It is also the aria-label suffix, so colour is never
@@ -30,6 +31,8 @@ func (s State) Text() string {
 	switch s {
 	case StateUp:
 		return "Up"
+	case StateUpReachability:
+		return "Up (reachability only)"
 	case StateDegraded:
 		return "Degraded"
 	case StateDown:
@@ -50,6 +53,8 @@ func (s State) Glyph() string {
 	switch s {
 	case StateUp:
 		return "●"
+	case StateUpReachability:
+		return "◍"
 	case StateDegraded:
 		return "◐"
 	case StateDown:

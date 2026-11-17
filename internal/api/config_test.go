@@ -3,6 +3,7 @@ package api_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/Greg-2600/netweather/internal/api"
@@ -109,6 +110,34 @@ func TestConfigRejectsMissingTokenFile(t *testing.T) {
 		"NETWEATHER_UI_TOKEN_FILE": filepath.Join(t.TempDir(), "absent"),
 	})); err == nil {
 		t.Fatal("a missing token file should be an error")
+	}
+}
+
+func TestConfigRejectsWorldReadableTokenFile(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no POSIX modes")
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ui_token")
+	if err := os.WriteFile(path, []byte("a-long-enough-token-value"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := api.FromEnv(env(map[string]string{"NETWEATHER_UI_TOKEN_FILE": path})); err == nil {
+		t.Fatal("a group/world-readable token file should be rejected")
+	}
+
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := api.FromEnv(env(map[string]string{"NETWEATHER_UI_TOKEN_FILE": path})); err != nil {
+		t.Fatalf("0600 token file should be accepted: %v", err)
 	}
 }
 
