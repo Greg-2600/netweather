@@ -172,7 +172,19 @@ func serve(lg *logging.Logger) error {
 		return err
 	}
 
-	torAgent, err := newTorAgent(ctx, st, targets, lg)
+	// Identification: a probe must be attributable. The contact is the
+	// operator's to set, and an unattributed monitor is indistinguishable from
+	// a scanner (ACCEPTABLE_USE.md §7). The placeholder is kept, visibly, and
+	// the warning is at startup so it cannot be missed.
+	contact := strings.TrimSpace(os.Getenv("NETWEATHER_CONTACT"))
+	if contact == "" {
+		lg.Warn("no operator contact configured; probes identify as an unattributed client",
+			"event", "contact_missing", "component", "startup",
+			"detail", "set NETWEATHER_CONTACT so an abuse desk can tell the monitor from a scanner")
+	}
+	userAgent := probe.BuildUserAgent(version.Version, contact)
+
+	torAgent, err := newTorAgent(ctx, st, targets, lg, userAgent)
 	if err != nil {
 		lg.Error("tor vantage unavailable", "event", "tor_unavailable", "error", err)
 		return err
@@ -201,7 +213,7 @@ func serve(lg *logging.Logger) error {
 		directDialer.Dial = directBudget.Wrap(directDialer.Dial)
 	}
 
-	ag := newAgentWith(targets, st, lg, directDialer)
+	ag := newAgentWith(targets, st, lg, directDialer, userAgent)
 	ag.DNSBlocked = func() bool { return healthGate.Blocked("port53") }
 	// The same gate, for the other way a working path can look dead: a low
 	// egress MTU black-holes large handshakes (DESIGN.md §7.5).
@@ -227,7 +239,7 @@ func serve(lg *logging.Logger) error {
 	// self-checks run at startup and with maintenance, not only on request.
 	// They share the agent's dialer, so their traffic counts against the same
 	// budget.
-	instruments := newInstrumentsWithDialer(directDialer)
+	instruments := newInstrumentsWithDialer(directDialer, userAgent)
 	// Egress identity: every baseline is relative to the address this host
 	// leaves from, so the address is worth recording and worth noticing when it
 	// moves (DESIGN.md §7.5).
@@ -696,13 +708,14 @@ func healthcheck() error {
 }
 
 func newInstruments() agent.Instruments {
-	return newInstrumentsWithDialer(netx.New())
+	return newInstrumentsWithDialer(netx.New(),
+		probe.BuildUserAgent(version.Version, os.Getenv("NETWEATHER_CONTACT")))
 }
 
 // newInstrumentsWithDialer builds the instruments over one guarded dialer, so
 // the agent and the self-checks share the same egress path and the same byte
 // budget.
-func newInstrumentsWithDialer(dialer *netx.Dialer) agent.Instruments {
+func newInstrumentsWithDialer(dialer *netx.Dialer, userAgent string) agent.Instruments {
 	// ICMP resolves through the guarded dialer like every other instrument, so
 	// a hostname anchor cannot leak a lookup to the host resolver.
 	ping := probe.NewICMP()
@@ -717,8 +730,11 @@ func newInstrumentsWithDialer(dialer *netx.Dialer) agent.Instruments {
 		return addrs[0], nil
 	}
 
+	httpProbe := probe.NewHTTP(dialer)
+	httpProbe.UserAgent = userAgent
+
 	return agent.Instruments{
-		HTTP: probe.NewHTTP(dialer),
+		HTTP: httpProbe,
 		TLS:  probe.NewTLS(dialer),
 		TCP:  probe.NewTCP(dialer),
 		DNS:  probe.NewDNS(dialer.DialContext),
@@ -729,8 +745,10 @@ func newInstrumentsWithDialer(dialer *netx.Dialer) agent.Instruments {
 
 // newAgentWith builds the direct agent over the given dialer, which run()
 // wraps in the daily egress budget (ACCEPTABLE_USE.md 4).
-func newAgentWith(targets []agent.Target, st *store.Store, lg *logging.Logger, dialer *netx.Dialer) *agent.Agent {
-	instruments := newInstrumentsWithDialer(dialer)
+func newAgentWith(targets []agent.Target, st *store.Store, lg *logging.Logger,
+	dialer *netx.Dialer, userAgent string,
+) *agent.Agent {
+	instruments := newInstrumentsWithDialer(dialer, userAgent)
 	ag := agent.New(targets, instruments, st)
 	ag.Logger = lg.Logger
 	// The direct vantage owns the issuer baseline; the Tor vantage is
@@ -1264,7 +1282,9 @@ func torExitCountry(ctx context.Context, httpProbe *probe.HTTP, lookup func(cont
 	return value, nil
 }
 
-func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg *logging.Logger) (*agent.Agent, error) {
+func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg *logging.Logger,
+	userAgent string,
+) (*agent.Agent, error) {
 	if !strings.EqualFold(strings.TrimSpace(os.Getenv("NETWEATHER_TOR")), "true") {
 		return nil, nil
 	}
@@ -1318,6 +1338,7 @@ func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg
 	vantageID := "tor"
 	if want := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_EXIT_COUNTRY")); want != "" {
 		exitProbe := probe.NewHTTPWithDial(torDial)
+		exitProbe.UserAgent = userAgent
 		value, err := torExitCountry(ctx, exitProbe, cymruLookup(), want)
 		if err != nil {
 			return nil, err
@@ -1335,8 +1356,10 @@ func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg
 		return nil, err
 	}
 
+	torHTTP := probe.NewHTTPWithDial(torDial)
+	torHTTP.UserAgent = userAgent
 	runner := agent.Instruments{
-		HTTP: probe.NewHTTPWithDial(torDial),
+		HTTP: torHTTP,
 		TLS:  probe.NewTLSWithDial(torDial),
 		TCP:  probe.NewTCPWithDial(torDial),
 	}

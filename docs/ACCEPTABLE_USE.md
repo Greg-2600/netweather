@@ -167,7 +167,7 @@ Probe requests carry a `User-Agent` of the form:
 netweather/<version> (+https://github.com/<owner>/netweather; abuse: <contact>)
 ```
 
-The contact must be set by the operator (`probe.user_agent_contact`). Shipping with the placeholder is a startup warning, because an unattributed monitor is indistinguishable from a scanner.
+The contact must be set by the operator (`NETWEATHER_CONTACT`). **Implemented:** `probe.BuildUserAgent` builds `netweather/<version> (...; abuse: <contact>)` once at startup, the HTTP instrument sends it on every probe and self-check, and the Tor vantage uses the same string. An unset contact logs `event=contact_missing` at `WARN` and sends the literal `<contact>` placeholder, because an unattributed monitor is indistinguishable from a scanner and a silent default would hide the omission.
 
 ### If someone complains
 

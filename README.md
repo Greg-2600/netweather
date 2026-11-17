@@ -161,6 +161,7 @@ Every environment variable the binary reads, including the ones that exist for a
 | `NETWEATHER_UI_LISTEN` | `0.0.0.0:2600` | HTTP bind address |
 | `NETWEATHER_UI_TOKEN` / `NETWEATHER_UI_TOKEN_FILE` | none | session and bearer token, minimum 16 characters; `_FILE` is preferred so the token is not in the environment |
 | `NETWEATHER_UI_SECURE_COOKIES` | `false` | `true` marks the session cookie `Secure`; set it behind TLS |
+| `NETWEATHER_CONTACT` | none | contact address in the probe `User-Agent`; unset logs `contact_missing` at startup and sends a visible `<contact>` placeholder, because an unattributed monitor is indistinguishable from a scanner |
 | `NETWEATHER_UI_ALLOW_PUBLIC` | `false` | allows a non-loopback bind with no token; without it the process refuses to start, because the board discloses the target list |
 | `NETWEATHER_LOG_LEVEL` | `info` | `trace`, `debug`, `info`, `warn`, `error` |
 | `NETWEATHER_LOG_FORMAT` | `auto` | `auto` (text on a TTY, JSON otherwise), `text`, `json` |

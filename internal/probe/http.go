@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/netx"
@@ -28,8 +29,30 @@ const (
 	// DefaultTimeout bounds one HTTP exchange end to end.
 	DefaultTimeout = 15 * time.Second
 
-	userAgent = "netweather (+https://github.com/Greg-2600/netweather)"
+	// DefaultUserAgent is the unattributed form. A real deployment sets a
+	// contact so an abuse desk can tell the monitor from a scanner
+	// (ACCEPTABLE_USE.md §7); main builds the attributed form.
+	DefaultUserAgent = "netweather (+https://github.com/Greg-2600/netweather)"
 )
+
+// BuildUserAgent returns the documented identification string:
+//
+//	netweather/<version> (+https://github.com/Greg-2600/netweather; abuse: <contact>)
+//
+// An empty contact is shown literally as a placeholder rather than silently
+// dropped, because a missing contact is the thing the operator needs to notice.
+func BuildUserAgent(version, contact string) string {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		version = "dev"
+	}
+	contact = strings.TrimSpace(contact)
+	if contact == "" {
+		contact = "<contact>"
+	}
+	return fmt.Sprintf("netweather/%s (+https://github.com/Greg-2600/netweather; abuse: %s)",
+		version, contact)
+}
 
 // Result is one HTTP observation, already bounded and timed.
 type Result struct {
@@ -76,6 +99,9 @@ type HTTP struct {
 	MaxBytes     int64
 	MaxRedirects int
 	Method       string
+	// UserAgent identifies this monitor to the target. Empty uses
+	// DefaultUserAgent, which is the unattributed form.
+	UserAgent string
 }
 
 // NewHTTP builds the production instrument: every connection goes through the
@@ -164,7 +190,11 @@ func (h *HTTP) Do(ctx context.Context, target string) Result {
 		res.Err = err
 		return res
 	}
-	req.Header.Set("User-Agent", userAgent)
+	ua := h.UserAgent
+	if ua == "" {
+		ua = DefaultUserAgent
+	}
+	req.Header.Set("User-Agent", ua)
 	req.Header.Set("Accept", "*/*")
 
 	resp, err := h.Client.Do(req)

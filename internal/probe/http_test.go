@@ -351,3 +351,50 @@ func TestResultString(t *testing.T) {
 		t.Fatalf("bad.String() = %q", bad.String())
 	}
 }
+
+func TestBuildUserAgent(t *testing.T) {
+	t.Parallel()
+
+	got := probe.BuildUserAgent("1.2.3", "abuse@example.net")
+	want := "netweather/1.2.3 (+https://github.com/Greg-2600/netweather; abuse: abuse@example.net)"
+	if got != want {
+		t.Fatalf("user agent = %q, want %q", got, want)
+	}
+
+	// An absent contact is shown, not dropped: that is the thing the operator
+	// has to notice.
+	if got := probe.BuildUserAgent("", ""); !strings.Contains(got, "<contact>") ||
+		!strings.Contains(got, "netweather/dev") {
+		t.Fatalf("unattributed user agent = %q", got)
+	}
+}
+
+func TestHTTPUsesTheConfiguredUserAgent(t *testing.T) {
+	t.Parallel()
+
+	var seen string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.Header.Get("User-Agent")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	h := probe.NewHTTPWithTransport(http.DefaultTransport)
+	h.UserAgent = "netweather/9.9.9 (+https://example.net; abuse: ops@example.net)"
+	if res := h.Do(context.Background(), srv.URL); res.Failed() {
+		t.Fatalf("probe failed: %v", res.Err)
+	}
+	if seen != h.UserAgent {
+		t.Fatalf("User-Agent = %q, want %q", seen, h.UserAgent)
+	}
+
+	// Empty keeps the documented default rather than sending an empty header.
+	seen = ""
+	h.UserAgent = ""
+	if res := h.Do(context.Background(), srv.URL); res.Failed() {
+		t.Fatalf("probe failed: %v", res.Err)
+	}
+	if seen != probe.DefaultUserAgent {
+		t.Fatalf("default User-Agent = %q", seen)
+	}
+}
