@@ -468,7 +468,7 @@ func TestMain(m *testing.M) {
 | Scope | Gate |
 |---|---|
 | `internal/classify`, `internal/baseline`, `internal/dnsdiv`, `internal/netx` | **95%** |
-| `internal/anomaly`, `internal/api`, `internal/board`, `internal/config`, `internal/correlate`, `internal/corridor`, `internal/metrics`, `internal/probe`, `internal/state`, `internal/streamlimit`, `internal/torcap` | **90%** |
+| `internal/anomaly`, `internal/api`, `internal/board`, `internal/config`, `internal/correlate`, `internal/corridor`, `internal/metrics`, `internal/probe`, `internal/state`, `internal/streamlimit`, `internal/bytecap` | **90%** |
 | `internal/agent`, `internal/doctor`, `internal/enrich`, `internal/feeds`, `internal/incidents`, `internal/schedule`, `internal/seed`, `internal/selfcheck` | **85%** |
 | `internal/logging`, `internal/store` | **80%** |
 | `internal/fakeinternet`, `internal/startup` | **75%** |

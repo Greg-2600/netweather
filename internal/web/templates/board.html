@@ -98,6 +98,10 @@
     </p>
     {{end}}
 
+    {{if .BudgetNote}}
+    <p class="banner" data-testid="budget-banner" role="status">{{.BudgetNote}}</p>
+    {{end}}
+
     {{if .DNSObservations}}
     <details class="dns-strip" data-testid="dns-strip">
       <summary>{{len .DNSObservations}} DNS divergence observation(s)</summary>

@@ -972,3 +972,66 @@ func TestFormatTraceHops(t *testing.T) {
 		t.Fatalf("unresolved trace = %q", got)
 	}
 }
+
+func TestDirectDailyMB(t *testing.T) {
+	cases := []struct {
+		raw     string
+		want    int
+		wantErr bool
+	}{
+		{"", 2048, false},
+		{"0", 0, false},
+		{"512", 512, false},
+		{"-1", 0, true},
+		{"many", 0, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.raw, func(t *testing.T) {
+			t.Setenv("NETWEATHER_DAILY_MB", tc.raw)
+
+			got, err := directDailyMB()
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("%q was accepted as %d", tc.raw, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("%q: %v", tc.raw, err)
+			}
+			if got != tc.want {
+				t.Fatalf("%q = %d, want %d", tc.raw, got, tc.want)
+			}
+		})
+	}
+}
+
+// A disabled budget must be absent, not a zero-limit budget that stops on the
+// first byte.
+func TestNewDirectBudgetDisabled(t *testing.T) {
+	t.Setenv("NETWEATHER_DAILY_MB", "0")
+
+	var out bytes.Buffer
+	lg, err := logging.New(logging.DefaultConfig(), &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = lg.Close() }()
+
+	budget, err := newDirectBudget(lg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if budget != nil {
+		t.Fatalf("budget = %+v, want nil when disabled", budget)
+	}
+
+	t.Setenv("NETWEATHER_DAILY_MB", "2048")
+	budget, err = newDirectBudget(lg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if budget == nil || budget.Allowance() != 2048<<20 {
+		t.Fatalf("budget = %+v, want 2 GB", budget)
+	}
+}

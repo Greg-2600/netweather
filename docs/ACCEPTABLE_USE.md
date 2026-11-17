@@ -79,7 +79,7 @@ These are the limits a reviewer should check first. Each is enforced at the stat
 | Per-stage deadline | DNS 3s, TCP 5s, TLS 5s, TTFB 5s, total 15s | Dialer and probe contexts |
 | Traceroute | ≤10 runs/hour, on demand only | Rate limiter, no scheduler path |
 | Tor vantage | ≤25 targets, ≥2s spacing, daily MB budget | Vantage policy |
-| Daily egress budget | 2 GB default, hard stop | Byte counter in the dialer |
+| Daily egress budget | 2 GB default, hard stop | Byte counter in the dialer. **Implemented:** `NETWEATHER_DAILY_MB` (default 2048, `0` disables) wraps the direct vantage's dialer, so every probe and self-check counts; once spent, the agent stops until UTC midnight and the board carries a banner naming the limit |
 | ICMP | Echo request only, never the sole up/down signal | Instrument policy |
 | Private address ranges | RFC1918, loopback, link-local, CGNAT, ULA, metadata IP | Dialer, after DNS and after every redirect |
 

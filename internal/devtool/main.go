@@ -256,7 +256,7 @@ func taskCover() error {
 		"/internal/state":        90,
 		"/internal/store":        80,
 		"/internal/streamlimit":  90,
-		"/internal/torcap":       90,
+		"/internal/bytecap":      90,
 		"/internal/web":          72,
 		"/cmd/netweather":        30, // serve is wiring; the container smoke test owns it
 		"/internal/version":      70,

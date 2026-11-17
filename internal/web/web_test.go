@@ -3591,3 +3591,89 @@ func TestTargetDrawerWhyWithoutLogs(t *testing.T) {
 		t.Fatal("an unwired ring was not stated in the drawer")
 	}
 }
+
+type fakeBudget struct {
+	used      int64
+	allowance int64
+	exhausted bool
+}
+
+func (f fakeBudget) Used() int64      { return f.used }
+func (f fakeBudget) Allowance() int64 { return f.allowance }
+func (f fakeBudget) Exhausted() bool  { return f.exhausted }
+
+func newServerWithBudget(t *testing.T, token string, m *board.Memory, budget web.BudgetState) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		Budget:    budget,
+		Token:     token,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestBoardShowsSpentEgressBudget(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithBudget(t, testToken, fixture(), fakeBudget{
+		used: 2048 << 20, allowance: 2048 << 20, exhausted: true,
+	})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="budget-banner"`) {
+		t.Fatalf("a spent budget was silent:\n%s", page)
+	}
+	for _, want := range []string{"Daily egress budget spent", "2.0 GB", "00:00 UTC"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("budget banner missing %q", want)
+		}
+	}
+}
+
+func TestBoardWithoutSpentBudgetHasNoBanner(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		budget web.BudgetState
+	}{
+		{"none configured", nil},
+		{"room left", fakeBudget{used: 100 << 20, allowance: 2048 << 20}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ts := newServerWithBudget(t, testToken, fixture(), tc.budget)
+			client, _ := newClient(t)
+			login(t, ts, client, testToken)
+
+			resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+			if err != nil {
+				t.Fatal(err)
+			}
+			page := body(t, resp)
+			if strings.Contains(page, `data-testid="budget-banner"`) {
+				t.Error("a banner rendered without a spent budget")
+			}
+		})
+	}
+}

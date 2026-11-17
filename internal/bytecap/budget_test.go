@@ -1,4 +1,4 @@
-package torcap_test
+package bytecap_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Greg-2600/netweather/internal/torcap"
+	"github.com/Greg-2600/netweather/internal/bytecap"
 )
 
 func fixedClock(at time.Time) func() time.Time {
@@ -17,7 +17,7 @@ func TestBudgetAccumulatesAndExhausts(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
-	budget := torcap.New(100)
+	budget := bytecap.New(100)
 	budget.Now = fixedClock(now)
 
 	if budget.Exhausted() {
@@ -42,7 +42,7 @@ func TestBudgetResetsOnANewUTCDay(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 11, 17, 23, 59, 0, 0, time.UTC)
-	budget := torcap.New(10)
+	budget := bytecap.New(10)
 	budget.Now = func() time.Time { return now }
 
 	budget.Add(10)
@@ -64,7 +64,7 @@ func TestBudgetAnnouncesOncePerDay(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
-	budget := torcap.New(5)
+	budget := bytecap.New(5)
 	budget.Now = func() time.Time { return now }
 
 	announcements := 0
@@ -102,7 +102,7 @@ func TestBudgetCanBeDisabled(t *testing.T) {
 	t.Parallel()
 
 	for _, limit := range []int64{0, -1} {
-		budget := torcap.New(limit)
+		budget := bytecap.New(limit)
 		budget.Add(1 << 30)
 		if budget.Exhausted() {
 			t.Errorf("limit %d capped the budget", limit)
@@ -130,7 +130,7 @@ func (f *fakeConn) Write(p []byte) (int, error) {
 func TestWrapCountsBothDirections(t *testing.T) {
 	t.Parallel()
 
-	budget := torcap.New(1 << 20)
+	budget := bytecap.New(1 << 20)
 	conn := &fakeConn{}
 	dial := budget.Wrap(func(context.Context, string, string) (net.Conn, error) {
 		return conn, nil
@@ -163,7 +163,7 @@ func TestWrapCountsBothDirections(t *testing.T) {
 		t.Fatal("dial failure was swallowed")
 	}
 
-	if torcap.New(1).Wrap(nil) != nil {
+	if bytecap.New(1).Wrap(nil) != nil {
 		t.Fatal("a nil dial should stay nil")
 	}
 }

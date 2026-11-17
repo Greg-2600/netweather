@@ -1,11 +1,11 @@
-// Package torcap keeps the Tor vantage inside its documented daily volume
-// budget.
+// Package bytecap keeps a vantage inside its documented daily byte budget.
 //
-// Tor is a separate trust domain and a separate agreement: the operator's exit
-// node carries traffic for everyone else on the circuit, so an unbounded
-// monitor is rude in a way an ordinary client is not. The budget counts bytes
-// on the SOCKS connection and stops the Tor agent until the next UTC day.
-package torcap
+// It is used twice: the direct vantage has a generous allowance as the backstop
+// for every rate above it, and the Tor vantage has a small one because its exit
+// node carries traffic for everyone else on the circuit. The budget counts
+// bytes on the connection itself, so a large body or a retry cannot slip past
+// it, and it stops that agent until the next UTC day.
+package bytecap
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 // handshake per probe is a few hundred KB per day, not megabytes.
 const DefaultDailyLimit = 50 << 20
 
-// Budget tracks bytes moved through the Tor vantage for one UTC day.
+// Budget tracks bytes moved through one vantage for one UTC day.
 type Budget struct {
 	// Limit is the daily allowance in bytes. A non-positive limit means the
 	// budget is disabled, which is how a test asks for "no cap".
@@ -52,6 +52,9 @@ func (b *Budget) Add(n int64) {
 	b.rollLocked()
 	b.used += n
 }
+
+// Allowance reports the daily limit in bytes.
+func (b *Budget) Allowance() int64 { return b.Limit }
 
 // Used reports the bytes moved today.
 func (b *Budget) Used() int64 {

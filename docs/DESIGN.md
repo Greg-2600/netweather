@@ -1056,7 +1056,7 @@ Config files are watched; a valid change applies without restart. Invalid change
 | Max targets | 2000 |
 | Max redirects | 5 |
 | Max body read | 32 KB |
-| Daily egress budget | 2 GB default, hard stop with a banner - the backstop for every rate above |
+| Daily egress budget | 2 GB default, hard stop with a banner - the backstop for every rate above. **Implemented:** `NETWEATHER_DAILY_MB` wraps the direct dialer's connections, suspends the agent at the limit until UTC midnight, and shows the banner |
 | Default bind | `0.0.0.0:2600`. Non-loopback listen requires auth; `ui.auth: none` + non-loopback refuses to start unless `ui.allow_public: true` is also set (`NETWORKING.md` §7.1) |
 | Container runtime | `/var/run/docker.sock` is never mounted; host networking is never the default |
 | Telemetry | none, ever |

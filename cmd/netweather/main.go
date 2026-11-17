@@ -26,6 +26,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/anomaly"
 	"github.com/Greg-2600/netweather/internal/api"
 	"github.com/Greg-2600/netweather/internal/board"
+	"github.com/Greg-2600/netweather/internal/bytecap"
 	"github.com/Greg-2600/netweather/internal/config"
 	"github.com/Greg-2600/netweather/internal/corridor"
 	"github.com/Greg-2600/netweather/internal/enrich"
@@ -40,7 +41,6 @@ import (
 	"github.com/Greg-2600/netweather/internal/selfcheck"
 	"github.com/Greg-2600/netweather/internal/startup"
 	"github.com/Greg-2600/netweather/internal/store"
-	"github.com/Greg-2600/netweather/internal/torcap"
 	"github.com/Greg-2600/netweather/internal/version"
 	"github.com/Greg-2600/netweather/internal/web"
 )
@@ -185,15 +185,34 @@ func serve(lg *logging.Logger) error {
 	// A blocked egress port 53 is a fact about this vantage, not about a
 	// target: the agent asks the gate before it trusts a DNS transport failure.
 	healthGate := selfcheck.NewGate()
-	ag := newAgent(targets, st, lg)
+
+	// The daily egress budget is the backstop for every rate above it
+	// (ACCEPTABLE_USE.md §4): a misconfiguration stops at a byte count, not at
+	// the operator's bandwidth bill or a target's abuse desk. The direct
+	// vantage gets the large allowance; the Tor vantage has its own small one.
+	directDialer := netx.New()
+	directBudget, err := newDirectBudget(lg)
+	if err != nil {
+		return err
+	}
+	if directBudget != nil {
+		directDialer.Dial = directBudget.Wrap(directDialer.Dial)
+	}
+
+	ag := newAgentWith(targets, st, lg, directDialer)
 	ag.DNSBlocked = func() bool { return healthGate.Blocked("port53") }
 	// The same gate, for the other way a working path can look dead: a low
 	// egress MTU black-holes large handshakes (DESIGN.md §7.5).
 	ag.MTUBlocked = func() bool { return healthGate.Blocked("mtu") }
+	if directBudget != nil {
+		ag.Suspend = directBudget.Exhausted
+	}
 
 	// The monitor must be able to see before its board is believable, so the
 	// self-checks run at startup and with maintenance, not only on request.
-	instruments := newInstruments()
+	// They share the agent's dialer, so their traffic counts against the same
+	// budget.
+	instruments := newInstrumentsWithDialer(directDialer)
 	// Egress identity: every baseline is relative to the address this host
 	// leaves from, so the address is worth recording and worth noticing when it
 	// moves (DESIGN.md §7.5).
@@ -221,7 +240,7 @@ func serve(lg *logging.Logger) error {
 		metricsHandler = metrics.Handler(st, "local")
 	}
 
-	ui, err := web.New(web.Deps{
+	webDeps := web.Deps{
 		Logger:              lg.Logger,
 		Source:              source,
 		Watcher:             source,
@@ -249,7 +268,13 @@ func serve(lg *logging.Logger) error {
 		Changes:         st,
 		Control:         ag,
 		Vantage:         "local",
-	})
+	}
+	if directBudget != nil {
+		// A typed nil in the interface would look configured and panic on the
+		// first method call, so the field is set only when a budget exists.
+		webDeps.Budget = directBudget
+	}
+	ui, err := web.New(webDeps)
 	if err != nil {
 		return err
 	}
@@ -622,8 +647,13 @@ func healthcheck() error {
 }
 
 func newInstruments() agent.Instruments {
-	dialer := netx.New()
+	return newInstrumentsWithDialer(netx.New())
+}
 
+// newInstrumentsWithDialer builds the instruments over one guarded dialer, so
+// the agent and the self-checks share the same egress path and the same byte
+// budget.
+func newInstrumentsWithDialer(dialer *netx.Dialer) agent.Instruments {
 	// ICMP resolves through the guarded dialer like every other instrument, so
 	// a hostname anchor cannot leak a lookup to the host resolver.
 	ping := probe.NewICMP()
@@ -648,8 +678,10 @@ func newInstruments() agent.Instruments {
 	}
 }
 
-func newAgent(targets []agent.Target, st *store.Store, lg *logging.Logger) *agent.Agent {
-	instruments := newInstruments()
+// newAgentWith builds the direct agent over the given dialer, which run()
+// wraps in the daily egress budget (ACCEPTABLE_USE.md 4).
+func newAgentWith(targets []agent.Target, st *store.Store, lg *logging.Logger, dialer *netx.Dialer) *agent.Agent {
+	instruments := newInstrumentsWithDialer(dialer)
 	ag := agent.New(targets, instruments, st)
 	ag.Logger = lg.Logger
 	// The direct vantage owns the issuer baseline; the Tor vantage is
@@ -678,6 +710,41 @@ func newAgent(targets []agent.Target, st *store.Store, lg *logging.Logger) *agen
 		return r.Names, nil
 	}
 	return ag
+}
+
+// directDailyMB reads NETWEATHER_DAILY_MB. The default is the documented 2 GB;
+// 0 disables the budget. A malformed value is a startup error rather than a
+// silent default, because this setting is a safety limit.
+func directDailyMB() (int, error) {
+	raw := strings.TrimSpace(os.Getenv("NETWEATHER_DAILY_MB"))
+	if raw == "" {
+		return 2048, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("NETWEATHER_DAILY_MB %q is not a non-negative integer", raw)
+	}
+	return n, nil
+}
+
+// newDirectBudget builds the direct vantage's daily byte budget, or nil when it
+// is disabled with NETWEATHER_DAILY_MB=0.
+func newDirectBudget(lg *logging.Logger) (*bytecap.Budget, error) {
+	mb, err := directDailyMB()
+	if err != nil {
+		return nil, err
+	}
+	if mb == 0 {
+		return nil, nil
+	}
+
+	budget := bytecap.New(int64(mb) << 20)
+	budget.OnExhausted = func(used int64) {
+		lg.Warn("daily egress budget exhausted; probing stops until UTC midnight",
+			"event", "egress_budget_exhausted", "component", "agent",
+			"used_bytes", used, "limit_bytes", budget.Limit)
+	}
+	return budget, nil
 }
 
 // enrichmentLoop learns ASN, prefix and CDN for hostname targets. It runs at
@@ -1173,7 +1240,7 @@ func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg
 		}
 		dailyMB = n
 	}
-	budget := torcap.New(int64(dailyMB) << 20)
+	budget := bytecap.New(int64(dailyMB) << 20)
 	budget.OnExhausted = func(used int64) {
 		lg.Warn("tor daily volume budget exhausted; the tor vantage stops until UTC midnight",
 			"event", "tor_budget_exhausted", "component", "agent",

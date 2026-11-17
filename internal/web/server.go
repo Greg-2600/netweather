@@ -271,6 +271,10 @@ type boardView struct {
 	// fails says so; an unconfigured one simply omits the strip.
 	DNSObservations []dnsObservationView
 	DNSNote         string
+	// BudgetNote is set only while the daily egress budget is spent. It is a
+	// hard stop, so the board names the reason rather than showing old tiles as
+	// if they were fresh (ACCEPTABLE_USE.md §4).
+	BudgetNote string
 }
 
 // feedView is one feed's health on the board. Status is text, not only colour.
@@ -812,6 +816,14 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// A spent egress budget is a hard stop (ACCEPTABLE_USE.md §4). Say so on
+	// the board: stale tiles with no explanation read as a broken monitor.
+	if s.deps.Budget != nil && s.deps.Budget.Exhausted() {
+		view.BudgetNote = fmt.Sprintf(
+			"Daily egress budget spent (%s of %s). Probing stops until 00:00 UTC; the tiles show the last measurements, not fresh ones.",
+			humanBytes(s.deps.Budget.Used()), humanBytes(s.deps.Budget.Allowance()))
+	}
+
 	// The DNS divergence strip is collapsed by design: an advisory is not a
 	// board colour, and a failure here must not hide the board.
 	if s.deps.DNSObservations != nil {
@@ -1040,6 +1052,19 @@ func displayOr(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+// humanBytes formats a byte count for the budget banner. MB and GB are the only
+// units the setting uses, and a decimal keeps 2 GB from rendering as "2048 MB".
+func humanBytes(n int64) string {
+	switch {
+	case n >= 1<<30:
+		return fmt.Sprintf("%.1f GB", float64(n)/(1<<30))
+	case n >= 1<<20:
+		return fmt.Sprintf("%.0f MB", float64(n)/(1<<20))
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
 }
 
 func asnLabel(asn int) string {

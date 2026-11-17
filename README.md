@@ -163,6 +163,7 @@ Every environment variable the binary reads, including the ones that exist for a
 | `NETWEATHER_HEALTHCHECK_URL` | derived from `NETWEATHER_UI_LISTEN` | `/healthz` target for `netweather healthcheck`; a non-loopback URL is refused |
 | `NETWEATHER_METRICS` | `false` | mounts `/metrics` (Prometheus text, aggregates only) |
 | `NETWEATHER_INCIDENT_INTERVAL` | `5m` | incident and anomaly evaluation cadence |
+| `NETWEATHER_DAILY_MB` | `2048` | the direct vantage's daily egress budget; when spent, probing stops until 00:00 UTC and the board says why. `0` disables it |
 | `NETWEATHER_ENRICH` | on | `false` disables ASN, prefix, and CDN learning |
 | `NETWEATHER_PEERINGDB` / `NETWEATHER_PEERINGDB_URL` | on | exchange-membership labels; `false` disables them without disabling enrichment, and `_URL` points at a mirror |
 | `NETWEATHER_FEEDS` | none | comma list of `ioda`, `radar`, `statuspage`, `aws-status`, `gcp-status`, `azure-status`; empty means no external calls |

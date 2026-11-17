@@ -49,6 +49,10 @@ type Deps struct {
 	// Logs supplies the ring and logging setup for the diagnostics page and
 	// the drawer's Why panel (LOGGING.md §9).
 	Logs LogDiagnostics
+	// Budget reports the direct vantage's daily egress allowance so the board
+	// can explain a hard stop instead of showing stale tiles as if they were
+	// fresh (ACCEPTABLE_USE.md §4). Nil means no budget.
+	Budget BudgetState
 	// IncidentWatcher wakes the UI stream when an incident opens or closes.
 	IncidentWatcher board.Watcher
 	Coverage        Coverage
@@ -163,6 +167,15 @@ type LogDiagnostics interface {
 	ActiveScopes() []logging.Scope
 	// Subscribe feeds the SSE log stream. A closed channel means no ring.
 	Subscribe() (<-chan logging.Record, func())
+}
+
+// BudgetState reports the direct vantage's daily egress allowance. Nil means
+// no budget is configured. A spent budget is a hard stop, so the board says so
+// rather than leaving stale tiles unexplained (ACCEPTABLE_USE.md §4).
+type BudgetState interface {
+	Used() int64
+	Allowance() int64
+	Exhausted() bool
 }
 
 // IncidentAnnotator records the operator's ground truth for an incident.
