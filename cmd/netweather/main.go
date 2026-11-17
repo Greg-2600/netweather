@@ -1621,7 +1621,10 @@ func buildFeedPollers(st *store.Store, lg *logging.Logger) []*feeds.Poller {
 				Feed:   "ioda",
 				Source: ioda,
 				Sink:   st,
-				Every:  10 * time.Minute,
+				// DESIGN.md §8.1: IODA is the build-first feed and polls every
+				// five minutes. The other feeds stay at ten, the slow end of
+				// their documented range, because they are corroboration.
+				Every: 5 * time.Minute,
 			})
 		case "radar":
 			token := strings.TrimSpace(os.Getenv("NETWEATHER_RADAR_TOKEN"))

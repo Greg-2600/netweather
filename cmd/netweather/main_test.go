@@ -1272,3 +1272,37 @@ func TestSeedCommandCountryAnchorsRejectsAnEmptyZone(t *testing.T) {
 		t.Fatalf("error = %v, want an empty-zone refusal", err)
 	}
 }
+
+func TestBuildFeedPollersHonoursTheDocumentedInterval(t *testing.T) {
+	// No t.Parallel: this test sets environment variables, which the testing
+	// package forbids in a parallel test.
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "netweather.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	t.Setenv("NETWEATHER_FEEDS", "ioda")
+	lg, err := logging.New(logging.DefaultConfig(), io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pollers := buildFeedPollers(st, lg)
+	if len(pollers) != 1 || pollers[0].Feed != "ioda" {
+		t.Fatalf("pollers = %+v, want one ioda poller", pollers)
+	}
+	// DESIGN 8.1 says IODA polls every five minutes.
+	if pollers[0].Every != 5*time.Minute {
+		t.Fatalf("ioda interval = %v, want 5m", pollers[0].Every)
+	}
+
+	// Radar without its token is a stated skip, not an unauthenticated call.
+	t.Setenv("NETWEATHER_FEEDS", "radar")
+	t.Setenv("NETWEATHER_RADAR_TOKEN", "")
+	if got := buildFeedPollers(st, lg); len(got) != 0 {
+		t.Fatalf("radar without a token produced %+v", got)
+	}
+}
