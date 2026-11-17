@@ -413,6 +413,54 @@ func TestNonHTTPFailureUsesTheTransportClass(t *testing.T) {
 	}
 }
 
+func TestDNSFailuresUnderABlockedPortAreUnmeasurable(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	p := newProber()
+	p.set("", probe.Result{ErrorClass: "dns_timeout", Err: errors.New("timeout")})
+
+	tg := target("dns1", "198.41.0.4")
+	tg.Instrument = "dns"
+	tg.Address = "198.41.0.4:53"
+	tg.Query = "example.com"
+	tg.URL = ""
+
+	sink := &fakeSink{}
+	a := agent.New([]agent.Target{tg}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+	a.DNSBlocked = func() bool { return true }
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	got := sink.batch()[0]
+	if got.State != state.Unmeasurable {
+		t.Fatalf("state = %s, want unmeasurable", got.State)
+	}
+	if !strings.Contains(got.Reason, "port 53") {
+		t.Fatalf("reason = %q, want the blocked port named", got.Reason)
+	}
+
+	// Without the gate the same observation is a DOWN, which is the whole
+	// difference this wiring exists to make.
+	p.set("", probe.Result{ErrorClass: "dns_timeout", Err: errors.New("timeout")})
+	sink2 := &fakeSink{}
+	a2 := agent.New([]agent.Target{tg}, p, sink2)
+	a2.Now = at(now)
+	a2.Rand = zeroRand
+	a2.DNSBlocked = func() bool { return false }
+
+	if _, err := a2.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := sink2.batch()[0]; got.State != state.Down {
+		t.Fatalf("state without the gate = %s, want down", got.State)
+	}
+}
+
 func TestNTPNeverProducesATargetState(t *testing.T) {
 	t.Parallel()
 

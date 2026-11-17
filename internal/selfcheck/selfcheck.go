@@ -11,11 +11,76 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/probe"
 	"github.com/Greg-2600/netweather/internal/store"
 )
+
+// Gate holds the latest self-check outcome so a probe path can consult it.
+//
+// A failed check is a fact about the vantage, not about a target, so the agent
+// asks the gate before it trusts a path-level failure. The freshness window
+// matters: a gate that has not been updated for hours must not keep overriding
+// the classifier, because that would hide a real outage behind a stale file.
+type Gate struct {
+	// Now and Fresh are injectable so the window is testable without sleeping.
+	Now   func() time.Time
+	Fresh time.Duration
+
+	mu   sync.Mutex
+	last map[string]Result
+}
+
+// DefaultGateFreshness is twice the maintenance interval (ten minutes), so a
+// gate survives one missed cycle but not a stalled one.
+const DefaultGateFreshness = 20 * time.Minute
+
+// NewGate returns an empty gate with the default freshness window.
+func NewGate() *Gate {
+	return &Gate{
+		last:  make(map[string]Result),
+		Now:   time.Now,
+		Fresh: DefaultGateFreshness,
+	}
+}
+
+// Observe records one finished run. Later results replace earlier ones, which
+// is what "latest outcome" means.
+func (g *Gate) Observe(results []Result) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, res := range results {
+		g.last[res.Check] = res
+	}
+}
+
+// Blocked reports whether check's latest result failed and is still fresh. An
+// unknown or stale check is not blocked: failing open keeps a missing
+// self-check from silencing the board.
+func (g *Gate) Blocked(check string) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	res, ok := g.last[check]
+	if !ok || res.OK {
+		return false
+	}
+
+	now := time.Now
+	if g.Now != nil {
+		now = g.Now
+	}
+	fresh := g.Fresh
+	if fresh == 0 {
+		fresh = DefaultGateFreshness
+	}
+	if fresh > 0 && now().Sub(res.At) > fresh {
+		return false
+	}
+	return true
+}
 
 // Check is one named self-test.
 type Check struct {

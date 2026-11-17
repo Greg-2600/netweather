@@ -180,7 +180,11 @@ func serve(lg *logging.Logger) error {
 	incidentChanges := board.NewBroadcast()
 	source := &board.StoreSource{Store: st, Vantage: "local", Changes: changes}
 
+	// A blocked egress port 53 is a fact about this vantage, not about a
+	// target: the agent asks the gate before it trusts a DNS transport failure.
+	healthGate := selfcheck.NewGate()
 	ag := newAgent(targets, st, lg)
+	ag.DNSBlocked = func() bool { return healthGate.Blocked("port53") }
 
 	// The monitor must be able to see before its board is believable, so the
 	// self-checks run at startup and with maintenance, not only on request.
@@ -289,7 +293,7 @@ func serve(lg *logging.Logger) error {
 	}
 	go incidents.Loop(ctx, st, st, st, "local", incidentInterval, lg.Logger, incidentChanges.Notify)
 	go anomaly.Loop(ctx, st, st, "local", incidentInterval, lg.Logger)
-	go maintenanceLoop(ctx, st, lg, selfRunner, scopes)
+	go maintenanceLoop(ctx, st, lg, selfRunner, healthGate, scopes)
 	go configLoop(ctx, st, ag, lg.Logger)
 	go enrichmentLoop(ctx, st, lg)
 
@@ -900,7 +904,7 @@ func splitList(raw string) []string {
 // maintenanceLoop folds closed rollups, applies retention, and runs the
 // self-checks. It runs once at startup so a long downtime self-heals, then every
 // ten minutes.
-func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger, self *selfcheck.Runner, scopes *logging.Scopes) {
+func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger, self *selfcheck.Runner, gate *selfcheck.Gate, scopes *logging.Scopes) {
 	runDebugPrune := func() {
 		if scopes == nil {
 			return
@@ -925,6 +929,9 @@ func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger, s
 		if err != nil {
 			lg.Warn("self-check record failed",
 				"event", "selfcheck_record_failed", "component", "maintenance", "error", err)
+		}
+		if gate != nil {
+			gate.Observe(results)
 		}
 		for _, res := range results {
 			if res.OK {

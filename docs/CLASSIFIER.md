@@ -60,8 +60,10 @@ A lone failure from a corroborating vantage is not even a signal. Tor exits are 
 | `dns_nodata` | RCODE 0, 0 answers | DOWN | **Implemented.** Apex exists but no A/AAAA |
 | `dns_servfail` | RCODE 2 | DOWN | Specified; the Go resolver surfaces it as `dns_error` today |
 | `dns_refused` | RCODE 5 | DOWN | Specified; likewise `dns_error` today |
-| `dns_timeout` | no response in the target timeout | DOWN | **Implemented.** Default 5s |
+| `dns_timeout` | no response in the target timeout | DOWN | **Implemented.** Default 5s. `UNMEASURABLE` instead while the `port53` self-check reports this vantage's egress port 53 blocked |
 | `dns_divergence` | answer outside that resolver's own baseline | **DNS_ANOMALY**; `TAMPER` only with a second signal | Specified; see §3.2 |
+
+The port-53 gate is a narrow, honest exception: a timeout or resolver error while our own `:53` is unreachable measures the vantage, not the destination. It never applies to `dns_nxdomain` or `dns_nodata`, because those are answers rather than silence — a resolver that replied has proven the path works. `dns_servfail` and `dns_refused` are still `dns_error` today, and the gate applies to them as well: without the gate they would be DOWN.
 
 ### 3.2 DNS divergence — the tamper detector
 

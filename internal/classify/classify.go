@@ -67,6 +67,11 @@ type Expected struct {
 	// ICMPAnchor marks a target that exists to answer ICMP. Only those may be
 	// classified DOWN from an ICMP timeout; on a service target it is meaningless.
 	ICMPAnchor bool
+
+	// DNSBlocked says this vantage's egress port 53 is known to be blocked. A
+	// DNS transport failure is then a visibility failure, not a target outage:
+	// it classifies UNMEASURABLE rather than DOWN (DESIGN.md §7.5).
+	DNSBlocked bool
 }
 
 var defaultStatuses = []int{200, 203, 204, 301, 302}
@@ -157,6 +162,12 @@ func transport(t Expected, r Response) Result {
 	case strings.HasPrefix(class, "http_"):
 		return Result{state.Unknown, Low, class}
 	case strings.HasPrefix(class, "dns_"):
+		// A DNS transport failure while this vantage's own port 53 is blocked
+		// measures the vantage, not the target. Calling that DOWN is how one
+		// firewall turns 250 anchors red (DESIGN.md §7.5).
+		if t.DNSBlocked && (class == "dns_timeout" || class == "dns_error") {
+			return Result{state.Unmeasurable, High, class + ": egress port 53 is blocked"}
+		}
 		return Result{state.Down, Medium, class}
 	case strings.HasPrefix(class, "tcp_"), strings.HasPrefix(class, "tls_"), class == "icmp_unreachable":
 		return Result{state.Down, High, class}

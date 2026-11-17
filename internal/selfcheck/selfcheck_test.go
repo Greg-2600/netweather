@@ -106,6 +106,49 @@ func TestRunnerRecordPropagatesSinkFailure(t *testing.T) {
 	}
 }
 
+func TestGateOnlyTrustsFreshFailures(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	gate := selfcheck.NewGate()
+	gate.Now = func() time.Time { return now }
+
+	// An empty gate is not blocked: a missing self-check must not silence the
+	// board.
+	if gate.Blocked("port53") {
+		t.Fatal("an empty gate reported blocked")
+	}
+
+	gate.Observe([]selfcheck.Result{
+		{Check: "port53", OK: true, At: now},
+		{Check: "clock", OK: false, At: now},
+	})
+	if gate.Blocked("port53") {
+		t.Fatal("a passing check reported blocked")
+	}
+	if !gate.Blocked("clock") {
+		t.Fatal("a failing clock check was not reported")
+	}
+
+	// A failure inside the window is trusted; one outside it is stale, and a
+	// stale fact must not keep overriding the classifier.
+	gate.Observe([]selfcheck.Result{{Check: "port53", OK: false, At: now}})
+	if !gate.Blocked("port53") {
+		t.Fatal("a fresh failure was not reported")
+	}
+	now = now.Add(selfcheck.DefaultGateFreshness + time.Minute)
+	if gate.Blocked("port53") {
+		t.Fatal("a stale failure was still reported")
+	}
+
+	// A newer passing result clears an older failure.
+	now = now.Add(time.Minute)
+	gate.Observe([]selfcheck.Result{{Check: "port53", OK: true, At: now}})
+	if gate.Blocked("port53") {
+		t.Fatal("a passing result did not clear the failure")
+	}
+}
+
 func TestDiskCheckWritesAndCleansUp(t *testing.T) {
 	t.Parallel()
 

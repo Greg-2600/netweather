@@ -666,7 +666,7 @@ Every correlation depends on assumptions that can silently break. Check them.
 | **Probe heartbeat** | 60s | Feeds the `STALE` verdict (§3.3). |
 | **Config validity** | on reload | A rejected config keeps the previous one live (§13.3). |
 | **Path MTU** | hourly | Docker bridges default to 1500; a VPN uplink of 1420 black-holes large handshakes and fakes `DOWN`. See `NETWORKING.md` §4 |
-| **Egress ports** | hourly | Port 53 blocked turns 250 country anchors red for no reason. Blocked → `UNMEASURABLE`, never `DOWN`. See `NETWORKING.md` §10. **Implemented:** the `port53` self-check proves UDP/53 and TCP/53 to a public resolver and names the blocked transport. Still specified: feeding a failed check into the classifier so DNS anchors become `UNMEASURABLE` rather than `DOWN`. |
+| **Egress ports** | hourly | Port 53 blocked turns 250 country anchors red for no reason. Blocked → `UNMEASURABLE`, never `DOWN`. See `NETWORKING.md` §10. **Implemented:** the `port53` self-check proves UDP/53 and TCP/53 to a public resolver and names the blocked transport. A fresh failure feeds a gate in the agent: while egress port 53 is blocked, `dns_timeout` and `dns_error` classify `UNMEASURABLE` with the blocked port in the reason, so one firewall cannot turn every anchor red. A stale gate fails open (the classifier runs normally) and an NXDOMAIN is still `DOWN`, because that is target truth rather than a blocked path. |
 
 `VANTAGE_CHANGED` is not an outage — it invalidates baselines, and the UI must say so plainly:
 

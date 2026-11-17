@@ -117,6 +117,10 @@ type Agent struct {
 	// the direct vantage and non-zero for Tor, where bursty traffic is both
 	// abusive and a fingerprint.
 	Pace time.Duration
+	// DNSBlocked reports whether this vantage's egress port 53 is known to be
+	// blocked. Nil means unknown, and an unknown path is treated as working:
+	// a missing health signal must not suppress real DOWN states.
+	DNSBlocked func() bool
 
 	mu      sync.RWMutex
 	targets []Target
@@ -319,7 +323,11 @@ func (a *Agent) primeLocked(now time.Time) {
 }
 
 func (a *Agent) toProbe(t Target, res probe.Result, now time.Time) store.Probe {
-	decision := decisionFor(t, res)
+	dnsBlocked := false
+	if t.Instrument == "dns" && a.DNSBlocked != nil {
+		dnsBlocked = a.DNSBlocked()
+	}
+	decision := decisionFor(t, res, dnsBlocked)
 
 	detail := decision.Reason
 	if res.Err != nil {
@@ -342,13 +350,18 @@ func (a *Agent) toProbe(t Target, res probe.Result, now time.Time) store.Probe {
 }
 
 // decisionFor gives non-HTTP success its own answer. A completed TCP or TLS
-// handshake is reachability, not a missing HTTP status.
-func decisionFor(t Target, res probe.Result) classify.Result {
+// handshake is reachability, not a missing HTTP status. dnsBlocked is the
+// vantage's port-53 health: a DNS transport failure under it measures us.
+func decisionFor(t Target, res probe.Result, dnsBlocked bool) classify.Result {
+	expect := t.Expect
+	if dnsBlocked {
+		expect.DNSBlocked = true
+	}
 	// NTP is self-health: it can warn about this vantage's clock, but it never
 	// says a target is up or down (CLASSIFIER.md §3.6).
 	if t.Instrument == "ntp" {
 		if res.Err != nil || res.ErrorClass != "" {
-			return classify.Decide(t.Expect, classify.Response{
+			return classify.Decide(expect, classify.Response{
 				Err: res.Err, ErrorClass: res.ErrorClass,
 			})
 		}
@@ -366,7 +379,7 @@ func decisionFor(t Target, res probe.Result) classify.Result {
 			Reason:     "reachability only",
 		}
 	}
-	return classify.Decide(t.Expect, classify.Response{
+	return classify.Decide(expect, classify.Response{
 		Err:        res.Err,
 		ErrorClass: res.ErrorClass,
 		Status:     res.Status,

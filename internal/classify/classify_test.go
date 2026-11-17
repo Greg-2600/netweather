@@ -62,6 +62,44 @@ func TestTransportClassification(t *testing.T) {
 	}
 }
 
+func TestDNSBlockedIsAVisibilityFailure(t *testing.T) {
+	t.Parallel()
+
+	// The vantage's own port 53 is blocked: a timeout or resolver error is a
+	// fact about us, not the target, so it must not turn anchors red.
+	for _, class := range []string{"dns_timeout", "dns_error"} {
+		got := classify.Decide(classify.Expected{DNSBlocked: true}, classify.Response{
+			Err: errors.New("timeout"), ErrorClass: class,
+		})
+		if got.State != state.Unmeasurable {
+			t.Errorf("%s with a blocked port = %s, want unmeasurable", class, got.State)
+		}
+		if got.Confidence != classify.High {
+			t.Errorf("%s confidence = %s, want high", class, got.Confidence)
+		}
+		if !strings.Contains(got.Reason, "port 53") {
+			t.Errorf("%s reason = %q, want the blocked port named", class, got.Reason)
+		}
+
+		// Without the gate the same failure is still DOWN.
+		got = classify.Decide(classify.Expected{}, classify.Response{
+			Err: errors.New("timeout"), ErrorClass: class,
+		})
+		if got.State != state.Down {
+			t.Errorf("%s without a blocked port = %s, want down", class, got.State)
+		}
+	}
+
+	// A name that does not exist is target truth, not a blocked port: an
+	// answering resolver returned NXDOMAIN, so the gate must not suppress it.
+	got := classify.Decide(classify.Expected{DNSBlocked: true}, classify.Response{
+		Err: errors.New("no such host"), ErrorClass: "dns_nxdomain",
+	})
+	if got.State != state.Down {
+		t.Fatalf("nxdomain with a blocked port = %s, want down", got.State)
+	}
+}
+
 func TestStatusTable(t *testing.T) {
 	t.Parallel()
 
