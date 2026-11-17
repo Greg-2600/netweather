@@ -67,8 +67,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 7 {
-		t.Errorf("schema version = %d, want 7", stats.SchemaVersion)
+	if stats.SchemaVersion != 8 {
+		t.Errorf("schema version = %d, want 8", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -96,7 +96,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 7 {
+	if err != nil || version != 8 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -1353,5 +1353,73 @@ func TestFeedStateTracksFailuresAndRecovery(t *testing.T) {
 	// Upserting an empty batch is a no-op, not an error.
 	if err := s.UpsertExternalEvents(ctx, nil); err != nil {
 		t.Fatalf("empty batch: %v", err)
+	}
+}
+
+func TestSnapshotCoverageIsDailyAndIdempotent(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	if err := s.UpsertTarget(ctx, store.Target{
+		ID: "t2", Host: "united.com", Port: 443, Probe: "http",
+		Name: "United", Class: "service", Sector: "airline",
+		Country: "US", Tier: 2, IntervalS: 300,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	if err := s.Record(ctx, []store.Probe{probeAt(now, state.Up)}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.SnapshotCoverage(ctx, "local", now); err != nil {
+		t.Fatal(err)
+	}
+	// Later the same day, with the second target still unprobed: the row is
+	// updated in place, not duplicated.
+	if err := s.SnapshotCoverage(ctx, "local", now.Add(6*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	points, err := s.CoverageHistory(ctx, "global", "", 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(points) != 1 {
+		t.Fatalf("points = %d, want one daily row: %+v", len(points), points)
+	}
+	if points[0].Total != 2 || points[0].Measurable != 1 {
+		t.Fatalf("point = %+v", points[0])
+	}
+	if !points[0].Bucket.Equal(time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("bucket = %v", points[0].Bucket)
+	}
+
+	// A sector slice is recorded separately.
+	if err := s.SnapshotCoverage(ctx, "local", now); err != nil {
+		t.Fatal(err)
+	}
+	airline, err := s.CoverageHistory(ctx, "sector", "airline", 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(airline) != 1 || airline[0].Total != 1 {
+		t.Fatalf("airline history = %+v", airline)
+	}
+
+	// The window is capped and ordered oldest first across days.
+	if err := s.SnapshotCoverage(ctx, "local", now.AddDate(0, 0, 1)); err != nil {
+		t.Fatal(err)
+	}
+	window, err := s.CoverageHistory(ctx, "global", "", 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(window) != 2 || !window[0].Bucket.Before(window[1].Bucket) {
+		t.Fatalf("window = %+v", window)
 	}
 }

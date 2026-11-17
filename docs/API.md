@@ -200,7 +200,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
-    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug"],
+    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -647,6 +647,31 @@ Auth: bearer. Time-boxed verbose logging for one target, component, vantage, or 
 Scopes persist in `/data/debug.json`, so a restart does not silently keep one enabled; scopes that expired while the process was down are dropped at startup with one `INFO` line each. Expiry is logged as `debug scope expired`. Enable/disable actions are logged at `INFO` with the request id.
 
 The scope handler is the only level decision: sinks are built at `TRACE`, so enabling a scope works even when `NETWEATHER_LOG_LEVEL=info`. Records matching an active scope are also pinned in the ring, so the evidence outlives the session.
+
+### 6.20 `GET /api/v1/coverage/history` — stable
+
+Auth: bearer. Daily coverage snapshots for one scope, oldest first.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `scope` | `global` | `global`, `sector`, `country`, `asn` |
+| `value` | — | Required for non-global scopes |
+| `days` | 30 | 1–365 |
+
+```json
+{
+  "data": [
+    {"bucket": "2026-11-16", "scope": "global", "total": 100, "measurable": 90,
+     "blocked": 5, "unmeasurable": 5, "coverage": 0.9}
+  ],
+  "meta": {"request_id": "…", "count": 1, "limit": 30}
+}
+```
+
+- One point per UTC day. Snapshots are written by maintenance, once per day, and re-running within a day updates the row rather than duplicating it.
+- `coverage` is `measurable / total`; `total` includes permanently unmeasurable targets, which `measurable` does not.
+- Oldest first so a client can draw a line without reversing it.
+- A scope with no snapshots returns `200` and an empty list; history starts on the first day the process ran.
 
 ---
 

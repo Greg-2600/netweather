@@ -212,26 +212,27 @@ func serve(lg *logging.Logger) error {
 	}
 
 	handler, err := api.New(cfg, api.Deps{
-		Logger:     lg.Logger,
-		Ring:       lg.Ring,
-		Version:    version.Version,
-		Commit:     version.Commit,
-		StartedAt:  time.Now(),
-		Source:     source,
-		Control:    ag,
-		Probes:     st,
-		Incidents:  st,
-		Scopes:     st,
-		Anomalies:  st,
-		Targets:    st,
-		Coverage:   st,
-		SelfChecks: st,
-		Exporter:   st,
-		Feeds:      st,
-		Debug:      scopes,
-		Metrics:    metricsHandler,
-		Vantage:    "local",
-		Fallback:   ui,
+		Logger:          lg.Logger,
+		Ring:            lg.Ring,
+		Version:         version.Version,
+		Commit:          version.Commit,
+		StartedAt:       time.Now(),
+		Source:          source,
+		Control:         ag,
+		Probes:          st,
+		Incidents:       st,
+		Scopes:          st,
+		Anomalies:       st,
+		Targets:         st,
+		Coverage:        st,
+		CoverageHistory: st,
+		SelfChecks:      st,
+		Exporter:        st,
+		Feeds:           st,
+		Debug:           scopes,
+		Metrics:         metricsHandler,
+		Vantage:         "local",
+		Fallback:        ui,
 	})
 	if err != nil {
 		return err
@@ -679,11 +680,24 @@ func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger, s
 		}
 	}
 
+	lastCoverageDay := ""
 	run := func() {
 		runSelfChecks()
 		runDebugPrune()
 
-		if err := st.SampleScopes(ctx, "local", time.Now()); err != nil {
+		now := time.Now()
+		if day := now.UTC().Format("2006-01-02"); day != lastCoverageDay {
+			if err := st.SnapshotCoverage(ctx, "local", now); err != nil {
+				lg.Warn("coverage snapshot failed",
+					"event", "coverage_snapshot_failed", "component", "maintenance", "error", err)
+			} else {
+				lastCoverageDay = day
+				lg.Info("coverage snapshot written",
+					"event", "coverage_snapshot", "component", "maintenance", "day", day)
+			}
+		}
+
+		if err := st.SampleScopes(ctx, "local", now); err != nil {
 			lg.Warn("scope sampling failed",
 				"event", "scope_sampling_failed", "component", "maintenance", "error", err)
 		}

@@ -64,6 +64,12 @@ type CoverageReader interface {
 	Coverage(ctx context.Context, vantageID string, now time.Time) (store.Coverage, error)
 }
 
+// CoverageHistoryReader reads daily coverage snapshots: the trend a point-in-time
+// panel cannot show.
+type CoverageHistoryReader interface {
+	CoverageHistory(ctx context.Context, scope, value string, days int) ([]store.CoveragePoint, error)
+}
+
 // SelfCheckReader reads the latest self-health results.
 type SelfCheckReader interface {
 	LatestSelfChecks(ctx context.Context) ([]store.SelfCheck, error)
@@ -116,6 +122,8 @@ type Deps struct {
 	Targets TargetReader
 	// Coverage builds the blind-spot panel. Nil disables the route.
 	Coverage CoverageReader
+	// CoverageHistory reads daily coverage snapshots. Nil disables the route.
+	CoverageHistory CoverageHistoryReader
 	// SelfChecks reads the latest self-health results. Nil disables the route.
 	SelfChecks SelfCheckReader
 	// Exporter streams observations. Nil disables the route.
@@ -166,6 +174,7 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	apiMux.HandleFunc("/api/v1/scopes/", onlyGET(s.handleScope))
 	apiMux.HandleFunc("/api/v1/anomalies", onlyGET(s.handleAnomalies))
 	apiMux.HandleFunc("/api/v1/coverage", onlyGET(s.handleCoverage))
+	apiMux.HandleFunc("/api/v1/coverage/history", onlyGET(s.handleCoverageHistory))
 	apiMux.HandleFunc("/api/v1/selfcheck", onlyGET(s.handleSelfCheck))
 	apiMux.HandleFunc("/api/v1/export", onlyGET(s.handleExport))
 	apiMux.HandleFunc("/api/v1/events", onlyGET(s.handleEvents))
@@ -268,7 +277,7 @@ type metaResponse struct {
 
 // capabilities is the runtime truth. A client should feature-detect here rather
 // than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug"}
+var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history"}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}
@@ -1050,6 +1059,83 @@ func (s *server) handleSelfCheck(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, r, out, &Meta{Count: len(out)})
+}
+
+type coveragePointItem struct {
+	Bucket       string  `json:"bucket"`
+	Scope        string  `json:"scope"`
+	ScopeValue   string  `json:"scope_value,omitempty"`
+	Total        int     `json:"total"`
+	Measurable   int     `json:"measurable"`
+	Blocked      int     `json:"blocked"`
+	Unmeasurable int     `json:"unmeasurable"`
+	Coverage     float64 `json:"coverage"`
+}
+
+// handleCoverageHistory returns daily snapshots for one scope. A point-in-time
+// panel cannot show "coverage has been decaying for three weeks"; this can.
+func (s *server) handleCoverageHistory(w http.ResponseWriter, r *http.Request) {
+	if s.deps.CoverageHistory == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "coverage history is not configured")
+		return
+	}
+
+	q := r.URL.Query()
+	scope := strings.TrimSpace(q.Get("scope"))
+	if scope == "" {
+		scope = "global"
+	}
+	switch scope {
+	case "global", "sector", "country", "asn":
+	default:
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument,
+			"scope must be global, sector, country, or asn")
+		return
+	}
+
+	value := strings.TrimSpace(q.Get("value"))
+	if scope != "global" && value == "" {
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "value is required for this scope")
+		return
+	}
+	if scope == "asn" {
+		if n, err := strconv.Atoi(value); err != nil || n <= 0 {
+			writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "value must be a positive ASN")
+			return
+		}
+	}
+
+	days, err := strconv.Atoi(q.Get("days"))
+	if q.Get("days") == "" {
+		days = 30
+	} else if err != nil || days < 1 || days > 365 {
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "days must be 1-365")
+		return
+	}
+
+	points, err := s.deps.CoverageHistory.CoverageHistory(r.Context(), scope, value, days)
+	if err != nil {
+		s.deps.Logger.Error("coverage history failed", "event", "coverage_history_failed", "component", "http", "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "coverage history unavailable")
+		return
+	}
+
+	out := make([]coveragePointItem, 0, len(points))
+	for _, p := range points {
+		item := coveragePointItem{
+			Bucket:     p.Bucket.UTC().Format("2006-01-02"),
+			Scope:      p.Scope,
+			ScopeValue: p.ScopeValue,
+			Total:      p.Total, Measurable: p.Measurable,
+			Blocked: p.Blocked, Unmeasurable: p.Unmeasurable,
+		}
+		if p.Total > 0 {
+			item.Coverage = float64(p.Measurable) / float64(p.Total)
+		}
+		out = append(out, item)
+	}
+
+	writeData(w, r, out, &Meta{Count: len(out), Limit: days})
 }
 
 type controlState struct {

@@ -2413,6 +2413,123 @@ func TestDebugScopeUnavailableAuthAndMethods(t *testing.T) {
 	}
 }
 
+type fakeCoverageHistory struct {
+	points []store.CoveragePoint
+	err    error
+}
+
+func (f *fakeCoverageHistory) CoverageHistory(context.Context, string, string, int) ([]store.CoveragePoint, error) {
+	return f.points, f.err
+}
+
+func newCoverageHistoryHandler(t *testing.T, reader api.CoverageHistoryReader) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+			CoverageHistory: reader,
+			Version:         "test",
+			Commit:          "deadbeef",
+			StartedAt:       time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func TestCoverageHistory(t *testing.T) {
+	t.Parallel()
+
+	reader := &fakeCoverageHistory{points: []store.CoveragePoint{
+		{
+			Bucket: time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC),
+			Scope:  "global", Total: 100, Measurable: 90, Blocked: 5, Unmeasurable: 5,
+		},
+		{
+			Bucket: time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC),
+			Scope:  "global", Total: 100, Measurable: 80, Blocked: 10, Unmeasurable: 10,
+		},
+	}}
+
+	rec := do(newCoverageHistoryHandler(t, reader), http.MethodGet,
+		"/api/v1/coverage/history?scope=global&days=7", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var items []struct {
+		Bucket     string  `json:"bucket"`
+		Scope      string  `json:"scope"`
+		Total      int     `json:"total"`
+		Measurable int     `json:"measurable"`
+		Coverage   float64 `json:"coverage"`
+	}
+	if err := json.Unmarshal(env.Data, &items); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(items) != 2 {
+		t.Fatalf("items = %d", len(items))
+	}
+	if items[0].Bucket != "2026-11-16" || items[1].Bucket != "2026-11-17" {
+		t.Fatalf("buckets = %+v", items)
+	}
+	if items[1].Coverage != 0.8 {
+		t.Fatalf("coverage = %v", items[1].Coverage)
+	}
+	if env.Meta.Limit != 7 {
+		t.Fatalf("meta.limit = %d", env.Meta.Limit)
+	}
+}
+
+func TestCoverageHistoryValidation(t *testing.T) {
+	t.Parallel()
+
+	h := newCoverageHistoryHandler(t, &fakeCoverageHistory{})
+	for _, query := range []string{
+		"scope=planet",
+		"scope=sector",
+		"scope=asn&value=not-a-number",
+		"days=0",
+		"days=366",
+		"days=soon",
+	} {
+		rec := do(h, http.MethodGet, "/api/v1/coverage/history?"+query, testToken)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", query, rec.Code)
+		}
+	}
+}
+
+func TestCoverageHistoryUnavailableAndAuth(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/api/v1/coverage/history", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+
+	rec = do(newCoverageHistoryHandler(t, &fakeCoverageHistory{err: errors.New("db down")}),
+		http.MethodGet, "/api/v1/coverage/history", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 on a read failure", rec.Code)
+	}
+
+	rec = do(newCoverageHistoryHandler(t, &fakeCoverageHistory{}),
+		http.MethodGet, "/api/v1/coverage/history", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
 func TestSecurityHeaders(t *testing.T) {
 	t.Parallel()
 

@@ -495,6 +495,8 @@ CREATE TABLE coverage_snapshot (
 
 One row per scope per day. This is what makes "coverage is decaying over three weeks" visible; a point-in-time panel cannot show a trend.
 
+**Implemented in migration `0008`:** `SnapshotCoverage` writes one row per scope for the UTC day, and re-running within the day updates that row instead of duplicating it, so a restart cannot invent a second snapshot. `CoverageHistory` reads oldest-first for `GET /api/v1/coverage/history`. `total` includes permanently unmeasurable targets, which `measurable` excludes, so the two numbers are not derived from each other by accident.
+
 ### 10.1 Hourly scope samples
 
 ```sql
