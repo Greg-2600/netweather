@@ -228,6 +228,7 @@ func taskCover() error {
 		"/internal/logging":  78,
 		"/internal/netx":     95,
 		"/internal/probe":    90,
+		"/internal/schedule": 90,
 		"/internal/startup":  75,
 		"/internal/web":      72,
 		"/cmd/netweather":    40,
