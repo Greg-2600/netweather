@@ -218,7 +218,7 @@ func Reconcile(ctx context.Context, src Source, sink Reconciler, vantage string,
 
 // Loop evaluates every interval until ctx is done. A single failed evaluation is
 // logged and retried on the next tick; it never stops the loop.
-func Loop(ctx context.Context, src Source, sink Sink, reconciler Reconciler, vantage string, every time.Duration, logger *slog.Logger, notify func()) {
+func Loop(ctx context.Context, src Source, sink Sink, reconciler Reconciler, vantage string, every time.Duration, logger *slog.Logger, notify func(), suppress func() bool) {
 	if every <= 0 {
 		every = 5 * time.Minute
 	}
@@ -229,11 +229,31 @@ func Loop(ctx context.Context, src Source, sink Sink, reconciler Reconciler, van
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
 
+	// Correlation is timestamp-based, so a clock more than ten seconds off
+	// makes every overlapping window suspect (DESIGN.md §7.5). While the gate
+	// says so, neither open nor close an incident: a close on skewed evidence
+	// is as wrong as an open.
+	suppressed := false
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if suppress != nil && suppress() {
+				if !suppressed {
+					logger.Warn("incident correlation suppressed: local clock skew above 10s",
+						"event", "correlation_suppressed", "component", "incidents")
+					suppressed = true
+				}
+				continue
+			}
+			if suppressed {
+				logger.Info("incident correlation resumed",
+					"event", "correlation_resumed", "component", "incidents")
+				suppressed = false
+			}
+
 			inc, opened, err := Evaluate(ctx, src, sink, vantage, time.Now())
 			if err != nil {
 				logger.Warn("incident evaluation failed",

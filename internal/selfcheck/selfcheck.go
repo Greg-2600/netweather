@@ -373,12 +373,29 @@ func traceField(body, key string) string {
 	return ""
 }
 
-// ClockCheck compares the local clock with the Date header of one HTTP response.
-// Skew beyond maxSkew is a degraded check, not a process failure: the board
-// still renders, but timestamps and baselines become suspect.
+// ClockCheck compares the local clock with the Date header of one HTTP
+// response. Skew beyond maxSkew is a degraded check, not a process failure: the
+// board still renders, but timestamps and baselines become suspect.
+//
+// The check reports skew through an HTTP Date header rather than NTP. The NTP
+// instrument measures the offset of configured NTP targets, but the clock check
+// must work on a network that blocks UDP/123, which is common; a blocked clock
+// check would otherwise suppress correlation forever.
 func ClockCheck(http *probe.HTTP, url string, maxSkew time.Duration) Check {
+	return clockCheck("clock", http, url, maxSkew)
+}
+
+// ClockSyncCheck is the suppression threshold from DESIGN.md §7.5: correlation
+// is skipped while the local clock is more than ten seconds off. It is a
+// separate check from the two-second warning so a mildly skewed host still
+// evaluates incidents, with the skew visible on the board.
+func ClockSyncCheck(http *probe.HTTP, url string) Check {
+	return clockCheck("clock-sync", http, url, 10*time.Second)
+}
+
+func clockCheck(name string, http *probe.HTTP, url string, maxSkew time.Duration) Check {
 	return Check{
-		Name: "clock",
+		Name: name,
 		Run: func(ctx context.Context) (bool, string, string, error) {
 			if http == nil {
 				return false, "", "http instrument is not configured", nil

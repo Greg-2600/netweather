@@ -568,3 +568,32 @@ func TestVantageChange(t *testing.T) {
 		t.Fatal("a missing previous observation was reported as a change")
 	}
 }
+
+func TestClockSyncCheckUsesTheTenSecondSuppressionThreshold(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+
+	// Five seconds is inside the warning band but still allows correlation.
+	five := now.Add(-5 * time.Second).Format(http.TimeFormat)
+	check := selfcheck.ClockSyncCheck(probe.NewHTTPWithTransport(dateTransport{date: five}),
+		"https://example.com/")
+	if ok, _, detail, _ := check.Run(context.Background()); !ok {
+		t.Fatalf("five seconds suppressed correlation: %s", detail)
+	}
+	if check.Name != "clock-sync" {
+		t.Fatalf("name = %q, want clock-sync", check.Name)
+	}
+
+	// Twelve seconds is past the suppression threshold.
+	twelve := now.Add(-12 * time.Second).Format(http.TimeFormat)
+	check = selfcheck.ClockSyncCheck(probe.NewHTTPWithTransport(dateTransport{date: twelve}),
+		"https://example.com/")
+	ok, _, detail, _ := check.Run(context.Background())
+	if ok {
+		t.Fatal("a twelve-second skew was allowed to correlate")
+	}
+	if !strings.Contains(detail, "skew") {
+		t.Fatalf("detail = %q", detail)
+	}
+}

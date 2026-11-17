@@ -239,7 +239,10 @@ func serve(lg *logging.Logger) error {
 		selfcheck.MTUCheck(nil),
 		selfcheck.EgressCheck(instruments.TCP, "1.1.1.1:443"),
 		selfcheck.EgressIPCheck(instruments.HTTP, "https://1.1.1.1/cdn-cgi/trace", egressLookup),
-		selfcheck.ClockCheck(instruments.HTTP, "https://www.cloudflare.com/", time.Minute),
+		// The warning threshold is two seconds (DESIGN.md §7.5); the gate
+		// below suppresses correlation above ten.
+		selfcheck.ClockCheck(instruments.HTTP, "https://www.cloudflare.com/", 2*time.Second),
+		selfcheck.ClockSyncCheck(instruments.HTTP, "https://www.cloudflare.com/"),
 	}}
 
 	// Feeds are opt-in: they are outbound calls to someone else's API, and an
@@ -371,7 +374,8 @@ func serve(lg *logging.Logger) error {
 			incidentInterval = d
 		}
 	}
-	go incidents.Loop(ctx, st, st, st, "local", incidentInterval, lg.Logger, incidentChanges.Notify)
+	go incidents.Loop(ctx, st, st, st, "local", incidentInterval, lg.Logger, incidentChanges.Notify,
+		func() bool { return healthGate.Blocked("clock-sync") })
 	go anomaly.Loop(ctx, st, st, "local", incidentInterval, lg.Logger)
 	go maintenanceLoop(ctx, st, lg, selfRunner, healthGate, scopes)
 	go configLoop(ctx, st, ag, lg.Logger)

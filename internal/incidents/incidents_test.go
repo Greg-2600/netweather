@@ -311,7 +311,7 @@ func TestLoopStopsOnCancel(t *testing.T) {
 	sink := newSink()
 
 	go func() {
-		incidents.Loop(ctx, &fakeSource{obs: airlineFailures(5, 6)}, sink, sink, "local", time.Millisecond, nil, nil)
+		incidents.Loop(ctx, &fakeSource{obs: airlineFailures(5, 6)}, sink, sink, "local", time.Millisecond, nil, nil, nil)
 		close(done)
 	}()
 
@@ -322,5 +322,60 @@ func TestLoopStopsOnCancel(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("Loop did not stop after cancel")
+	}
+}
+
+// countingSource counts reads, so a loop that never evaluates is observable
+// without relying on a sink's absence.
+type countingSource struct {
+	mu    sync.Mutex
+	calls int
+	obs   []store.Observation
+}
+
+func (c *countingSource) Observations(context.Context, string) ([]store.Observation, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.calls++
+	return c.obs, nil
+}
+
+func (c *countingSource) Calls() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.calls
+}
+
+func TestLoopSkipsCorrelationWhileSuppressed(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	src := &countingSource{obs: airlineFailures(5, 6)}
+	sink := newSink()
+	done := make(chan struct{})
+	go func() {
+		incidents.Loop(ctx, src, sink, sink, "local", time.Millisecond, nil, nil,
+			func() bool { return true })
+		close(done)
+	}()
+
+	time.Sleep(15 * time.Millisecond)
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Loop did not stop after cancel")
+	}
+
+	if calls := src.Calls(); calls != 0 {
+		t.Fatalf("the source was read %d times while suppressed", calls)
+	}
+	sink.mu.Lock()
+	opened := len(sink.incidents)
+	sink.mu.Unlock()
+	if opened != 0 {
+		t.Fatalf("a skewed clock opened %d incident(s)", opened)
 	}
 }
