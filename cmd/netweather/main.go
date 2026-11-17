@@ -570,7 +570,10 @@ func enrichmentLoop(ctx context.Context, st *store.Store, lg *logging.Logger) {
 					"target", t.Host, "error", err)
 				continue
 			}
-			if err := st.UpdateEnrichment(ctx, t.ID, res.ASN, res.Prefix, res.CDN); err != nil {
+			if err := st.UpdateEnrichment(ctx, t.ID, store.Enrichment{
+				ASN: res.ASN, Prefix: res.Prefix, CDN: res.CDN,
+				ASCountry: res.ASCountry, ASName: res.ASName,
+			}); err != nil {
 				lg.Warn("enrichment write failed",
 					"event", "enrichment_write_failed", "component", "enrich",
 					"target", t.Host, "error", err)
@@ -578,7 +581,8 @@ func enrichmentLoop(ctx context.Context, st *store.Store, lg *logging.Logger) {
 			}
 			lg.Info("target enriched",
 				"event", "target_enriched", "component", "enrich",
-				"target", t.Host, "asn", res.ASN, "prefix", res.Prefix, "cdn", res.CDN)
+				"target", t.Host, "asn", res.ASN, "prefix", res.Prefix, "cdn", res.CDN,
+				"as_name", res.ASName, "as_country", res.ASCountry)
 
 			select {
 			case <-ctx.Done():

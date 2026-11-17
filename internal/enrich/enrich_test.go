@@ -132,6 +132,69 @@ func TestCDNMapping(t *testing.T) {
 	}
 }
 
+func TestOrgParsesCymruAnswer(t *testing.T) {
+	t.Parallel()
+
+	r := &fakeResolver{txt: map[string][]string{
+		"AS13335.asn.cymru.com": {"13335 | US | arin | 2010-07-14 | CLOUDFLARENET, US"},
+	}}
+
+	name, country, err := enrich.Org(context.Background(), r, 13335)
+	if err != nil {
+		t.Fatalf("Org: %v", err)
+	}
+	if name != "CLOUDFLARENET, US" || country != "US" {
+		t.Fatalf("got %q / %q", name, country)
+	}
+}
+
+func TestOrgRejectsBadAnswers(t *testing.T) {
+	t.Parallel()
+
+	// A bare "NA | NA" is a valid answer with no labels; it is not an error.
+	r := &fakeResolver{txt: map[string][]string{"AS1.asn.cymru.com": {"NA | NA"}}}
+	name, country, err := enrich.Org(context.Background(), r, 1)
+	if err != nil {
+		t.Fatalf("Org: %v", err)
+	}
+	if name != "" || country != "" {
+		t.Fatalf("got %q / %q, want empty labels", name, country)
+	}
+
+	empty := &fakeResolver{txt: map[string][]string{}}
+	if _, _, err := enrich.Org(context.Background(), empty, 1); err == nil {
+		t.Fatal("a missing answer should be an error")
+	}
+
+	if _, _, err := enrich.Org(context.Background(), nil, 1); err == nil {
+		t.Fatal("a nil resolver should be an error")
+	}
+	if _, _, err := enrich.Org(context.Background(), r, 0); err == nil {
+		t.Fatal("AS0 should be an error")
+	}
+}
+
+func TestHostCarriesASLabels(t *testing.T) {
+	t.Parallel()
+
+	r := &fakeResolver{
+		txt: map[string][]string{
+			"93.184.216.34.origin.asn.cymru.com": {"15133 | 93.184.216.0/24 | US | arin | 2008-01-01"},
+			"AS15133.asn.cymru.com":              {"15133 | US | arin | 2008-01-01 | EDGECAST, US"},
+		},
+		cnames: map[string]string{"www.example.com": "example.com.edgekey.net"},
+	}
+
+	got, err := enrich.Host(context.Background(), r, "www.example.com",
+		[]netip.Addr{netip.MustParseAddr("93.184.216.34")})
+	if err != nil {
+		t.Fatalf("Host: %v", err)
+	}
+	if got.ASName != "EDGECAST, US" || got.ASCountry != "US" {
+		t.Fatalf("AS labels = %+v", got)
+	}
+}
+
 func TestHostCombinesASNAndCDN(t *testing.T) {
 	t.Parallel()
 

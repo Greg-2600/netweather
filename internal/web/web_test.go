@@ -180,6 +180,40 @@ func TestTargetDetailShowsMetadata(t *testing.T) {
 	}
 }
 
+func TestTargetDetailShowsASLabels(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(board.Target{
+		ID: "2", Name: "United", Host: "united.com", Class: "service",
+		Sector: "airline", Country: "US", State: board.StateDown,
+		Port: 443, Probe: "tls", Tier: 2, IntervalS: 300,
+		ASN: 13335, Prefix: "203.0.113.0/24", CDN: "cloudflare",
+		ASCountry: "US", ASName: "CLOUDFLARENET, US", Measurability: "ok",
+	})
+
+	ts := newServerWithDetails(t, testToken, m, &fakeChanges{})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	for _, want := range []string{
+		">ASN<", ">AS13335<",
+		">AS name<", ">CLOUDFLARENET, US<",
+		">AS country<", ">US<",
+		">Prefix<", ">203.0.113.0/24<",
+		">CDN<", ">cloudflare<",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("AS labels missing %q", want)
+		}
+	}
+}
+
 func TestTargetDetailShowsStateChanges(t *testing.T) {
 	t.Parallel()
 

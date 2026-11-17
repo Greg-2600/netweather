@@ -197,6 +197,8 @@ type tileView struct {
 	ASN           int
 	Prefix        string
 	CDN           string
+	ASCountry     string
+	ASName        string
 	Measurability string
 }
 
@@ -400,6 +402,7 @@ func toTile(t board.Target) tileView {
 		Badge: badge, BadgeTitle: badgeTitle,
 		Port: t.Port, Probe: t.Probe, Tier: t.Tier, IntervalS: t.IntervalS,
 		ASN: t.ASN, Prefix: t.Prefix, CDN: t.CDN, Measurability: t.Measurability,
+		ASCountry: t.ASCountry, ASName: t.ASName,
 	}
 }
 
@@ -584,6 +587,8 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 			{"Tier", strconv.Itoa(t.Tier)},
 			{"Interval", fmt.Sprintf("%ds", t.IntervalS)},
 			{"ASN", asnLabel(t.ASN)},
+			{"AS name", displayOr(t.ASName, "not learned yet")},
+			{"AS country", displayOr(t.ASCountry, "not learned yet")},
 			{"Prefix", displayOr(t.Prefix, "not learned yet")},
 			{"CDN", displayOr(t.CDN, "not learned yet")},
 			{"Measurability", displayOr(t.Measurability, "ok")},

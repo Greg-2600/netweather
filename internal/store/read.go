@@ -120,6 +120,7 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 		SELECT t.id, t.host, t.port, t.probe, t.name, t.class,
 		       COALESCE(t.sector, ''), COALESCE(t.country, ''), t.tier, t.interval_s,
 		       COALESCE(t.asn, 0), COALESCE(t.prefix, ''), COALESCE(t.cdn, ''), t.measurability,
+		       COALESCE(t.as_country, ''), COALESCE(t.as_name, ''),
 		       COALESCE(ts.state, 'unknown'), COALESCE(ts.since, 0),
 		       COALESCE(p.stage, ''), COALESCE(p.error_class, ''), COALESCE(p.http_status, 0)
 		FROM target t
@@ -146,6 +147,7 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 			&row.ID, &row.Host, &row.Port, &row.Probe, &row.Name, &row.Class,
 			&row.Sector, &row.Country, &row.Tier, &row.IntervalS,
 			&row.ASN, &row.Prefix, &row.CDN, &row.Measurability,
+			&row.ASCountry, &row.ASName,
 			&row.State, &since,
 			&row.Stage, &row.ErrorClass, &row.HTTPStatus,
 		); err != nil {
@@ -270,6 +272,7 @@ func (s *Store) TargetByID(ctx context.Context, vantageID, id string) (TargetRow
 		SELECT t.id, t.host, t.port, t.probe, t.name, t.class,
 		       COALESCE(t.sector, ''), COALESCE(t.country, ''), t.tier, t.interval_s,
 		       COALESCE(t.asn, 0), COALESCE(t.prefix, ''), COALESCE(t.cdn, ''), t.measurability,
+		       COALESCE(t.as_country, ''), COALESCE(t.as_name, ''),
 		       COALESCE(ts.state, 'unknown'), COALESCE(ts.since, 0)
 		FROM target t
 		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
@@ -277,6 +280,7 @@ func (s *Store) TargetByID(ctx context.Context, vantageID, id string) (TargetRow
 		&row.ID, &row.Host, &row.Port, &row.Probe, &row.Name, &row.Class,
 		&row.Sector, &row.Country, &row.Tier, &row.IntervalS,
 		&row.ASN, &row.Prefix, &row.CDN, &row.Measurability,
+		&row.ASCountry, &row.ASName,
 		&row.State, &since,
 	)
 	if err != nil {

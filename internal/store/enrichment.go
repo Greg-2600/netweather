@@ -12,6 +12,16 @@ type EnrichmentTarget struct {
 	Host string
 }
 
+// Enrichment is the learned metadata for one target. Zero values mean "not
+// learned", never "empty is a fact".
+type Enrichment struct {
+	ASN       int
+	Prefix    string
+	CDN       string
+	ASCountry string
+	ASName    string
+}
+
 // TargetsNeedingEnrichment returns enabled hostname targets with no ASN yet.
 // IP-literal anchors are excluded: they are prefixes and countries, not services
 // with a CDN in front of them.
@@ -47,15 +57,17 @@ func (s *Store) TargetsNeedingEnrichment(ctx context.Context, limit int) ([]Enri
 // UpdateEnrichment records the learned facts. Config reconciliation never
 // touches these columns, so an enrichment pass and a config edit cannot erase
 // each other's work.
-func (s *Store) UpdateEnrichment(ctx context.Context, id string, asn int, prefix, cdn string) error {
+func (s *Store) UpdateEnrichment(ctx context.Context, id string, e Enrichment) error {
 	_, err := s.writer.ExecContext(ctx, `
 		UPDATE target SET
 			asn = NULLIF(?, 0),
 			prefix = NULLIF(?, ''),
 			cdn = NULLIF(?, ''),
+			as_country = NULLIF(?, ''),
+			as_name = NULLIF(?, ''),
 			updated_at = ?
 		WHERE id = ?`,
-		asn, prefix, cdn, time.Now().UnixMilli(), id)
+		e.ASN, e.Prefix, e.CDN, e.ASCountry, e.ASName, time.Now().UnixMilli(), id)
 	if err != nil {
 		return fmt.Errorf("store: enrichment %q: %w", id, err)
 	}

@@ -108,6 +108,8 @@ CREATE TABLE target (
     asn          INTEGER,
     prefix       TEXT,                        -- '203.0.113.0/24'
     cdn          TEXT,
+    as_country   TEXT,                        -- ISO-3166-1 alpha-2 from asn.cymru.com
+    as_name      TEXT,                        -- registered organisation name
     measurability TEXT NOT NULL DEFAULT 'ok'
                  CHECK (measurability IN ('ok','mostly_blocked','unmeasurable')),
     last_validated_at INTEGER,
@@ -139,13 +141,15 @@ CREATE TABLE target_source (
 ```
 for each target in config:
     key = (host, port, probe)
-    if row exists with key:  UPDATE name/class/sector/tier/interval; keep id, asn, cdn, measurability
+    if row exists with key:  UPDATE name/class/sector/tier/interval; keep id, asn, cdn, as_country, as_name, measurability
     else:                    INSERT with new ULID
 for each enabled row not in config:
     UPDATE enabled = 0        -- never DELETE; history must survive
 ```
 
 A changed `(host, port, probe)` produces a new row by construction. That is intentional: repointing a target is not the same target.
+
+**Migration `0010`** added `as_country` and `as_name` to `target`. They are written only by `store.UpdateEnrichment`, never by `UpsertTarget`, so a config reconciliation pass and an enrichment pass cannot erase each other's work.
 
 ---
 

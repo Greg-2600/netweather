@@ -135,13 +135,58 @@ var cdnSuffixes = map[string]string{
 
 // Result is what enrichment learned about one target.
 type Result struct {
-	ASN    int
-	Prefix string
-	CDN    string
+	ASN       int
+	Prefix    string
+	CDN       string
+	ASCountry string
+	ASName    string
+}
+
+// Org looks up the organisation name and country registered for an ASN.
+//
+// The TXT answer looks like:
+//
+//	"13335 | US | arin | 2010-07-14 | CLOUDFLARENET, US"
+//
+// Field order matters: the name is last and may itself contain commas.
+func Org(ctx context.Context, r Resolver, asn int) (name, country string, err error) {
+	if r == nil {
+		return "", "", fmt.Errorf("enrich: resolver is not configured")
+	}
+	if asn <= 0 {
+		return "", "", fmt.Errorf("enrich: ASN %d is not positive", asn)
+	}
+
+	answers, err := r.LookupTXT(ctx, fmt.Sprintf("AS%d.asn.cymru.com", asn))
+	if err != nil {
+		return "", "", fmt.Errorf("enrich: org lookup AS%d: %w", asn, err)
+	}
+	for _, answer := range answers {
+		if n, c, ok := parseOrg(answer); ok {
+			return n, c, nil
+		}
+	}
+	return "", "", fmt.Errorf("enrich: no organisation answer for AS%d", asn)
+}
+
+func parseOrg(answer string) (name, country string, ok bool) {
+	fields := strings.Split(answer, "|")
+	if len(fields) < 2 {
+		return "", "", false
+	}
+	country = strings.ToUpper(strings.TrimSpace(fields[1]))
+	if country == "" || country == "NA" {
+		country = ""
+	}
+	if len(fields) >= 5 {
+		name = strings.TrimSpace(strings.Join(fields[4:], "|"))
+	}
+	return name, country, true
 }
 
 // Host resolves the CNAME and the first address's origin. A failure to learn
-// the CNAME is not fatal: direct A records simply leave CDN empty.
+// the CNAME is not fatal: direct A records simply leave CDN empty. The same
+// applies to the organisation lookup: the ASN is the fact that matters.
 func Host(ctx context.Context, r Resolver, host string, addrs []netip.Addr) (Result, error) {
 	if len(addrs) == 0 {
 		return Result{}, fmt.Errorf("enrich: no addresses for %s", host)
@@ -153,6 +198,10 @@ func Host(ctx context.Context, r Resolver, host string, addrs []netip.Addr) (Res
 	}
 
 	out := Result{ASN: asn, Prefix: prefix}
+	if name, country, err := Org(ctx, r, asn); err == nil {
+		out.ASName = name
+		out.ASCountry = country
+	}
 	if cname, err := r.LookupCNAME(ctx, host); err == nil {
 		out.CDN = CDN(cname)
 	}

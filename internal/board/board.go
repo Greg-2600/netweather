@@ -49,6 +49,8 @@ type Target struct {
 	ASN           int
 	Prefix        string
 	CDN           string
+	ASCountry     string
+	ASName        string
 	Measurability string
 }
 

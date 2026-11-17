@@ -67,8 +67,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 9 {
-		t.Errorf("schema version = %d, want 9", stats.SchemaVersion)
+	if stats.SchemaVersion != 10 {
+		t.Errorf("schema version = %d, want 10", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -96,7 +96,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 9 {
+	if err != nil || version != 10 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -1537,7 +1537,10 @@ func TestEnrichmentRoundTrip(t *testing.T) {
 		t.Fatalf("needs = %+v", needs)
 	}
 
-	if err := s.UpdateEnrichment(ctx, "t1", 64500, "203.0.113.0/24", "akamai"); err != nil {
+	if err := s.UpdateEnrichment(ctx, "t1", store.Enrichment{
+		ASN: 64500, Prefix: "203.0.113.0/24", CDN: "akamai",
+		ASCountry: "US", ASName: "EXAMPLE-AS, US",
+	}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1547,6 +1550,9 @@ func TestEnrichmentRoundTrip(t *testing.T) {
 	}
 	if rows[0].ASN != 64500 || rows[0].Prefix != "203.0.113.0/24" || rows[0].CDN != "akamai" {
 		t.Fatalf("row = %+v", rows[0])
+	}
+	if rows[0].ASCountry != "US" || rows[0].ASName != "EXAMPLE-AS, US" {
+		t.Fatalf("AS labels = %+v", rows[0])
 	}
 
 	// A learned target is no longer in the queue.
@@ -1559,7 +1565,7 @@ func TestEnrichmentRoundTrip(t *testing.T) {
 	}
 
 	// Updating an unknown target is a no-op, not an error.
-	if err := s.UpdateEnrichment(ctx, "nope", 1, "x", "y"); err != nil {
+	if err := s.UpdateEnrichment(ctx, "nope", store.Enrichment{ASN: 1, Prefix: "x", CDN: "y"}); err != nil {
 		t.Fatalf("unknown target: %v", err)
 	}
 }
