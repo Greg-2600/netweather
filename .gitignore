@@ -37,3 +37,7 @@ Thumbs.db
 # local lint output
 /lint.txt
 
+
+# local verify output
+/verify.log
+
