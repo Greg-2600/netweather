@@ -1049,6 +1049,11 @@ func TestDNSDivergenceLearnsNewAddressLabels(t *testing.T) {
 		looked++
 		return 13335, nil
 	}
+	askedNS := 0
+	a.DNSQueryNS = func(context.Context, string, string) ([]string, error) {
+		askedNS++
+		return []string{"ns1.example.net", "ns2.example.net"}, nil
+	}
 	a.DNSQuery = func(context.Context, string, string) probe.DNSResult {
 		return probe.DNSResult{
 			Addresses: []netip.Addr{netip.MustParseAddr("192.0.2.9")},
@@ -1077,6 +1082,12 @@ func TestDNSDivergenceLearnsNewAddressLabels(t *testing.T) {
 		if len(ans.CNAMESuffixes) != 1 || ans.CNAMESuffixes[0] != "cloudflare.net" {
 			t.Fatalf("answer suffixes = %+v", ans.CNAMESuffixes)
 		}
+		if len(ans.Delegations) != 2 {
+			t.Fatalf("answer delegations = %+v", ans.Delegations)
+		}
+	}
+	if askedNS != len(tg.Resolvers) {
+		t.Fatalf("delegation queries = %d, want %d", askedNS, len(tg.Resolvers))
 	}
 
 	// A known address does not trigger a lookup at all.

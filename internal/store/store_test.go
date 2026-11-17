@@ -2444,13 +2444,15 @@ func TestDNSBaselinesAndDivergence(t *testing.T) {
 		t.Fatalf("windowed baseline = %+v", future["a:53"])
 	}
 
-	// Origin ASNs and hosting suffixes live in the same baseline, keyed by
-	// kind, and are read back into the sets the engine compares.
+	// Origin ASNs, hosting suffixes, and the delegation live in the same
+	// baseline, keyed by kind, and are read back into the sets the engine
+	// compares.
 	if err := s.RecordDNSAnswer(ctx, "t1", dnsdiv.Answer{
 		Resolver: "a:53", At: base,
 		Addresses:     []string{"192.0.2.9"},
 		ASNs:          []int{13335, 0},
 		CNAMESuffixes: []string{"cloudflare.net", "cloudflare.net", ""},
+		Delegations:   []string{"ns1.example.net", "ns1.example.net", "ns2.example.net"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -2466,6 +2468,12 @@ func TestDNSBaselinesAndDivergence(t *testing.T) {
 	}
 	if _, dup := withLabels["a:53"].CNAMESuffixes[""]; dup {
 		t.Fatal("an empty suffix was stored")
+	}
+	if len(withLabels["a:53"].Delegations) != 2 {
+		t.Fatalf("delegation set = %+v", withLabels["a:53"].Delegations)
+	}
+	if _, ok := withLabels["a:53"].Delegations["ns2.example.net"]; !ok {
+		t.Fatalf("delegation set lost an entry: %+v", withLabels["a:53"].Delegations)
 	}
 	if len(withLabels["a:53"].Addresses) != 3 {
 		t.Fatalf("address set = %+v", withLabels["a:53"].Addresses)

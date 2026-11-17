@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"sort"
 	"strings"
 	"time"
 
@@ -167,11 +168,15 @@ func dnsName(name string) string {
 }
 
 func packQuery(qname dnsmessage.Name) ([]byte, error) {
+	return packQueryType(qname, dnsmessage.TypeA)
+}
+
+func packQueryType(qname dnsmessage.Name, qtype dnsmessage.Type) ([]byte, error) {
 	id := dnsID()
 	msg := dnsmessage.Message{
 		Header: dnsmessage.Header{ID: id, RecursionDesired: true},
 		Questions: []dnsmessage.Question{{
-			Name: qname, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET,
+			Name: qname, Type: qtype, Class: dnsmessage.ClassINET,
 		}},
 	}
 	packed, err := msg.Pack()
@@ -347,5 +352,138 @@ func answerCNAMEs(msg dnsmessage.Message) []string {
 			}
 		}
 	}
+	return out
+}
+
+// NSResult is one delegation observation.
+type NSResult struct {
+	Names      []string
+	ErrorClass string
+	Err        error
+}
+
+// Failed reports whether the query produced a transport-class failure.
+func (r NSResult) Failed() bool { return r.Err != nil || r.ErrorClass != "" }
+
+// DoNS queries name's NS records against server. The NS RRset a resolver
+// returns for a name is the parent's delegation, so a changed set is the
+// strongest divergence signal there is (CLASSIFIER.md §3.2). Like Do, it never
+// falls back to the system resolver.
+func (p *DNS) DoNS(ctx context.Context, server, name string) NSResult {
+	out := NSResult{}
+	if server == "" || name == "" {
+		out.ErrorClass = "dns_config"
+		out.Err = errors.New("probe: dns needs a server and a qname")
+		return out
+	}
+
+	dial := p.Dial
+	if dial == nil {
+		dial = (&net.Dialer{Timeout: 5 * time.Second}).DialContext
+	}
+	timeout := p.Timeout
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+	lookupCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	qname, err := dnsmessage.NewName(dnsName(name))
+	if err != nil {
+		out.ErrorClass = "dns_config"
+		out.Err = fmt.Errorf("probe: qname %q: %w", name, err)
+		return out
+	}
+	query, err := packQueryType(qname, dnsmessage.TypeNS)
+	if err != nil {
+		out.ErrorClass = "dns_config"
+		out.Err = err
+		return out
+	}
+
+	raw, err := exchange(lookupCtx, dial, "udp", server, query)
+	if err != nil {
+		out.ErrorClass = classifyExchangeError(err)
+		out.Err = err
+		return out
+	}
+	msg, err := unpackResponse(raw, queryID(query))
+	if err != nil {
+		out.ErrorClass = "dns_error"
+		out.Err = err
+		return out
+	}
+
+	if msg.Truncated {
+		raw, err = exchange(lookupCtx, dial, "tcp", server, query)
+		if err != nil {
+			out.ErrorClass = classifyExchangeError(err)
+			out.Err = err
+			return out
+		}
+		msg, err = unpackResponse(raw, queryID(query))
+		if err != nil {
+			out.ErrorClass = "dns_error"
+			out.Err = err
+			return out
+		}
+	}
+
+	switch msg.RCode {
+	case dnsmessage.RCodeSuccess:
+	case dnsmessage.RCodeNameError:
+		out.ErrorClass = "dns_nxdomain"
+		out.Err = fmt.Errorf("probe: %q does not exist", name)
+		return out
+	case dnsmessage.RCodeServerFailure:
+		out.ErrorClass = "dns_servfail"
+		out.Err = fmt.Errorf("probe: %s refused to answer for %q", server, name)
+		return out
+	case dnsmessage.RCodeRefused:
+		out.ErrorClass = "dns_refused"
+		out.Err = fmt.Errorf("probe: %s refused the query for %q", server, name)
+		return out
+	default:
+		out.ErrorClass = "dns_error"
+		out.Err = fmt.Errorf("probe: %s answered %s for %q", server, msg.RCode, name)
+		return out
+	}
+
+	out.Names = answerNS(msg)
+	if len(out.Names) == 0 {
+		out.ErrorClass = "dns_nodata"
+		out.Err = fmt.Errorf("probe: %q returned no NS records", name)
+	}
+	return out
+}
+
+// answerNS collects NS targets from the answer and authority sections. A
+// recursive resolver usually puts the delegation in the answer section; a
+// non-authoritative reply can put it in authority, so both are read.
+func answerNS(msg dnsmessage.Message) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0, 4)
+	add := func(name string) {
+		name = strings.ToLower(strings.TrimSuffix(name, "."))
+		if name == "" {
+			return
+		}
+		if _, dup := seen[name]; dup {
+			return
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	for _, resource := range msg.Answers {
+		if body, ok := resource.Body.(*dnsmessage.NSResource); ok {
+			add(body.NS.String())
+		}
+	}
+	for _, resource := range msg.Authorities {
+		if body, ok := resource.Body.(*dnsmessage.NSResource); ok {
+			add(body.NS.String())
+		}
+	}
+	sort.Strings(out)
 	return out
 }

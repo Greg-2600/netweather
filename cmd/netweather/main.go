@@ -657,6 +657,15 @@ func newAgent(targets []agent.Target, st *store.Store, lg *logging.Logger) *agen
 		asn, _, err := enrich.ASN(ctx, asnResolver, addr)
 		return asn, err
 	}
+	// The parent delegation for the same reason: a changed NS set is the
+	// strongest divergence signal (CLASSIFIER.md §3.2).
+	ag.DNSQueryNS = func(ctx context.Context, server, name string) ([]string, error) {
+		r := instruments.DNS.DoNS(ctx, server, name)
+		if r.ErrorClass != "" || r.Err != nil {
+			return nil, fmt.Errorf("%s: %w", r.ErrorClass, r.Err)
+		}
+		return r.Names, nil
+	}
 	return ag
 }
 

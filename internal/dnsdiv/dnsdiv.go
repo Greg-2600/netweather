@@ -26,8 +26,11 @@ type Answer struct {
 	// CNAMESuffixes are the registrable suffixes of the answer-section CNAME
 	// chain, e.g. "cloudfront.net".
 	CNAMESuffixes []string
-	Failure       string
-	At            time.Time
+	// Delegations is the NS RRset for the name: the parent's delegation, as
+	// the resolver returned it.
+	Delegations []string
+	Failure     string
+	At          time.Time
 }
 
 // Baseline is what one resolver has done for one target.
@@ -38,6 +41,8 @@ type Baseline struct {
 	ASNs map[int]struct{}
 	// CNAMESuffixes is the set of hosting suffixes seen in the CNAME chain.
 	CNAMESuffixes map[string]struct{}
+	// Delegations is the NS set this resolver has returned for the name.
+	Delegations map[string]struct{}
 	// Samples is how many learned address rows exist.
 	Samples int
 	// LastSeen is the newest observation of the baseline.
@@ -83,6 +88,15 @@ func Compare(a Answer, b Baseline) Signal {
 		if !answeredBefore {
 			return signal
 		}
+		// A changed NS set is the delegation-hijack signal, and it is strong
+		// regardless of the address: the name still resolves, but through a
+		// different zone.
+		if len(b.Delegations) > 0 && len(a.Delegations) > 0 && !sameNameSet(a.Delegations, b.Delegations) {
+			signal.Strength = Strong
+			signal.Reason = "NS delegation changed"
+			return signal
+		}
+
 		newAddress := false
 		for _, addr := range a.Addresses {
 			if _, known := b.Addresses[addr]; !known {
@@ -269,4 +283,17 @@ func RegistrableSuffix(name string) string {
 		return name
 	}
 	return strings.Join(parts[len(parts)-2:], ".")
+}
+
+// sameNameSet reports whether the observed names are exactly the baseline set.
+func sameNameSet(observed []string, baseline map[string]struct{}) bool {
+	if len(observed) != len(baseline) {
+		return false
+	}
+	for _, name := range observed {
+		if _, ok := baseline[name]; !ok {
+			return false
+		}
+	}
+	return true
 }

@@ -233,3 +233,41 @@ func TestRegistrableSuffix(t *testing.T) {
 		}
 	}
 }
+
+func TestCompareFlagsADelegationChange(t *testing.T) {
+	t.Parallel()
+
+	base := baseline("192.0.2.1")
+	base.Delegations = map[string]struct{}{
+		"ns1.example.net": {}, "ns2.example.net": {},
+	}
+
+	// The same NS set with the same address is quiet.
+	got := dnsdiv.Compare(dnsdiv.Answer{
+		Resolver: "a", Addresses: []string{"192.0.2.1"},
+		Delegations: []string{"ns1.example.net", "ns2.example.net"},
+	}, base)
+	if got.Strength != dnsdiv.None {
+		t.Fatalf("unchanged delegation = %v (%s), want no signal", got.Strength, got.Reason)
+	}
+
+	// A different NS set is strong even when the address is unchanged: the
+	// name still resolves, but through a different zone.
+	got = dnsdiv.Compare(dnsdiv.Answer{
+		Resolver: "a", Addresses: []string{"192.0.2.1"},
+		Delegations: []string{"ns.evil.example"},
+	}, base)
+	if got.Strength != dnsdiv.Strong || !strings.Contains(got.Reason, "delegation") {
+		t.Fatalf("changed delegation = %v (%s), want a strong delegation signal", got.Strength, got.Reason)
+	}
+
+	// With no learned delegation there is nothing to compare.
+	fresh := baseline("192.0.2.1")
+	got = dnsdiv.Compare(dnsdiv.Answer{
+		Resolver: "a", Addresses: []string{"192.0.2.1"},
+		Delegations: []string{"ns1.example.net"},
+	}, fresh)
+	if got.Strength != dnsdiv.None {
+		t.Fatalf("unlearned delegation = %v, want no signal", got.Strength)
+	}
+}

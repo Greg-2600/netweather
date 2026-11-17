@@ -166,6 +166,10 @@ type Agent struct {
 	// LookupASN resolves an address's origin ASN for a new answer. Nil leaves a
 	// new address weak, which never carries a verdict on its own.
 	LookupASN func(ctx context.Context, addr netip.Addr) (int, error)
+	// DNSQueryNS asks one resolver for a name's NS set: the parent's
+	// delegation. Nil leaves the delegation signal unlearned; the address and
+	// RCODE signals still apply.
+	DNSQueryNS func(ctx context.Context, server, name string) ([]string, error)
 
 	mu      sync.RWMutex
 	targets []Target
@@ -436,6 +440,16 @@ func (a *Agent) divergeDNS(ctx context.Context, t Target, primary probe.Result, 
 			answered++
 			ans.CNAMESuffixes = dnsSuffixes(r.CNAMEs)
 			ans.ASNs = a.lookupNewASNs(ctx, r.Addresses, baselines[server])
+			if a.DNSQueryNS != nil {
+				names, err := a.DNSQueryNS(ctx, server, t.Query)
+				if err != nil {
+					a.logger().Debug("dns delegation query failed",
+						"event", "dns_delegation_failed", "component", "agent",
+						"target", t.Host, "resolver", server, "error", err)
+				} else {
+					ans.Delegations = names
+				}
+			}
 		}
 		answers = append(answers, ans)
 		if err := a.Divergence.RecordDNSAnswer(ctx, t.ID, ans); err != nil {

@@ -705,3 +705,300 @@ func TestDNSDoesNotUseTheSystemResolver(t *testing.T) {
 		t.Fatalf("class = %q, want a dns_ class", res.ErrorClass)
 	}
 }
+
+func TestDNSDoNSReadsTheDelegation(t *testing.T) {
+	t.Parallel()
+
+	server := startDNSResponder(t, func(query []byte) []byte {
+		msg, ok := decodeQuery(query)
+		if !ok || len(msg.Questions) != 1 {
+			return nil
+		}
+		if msg.Questions[0].Type != dnsmessage.TypeNS {
+			t.Errorf("question type = %v, want NS", msg.Questions[0].Type)
+		}
+		msg.Response = true
+		one, err := dnsmessage.NewName("ns2.example.net.")
+		if err != nil {
+			return nil
+		}
+		two, err := dnsmessage.NewName("ns1.example.net.")
+		if err != nil {
+			return nil
+		}
+		msg.Answers = []dnsmessage.Resource{
+			{
+				Header: dnsmessage.ResourceHeader{
+					Name: msg.Questions[0].Name, Type: dnsmessage.TypeNS,
+					Class: dnsmessage.ClassINET, TTL: 60,
+				},
+				Body: &dnsmessage.NSResource{NS: one},
+			},
+			{
+				Header: dnsmessage.ResourceHeader{
+					Name: msg.Questions[0].Name, Type: dnsmessage.TypeNS,
+					Class: dnsmessage.ClassINET, TTL: 60,
+				},
+				Body: &dnsmessage.NSResource{NS: two},
+			},
+		}
+		return packMessage(msg)
+	})
+
+	res := probe.NewDNS(nil).DoNS(context.Background(), server, "example.com")
+	if res.ErrorClass != "" || res.Err != nil {
+		t.Fatalf("DoNS = %s: %v", res.ErrorClass, res.Err)
+	}
+	want := []string{"ns1.example.net", "ns2.example.net"}
+	if len(res.Names) != len(want) || res.Names[0] != want[0] || res.Names[1] != want[1] {
+		t.Fatalf("names = %v, want %v sorted and de-duplicated", res.Names, want)
+	}
+
+	// A NOERROR answer with no NS records is NODATA, not an empty success.
+	empty := startDNSResponder(t, func(query []byte) []byte {
+		msg, ok := decodeQuery(query)
+		if !ok {
+			return nil
+		}
+		msg.Response = true
+		return packMessage(msg)
+	})
+	res = probe.NewDNS(nil).DoNS(context.Background(), empty, "example.com")
+	if res.ErrorClass != "dns_nodata" {
+		t.Fatalf("class = %q, want dns_nodata", res.ErrorClass)
+	}
+}
+
+// nsResponse answers an NS query with one NS record, so the TCP retry path and
+// the delegation parser share one shape.
+func nsResponse(query []byte, ns string) []byte {
+	msg, ok := decodeQuery(query)
+	if !ok || len(msg.Questions) != 1 {
+		return nil
+	}
+	name, err := dnsmessage.NewName(ns)
+	if err != nil {
+		return nil
+	}
+	msg.Response = true
+	msg.Answers = []dnsmessage.Resource{{
+		Header: dnsmessage.ResourceHeader{
+			Name: msg.Questions[0].Name, Type: dnsmessage.TypeNS,
+			Class: dnsmessage.ClassINET, TTL: 60,
+		},
+		Body: &dnsmessage.NSResource{NS: name},
+	}}
+	return packMessage(msg)
+}
+
+func TestDNSDoNSReportsRCODEs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		rcode int
+		want  string
+	}{
+		{"nxdomain", 3, "dns_nxdomain"},
+		{"servfail", 2, "dns_servfail"},
+		{"refused", 5, "dns_refused"},
+		{"not implemented", 4, "dns_error"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			server := startDNSResponder(t, func(query []byte) []byte {
+				return dnsResponse(query, tc.rcode, "")
+			})
+			res := probe.NewDNS(nil).DoNS(context.Background(), server, "example.com")
+			if res.ErrorClass != tc.want {
+				t.Fatalf("class = %q, want %q (%v)", res.ErrorClass, tc.want, res.Err)
+			}
+		})
+	}
+}
+
+func TestDNSDoNSErrors(t *testing.T) {
+	t.Parallel()
+
+	if res := probe.NewDNS(nil).DoNS(context.Background(), "", "example.com"); res.ErrorClass != "dns_config" {
+		t.Fatalf("empty server class = %q", res.ErrorClass)
+	}
+	if res := probe.NewDNS(nil).DoNS(context.Background(), "127.0.0.1:53", ""); res.ErrorClass != "dns_config" {
+		t.Fatalf("empty name class = %q", res.ErrorClass)
+	}
+	badName := probe.NewDNS(nil).DoNS(context.Background(), "127.0.0.1:53", strings.Repeat("a", 300)+".example")
+	if badName.ErrorClass != "dns_config" {
+		t.Fatalf("bad qname class = %q", badName.ErrorClass)
+	}
+
+	timeout := probe.NewDNS(func(context.Context, string, string) (net.Conn, error) {
+		return nil, context.DeadlineExceeded
+	})
+	if res := timeout.DoNS(context.Background(), "127.0.0.1:53", "example.com"); res.ErrorClass != "dns_timeout" {
+		t.Fatalf("timeout class = %q", res.ErrorClass)
+	}
+
+	refused := probe.NewDNS(func(context.Context, string, string) (net.Conn, error) {
+		return nil, errors.New("boom")
+	})
+	if res := refused.DoNS(context.Background(), "127.0.0.1:53", "example.com"); res.ErrorClass != "dns_error" {
+		t.Fatalf("plain error class = %q", res.ErrorClass)
+	}
+
+	writeFail := probe.NewDNS(func(context.Context, string, string) (net.Conn, error) {
+		return errConn{writeErr: errors.New("write failed")}, nil
+	})
+	if res := writeFail.DoNS(context.Background(), "127.0.0.1:53", "example.com"); res.ErrorClass != "dns_error" {
+		t.Fatalf("write failure class = %q", res.ErrorClass)
+	}
+
+	// A responder that answers with a mismatched id is not a usable delegation.
+	badAnswer := probe.NewDNS(func(context.Context, string, string) (net.Conn, error) {
+		return errConn{readErr: errors.New("garbage")}, nil
+	})
+	if res := badAnswer.DoNS(context.Background(), "127.0.0.1:53", "example.com"); res.ErrorClass != "dns_error" {
+		t.Fatalf("bad answer class = %q", res.ErrorClass)
+	}
+}
+
+func TestDNSDoNSRetriesATruncatedAnswerOverTCP(t *testing.T) {
+	t.Parallel()
+
+	tcpLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tcpLn.Close() })
+
+	addr := tcpLn.Addr().(*net.TCPAddr)
+	udpPC, err := net.ListenPacket("udp", addr.String())
+	if err != nil {
+		t.Fatalf("bind udp: %v", err)
+	}
+	t.Cleanup(func() { _ = udpPC.Close() })
+
+	go func() {
+		for {
+			conn, err := tcpLn.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer func() { _ = c.Close() }()
+				var size [2]byte
+				if _, err := readFully(c, size[:]); err != nil {
+					return
+				}
+				query := make([]byte, int(size[0])<<8|int(size[1]))
+				if _, err := readFully(c, query); err != nil {
+					return
+				}
+				answer := nsResponse(query, "ns1.example.net.")
+				if answer == nil {
+					return
+				}
+				framed := append([]byte{byte(len(answer) >> 8), byte(len(answer))}, answer...)
+				_, _ = c.Write(framed)
+			}(conn)
+		}
+	}()
+
+	go func() {
+		buf := make([]byte, 512)
+		for {
+			n, peer, err := udpPC.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			truncated := dnsResponse(buf[:n], 0, "")
+			truncated[2] |= 0x02 // TC: ask again over TCP
+			_, _ = udpPC.WriteTo(truncated, peer)
+		}
+	}()
+
+	res := probe.NewDNS(nil).DoNS(context.Background(), addr.String(), "example.com")
+	if res.ErrorClass != "" || res.Err != nil {
+		t.Fatalf("retry failed: %s: %v", res.ErrorClass, res.Err)
+	}
+	if len(res.Names) != 1 || res.Names[0] != "ns1.example.net" {
+		t.Fatalf("names = %v", res.Names)
+	}
+}
+
+func TestDNSDoNSTruncatedRetryFailureIsReported(t *testing.T) {
+	t.Parallel()
+
+	// UDP says truncated and there is no TCP listener on that port.
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = pc.Close() })
+
+	go func() {
+		buf := make([]byte, 512)
+		for {
+			n, peer, err := pc.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			truncated := dnsResponse(buf[:n], 0, "")
+			truncated[2] |= 0x02
+			_, _ = pc.WriteTo(truncated, peer)
+		}
+	}()
+
+	res := probe.NewDNS(nil).DoNS(context.Background(), pc.LocalAddr().String(), "example.com")
+	if !res.Failed() {
+		t.Fatal("a failed TCP retry reported success")
+	}
+	if !strings.HasPrefix(res.ErrorClass, "dns_") {
+		t.Fatalf("class = %q, want a dns_ class", res.ErrorClass)
+	}
+}
+
+func TestDNSCollectsTheCNAMEChain(t *testing.T) {
+	t.Parallel()
+
+	server := startDNSResponder(t, func(query []byte) []byte {
+		msg, ok := decodeQuery(query)
+		if !ok || len(msg.Questions) != 1 {
+			return nil
+		}
+		target, err := dnsmessage.NewName("edge.example.net.")
+		if err != nil {
+			return nil
+		}
+		msg.Response = true
+		msg.Answers = []dnsmessage.Resource{
+			{
+				Header: dnsmessage.ResourceHeader{
+					Name: msg.Questions[0].Name, Type: dnsmessage.TypeCNAME,
+					Class: dnsmessage.ClassINET, TTL: 60,
+				},
+				Body: &dnsmessage.CNAMEResource{CNAME: target},
+			},
+			{
+				Header: dnsmessage.ResourceHeader{
+					Name: target, Type: dnsmessage.TypeA,
+					Class: dnsmessage.ClassINET, TTL: 60,
+				},
+				Body: &dnsmessage.AResource{A: [4]byte{192, 0, 2, 10}},
+			},
+		}
+		return packMessage(msg)
+	})
+
+	res := probe.NewDNS(nil).Do(context.Background(), server, "www.example.com")
+	if res.Failed() {
+		t.Fatalf("lookup failed: %s: %v", res.ErrorClass, res.Err)
+	}
+	if len(res.CNAMEs) != 1 || res.CNAMEs[0] != "edge.example.net." {
+		t.Fatalf("CNAMEs = %v", res.CNAMEs)
+	}
+	if len(res.Addresses) != 1 || res.Addresses[0].String() != "192.0.2.10" {
+		t.Fatalf("addresses = %v", res.Addresses)
+	}
+}

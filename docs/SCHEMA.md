@@ -497,7 +497,7 @@ CREATE TABLE dns_observation (
     id         INTEGER PRIMARY KEY,
     target_id  TEXT NOT NULL REFERENCES target(id),
     resolver   TEXT NOT NULL,
-    kind       TEXT NOT NULL,               -- 'address','asn','cname_suffix'
+    kind       TEXT NOT NULL,               -- 'address','asn','cname_suffix','delegation'
     value      TEXT NOT NULL,
     first_seen INTEGER NOT NULL,
     last_seen  INTEGER NOT NULL

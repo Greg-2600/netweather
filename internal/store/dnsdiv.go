@@ -18,7 +18,7 @@ func (s *Store) RecordDNSAnswer(ctx context.Context, targetID string, ans dnsdiv
 	if ans.Resolver == "" {
 		return fmt.Errorf("store: dns answer needs a resolver")
 	}
-	if len(ans.Addresses) == 0 && len(ans.ASNs) == 0 && len(ans.CNAMESuffixes) == 0 {
+	if len(ans.Addresses) == 0 && len(ans.ASNs) == 0 && len(ans.CNAMESuffixes) == 0 && len(ans.Delegations) == 0 {
 		return nil
 	}
 
@@ -63,6 +63,11 @@ func (s *Store) RecordDNSAnswer(ctx context.Context, targetID string, ans dnsdiv
 	}
 	for _, suffix := range ans.CNAMESuffixes {
 		if err := record("cname_suffix", suffix); err != nil {
+			return err
+		}
+	}
+	for _, name := range ans.Delegations {
+		if err := record("delegation", name); err != nil {
 			return err
 		}
 	}
@@ -114,6 +119,11 @@ func (s *Store) DNSBaselines(ctx context.Context, targetID string, since time.Ti
 				base.CNAMESuffixes = make(map[string]struct{})
 			}
 			base.CNAMESuffixes[value] = struct{}{}
+		case "delegation":
+			if base.Delegations == nil {
+				base.Delegations = make(map[string]struct{})
+			}
+			base.Delegations[value] = struct{}{}
 		default:
 			if base.Addresses == nil {
 				base.Addresses = make(map[string]struct{})
