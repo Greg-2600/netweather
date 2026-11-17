@@ -837,3 +837,45 @@ func TestRollupForRejectsUnknownResolution(t *testing.T) {
 		t.Fatal("unknown resolution should be an error")
 	}
 }
+
+func TestSeriesReadsRollups(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	if err := s.Record(ctx, []store.Probe{probeAt(now.Add(-30*time.Minute), state.Up)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Record(ctx, []store.Probe{probeAt(now.Add(-20*time.Minute), state.Down)}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := s.Series(ctx, "t1", "local", "5m", now.Add(-time.Hour), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("5m series = %d buckets, want 2", len(rows))
+	}
+	if rows[0].Up != 1 || rows[1].Down != 1 {
+		t.Fatalf("series rows = %+v", rows)
+	}
+
+	if _, err := s.Fold(ctx, now); err != nil {
+		t.Fatal(err)
+	}
+	hourly, err := s.Series(ctx, "t1", "local", "1h", now.Add(-2*time.Hour), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hourly) == 0 || hourly[0].N != 2 {
+		t.Fatalf("hourly series = %+v", hourly)
+	}
+
+	if _, err := s.Series(ctx, "t1", "local", "2w", now.Add(-time.Hour), now); err == nil {
+		t.Fatal("unknown resolution should be an error")
+	}
+}

@@ -17,6 +17,7 @@ Honesty first, because a spec that implies more than the binary does is worse th
 | `GET /api/v1/logs` | **implemented** - reads the in-memory ring (`LOGGING.md` §9) |
 | `GET /api/v1/board` | **implemented** - the grid's data from the store |
 | `GET /api/v1/targets` | **implemented** - the target list with class/sector/country/state filters |
+| `GET /api/v1/targets/{id}/series` | **implemented** - rollup buckets at 5m/1h/1d |
 | `GET /api/v1/control`, `POST /api/v1/pause`, `POST /api/v1/resume` | **implemented** - the probe kill switch |
 | `GET /api/v1/targets/{id}/probes` | **implemented** - recent raw observations for one target |
 | `GET /api/v1/incidents`, `GET /api/v1/incidents/{id}` | **implemented** - the incident log and ranked attribution |
@@ -195,7 +196,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
-    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "incidents"],
+    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -385,6 +386,31 @@ Auth: bearer. The same rows as the board, with filters. All filters combine with
 - Unknown `class`, `sector`, or `country` values are data and simply match nothing.
 - No pagination in v1. The list is capped at 2000 targets and returned whole; the board has the same bound.
 
+### 6.10 `GET /api/v1/targets/{id}/series` — stable
+
+Auth: bearer. Rollup buckets over a window.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `resolution` | `5m` | `5m`, `1h`, or `1d` |
+| `from` | 24h ago | RFC 3339, inclusive |
+| `to` | now | RFC 3339, exclusive |
+
+```json
+{
+  "data": [
+    {"bucket": "2026-11-17T10:00:00Z", "n": 12, "up": 10, "degraded": 0,
+     "down": 2, "blocked": 0, "unknown": 0}
+  ],
+  "meta": {"request_id": "…", "count": 1}
+}
+```
+
+- Buckets are UTC-aligned to the resolution.
+- A bucket with no observations is absent, not zero-filled; a client that needs a continuous series must fill gaps itself.
+- `resolution=1h` requires the hourly fold to have run (it runs every ten minutes); `1d` likewise.
+- Unknown resolution, an unparseable timestamp, or `from >= to` is `400`.
+
 ---
 
 ## 7. Specified, not implemented
@@ -396,7 +422,6 @@ Each of these is a promise about shape, not a claim that it works. `GET /api/v1/
 | Endpoint | Tier | Purpose |
 |---|---|---|
 | `GET /api/v1/targets/{id}` | stable | One target with its current state and measurement metadata |
-| `GET /api/v1/targets/{id}/series` | stable | Rollups; `step=5m\|1h\|1d` |
 | `GET /api/v1/scopes/{scope}` | stable | Health, coverage, and baseline for `global`, `sector`, `country`, `asn`; `?value=` selects |
 | `GET /api/v1/anomalies` | stable | Detector output, advisory included |
 | `GET /api/v1/coverage` | stable | The blind-spot panel: ASN/country spread, measurable share, stale anchors |

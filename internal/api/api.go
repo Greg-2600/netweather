@@ -29,6 +29,7 @@ type Control interface {
 type ProbeReader interface {
 	RecentProbes(ctx context.Context, targetID, vantageID string, limit int) ([]store.ProbeRow, error)
 	TargetExists(ctx context.Context, targetID string) (bool, error)
+	Series(ctx context.Context, targetID, vantageID, resolution string, from, to time.Time) ([]store.Rollup, error)
 }
 
 // IncidentReader is the read side of the incident log.
@@ -189,7 +190,7 @@ type metaResponse struct {
 
 // capabilities is the runtime truth. A client should feature-detect here rather
 // than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "incidents"}
+var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents"}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}
@@ -353,8 +354,20 @@ func (s *server) handleTargetProbes(w http.ResponseWriter, r *http.Request) {
 
 	rest := strings.TrimPrefix(r.URL.Path, "/api/v1/targets/")
 	id, suffix, ok := strings.Cut(rest, "/")
+	if ok && suffix == "series" {
+		s.serveSeries(w, r, id)
+		return
+	}
 	if !ok || id == "" || suffix != "probes" {
 		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such endpoint")
+		return
+	}
+	s.serveProbes(w, r, id)
+}
+
+func (s *server) serveProbes(w http.ResponseWriter, r *http.Request, id string) {
+	if id == "" {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such target")
 		return
 	}
 
@@ -514,6 +527,99 @@ func (s *server) handleIncidentByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, r, detail, nil)
+}
+
+type seriesItem struct {
+	Bucket   string `json:"bucket"`
+	N        int    `json:"n"`
+	Up       int    `json:"up"`
+	Degraded int    `json:"degraded"`
+	Down     int    `json:"down"`
+	Blocked  int    `json:"blocked"`
+	Unknown  int    `json:"unknown"`
+}
+
+// serveSeries returns rollup buckets for one target at 5m, 1h, or 1d resolution.
+func (s *server) serveSeries(w http.ResponseWriter, r *http.Request, id string) {
+	if id == "" {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such target")
+		return
+	}
+
+	q := r.URL.Query()
+	resolution := q.Get("resolution")
+	if resolution == "" {
+		resolution = "5m"
+	}
+	switch resolution {
+	case "5m", "1h", "1d":
+	default:
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument,
+			"resolution must be 5m, 1h, or 1d")
+		return
+	}
+
+	now := time.Now().UTC()
+	from := now.Add(-24 * time.Hour)
+	to := now
+	if v := q.Get("from"); v != "" {
+		parsed, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "from must be RFC 3339")
+			return
+		}
+		from = parsed
+	}
+	if v := q.Get("to"); v != "" {
+		parsed, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "to must be RFC 3339")
+			return
+		}
+		to = parsed
+	}
+	if !from.Before(to) {
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "from must be before to")
+		return
+	}
+
+	exists, err := s.deps.Probes.TargetExists(r.Context(), id)
+	if err != nil {
+		s.deps.Logger.Error("target lookup failed", "event", "target_lookup_failed", "component", "http", "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "series unavailable")
+		return
+	}
+	if !exists {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such target")
+		return
+	}
+
+	vantage := s.deps.Vantage
+	if vantage == "" {
+		vantage = "local"
+	}
+
+	rows, err := s.deps.Probes.Series(r.Context(), id, vantage, resolution, from, to)
+	if err != nil {
+		s.deps.Logger.Error("series failed", "event", "series_failed", "component", "http", "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "series unavailable")
+		return
+	}
+
+	out := make([]seriesItem, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, seriesItem{
+			Bucket:   row.Bucket.UTC().Format(time.RFC3339),
+			N:        row.N,
+			Up:       row.Up,
+			Degraded: row.Degraded,
+			Down:     row.Down,
+			Blocked:  row.Blocked,
+			Unknown:  row.Unknown,
+		})
+	}
+
+	writeData(w, r, out, &Meta{Count: len(out)})
 }
 
 type controlState struct {

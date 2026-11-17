@@ -600,8 +600,14 @@ func TestPauseRejectsGET(t *testing.T) {
 
 type fakeProbes struct {
 	rows      map[string][]store.ProbeRow
+	series    []store.Rollup
 	existsErr error
 	rowsErr   error
+	seriesErr error
+}
+
+func (f *fakeProbes) Series(context.Context, string, string, string, time.Time, time.Time) ([]store.Rollup, error) {
+	return f.series, f.seriesErr
 }
 
 func (f *fakeProbes) RecentProbes(_ context.Context, id, _ string, limit int) ([]store.ProbeRow, error) {
@@ -1140,6 +1146,90 @@ func TestTargetsRequireAuth(t *testing.T) {
 	t.Parallel()
 
 	rec := do(targetsFixture(t), http.MethodGet, "/api/v1/targets", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+func TestTargetSeries(t *testing.T) {
+	t.Parallel()
+
+	reader := &fakeProbes{
+		rows: map[string][]store.ProbeRow{"t1": nil},
+		series: []store.Rollup{
+			{Bucket: time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC), N: 12, Up: 10, Down: 2},
+			{Bucket: time.Date(2026, 11, 17, 11, 0, 0, 0, time.UTC), N: 12, Up: 12},
+		},
+	}
+
+	rec := do(newProbesHandler(t, reader), http.MethodGet,
+		"/api/v1/targets/t1/series?resolution=1h&from=2026-11-17T09:00:00Z&to=2026-11-17T12:00:00Z", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var items []struct {
+		Bucket string `json:"bucket"`
+		N      int    `json:"n"`
+		Up     int    `json:"up"`
+		Down   int    `json:"down"`
+	}
+	if err := json.Unmarshal(env.Data, &items); err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("items = %d", len(items))
+	}
+	if items[0].Bucket != "2026-11-17T10:00:00Z" || items[0].N != 12 || items[0].Down != 2 {
+		t.Fatalf("first bucket = %+v", items[0])
+	}
+}
+
+func TestTargetSeriesRejectsBadWindowsAndResolutions(t *testing.T) {
+	t.Parallel()
+
+	h := newProbesHandler(t, &fakeProbes{rows: map[string][]store.ProbeRow{"t1": nil}})
+	for _, query := range []string{
+		"resolution=2w",
+		"from=yesterday",
+		"to=soon",
+		"from=2026-11-17T12:00:00Z&to=2026-11-17T11:00:00Z",
+	} {
+		rec := do(h, http.MethodGet, "/api/v1/targets/t1/series?"+query, testToken)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", query, rec.Code)
+		}
+	}
+}
+
+func TestTargetSeriesUnknownTarget(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newProbesHandler(t, &fakeProbes{rows: map[string][]store.ProbeRow{}}),
+		http.MethodGet, "/api/v1/targets/nope/series", testToken)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestTargetSeriesUnavailableWithoutReader(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/api/v1/targets/t1/series", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+}
+
+func TestTargetSeriesRequiresAuth(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newProbesHandler(t, &fakeProbes{rows: map[string][]store.ProbeRow{"t1": nil}}),
+		http.MethodGet, "/api/v1/targets/t1/series", "")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rec.Code)
 	}

@@ -262,6 +262,57 @@ func (s *Store) RollupFor(ctx context.Context, resolution, targetID, vantageID s
 	return r, nil
 }
 
+// Series returns rollup buckets in [from, to) at the requested resolution.
+func (s *Store) Series(ctx context.Context, targetID, vantageID, resolution string, from, to time.Time) ([]Rollup, error) {
+	var (
+		query string
+		unit  int64
+	)
+	switch resolution {
+	case "5m":
+		query = `SELECT bucket, n, up, degraded, down, blocked, unknown
+		         FROM rollup_5m WHERE target_id = ? AND vantage_id = ?
+		           AND bucket >= ? AND bucket < ? ORDER BY bucket`
+		unit = 300000
+	case "1h":
+		query = `SELECT bucket, n, up, degraded, down, blocked, unknown
+		         FROM rollup_1h WHERE target_id = ? AND vantage_id = ?
+		           AND bucket >= ? AND bucket < ? ORDER BY bucket`
+		unit = 3600000
+	case "1d":
+		query = `SELECT bucket, n, up, degraded, down, blocked, unknown
+		         FROM rollup_1d WHERE target_id = ? AND vantage_id = ?
+		           AND bucket >= ? AND bucket < ? ORDER BY bucket`
+		unit = 86400000
+	default:
+		return nil, fmt.Errorf("store: unknown resolution %q", resolution)
+	}
+
+	rows, err := s.reader.QueryContext(ctx, query, targetID, vantageID,
+		from.UnixMilli()/unit, to.UnixMilli()/unit)
+	if err != nil {
+		return nil, fmt.Errorf("store: series: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []Rollup
+	for rows.Next() {
+		var (
+			r      Rollup
+			bucket int64
+		)
+		if err := rows.Scan(&bucket, &r.N, &r.Up, &r.Degraded, &r.Down, &r.Blocked, &r.Unknown); err != nil {
+			return nil, fmt.Errorf("store: scan series: %w", err)
+		}
+		r.Bucket = time.UnixMilli(bucket * unit).UTC()
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: series: %w", err)
+	}
+	return out, nil
+}
+
 // RollupAt reads one 5-minute bucket.
 func (s *Store) RollupAt(ctx context.Context, targetID, vantageID string, bucket time.Time) (Rollup, error) {
 	r := Rollup{Bucket: bucket.UTC().Truncate(5 * time.Minute)}
