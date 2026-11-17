@@ -119,7 +119,7 @@ Semantics (**implemented** for the HTTP surface):
 
 - Scope by `target`, `vantage`, `component`, or `error_class`. A scope must name at least one; "trace everything" is deliberately not expressible.
 - **Time-boxed by construction.** There is no "forever"; the maximum is 1 hour, and the state is persisted in `/data/debug.json` so a restart does not silently keep it on.
-- A scoped session pins the ring's `debug` records for that target, so the evidence survives the session ending.
+- A scoped session admits its records to the ring and the file sink. The ring is bounded (2,000 records / 4 MB) and evicts oldest first, so it is not a pin: the durable evidence for a session is the file sink, and the ring is what the UI can show right now.
 - Expiry logs one `INFO` line: `debug scope expired`.
 
 The HTTP contract is in `API.md` §6.19 (`POST/GET /api/v1/debug/scopes`, `DELETE /api/v1/debug/scopes/{id}`), and the CLI verbs above are implemented: `netweather debug enable|status|disable` talk to that API with `NETWEATHER_UI_TOKEN` (or `_FILE`) and `NETWEATHER_API_URL` (default `http://127.0.0.1:2600`).

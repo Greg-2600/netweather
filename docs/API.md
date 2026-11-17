@@ -752,7 +752,7 @@ Auth: bearer. Time-boxed verbose logging for one target, component, vantage, or 
 
 Scopes persist in `/data/debug.json`, so a restart does not silently keep one enabled; scopes that expired while the process was down are dropped at startup with one `INFO` line each. Expiry is logged as `debug scope expired`. Enable/disable actions are logged at `INFO` with the request id.
 
-The scope handler is the only level decision: sinks are built at `TRACE`, so enabling a scope works even when `NETWEATHER_LOG_LEVEL=info`. Records matching an active scope are also pinned in the ring, so the evidence outlives the session.
+The scope handler is the only level decision: sinks are built at `TRACE`, so enabling a scope works even when `NETWEATHER_LOG_LEVEL=info`. Records matching an active scope enter the ring and the file sink; the ring is bounded (2,000 records / 4 MB) and evicts oldest first, so the durable evidence is the file sink rather than a pin in memory.
 
 ### 6.20 `GET /api/v1/coverage/history` — stable
 
