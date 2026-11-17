@@ -1181,6 +1181,8 @@ func TestWorldGroupsByCountry(t *testing.T) {
 		`data-country="US"`, `data-country="DE"`,
 		`href="/?group=country&amp;country=US"`,
 		"Down</span>", // the US bucket's worst state is named on the tile
+		// The flag is decorative; the code is the text that always renders.
+		`data-testid="country-flag"`, "🇺🇸",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("world page missing %q", want)

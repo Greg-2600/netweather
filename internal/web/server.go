@@ -1413,11 +1413,32 @@ type countryView struct {
 	Healthy  bool
 	Counts   []countView
 	Href     string
+	// Flag is the regional-indicator pair for the code. It is decorative: the
+	// code is always rendered as text, so a platform without flag glyphs loses
+	// nothing (DESIGN.md §10.7).
+	Flag string
 	// Feed is the world-view overlay: the highest-severity external event for
 	// this country, labelled with its feed and kind. It is evidence, never a
 	// country-wide verdict.
 	Feed         string
 	FeedSeverity string
+}
+
+// flagFor maps an ISO-3166-1 alpha-2 code to its regional-indicator pair. An
+// invalid code gets an empty string rather than a guessed flag.
+func flagFor(code string) string {
+	if len(code) != 2 {
+		return ""
+	}
+	code = strings.ToUpper(code)
+	runes := make([]rune, 0, 2)
+	for _, r := range code {
+		if r < 'A' || r > 'Z' {
+			return ""
+		}
+		runes = append(runes, 0x1F1E6+(r-'A'))
+	}
+	return string(runes)
 }
 
 // handleWorld aggregates the board by country. A target with no learned
@@ -1492,6 +1513,7 @@ func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
 			WorstCls: worst.CSSClass(),
 			Glyph:    worst.Glyph(),
 			Healthy:  healthy,
+			Flag:     flagFor(code),
 			Href:     "/?group=country&country=" + url.QueryEscape(code),
 		}
 		for _, st := range []board.State{

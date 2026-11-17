@@ -29,6 +29,7 @@
       <a class="tile country {{.WorstCls}}" href="{{.Href}}"
          data-testid="country" data-country="{{.Code}}" data-state="{{.WorstCls}}"
          aria-label="{{.Code}}: {{.Count}} target(s), worst {{.Worst}}">
+        {{if .Flag}}<span class="flag" aria-hidden="true" data-testid="country-flag">{{.Flag}}</span>{{end}}
         <span class="country-code">{{.Code}}</span>
         <span class="country-count">{{.Count}} target(s)</span>
         <span class="state"><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Worst}}</span>

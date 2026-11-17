@@ -261,6 +261,13 @@ body.auth {
   letter-spacing: 0.06em;
 }
 
+/* Decorative: the code is always rendered as text, so a platform without flag
+   glyphs still shows the country (DESIGN.md §10.7). */
+.tile.country .flag {
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
 .tile.country .country-count {
   color: var(--muted);
   font-size: 0.78rem;
