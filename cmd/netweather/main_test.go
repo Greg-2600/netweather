@@ -219,6 +219,71 @@ targets:
 	}
 }
 
+func TestSeedCommand(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "targets.yaml")
+	yaml := `version: 1
+targets:
+  - name: Example
+    host: example.com
+    port: 443
+    probe: http
+    class: reference
+    tier: 0
+`
+	if err := os.WriteFile(cfg, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NETWEATHER_CONFIG", cfg)
+	t.Setenv("NETWEATHER_DATA", filepath.Join(dir, "data"))
+
+	var out bytes.Buffer
+	if err := run([]string{"seed"}, &out); err != nil {
+		t.Fatalf("run(seed): %v", err)
+	}
+	if !strings.Contains(out.String(), "seeded 1 targets") {
+		t.Fatalf("output = %q", out.String())
+	}
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(dir, "data", "netweather.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+
+	rows, err := st.TargetsWithState(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Host != "example.com" {
+		t.Fatalf("rows = %+v", rows)
+	}
+}
+
+func TestSeedCommandRequiresConfig(t *testing.T) {
+	t.Setenv("NETWEATHER_CONFIG", "")
+	t.Setenv("NETWEATHER_DATA", t.TempDir())
+
+	if err := run([]string{"seed"}, io.Discard); err == nil {
+		t.Fatal("seed without NETWEATHER_CONFIG should fail")
+	}
+}
+
+func TestSeedCommandRejectsBadConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "targets.yaml")
+	if err := os.WriteFile(cfg, []byte("version: 1\ntargets:\n  - name: x\n    host: x.com\n    port: 22\n    probe: tcp\n    class: service\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NETWEATHER_CONFIG", cfg)
+	t.Setenv("NETWEATHER_DATA", filepath.Join(dir, "data"))
+
+	if err := run([]string{"seed"}, io.Discard); err == nil {
+		t.Fatal("seed should reject an invalid target file")
+	}
+}
+
 func TestHealthcheckFailsWithoutAServer(t *testing.T) {
 	t.Setenv("NETWEATHER_HEALTHCHECK_URL", "http://127.0.0.1:1/healthz")
 

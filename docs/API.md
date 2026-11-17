@@ -480,10 +480,10 @@ The binary is also scriptable, and its contract matters as much as HTTP:
 | `netweather version` | 0 | one line |
 | `netweather healthcheck` | 0 healthy, 1 unhealthy | silent |
 | `netweather serve` | 0 clean shutdown, 1 startup or runtime failure | logs to stdout |
-| `netweather seed` | 0 applied, 1 rejected | summary *(specified)* |
+| `netweather seed` | 0 applied, 1 rejected | summary |
 | `netweather export` | 0 success, 1 error | data to stdout, logs to stderr *(specified)* |
 
-Commands that exist in the binary today: `serve`, `version`, `healthcheck`. `seed`, `export`, and the `debug`/`pause` verbs are specified and return an error until implemented.
+Commands that exist in the binary today: `serve`, `version`, `healthcheck`, `seed`. `export`, `debug`, and the `pause` verb are specified; pause/resume are available over HTTP.
 
 Rules:
 

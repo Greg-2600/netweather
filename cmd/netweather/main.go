@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -66,6 +67,9 @@ func run(args []string, stdout io.Writer) error {
 
 	case "healthcheck":
 		return healthcheck()
+
+	case "seed":
+		return seedCommand(stdout)
 
 	case "serve":
 		lg.Info("starting",
@@ -340,6 +344,39 @@ func seedTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 		})
 	}
 	return out, nil
+}
+
+// seedCommand loads NETWEATHER_CONFIG into the database without starting a
+// server. It is the populate-and-exit path for images, CI and first installs.
+func seedCommand(out io.Writer) error {
+	path := strings.TrimSpace(os.Getenv("NETWEATHER_CONFIG"))
+	if path == "" {
+		return errors.New("seed: NETWEATHER_CONFIG must point at a targets file")
+	}
+
+	dataDir := os.Getenv("NETWEATHER_DATA")
+	if dataDir == "" {
+		dataDir = "./data"
+	}
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(dataDir, "netweather.db"))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
+
+	if err := st.EnsureVantage(ctx, "local", "direct", "primary"); err != nil {
+		return err
+	}
+
+	targets, err := loadTargets(ctx, st)
+	if err != nil {
+		return err
+	}
+
+	_, err = fmt.Fprintf(out, "seeded %d targets into %s\n", len(targets), st.Path())
+	return err
 }
 
 // healthcheck is the container liveness probe. It asks the local listener for
