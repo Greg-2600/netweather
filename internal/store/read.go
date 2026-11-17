@@ -293,6 +293,9 @@ type Rollup struct {
 	Down     int
 	Blocked  int
 	Unknown  int
+	// EWMAs, not percentiles (SCHEMA.md §6.2). Zero means "no latency sample".
+	Ewma50MS int
+	Ewma95MS int
 }
 
 // RollupFor reads one bucket at 5m, 1h, or 1d resolution. A missing bucket is a
@@ -306,17 +309,20 @@ func (s *Store) RollupFor(ctx context.Context, resolution, targetID, vantageID s
 	)
 	switch resolution {
 	case "5m":
-		query = `SELECT n, up, degraded, down, blocked, unknown
+		query = `SELECT n, up, degraded, down, blocked, unknown,
+		                COALESCE(ewma50_ms, 0), COALESCE(ewma95_ms, 0)
 		         FROM rollup_5m WHERE target_id = ? AND vantage_id = ? AND bucket = ?`
 		bucketID = bucket.UnixMilli() / 300000
 		r.Bucket = bucket.UTC().Truncate(5 * time.Minute)
 	case "1h":
-		query = `SELECT n, up, degraded, down, blocked, unknown
+		query = `SELECT n, up, degraded, down, blocked, unknown,
+		                COALESCE(ewma50_ms, 0), COALESCE(ewma95_ms, 0)
 		         FROM rollup_1h WHERE target_id = ? AND vantage_id = ? AND bucket = ?`
 		bucketID = bucket.UnixMilli() / 3600000
 		r.Bucket = bucket.UTC().Truncate(time.Hour)
 	case "1d":
-		query = `SELECT n, up, degraded, down, blocked, unknown
+		query = `SELECT n, up, degraded, down, blocked, unknown,
+		                COALESCE(ewma50_ms, 0), COALESCE(ewma95_ms, 0)
 		         FROM rollup_1d WHERE target_id = ? AND vantage_id = ? AND bucket = ?`
 		bucketID = bucket.UnixMilli() / 86400000
 		r.Bucket = bucket.UTC().Truncate(24 * time.Hour)
@@ -325,7 +331,8 @@ func (s *Store) RollupFor(ctx context.Context, resolution, targetID, vantageID s
 	}
 
 	err := s.reader.QueryRowContext(ctx, query, targetID, vantageID, bucketID).
-		Scan(&r.N, &r.Up, &r.Degraded, &r.Down, &r.Blocked, &r.Unknown)
+		Scan(&r.N, &r.Up, &r.Degraded, &r.Down, &r.Blocked, &r.Unknown,
+			&r.Ewma50MS, &r.Ewma95MS)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, nil
 	}
@@ -343,17 +350,20 @@ func (s *Store) Series(ctx context.Context, targetID, vantageID, resolution stri
 	)
 	switch resolution {
 	case "5m":
-		query = `SELECT bucket, n, up, degraded, down, blocked, unknown
+		query = `SELECT bucket, n, up, degraded, down, blocked, unknown,
+		                COALESCE(ewma50_ms, 0), COALESCE(ewma95_ms, 0)
 		         FROM rollup_5m WHERE target_id = ? AND vantage_id = ?
 		           AND bucket >= ? AND bucket < ? ORDER BY bucket`
 		unit = 300000
 	case "1h":
-		query = `SELECT bucket, n, up, degraded, down, blocked, unknown
+		query = `SELECT bucket, n, up, degraded, down, blocked, unknown,
+		                COALESCE(ewma50_ms, 0), COALESCE(ewma95_ms, 0)
 		         FROM rollup_1h WHERE target_id = ? AND vantage_id = ?
 		           AND bucket >= ? AND bucket < ? ORDER BY bucket`
 		unit = 3600000
 	case "1d":
-		query = `SELECT bucket, n, up, degraded, down, blocked, unknown
+		query = `SELECT bucket, n, up, degraded, down, blocked, unknown,
+		                COALESCE(ewma50_ms, 0), COALESCE(ewma95_ms, 0)
 		         FROM rollup_1d WHERE target_id = ? AND vantage_id = ?
 		           AND bucket >= ? AND bucket < ? ORDER BY bucket`
 		unit = 86400000
@@ -374,7 +384,8 @@ func (s *Store) Series(ctx context.Context, targetID, vantageID, resolution stri
 			r      Rollup
 			bucket int64
 		)
-		if err := rows.Scan(&bucket, &r.N, &r.Up, &r.Degraded, &r.Down, &r.Blocked, &r.Unknown); err != nil {
+		if err := rows.Scan(&bucket, &r.N, &r.Up, &r.Degraded, &r.Down, &r.Blocked, &r.Unknown,
+			&r.Ewma50MS, &r.Ewma95MS); err != nil {
 			return nil, fmt.Errorf("store: scan series: %w", err)
 		}
 		r.Bucket = time.UnixMilli(bucket * unit).UTC()
@@ -391,11 +402,13 @@ func (s *Store) RollupAt(ctx context.Context, targetID, vantageID string, bucket
 	r := Rollup{Bucket: bucket.UTC().Truncate(5 * time.Minute)}
 
 	err := s.reader.QueryRowContext(ctx, `
-		SELECT n, up, degraded, down, blocked, unknown
+		SELECT n, up, degraded, down, blocked, unknown,
+		       COALESCE(ewma50_ms, 0), COALESCE(ewma95_ms, 0)
 		FROM rollup_5m
 		WHERE target_id = ? AND vantage_id = ? AND bucket = ?`,
 		targetID, vantageID, bucket.UnixMilli()/300000).
-		Scan(&r.N, &r.Up, &r.Degraded, &r.Down, &r.Blocked, &r.Unknown)
+		Scan(&r.N, &r.Up, &r.Degraded, &r.Down, &r.Blocked, &r.Unknown,
+			&r.Ewma50MS, &r.Ewma95MS)
 	if errors.Is(err, sql.ErrNoRows) {
 		// A missing bucket is a legitimate zero, not a failure.
 		return r, nil

@@ -833,14 +833,9 @@ Ten rows: RTT sparkline, loss bar, baseline band, step-change highlight.
 
 Click any tile:
 
-- State + why, in plain English ("403 with `cf-mitigated: challenge` — Cloudflare blocked this request, 4m ago")
-- Latency chart (p50/p95)
-- Last 20 probes: stage, status, ms, error class
-- ASN, country, prefix, CDN, sector
-- Official status if configured, with corroboration verdict
-- State-change history
-- DNS divergence (3 resolvers side by side)
-- Certificate issuer + SPKI pin status
+- **Implemented:** state + why (the classifier's reason), the host, the 24-hour hourly strip, and the last 20 probes with stage, status, ms, error class and the detail line.
+- **Implemented:** the 24-hour strip's bar shows the healthy share per hour and each cell's title carries the counts and EWMA latency. It is not a p50/p95 chart: the rollups hold EWMAs, not percentiles (`SCHEMA.md` §6.2), and calling the smoothing a percentile would be the quiet lie the project avoids. A true percentile chart waits on the histogram.
+- **Specified:** ASN, prefix, CDN, official status, state-change history, DNS divergence, and certificate issuer/pin status.
 
 ### 10.6 Coverage panel
 

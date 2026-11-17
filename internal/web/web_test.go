@@ -62,6 +62,37 @@ func (f *fakeHistory) RecentProbes(context.Context, string, string, int) ([]stor
 	return f.rows, f.err
 }
 
+type fakeSeries struct {
+	points []store.Rollup
+	err    error
+}
+
+func (f *fakeSeries) Series(context.Context, string, string, string, time.Time, time.Time) ([]store.Rollup, error) {
+	return f.points, f.err
+}
+
+func newServerWithSeries(t *testing.T, token string, m *board.Memory, series web.Series) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		Series:    series,
+		Vantage:   "local",
+		Token:     token,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
 func newServerWithHistory(t *testing.T, token string, m *board.Memory, history web.History) *httptest.Server {
 	t.Helper()
 
@@ -82,6 +113,86 @@ func newServerWithHistory(t *testing.T, token string, m *board.Memory, history w
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
 	return ts
+}
+
+func TestTargetDetailShowsThe24HourStrip(t *testing.T) {
+	t.Parallel()
+
+	series := &fakeSeries{points: []store.Rollup{
+		{
+			Bucket: time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC),
+			N:      12, Up: 12, Ewma50MS: 42,
+		},
+		{
+			Bucket: time.Date(2026, 11, 17, 11, 0, 0, 0, time.UTC),
+			N:      12, Up: 3, Degraded: 1, Down: 8, Ewma50MS: 900,
+		},
+	}}
+
+	ts := newServerWithSeries(t, testToken, fixture(), series)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if !strings.Contains(page, `data-testid="target-strip"`) {
+		t.Fatalf("strip missing:\n%s", page)
+	}
+	if got := strings.Count(page, `class="cell`); got != 2 {
+		t.Fatalf("cells = %d, want 2", got)
+	}
+	for _, want := range []string{
+		"10:00 UTC: 12/12 healthy, EWMA 42 ms",
+		"11:00 UTC: 4/12 healthy, EWMA 900 ms",
+		"strip-down",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("strip missing %q", want)
+		}
+	}
+	if strings.Contains(page, `data-testid="no-strip"`) {
+		t.Error("empty state rendered with data present")
+	}
+}
+
+func TestTargetDetailStripEmptyAndUnavailable(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithSeries(t, testToken, fixture(), &fakeSeries{})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	if !strings.Contains(page, `data-testid="no-strip"`) {
+		t.Fatal("empty series did not say so")
+	}
+
+	ts2 := newServerWithSeries(t, testToken, fixture(), &fakeSeries{err: errors.New("db down")})
+	client2, _ := newClient(t)
+	login(t, ts2, client2, testToken)
+
+	resp, err = client2.Get(ts2.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = body(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("a series failure should not take the page down: %d", resp.StatusCode)
+	}
+	if !strings.Contains(page, "temporarily unavailable") {
+		t.Error("series failure was not reported")
+	}
 }
 
 func TestTargetDetailShowsProbeHistory(t *testing.T) {

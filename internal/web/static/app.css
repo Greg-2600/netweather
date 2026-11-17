@@ -79,6 +79,12 @@ a { color: var(--accent); }
 
 .trend-bar { letter-spacing: -0.1em; color: var(--accent, #7ee2a8); }
 
+.strip { display: flex; flex-wrap: nowrap; gap: 0.05rem; margin: 0.15rem 0 0.25rem; font-size: 1.15rem; line-height: 1; }
+.strip .cell { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.strip .strip-ok { color: var(--up); }
+.strip .strip-warn { color: var(--degraded); }
+.strip .strip-down { color: var(--down); }
+
 ul.targets { margin: 0.25rem 0 1rem; padding-left: 1.1rem; }
 ul.targets li { margin: 0.1rem 0; }
 

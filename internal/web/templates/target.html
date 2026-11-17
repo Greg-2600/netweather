@@ -22,6 +22,16 @@
         {{if .Tile.Since}}<span class="muted">since {{.Tile.Since}}</span>{{end}}
       </p>
 
+      <h2 class="section-title">Last 24 hours</h2>
+      {{if .Strip}}
+      <p class="strip" data-testid="target-strip">
+        {{range .Strip}}<span class="cell {{.Class}}" title="{{.Title}}" aria-hidden="true">{{.Char}}</span>{{end}}
+      </p>
+      <p class="muted small">Hourly buckets, left to right. The bar shows the healthy share; hover for counts and EWMA latency.</p>
+      {{else}}
+      <p class="muted" data-testid="no-strip">{{.StripNote}}</p>
+      {{end}}
+
       <h2 class="section-title">Recent probes</h2>
       {{if .Probes}}
       <table class="probes" data-testid="probe-history">

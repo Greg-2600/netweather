@@ -419,10 +419,65 @@ func badgeFor(t board.Target) (string, string) {
 	return "", ""
 }
 
+// toStrip turns hourly buckets into a 24-hour strip. The bar conveys the share
+// of healthy observations; the title carries the exact numbers and the EWMA
+// latency, because an EWMA is not a percentile and the UI must not imply it is.
+func toStrip(points []store.Rollup) []stripCell {
+	out := make([]stripCell, 0, len(points))
+	for _, p := range points {
+		// The rollup's "up" column already folds in up_reachability
+		// (store.counters), so only DEGRADED needs adding: it is not healthy,
+		// but it is not an outage either.
+		healthy := p.Up + p.Degraded
+
+		share := 0.0
+		if p.N > 0 {
+			share = float64(healthy) / float64(p.N)
+		}
+		idx := int(share * float64(len(trendBlocks)-1))
+		if idx < 0 {
+			idx = 0
+		}
+		if idx >= len(trendBlocks) {
+			idx = len(trendBlocks) - 1
+		}
+
+		class := "strip-ok"
+		switch {
+		case p.Down > 0 && share < 0.5:
+			class = "strip-down"
+		case share < 0.9:
+			class = "strip-warn"
+		}
+
+		latency := "no latency sample"
+		if p.Ewma50MS > 0 {
+			latency = fmt.Sprintf("EWMA %d ms", p.Ewma50MS)
+		}
+		out = append(out, stripCell{
+			Char:  string(trendBlocks[idx]),
+			Class: class,
+			Title: fmt.Sprintf("%s UTC: %d/%d healthy, %s",
+				p.Bucket.UTC().Format("15:04"), healthy, p.N, latency),
+		})
+	}
+	return out
+}
+
 type targetView struct {
-	Tile    tileView
-	Probes  []probeView
-	History bool
+	Tile      tileView
+	Probes    []probeView
+	History   bool
+	Strip     []stripCell
+	StripNote string
+}
+
+// stripCell is one hour of the 24-hour strip. The bar is characters because the
+// page's CSP has no style-src; the title carries the exact numbers.
+type stripCell struct {
+	Char  string
+	Class string
+	Title string
 }
 
 type probeView struct {
@@ -457,13 +512,32 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 		}
 
 		view := targetView{Tile: toTile(t)}
+		vantage := s.deps.Vantage
+		if vantage == "" {
+			vantage = "local"
+		}
+
+		if s.deps.Series == nil {
+			view.StripNote = "24-hour history is not configured on this instance."
+		} else {
+			now := time.Now().UTC()
+			points, err := s.deps.Series.Series(r.Context(), t.ID, vantage, "1h",
+				now.Add(-24*time.Hour), now)
+			switch {
+			case err != nil:
+				s.deps.Logger.Warn("series failed",
+					"event", "series_failed", "component", "http", "target", t.Host, "error", err)
+				view.StripNote = "24-hour history is temporarily unavailable."
+			case len(points) == 0:
+				view.StripNote = "No hourly rollups yet; the fold runs every ten minutes."
+			default:
+				view.Strip = toStrip(points)
+			}
+		}
+
 		if s.deps.History != nil {
 			view.History = true
 
-			vantage := s.deps.Vantage
-			if vantage == "" {
-				vantage = "local"
-			}
 			rows, err := s.deps.History.RecentProbes(r.Context(), t.ID, vantage, 20)
 			if err != nil {
 				s.deps.Logger.Warn("probe history failed",
