@@ -68,6 +68,7 @@ func (i Instruments) Run(ctx context.Context, t Target) probe.Result {
 			Latency: r.Latency, ErrorClass: r.ErrorClass, Err: r.Err,
 			CertIssuer: r.Issuer, CertNotAfter: r.NotAfter,
 			CertChainLength: r.ChainLength, CertIntermediateSPKI: r.IntermediateSPKI,
+			CertLeafFingerprint: r.LeafFingerprint,
 		}
 	case "tcp", "tcpping":
 		if i.TCP == nil {
@@ -111,6 +112,9 @@ type Sink interface {
 // business pinning someone else's names.
 type Pins interface {
 	ObserveCert(ctx context.Context, obs store.CertObservation, at time.Time) (changed bool, advisory string, err error)
+	// ObserveLeaf records the leaf fingerprint and reports whether it moved.
+	// A leaf change is informational: leaves rotate on a schedule.
+	ObserveLeaf(ctx context.Context, targetID, fingerprint string, at time.Time) (changed bool, err error)
 }
 
 // Agent runs due targets and records the results.
@@ -267,6 +271,22 @@ func (a *Agent) Step(ctx context.Context) (int, error) {
 				a.logger().Info("certificate chain changed",
 					"event", "cert_chain_changed", "component", "agent",
 					"target", t.Host, "detail", advisory)
+			}
+		}
+
+		if a.Pins != nil && t.Instrument == "tls" && res.CertLeafFingerprint != "" {
+			leafChanged, err := a.Pins.ObserveLeaf(ctx, t.ID, res.CertLeafFingerprint, now)
+			switch {
+			case err != nil:
+				a.logger().Debug("leaf fingerprint check failed",
+					"event", "cert_leaf_failed", "component", "agent",
+					"target", t.Host, "error", err)
+			case leafChanged:
+				// Leaf rotation is expected, so this is informational only
+				// (CLASSIFIER.md §3.5 step 4).
+				a.logger().Info("leaf certificate changed",
+					"event", "cert_leaf_changed", "component", "agent",
+					"target", t.Host)
 			}
 		}
 

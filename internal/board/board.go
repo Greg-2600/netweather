@@ -62,6 +62,9 @@ type Target struct {
 	// and empty mean "not learned yet".
 	CertChainLen         int
 	CertIntermediateSPKI string
+	// CertLeafFingerprint is the learned leaf fingerprint. A change is
+	// informational, because leaves rotate on a schedule.
+	CertLeafFingerprint string
 }
 
 // Source returns the current board. It must be safe for concurrent use.

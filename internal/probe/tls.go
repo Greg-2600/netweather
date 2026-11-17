@@ -50,8 +50,11 @@ type TLSResult struct {
 	// IntermediateSPKI is the SHA-256 hex of the first intermediate's DER
 	// subjectPublicKeyInfo. Empty when the server sent only a leaf.
 	IntermediateSPKI string
-	ErrorClass       string
-	Err              error
+	// LeafFingerprint is the SHA-256 hex of the leaf certificate's DER bytes.
+	// A change is informational: leaves rotate on a schedule (CLASSIFIER.md §3.5).
+	LeafFingerprint string
+	ErrorClass      string
+	Err             error
 }
 
 // Failed reports a transport-class failure.
@@ -99,6 +102,10 @@ func (p *TLS) Do(ctx context.Context, address string) TLSResult {
 		res.Certificate = leaf
 		res.Issuer = leaf.Issuer.String()
 		res.NotAfter = leaf.NotAfter
+		// The leaf rotates on a schedule, so its fingerprint is recorded and
+		// reported, never used as a pin (CLASSIFIER.md §3.5 step 4).
+		sum := sha256.Sum256(leaf.Raw)
+		res.LeafFingerprint = hex.EncodeToString(sum[:])
 	}
 	if len(state.PeerCertificates) > 1 {
 		// The first intermediate is the one that actually signs the leaf, so it

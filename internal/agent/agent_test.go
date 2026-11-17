@@ -693,11 +693,13 @@ func TestStepLogsTheDecisionRecord(t *testing.T) {
 }
 
 type fakePins struct {
-	mu       sync.Mutex
-	changed  bool
-	advisory string
-	err      error
-	issuers  []string
+	mu        sync.Mutex
+	changed   bool
+	advisory  string
+	leafMoved bool
+	err       error
+	issuers   []string
+	leaves    []string
 }
 
 func (f *fakePins) ObserveCert(_ context.Context, obs store.CertObservation, _ time.Time) (bool, string, error) {
@@ -705,6 +707,13 @@ func (f *fakePins) ObserveCert(_ context.Context, obs store.CertObservation, _ t
 	defer f.mu.Unlock()
 	f.issuers = append(f.issuers, obs.Issuer)
 	return f.changed, f.advisory, f.err
+}
+
+func (f *fakePins) ObserveLeaf(_ context.Context, _, fingerprint string, _ time.Time) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.leaves = append(f.leaves, fingerprint)
+	return f.leafMoved, f.err
 }
 
 func TestCertificatePinFlagsANewIssuer(t *testing.T) {
@@ -817,5 +826,40 @@ func TestCertificatePinSkippedWithoutIssuerOrPins(t *testing.T) {
 	}
 	if got := sink.batch()[0]; got.State != state.UpReachability {
 		t.Fatalf("state without pins = %+v", got)
+	}
+}
+
+func TestLeafChangeIsInformational(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	tg := target("tls1", "example.com")
+	tg.Instrument = "tls"
+	tg.Address = "example.com:443"
+	tg.URL = ""
+
+	p := newProber()
+	p.set("", probe.Result{
+		CertIssuer:          "CN=R11,O=Let's Encrypt,C=US",
+		CertLeafFingerprint: "aabbcc",
+	})
+	sink := &fakeSink{}
+	pins := &fakePins{leafMoved: true}
+	a := agent.New([]agent.Target{tg}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+	a.Pins = pins
+
+	if _, err := a.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// A rotated leaf is expected, so it must not change the state or the class.
+	got := sink.batch()[0]
+	if got.State != state.UpReachability || got.ErrorClass != "" {
+		t.Fatalf("leaf change altered the measurement: %+v", got)
+	}
+	if len(pins.leaves) != 1 || pins.leaves[0] != "aabbcc" {
+		t.Fatalf("leaves = %+v", pins.leaves)
 	}
 }

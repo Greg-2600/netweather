@@ -185,6 +185,10 @@ func TestTLSCapturesTheChainShape(t *testing.T) {
 	if res.ChainLength != 2 {
 		t.Fatalf("chain length = %d, want 2", res.ChainLength)
 	}
+	leafSum := sha256.Sum256(leafCert.Raw)
+	if res.LeafFingerprint != hex.EncodeToString(leafSum[:]) {
+		t.Fatalf("leaf fingerprint = %q, want the leaf DER hash", res.LeafFingerprint)
+	}
 
 	der, err := x509.MarshalPKIXPublicKey(intermediateCert.PublicKey)
 	if err != nil {

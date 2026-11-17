@@ -51,6 +51,7 @@ func (s *StoreSource) Snapshot(ctx context.Context) ([]Target, error) {
 			CertPinned:           r.CertPinned,
 			CertChainLen:         r.CertChainLen,
 			CertIntermediateSPKI: r.CertIntermediateSPKI,
+			CertLeafFingerprint:  r.CertLeafFingerprint,
 		})
 	}
 	return out, nil

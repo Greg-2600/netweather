@@ -219,6 +219,7 @@ type tileView struct {
 	CertPinned           bool
 	CertChainLen         int
 	CertIntermediateSPKI string
+	CertLeafFingerprint  string
 	// Spark is the 24-hour healthy-share shape, rendered only in comfortable
 	// density. Empty means "no history", which the tile shows as nothing rather
 	// than a fabricated line.
@@ -734,6 +735,7 @@ func toTile(t board.Target) tileView {
 		CertPinned:           t.CertPinned,
 		CertChainLen:         t.CertChainLen,
 		CertIntermediateSPKI: t.CertIntermediateSPKI,
+		CertLeafFingerprint:  t.CertLeafFingerprint,
 	}
 }
 
@@ -771,6 +773,19 @@ func chainLabel(length int, intermediate string) string {
 		label += ", intermediate " + short + "…"
 	}
 	return label
+}
+
+// leafLabel shows a short leaf fingerprint. It is informational: leaves rotate
+// on a schedule, so a change is not a verdict (CLASSIFIER.md §3.5).
+func leafLabel(fingerprint string) string {
+	if fingerprint == "" {
+		return "not learned yet"
+	}
+	short := fingerprint
+	if len(short) > 16 {
+		short = short[:16]
+	}
+	return "sha256 " + short + "…"
 }
 
 // badgeFor is the corner marker from DESIGN.md §10.2: the stage or status that
@@ -977,6 +992,7 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 			{"Certificate expires", displayOr(formatCertExpiry(t.CertNotAfter), "not a TLS probe")},
 			{"Certificate pin", pinLabel(t.CertPinned)},
 			{"Certificate chain", chainLabel(t.CertChainLen, t.CertIntermediateSPKI)},
+			{"Leaf certificate", leafLabel(t.CertLeafFingerprint)},
 			{"Measurability", displayOr(t.Measurability, "ok")},
 		}
 

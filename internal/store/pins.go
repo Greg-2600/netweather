@@ -137,3 +137,49 @@ func nullString(v string) any {
 	}
 	return v
 }
+
+// ObserveLeaf records the leaf certificate's fingerprint and reports whether it
+// moved since the last observation.
+//
+// A leaf change is informational by design: leaves rotate every 60-90 days, so
+// treating one as an alert would fire on every renewal (CLASSIFIER.md §3.5
+// step 4). The first fingerprint is a baseline, not a change.
+func (s *Store) ObserveLeaf(ctx context.Context, targetID, fingerprint string, at time.Time) (bool, error) {
+	targetID = strings.TrimSpace(targetID)
+	fingerprint = strings.TrimSpace(fingerprint)
+	if targetID == "" || fingerprint == "" {
+		return false, fmt.Errorf("store: leaf fingerprint needs a target and a fingerprint")
+	}
+
+	now := at.UnixMilli()
+
+	var stored string
+	err := s.reader.QueryRowContext(ctx,
+		`SELECT fingerprint FROM cert_leaf WHERE target_id = ?`, targetID).Scan(&stored)
+	switch {
+	case err == sql.ErrNoRows:
+		if _, err := s.writer.ExecContext(ctx, `
+			INSERT INTO cert_leaf (target_id, fingerprint, first_seen, last_seen)
+			VALUES (?, ?, ?, ?)`, targetID, fingerprint, now, now); err != nil {
+			return false, fmt.Errorf("store: leaf insert: %w", err)
+		}
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("store: leaf read: %w", err)
+	}
+
+	if stored == fingerprint {
+		if _, err := s.writer.ExecContext(ctx,
+			`UPDATE cert_leaf SET last_seen = ? WHERE target_id = ?`, now, targetID); err != nil {
+			return false, fmt.Errorf("store: leaf touch: %w", err)
+		}
+		return false, nil
+	}
+
+	if _, err := s.writer.ExecContext(ctx, `
+		UPDATE cert_leaf SET fingerprint = ?, last_seen = ? WHERE target_id = ?`,
+		fingerprint, now, targetID); err != nil {
+		return false, fmt.Errorf("store: leaf update: %w", err)
+	}
+	return true, nil
+}

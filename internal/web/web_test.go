@@ -227,6 +227,7 @@ func TestTargetDetailShowsCertificateObservation(t *testing.T) {
 		Port: 443, Probe: "tls", Tier: 2, IntervalS: 300,
 		CertIssuer: "CN=R11,O=Let's Encrypt,C=US", CertNotAfter: expiry,
 		CertPinned: true, CertChainLen: 2, CertIntermediateSPKI: "aabbccddeeff001122",
+		CertLeafFingerprint: "00112233445566778899aabbccddeeff",
 	})
 
 	ts := newServerWithDetails(t, testToken, m, &fakeChanges{})
@@ -244,6 +245,7 @@ func TestTargetDetailShowsCertificateObservation(t *testing.T) {
 		">Certificate expires<", "2027-01-16",
 		">Certificate pin<", ">issuer learned<",
 		">Certificate chain<", "2 certificate(s)", "intermediate aabbccddeeff0011",
+		">Leaf certificate<", "sha256 0011223344556677",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("certificate row missing %q", want)

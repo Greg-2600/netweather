@@ -52,8 +52,11 @@ type Result struct {
 	// verdict on their own (CLASSIFIER.md §3.5).
 	CertChainLength      int
 	CertIntermediateSPKI string
-	ErrorClass           string
-	Err                  error
+	// CertLeafFingerprint is the SHA-256 of the leaf DER. A change is
+	// informational, because leaves rotate on a schedule.
+	CertLeafFingerprint string
+	ErrorClass          string
+	Err                 error
 }
 
 // Failed reports whether the exchange produced a transport-class failure.

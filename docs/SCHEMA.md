@@ -440,6 +440,17 @@ Per-resolver baselines are the fix for `CLASSIFIER.md` §3.2. A resolver's own h
 
 **Migration `0015`** added `chain_len` and `intermediate_spki`. `store.ObserveCert` fills them from the handshake; a chain-shape change under a known issuer returns an advisory string and updates the recorded shape, and it is never a verdict. A repeat with no chain information leaves the stored columns alone.
 
+**Migration `0016`** added `cert_leaf`, one row per target holding the leaf certificate's SHA-256 fingerprint. `store.ObserveLeaf` treats the first fingerprint as a baseline; a later rotation updates it and is reported as informational only, because leaves rotate on a schedule.
+
+```sql
+CREATE TABLE cert_leaf (
+    target_id   TEXT PRIMARY KEY REFERENCES target(id),
+    fingerprint TEXT NOT NULL,              -- SHA-256 hex of the leaf DER
+    first_seen  INTEGER NOT NULL,
+    last_seen   INTEGER NOT NULL
+);
+```
+
 ---
 
 ## 9. Self-health and external data

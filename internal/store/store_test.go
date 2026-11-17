@@ -67,8 +67,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 15 {
-		t.Errorf("schema version = %d, want 15", stats.SchemaVersion)
+	if stats.SchemaVersion != 16 {
+		t.Errorf("schema version = %d, want 16", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -96,7 +96,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 15 {
+	if err != nil || version != 16 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -2339,5 +2339,54 @@ func TestCertPinReportsChainChangesInformational(t *testing.T) {
 	}
 	if row.CertChainLen != 3 || row.CertIntermediateSPKI != "cccc" {
 		t.Fatalf("row chain = (%d, %q)", row.CertChainLen, row.CertIntermediateSPKI)
+	}
+}
+
+func TestLeafFingerprintRecordsBaselineAndChange(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+
+	// The first fingerprint is a baseline, not a change.
+	changed, err := s.ObserveLeaf(ctx, "t1", "aaaa", now)
+	if err != nil || changed {
+		t.Fatalf("baseline = (%v, %v)", changed, err)
+	}
+
+	// Repeating it is quiet.
+	changed, err = s.ObserveLeaf(ctx, "t1", "aaaa", now.Add(time.Hour))
+	if err != nil || changed {
+		t.Fatalf("repeat = (%v, %v)", changed, err)
+	}
+
+	// A rotation is reported once and becomes the new baseline.
+	changed, err = s.ObserveLeaf(ctx, "t1", "bbbb", now.Add(2*time.Hour))
+	if err != nil || !changed {
+		t.Fatalf("rotation = (%v, %v)", changed, err)
+	}
+	changed, err = s.ObserveLeaf(ctx, "t1", "bbbb", now.Add(3*time.Hour))
+	if err != nil || changed {
+		t.Fatalf("repeat after rotation = (%v, %v)", changed, err)
+	}
+
+	// The read path exposes the learned fingerprint.
+	row, err := s.TargetByID(ctx, "local", "t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.CertLeafFingerprint != "bbbb" {
+		t.Fatalf("leaf fingerprint = %q", row.CertLeafFingerprint)
+	}
+
+	// Missing arguments are errors, not silent no-ops.
+	if _, err := s.ObserveLeaf(ctx, "", "aaaa", now); err == nil {
+		t.Fatal("an empty target was accepted")
+	}
+	if _, err := s.ObserveLeaf(ctx, "t1", "  ", now); err == nil {
+		t.Fatal("an empty fingerprint was accepted")
 	}
 }

@@ -393,6 +393,8 @@ type targetItem struct {
 	// are informational: a change is reported, never a verdict.
 	CertChainLen         int    `json:"cert_chain_len,omitempty"`
 	CertIntermediateSPKI string `json:"cert_intermediate_spki,omitempty"`
+	// CertLeafFingerprint is the learned leaf fingerprint: informational.
+	CertLeafFingerprint string `json:"cert_leaf_fingerprint,omitempty"`
 	// IXNames is PeeringDB exchange membership: enrichment only.
 	IXNames string `json:"ix_names,omitempty"`
 }
@@ -443,7 +445,8 @@ func (s *server) handleTargets(w http.ResponseWriter, r *http.Request) {
 			Sector: t.Sector, Country: t.Country, State: string(t.State),
 			CertIssuer: t.CertIssuer, CertNotAfter: certNotAfterJSON(t.CertNotAfter),
 			CertChainLen: t.CertChainLen, CertIntermediateSPKI: t.CertIntermediateSPKI,
-			IXNames: t.IXNames,
+			CertLeafFingerprint: t.CertLeafFingerprint,
+			IXNames:             t.IXNames,
 		}
 		if !t.Since.IsZero() {
 			item.Since = t.Since.UTC().Format(time.RFC3339)
@@ -591,7 +594,8 @@ func (s *server) serveTarget(w http.ResponseWriter, r *http.Request, id string) 
 		Sector: row.Sector, Country: row.Country, State: string(row.State),
 		CertIssuer: row.CertIssuer, CertNotAfter: certNotAfterJSON(row.CertNotAfter),
 		CertChainLen: row.CertChainLen, CertIntermediateSPKI: row.CertIntermediateSPKI,
-		IXNames: row.IXNames,
+		CertLeafFingerprint: row.CertLeafFingerprint,
+		IXNames:             row.IXNames,
 	}
 	if !row.Since.IsZero() {
 		item.Since = row.Since.UTC().Format(time.RFC3339)

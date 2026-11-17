@@ -521,6 +521,7 @@ Auth: bearer. One target with its current state and metadata.
     "cert_not_after": "2027-01-16T12:00:00Z",
     "cert_chain_len": 2,
     "cert_intermediate_spki": "aabbccddeeff00112233445566778899",
+    "cert_leaf_fingerprint": "aabbccddeeff00112233445566778899",
     "ix_names": "AMS-IX, DE-CIX Frankfurt"
   },
   "meta": {"request_id": "…"}
@@ -531,6 +532,7 @@ Auth: bearer. One target with its current state and metadata.
 - `since` is absent for a target that has never been probed; the state is then `unknown`.
 - Certificate fields come from the last TLS observation and are absent when the last probe was not TLS. They describe the leaf certificate.
 - `cert_chain_len` and `cert_intermediate_spki` are the *learned* chain shape from the pin baseline (migration `0015`), not the last observation. A chain-shape change is informational and never changes `state`.
+- `cert_leaf_fingerprint` is the learned leaf fingerprint (migration `0016`). It is absent until a TLS probe has been seen; a rotation is informational.
 - `ix_names` is PeeringDB exchange membership for the target's ASN: enrichment only, never a signal. It is absent until enrichment has learned it.
 
 ### 6.14 `GET /api/v1/coverage` — stable

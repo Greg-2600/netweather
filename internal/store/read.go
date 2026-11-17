@@ -122,6 +122,9 @@ type TargetRow struct {
 	// Zero/empty means "not learned yet".
 	CertChainLen         int
 	CertIntermediateSPKI string
+	// CertLeafFingerprint is the learned leaf fingerprint. A change is
+	// informational, because leaves rotate on a schedule.
+	CertLeafFingerprint string
 }
 
 // TargetsWithState is the board query: every enabled target plus its current
@@ -139,7 +142,8 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 		       COALESCE((SELECT MAX(cp.chain_len) FROM cert_pin cp WHERE cp.target_id = t.id), 0),
 		       COALESCE((SELECT cp.intermediate_spki FROM cert_pin cp
 		                 WHERE cp.target_id = t.id AND cp.intermediate_spki IS NOT NULL
-		                 ORDER BY cp.last_seen DESC LIMIT 1), '')
+		                 ORDER BY cp.last_seen DESC LIMIT 1), ''),
+		       COALESCE((SELECT cl.fingerprint FROM cert_leaf cl WHERE cl.target_id = t.id), '')
 		FROM target t
 		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
 		LEFT JOIN probe p ON p.id = (
@@ -169,7 +173,7 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 			&row.State, &since,
 			&row.Stage, &row.ErrorClass, &row.HTTPStatus,
 			&row.CertIssuer, &notAfter, &row.CertPinned,
-			&row.CertChainLen, &row.CertIntermediateSPKI,
+			&row.CertChainLen, &row.CertIntermediateSPKI, &row.CertLeafFingerprint,
 		); err != nil {
 			return nil, fmt.Errorf("store: scan target: %w", err)
 		}
@@ -304,7 +308,8 @@ func (s *Store) TargetByID(ctx context.Context, vantageID, id string) (TargetRow
 		       COALESCE((SELECT MAX(cp.chain_len) FROM cert_pin cp WHERE cp.target_id = t.id), 0),
 		       COALESCE((SELECT cp.intermediate_spki FROM cert_pin cp
 		                 WHERE cp.target_id = t.id AND cp.intermediate_spki IS NOT NULL
-		                 ORDER BY cp.last_seen DESC LIMIT 1), '')
+		                 ORDER BY cp.last_seen DESC LIMIT 1), ''),
+		       COALESCE((SELECT cl.fingerprint FROM cert_leaf cl WHERE cl.target_id = t.id), '')
 		FROM target t
 		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
 		LEFT JOIN probe p ON p.id = (
@@ -320,7 +325,7 @@ func (s *Store) TargetByID(ctx context.Context, vantageID, id string) (TargetRow
 		&row.State, &since,
 		&row.Stage, &row.ErrorClass, &row.HTTPStatus,
 		&row.CertIssuer, &notAfter, &row.CertPinned,
-		&row.CertChainLen, &row.CertIntermediateSPKI,
+		&row.CertChainLen, &row.CertIntermediateSPKI, &row.CertLeafFingerprint,
 	)
 	if err != nil {
 		return TargetRow{}, err
