@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -200,6 +201,68 @@ func DNSCheck(dns *probe.DNS, server, name string) Check {
 	}
 }
 
+// ResolverIdentityCheck records the host's configured resolver set. DHCP
+// handing out a different resolver changes every DNS answer without changing
+// anything this monitor measures, so a silent move invalidates the baseline
+// rather than describing the internet (DESIGN.md §7.5).
+func ResolverIdentityCheck(read func() ([]string, error)) Check {
+	return Check{
+		Name: "resolver-identity",
+		Run: func(context.Context) (bool, string, string, error) {
+			if read == nil {
+				return false, "", "resolver config reader is not configured", nil
+			}
+			servers, err := read()
+			if err != nil {
+				return false, "", "resolver config unavailable: " + errText(err), nil
+			}
+			if len(servers) == 0 {
+				return false, "", "no name servers configured", nil
+			}
+			value := strings.Join(servers, ",")
+			return true, value, fmt.Sprintf("%d name server(s): %s", len(servers), value), nil
+		},
+	}
+}
+
+// ResolverServers reads a resolv.conf-shaped file and returns its name servers.
+func ResolverServers(path string) ([]string, error) {
+	raw, err := os.ReadFile(path) // #nosec G304 -- a fixed system path supplied by the caller.
+	if err != nil {
+		return nil, err
+	}
+	return ParseResolverServers(string(raw)), nil
+}
+
+// ParseResolverServers extracts, deduplicates, and sorts the `nameserver`
+// directives. Sorting makes the value comparable across reads; the set, not the
+// order, is the identity.
+func ParseResolverServers(body string) []string {
+	out := make([]string, 0, 4)
+	seen := make(map[string]struct{}, 4)
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[0] != "nameserver" {
+			continue
+		}
+		server := strings.ToLower(strings.TrimSpace(fields[1]))
+		if server == "" {
+			continue
+		}
+		if _, dup := seen[server]; dup {
+			continue
+		}
+		seen[server] = struct{}{}
+		out = append(out, server)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // EgressCheck proves outbound TCP works by completing a handshake.
 func EgressCheck(tcp *probe.TCP, address string) Check {
 	return Check{
@@ -346,10 +409,10 @@ func EgressIPCheck(httpProbe *probe.HTTP, url string, lookup func(ctx context.Co
 	}
 }
 
-// VantageChange reports whether the egress record moved between two runs. A
+// ValueChange reports whether a recorded value moved between two runs. A
 // missing or failed observation on either side is not a change: an unknown is
-// not evidence that the address moved.
-func VantageChange(previous, current Result) (bool, string) {
+// not evidence that the value moved.
+func ValueChange(previous, current Result) (bool, string) {
 	if !previous.OK || !current.OK {
 		return false, ""
 	}
@@ -357,6 +420,16 @@ func VantageChange(previous, current Result) (bool, string) {
 		return false, ""
 	}
 	if previous.Value == current.Value {
+		return false, ""
+	}
+	return true, fmt.Sprintf("%s changed from %s to %s",
+		current.Check, previous.Value, current.Value)
+}
+
+// VantageChange is ValueChange with the egress wording the operator sees. It is
+// the same rule: a failed or missing observation is not a move.
+func VantageChange(previous, current Result) (bool, string) {
+	if changed, _ := ValueChange(previous, current); !changed {
 		return false, ""
 	}
 	return true, fmt.Sprintf("egress changed from %s to %s", previous.Value, current.Value)

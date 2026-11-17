@@ -245,6 +245,17 @@ func serve(lg *logging.Logger) error {
 		selfcheck.ClockSyncCheck(instruments.HTTP, "https://www.cloudflare.com/"),
 	}}
 
+	// The host resolver set is a vantage fact: a DHCP lease that changes it
+	// changes every answer without changing anything this monitor measures
+	// (DESIGN.md §7.5). resolv.conf is the Linux/Unix form; on a platform
+	// without it the check is omitted rather than reported as a failure.
+	if _, err := os.Stat("/etc/resolv.conf"); err == nil {
+		selfRunner.Checks = append(selfRunner.Checks,
+			selfcheck.ResolverIdentityCheck(func() ([]string, error) {
+				return selfcheck.ResolverServers("/etc/resolv.conf")
+			}))
+	}
+
 	// Feeds are opt-in: they are outbound calls to someone else's API, and an
 	// operator should choose that rather than discover it.
 	feedPollers := buildFeedPollers(st, lg)
@@ -1520,21 +1531,37 @@ func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger, s
 		if gate != nil {
 			gate.Observe(results)
 		}
+
+		// A different egress address or resolver set is a different path, so the
+		// learned DNS answers are no longer this vantage's history
+		// (CLASSIFIER.md §3.2). Verdicts are kept: they are what happened, not
+		// what is expected next.
+		resetDNSBaselines := func(reason string) {
+			dropped, err := st.ResetDNSBaselines(ctx)
+			if err != nil {
+				lg.Warn("dns baseline reset failed",
+					"event", "dns_baseline_reset_failed", "component", "maintenance",
+					"reason", reason, "error", err)
+				return
+			}
+			lg.Info("dns baselines reset after a vantage change",
+				"event", "dns_baselines_reset", "component", "maintenance",
+				"reason", reason, "rows", dropped)
+		}
+
 		for _, res := range results {
-			if res.Check == "egress-ip" {
+			switch res.Check {
+			case "egress-ip":
 				if changed, detail := selfcheck.VantageChange(previous["egress-ip"], res); changed {
 					lg.Warn("vantage changed",
 						"event", "vantage_changed", "component", "maintenance", "detail", detail)
-					// A different egress address is a different resolver path,
-					// so the learned DNS answers are no longer this vantage's
-					// history (CLASSIFIER.md §3.2). Verdicts are kept.
-					if dropped, err := st.ResetDNSBaselines(ctx); err != nil {
-						lg.Warn("dns baseline reset failed",
-							"event", "dns_baseline_reset_failed", "component", "maintenance", "error", err)
-					} else {
-						lg.Info("dns baselines reset after a vantage change",
-							"event", "dns_baselines_reset", "component", "maintenance", "rows", dropped)
-					}
+					resetDNSBaselines("egress changed")
+				}
+			case "resolver-identity":
+				if changed, detail := selfcheck.ValueChange(previous["resolver-identity"], res); changed {
+					lg.Warn("resolver set changed",
+						"event", "resolver_changed", "component", "maintenance", "detail", detail)
+					resetDNSBaselines("resolver set changed")
 				}
 			}
 			if res.OK {

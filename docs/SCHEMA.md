@@ -214,7 +214,7 @@ CREATE INDEX probe_archive_incident ON probe_archive(incident_id, ts);
 
 **How rows get there.** `OpenIncident` copies every `probe` row within ±1 hour of `opened_at` into the archive in the same transaction that writes the incident, using `INSERT OR IGNORE`. The `(target_id, vantage_id, ts)` primary key is what makes that idempotent: a retried open, or a second incident over the same window, cannot duplicate rows or steal them from the incident that pinned them first. `RecentProbes` unions `probe` with `probe_archive`, so a drawer keeps working after the raw rows are pruned, and `UNION` (not `UNION ALL`) collapses a probe that is still in both. `Prune` deletes archive rows older than one year, after the 72-hour raw delete.
 
-`target_state` is a cache of the latest observation per `(target, vantage)`. It is rebuilt from the last `state_change` on startup if it is ever suspect.
+`target_state` is the **confirmed** state per `(target, vantage)` — the state the board, the incident detector, and the metrics read. Each `probe` row keeps the candidate the classifier returned, so a single observation that did not change the state is still visible in history; `fail_streak` and `ok_streak` are the counters the confirmation rules in `DESIGN.md` §7.4 consume. The table is authoritative rather than a cache rebuilt from `state_change`: a held observation advances a streak without writing a transition, so a rebuild from history would lose it. It is reset only by a schema migration or a `VANTAGE_CHANGED` baseline reset.
 
 ```sql
 CREATE TABLE target_state (
