@@ -2528,3 +2528,110 @@ func TestTargetDrawerCorroborationStates(t *testing.T) {
 		})
 	}
 }
+
+type fakeCountryEvents struct {
+	events map[string]store.ExternalEvent
+	err    error
+}
+
+func (f *fakeCountryEvents) RecentCountryEvents(context.Context, time.Time) (map[string]store.ExternalEvent, error) {
+	return f.events, f.err
+}
+
+func newServerWithCountryEvents(t *testing.T, token string, m *board.Memory, events web.CountryEvents) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:        m,
+		Watcher:       m,
+		CountryEvents: events,
+		Vantage:       "local",
+		Token:         token,
+		Version:       "test",
+		StartedAt:     time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestWorldShowsTheFeedOverlay(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(
+		board.Target{ID: "1", Name: "Chase", Host: "chase.com", Country: "US", State: board.StateUp},
+		board.Target{ID: "2", Name: "Deutsche", Host: "de.example", Country: "DE", State: board.StateUp},
+	)
+	events := &fakeCountryEvents{events: map[string]store.ExternalEvent{
+		"US": {ID: 1, Feed: "ioda", Kind: "outage", Severity: 0.87, Country: "US"},
+	}}
+
+	ts := newServerWithCountryEvents(t, testToken, m, events)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/world") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="country-feed"`) {
+		t.Fatalf("feed overlay missing:\n%s", page)
+	}
+	for _, want := range []string{"ioda outage", "0.87", `data-country="US"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("overlay missing %q", want)
+		}
+	}
+	if strings.Contains(page, `data-testid="world-overlay-note"`) {
+		t.Error("a note rendered with overlay events present")
+	}
+	// Only US has an event; DE must not borrow it.
+	if strings.Count(page, `data-testid="country-feed"`) != 1 {
+		t.Error("an event was attached to the wrong country")
+	}
+}
+
+func TestWorldOverlayNotes(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(
+		board.Target{ID: "1", Name: "Chase", Host: "chase.com", Country: "US", State: board.StateUp},
+	)
+	cases := []struct {
+		name string
+		ce   web.CountryEvents
+		want string
+	}{
+		{"unconfigured", nil, "not configured"},
+		{"empty", &fakeCountryEvents{}, "No country-scoped feed event"},
+		{"failed", &fakeCountryEvents{err: errors.New("db down")}, "temporarily unavailable"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ts := newServerWithCountryEvents(t, testToken, m, tc.ce)
+			client, _ := newClient(t)
+			login(t, ts, client, testToken)
+
+			resp, err := client.Get(ts.URL + "/world") //nolint:bodyclose // body() closes it
+			if err != nil {
+				t.Fatal(err)
+			}
+			page := body(t, resp)
+			if !strings.Contains(page, `data-testid="world-overlay-note"`) || !strings.Contains(page, tc.want) {
+				t.Fatalf("note missing %q:\n%s", tc.want, page)
+			}
+			if strings.Contains(page, `data-testid="country-feed"`) {
+				t.Error("a feed badge rendered without an event")
+			}
+		})
+	}
+}

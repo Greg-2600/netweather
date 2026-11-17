@@ -37,6 +37,8 @@ type Deps struct {
 	Feeds FeedHealth
 	// TargetCorroboration supplies feed events for a target's country or ASN.
 	TargetCorroboration TargetCorroboration
+	// CountryEvents supplies the world-view feed overlay.
+	CountryEvents CountryEvents
 	// IncidentWatcher wakes the UI stream when an incident opens or closes.
 	IncidentWatcher board.Watcher
 	Coverage        Coverage
@@ -104,6 +106,12 @@ type FeedHealth interface {
 // means the drawer says so rather than implying nothing is happening.
 type TargetCorroboration interface {
 	ScopeCorroboration(ctx context.Context, country string, asn int, since time.Time, limit int) ([]store.ExternalEvent, error)
+}
+
+// CountryEvents supplies one feed event per country for the world view overlay.
+// Nil means the tiles render without an overlay rather than with a fake one.
+type CountryEvents interface {
+	RecentCountryEvents(ctx context.Context, since time.Time) (map[string]store.ExternalEvent, error)
 }
 
 // IncidentAnnotator records the operator's ground truth for an incident.

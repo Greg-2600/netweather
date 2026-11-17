@@ -23,6 +23,43 @@ type ExternalEvent struct {
 	Payload    string
 }
 
+// RecentCountryEvents returns the highest-severity event per country since the
+// cutoff. It is the world view's overlay: one query for the whole page rather
+// than one per country.
+//
+// The result is keyed by uppercase ISO code; events without a country are
+// skipped because they cannot be placed on a country tile.
+func (s *Store) RecentCountryEvents(ctx context.Context, since time.Time) (map[string]ExternalEvent, error) {
+	rows, err := s.reader.QueryContext(ctx, `
+		SELECT id, feed, external_id, kind, COALESCE(severity, 0),
+		       COALESCE(country, ''), COALESCE(asn, 0),
+		       started_at, COALESCE(ended_at, 0), observed_at, payload
+		FROM external_event
+		WHERE started_at >= ? AND COALESCE(country, '') <> ''
+		ORDER BY COALESCE(severity, 0) DESC, started_at DESC
+		LIMIT 500`, since.UnixMilli())
+	if err != nil {
+		return nil, fmt.Errorf("store: recent country events: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	events, err := collectExternalEvents(rows, "recent country events")
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[string]ExternalEvent, len(events))
+	for _, e := range events {
+		// Ordered by severity, so the first row for a country is the one the
+		// tile should show.
+		if _, seen := out[e.Country]; seen {
+			continue
+		}
+		out[e.Country] = e
+	}
+	return out, nil
+}
+
 // FeedState is how a feed is doing: last success, last error, and how many
 // failures in a row. "Radar: stale (2h)" is answerable only because this exists.
 type FeedState struct {

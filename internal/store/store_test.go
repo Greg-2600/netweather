@@ -1957,3 +1957,55 @@ func TestScopeCorroborationMatchesCountryOrASN(t *testing.T) {
 		t.Fatalf("empty scope = %+v, %v", got, err)
 	}
 }
+
+func TestRecentCountryEventsKeepsTheWorstPerCountry(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	events := []store.ExternalEvent{
+		{
+			Feed: "ioda", ExternalID: "ir-low", Kind: "outage", Severity: 0.4,
+			Country: "IR", StartedAt: base.Add(-time.Hour), ObservedAt: base,
+		},
+		{
+			Feed: "radar", ExternalID: "ir-high", Kind: "hijack", Severity: 0.9,
+			Country: "IR", StartedAt: base.Add(-2 * time.Hour), ObservedAt: base,
+		},
+		{
+			Feed: "ioda", ExternalID: "de", Kind: "outage", Severity: 0.7,
+			Country: "DE", StartedAt: base.Add(-time.Hour), ObservedAt: base,
+		},
+		{
+			Feed: "ioda", ExternalID: "no-country", Kind: "outage", Severity: 1.0,
+			StartedAt: base.Add(-time.Hour), ObservedAt: base,
+		},
+		{
+			Feed: "ioda", ExternalID: "stale", Kind: "outage", Severity: 1.0,
+			Country: "US", StartedAt: base.Add(-48 * time.Hour), ObservedAt: base,
+		},
+	}
+	if err := s.UpsertExternalEvents(ctx, events); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.RecentCountryEvents(ctx, base.Add(-24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("countries = %d, want 2 (no-country and stale are excluded): %+v", len(got), got)
+	}
+	if got["IR"].ExternalID != "ir-high" {
+		t.Fatalf("IR = %+v, want the highest-severity event", got["IR"])
+	}
+	if got["DE"].ExternalID != "de" {
+		t.Fatalf("DE = %+v", got["DE"])
+	}
+	if _, ok := got["US"]; ok {
+		t.Fatal("an event outside the window was included")
+	}
+}

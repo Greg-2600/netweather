@@ -1336,6 +1336,9 @@ type worldView struct {
 	CSRF      string
 	Countries []countryView
 	Unplaced  int
+	// OverlayNote explains a missing or failed feed overlay, so an empty tile
+	// is not mistaken for "no known event".
+	OverlayNote string
 }
 
 // countryView is one country tile. State is carried as text and glyph as well
@@ -1349,6 +1352,11 @@ type countryView struct {
 	Healthy  bool
 	Counts   []countView
 	Href     string
+	// Feed is the world-view overlay: the highest-severity external event for
+	// this country, labelled with its feed and kind. It is evidence, never a
+	// country-wide verdict.
+	Feed         string
+	FeedSeverity string
 }
 
 // handleWorld aggregates the board by country. A target with no learned
@@ -1381,6 +1389,26 @@ func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
 
 	csrf, _ := s.auth.csrfFrom(r)
 	view := worldView{Version: s.deps.Version, CSRF: csrf, Unplaced: unplaced}
+
+	// The overlay is one query for the whole page. A missing reader or a failed
+	// query is stated, never rendered as "no known event".
+	overlay := map[string]store.ExternalEvent{}
+	if s.deps.CountryEvents == nil {
+		view.OverlayNote = "Feed overlay is not configured on this instance."
+	} else {
+		events, err := s.deps.CountryEvents.RecentCountryEvents(
+			r.Context(), time.Now().UTC().Add(-24*time.Hour))
+		switch {
+		case err != nil:
+			s.deps.Logger.Warn("world overlay failed",
+				"event", "world_overlay_failed", "component", "http", "error", err)
+			view.OverlayNote = "Feed overlay is temporarily unavailable."
+		case len(events) == 0:
+			view.OverlayNote = "No country-scoped feed event in the last 24 hours."
+		default:
+			overlay = events
+		}
+	}
 
 	for code, members := range byCountry {
 		counts := make(map[board.State]int)
@@ -1416,6 +1444,10 @@ func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
 					Class: st.CSSClass(), Count: n,
 				})
 			}
+		}
+		if event, ok := overlay[code]; ok {
+			row.Feed = event.Feed + " " + event.Kind
+			row.FeedSeverity = fmt.Sprintf("%.2f", event.Severity)
 		}
 		view.Countries = append(view.Countries, row)
 	}

@@ -31,6 +31,9 @@
         <span class="country-code">{{.Code}}</span>
         <span class="country-count">{{.Count}} target(s)</span>
         <span class="state"><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Worst}}</span>
+        {{if .Feed}}
+        <span class="feed" data-testid="country-feed" data-feed="{{.Feed}}">{{.Feed}} {{.FeedSeverity}}</span>
+        {{end}}
       </a>
       {{end}}
     </section>
@@ -38,6 +41,10 @@
     <p class="empty" data-testid="empty-world">
       No target has a learned country yet. Enrichment fills this in on the first pass.
     </p>
+    {{end}}
+
+    {{if .OverlayNote}}
+    <p class="muted small" data-testid="world-overlay-note">{{.OverlayNote}}</p>
     {{end}}
 
     {{if .Unplaced}}

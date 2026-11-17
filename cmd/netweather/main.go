@@ -224,6 +224,7 @@ func serve(lg *logging.Logger) error {
 		Corroboration:       st,
 		Feeds:               st,
 		TargetCorroboration: st,
+		CountryEvents:       st,
 		IncidentWatcher:     incidentChanges,
 		Coverage:            st,
 		CoverageTrend:       st,
