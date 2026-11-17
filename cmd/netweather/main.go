@@ -194,23 +194,7 @@ func serve(lg *logging.Logger) error {
 	// Egress identity: every baseline is relative to the address this host
 	// leaves from, so the address is worth recording and worth noticing when it
 	// moves (DESIGN.md §7.5).
-	egressResolver := &net.Resolver{
-		PreferGo: true,
-		Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return netx.New().DialContext(ctx, "udp", "1.1.1.1:53")
-		},
-	}
-	egressLookup := func(ctx context.Context, addr netip.Addr) (int, string) {
-		asn, _, err := enrich.ASN(ctx, egressResolver, addr)
-		if err != nil {
-			return 0, ""
-		}
-		_, country, err := enrich.Org(ctx, egressResolver, asn)
-		if err != nil {
-			return asn, ""
-		}
-		return asn, country
-	}
+	egressLookup := cymruLookup()
 
 	selfRunner := &selfcheck.Runner{Checks: []selfcheck.Check{
 		selfcheck.DiskCheck(dataDir),
@@ -1008,6 +992,62 @@ const (
 // newTorAgent builds the optional corroboration vantage. It returns nil when
 // NETWEATHER_TOR is not "true": Tor is off by default, because it is a
 // different trust domain and a different volume budget.
+// cymruLookup returns an ASN and country resolver for an egress address. The
+// query goes to one well-known resolver over the guarded dialer, so the host's
+// resolver is not part of the measurement.
+func cymruLookup() func(context.Context, netip.Addr) (int, string) {
+	resolver := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return netx.New().DialContext(ctx, "udp", "1.1.1.1:53")
+		},
+	}
+	return func(ctx context.Context, addr netip.Addr) (int, string) {
+		asn, _, err := enrich.ASN(ctx, resolver, addr)
+		if err != nil {
+			return 0, ""
+		}
+		_, country, err := enrich.Org(ctx, resolver, asn)
+		if err != nil {
+			return asn, ""
+		}
+		return asn, country
+	}
+}
+
+// torExitCountry verifies a declared exit country through the Tor proxy.
+//
+// A country-labelled vantage is a country measurement only when the exit is
+// actually in that country, so the identity is fetched through the same SOCKS
+// hop the probes use, enriched with Cymru, and compared. An unverifiable or
+// mismatched exit is an error: a mislabelled country measurement is worse than
+// none (ACCEPTABLE_USE.md §8).
+func torExitCountry(ctx context.Context, httpProbe *probe.HTTP, lookup func(context.Context, netip.Addr) (int, string), want string) (string, error) {
+	want = strings.ToUpper(strings.TrimSpace(want))
+	if len(want) != 2 {
+		return "", fmt.Errorf("exit country %q is not a two-letter code", want)
+	}
+
+	check := selfcheck.EgressIPCheck(httpProbe, "https://1.1.1.1/cdn-cgi/trace", lookup)
+	ok, value, detail, err := check.Run(ctx)
+	if err != nil {
+		return "", fmt.Errorf("tor exit check: %w", err)
+	}
+	if !ok {
+		return "", fmt.Errorf("tor exit identity unavailable: %s", detail)
+	}
+
+	// The value is "ip,ASn,country" when enrichment succeeded.
+	parts := strings.Split(value, ",")
+	if len(parts) < 3 || strings.TrimSpace(parts[2]) == "" {
+		return "", errors.New("tor exit country could not be learned")
+	}
+	if got := strings.ToUpper(strings.TrimSpace(parts[2])); got != want {
+		return "", fmt.Errorf("tor exit country is %s, want %s", got, want)
+	}
+	return value, nil
+}
+
 func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg *logging.Logger) (*agent.Agent, error) {
 	if !strings.EqualFold(strings.TrimSpace(os.Getenv("NETWEATHER_TOR")), "true") {
 		return nil, nil
@@ -1055,7 +1095,27 @@ func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg
 		return nil, errors.New("tor vantage enabled but no tcp-based targets are configured")
 	}
 
-	if err := st.EnsureVantage(ctx, "tor", "socks5", "corroboration"); err != nil {
+	// A country label is only honest when the exit is actually there. The
+	// identity is fetched through the same SOCKS hop the probes will use, so a
+	// mismatched or unverifiable exit refuses to start rather than fabricating
+	// a country measurement (ACCEPTABLE_USE.md §8).
+	vantageID := "tor"
+	if want := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_EXIT_COUNTRY")); want != "" {
+		exitProbe := probe.NewHTTPWithDial(torDial)
+		value, err := torExitCountry(ctx, exitProbe, cymruLookup(), want)
+		if err != nil {
+			return nil, err
+		}
+		vantageID = "tor-" + strings.ToLower(strings.TrimSpace(want))
+		lg.Info("tor exit country verified",
+			"event", "tor_exit_verified", "component", "agent",
+			"exit", value, "country", strings.ToUpper(strings.TrimSpace(want)))
+	}
+	for i := range selected {
+		selected[i].Vantage = vantageID
+	}
+
+	if err := st.EnsureVantage(ctx, vantageID, "socks5", "corroboration"); err != nil {
 		return nil, err
 	}
 

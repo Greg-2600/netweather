@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/Greg-2600/netweather/internal/agent"
 	"github.com/Greg-2600/netweather/internal/logging"
+	"github.com/Greg-2600/netweather/internal/probe"
 	"github.com/Greg-2600/netweather/internal/seed"
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
@@ -868,5 +870,72 @@ targets:
 	}
 	if got[0].Instrument != "tcpping" || got[0].Address != "example.com:443" {
 		t.Fatalf("tcpping target = %+v", got[0])
+	}
+}
+
+// pinTransport answers the exit trace request with a fixed body so the pin
+// decision is testable without a proxy or a network.
+type pinTransport struct {
+	status int
+	body   string
+}
+
+func (p pinTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	status := p.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	return &http.Response{
+		StatusCode: status,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(p.body)),
+		Request:    req,
+	}, nil
+}
+
+func TestTorExitCountry(t *testing.T) {
+	t.Parallel()
+
+	usLookup := func(context.Context, netip.Addr) (int, string) { return 64500, "US" }
+	usBody := "ip=203.0.113.9\n"
+
+	// A verified exit returns the recorded identity tuple.
+	got, err := torExitCountry(context.Background(),
+		probe.NewHTTPWithTransport(pinTransport{body: usBody}), usLookup, "us")
+	if err != nil {
+		t.Fatalf("match: %v", err)
+	}
+	if got != "203.0.113.9,AS64500,US" {
+		t.Fatalf("value = %q", got)
+	}
+
+	// A country label that does not match the exit is refused, and the error
+	// names both, because that is what the operator has to fix.
+	nlLookup := func(context.Context, netip.Addr) (int, string) { return 64500, "NL" }
+	_, err = torExitCountry(context.Background(),
+		probe.NewHTTPWithTransport(pinTransport{body: usBody}), nlLookup, "US")
+	if err == nil || !strings.Contains(err.Error(), "NL") || !strings.Contains(err.Error(), "US") {
+		t.Fatalf("mismatch error = %v", err)
+	}
+
+	// An exit whose country cannot be learned is not labelled either.
+	unknownLookup := func(context.Context, netip.Addr) (int, string) { return 0, "" }
+	_, err = torExitCountry(context.Background(),
+		probe.NewHTTPWithTransport(pinTransport{body: usBody}), unknownLookup, "US")
+	if err == nil || !strings.Contains(err.Error(), "could not be learned") {
+		t.Fatalf("unknown country error = %v", err)
+	}
+
+	// A malformed label is caught before any request.
+	if _, err := torExitCountry(context.Background(),
+		probe.NewHTTPWithTransport(pinTransport{body: usBody}), usLookup, "USA"); err == nil {
+		t.Fatal("a three-letter code was accepted")
+	}
+
+	// A failed trace is not a verification.
+	_, err = torExitCountry(context.Background(),
+		probe.NewHTTPWithTransport(pinTransport{status: 502, body: usBody}), usLookup, "US")
+	if err == nil || !strings.Contains(err.Error(), "unavailable") {
+		t.Fatalf("trace failure error = %v", err)
 	}
 }

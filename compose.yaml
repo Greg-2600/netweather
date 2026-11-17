@@ -31,6 +31,9 @@ services:
       # Daily volume budget for the tor vantage. Counted on the SOCKS
       # connection; 0 disables it.
       # NETWEATHER_TOR_DAILY_MB: "50"
+      # Declare the exit's country to label the vantage tor-<cc>. It is
+      # verified through the proxy; a mismatch refuses to start the vantage.
+      # NETWEATHER_TOR_EXIT_COUNTRY: "US"
       #
       # External corroboration, also off by default.
       # NETWEATHER_FEEDS: ioda,radar,statuspage,aws-status,gcp-status,azure-status
