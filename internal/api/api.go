@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -42,6 +43,13 @@ type ProbeReader interface {
 type IncidentReader interface {
 	Incidents(ctx context.Context, openOnly bool, limit int) ([]store.Incident, error)
 	IncidentByID(ctx context.Context, id string) (store.Incident, []store.Attribution, []string, error)
+}
+
+// IncidentPager is the cursor-capable half of the incident log. It is optional
+// so a test fake (or an older implementation) does not have to page, and the
+// handler can still answer the first page.
+type IncidentPager interface {
+	IncidentsPage(ctx context.Context, openOnly bool, before time.Time, beforeID string, limit int) ([]store.Incident, error)
 }
 
 // CorroborationReader returns external feed events that overlap an incident.
@@ -702,6 +710,34 @@ func toIncidentItem(inc store.Incident) incidentItem {
 }
 
 // handleIncidents lists incidents newest first, optionally only open ones.
+// incidentCursor is the opaque payload behind next_cursor: the last key a page
+// returned. Encoding (opened_at, id) rather than an offset is what keeps a
+// later page stable when new incidents open in between.
+type incidentCursor struct {
+	TS int64  `json:"ts"`
+	ID string `json:"id"`
+}
+
+func encodeIncidentCursor(openedAt time.Time, id string) string {
+	payload, err := json.Marshal(incidentCursor{TS: openedAt.UnixMilli(), ID: id})
+	if err != nil {
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(payload)
+}
+
+func decodeIncidentCursor(raw string) (time.Time, string, error) {
+	payload, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return time.Time{}, "", errors.New("cursor is not a valid page cursor")
+	}
+	var c incidentCursor
+	if err := json.Unmarshal(payload, &c); err != nil || c.TS <= 0 || c.ID == "" {
+		return time.Time{}, "", errors.New("cursor is not a valid page cursor")
+	}
+	return time.UnixMilli(c.TS).UTC(), c.ID, nil
+}
+
 func (s *server) handleIncidents(w http.ResponseWriter, r *http.Request) {
 	if s.deps.Incidents == nil {
 		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "incidents are not configured")
@@ -716,18 +752,57 @@ func (s *server) handleIncidents(w http.ResponseWriter, r *http.Request) {
 	}
 	openOnly := q.Get("open") == "true"
 
-	rows, err := s.deps.Incidents.Incidents(r.Context(), openOnly, limit)
-	if err != nil {
-		s.deps.Logger.Error("incident list failed", "event", "incident_list_failed", "component", "http", "error", err)
-		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "incidents unavailable")
-		return
+	var before time.Time
+	var beforeID string
+	if raw := strings.TrimSpace(q.Get("cursor")); raw != "" {
+		before, beforeID, err = decodeIncidentCursor(raw)
+		if err != nil {
+			writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, err.Error())
+			return
+		}
+	}
+
+	meta := &Meta{Limit: limit}
+	var rows []store.Incident
+
+	if pager, ok := s.deps.Incidents.(IncidentPager); ok {
+		// One extra row tells us whether a next page exists without a separate
+		// count query.
+		page, err := pager.IncidentsPage(r.Context(), openOnly, before, beforeID, limit+1)
+		if err != nil {
+			s.deps.Logger.Error("incident list failed", "event", "incident_list_failed", "component", "http", "error", err)
+			writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "incidents unavailable")
+			return
+		}
+		if len(page) > limit {
+			last := page[limit-1]
+			meta.NextCursor = encodeIncidentCursor(last.OpenedAt, last.ID)
+			page = page[:limit]
+		}
+		rows = page
+	} else {
+		if !before.IsZero() {
+			// A cursor was supplied but this reader cannot page. Saying so is
+			// better than silently returning the first page again.
+			writeError(w, r, http.StatusNotImplemented, CodeNotImplemented,
+				"this incident reader does not support cursor pagination")
+			return
+		}
+		list, err := s.deps.Incidents.Incidents(r.Context(), openOnly, limit)
+		if err != nil {
+			s.deps.Logger.Error("incident list failed", "event", "incident_list_failed", "component", "http", "error", err)
+			writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "incidents unavailable")
+			return
+		}
+		rows = list
 	}
 
 	out := make([]incidentItem, 0, len(rows))
 	for _, inc := range rows {
 		out = append(out, toIncidentItem(inc))
 	}
-	writeData(w, r, out, &Meta{Count: len(out), Limit: limit})
+	meta.Count = len(out)
+	writeData(w, r, out, meta)
 }
 
 // handleIncidentByID returns one incident with its ranked attribution and the

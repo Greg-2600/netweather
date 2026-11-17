@@ -167,7 +167,7 @@ Health probes should not have to unwrap an envelope, and orchestrators parse raw
 - Time filters use `from` / `to`, inclusive of `from`, exclusive of `to`, RFC 3339.
 - Filtering by target accepts a registrable hostname, not a URL and not a wildcard.
 - Unknown `sort` values are rejected; `sort` is a closed enum per endpoint.
-- `GET /api/v1/logs` is the exception: it returns the newest N after filtering and does not paginate. Cursors apply to the list endpoints in §7.1 when they land.
+- `GET /api/v1/logs` is the exception: it returns the newest N after filtering and does not paginate. Incidents (`GET /api/v1/incidents`) is the first cursor-paginated list; the other list endpoints still return the newest N, and their cursors land with the same key-based rule.
 
 ---
 
@@ -322,7 +322,8 @@ Auth: bearer. Newest first.
 | Parameter | Default | Notes |
 |---|---|---|
 | `open` | `false` | `true` returns only unclosed incidents |
-| `limit` | 50 | 1–200 |
+| `limit` | 50 | 1-200 |
+| `cursor` | - | Opaque `next_cursor` from the previous page |
 
 ```json
 {
@@ -337,12 +338,14 @@ Auth: bearer. Newest first.
       "confidence": "high"
     }
   ],
-  "meta": {"request_id": "…", "count": 1, "limit": 50}
+  "meta": {"request_id": "…", "count": 1, "limit": 50, "next_cursor": "eyJ0cyI6MTc2MzI2…"}
 }
 ```
 
 - An empty list means "no incidents", not "cannot answer"; the latter is `503`.
 - `closed_at` is absent while the incident is open.
+- This is the first cursor-paginated list (§5). The cursor encodes the last `(opened_at, id)` a page returned, so an incident opening between two requests cannot shift a later page. `next_cursor` is absent on the last page.
+- A malformed cursor is `400 invalid_argument`. A reader that cannot page answers `501 not_implemented` rather than silently repeating the first page; the shipped store always pages.
 
 ### 6.8 `GET /api/v1/incidents/{id}` — stable
 

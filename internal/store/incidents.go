@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -230,6 +231,59 @@ func (s *Store) Incidents(ctx context.Context, openOnly bool, limit int) ([]Inci
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("store: incidents: %w", err)
+	}
+	return out, nil
+}
+
+// IncidentsPage returns one page of incidents, newest first, continuing after
+// the (opened_at, id) key. A zero `before` starts at the first page.
+//
+// The key is (time, id), not an offset: an incident opening between two page
+// requests cannot shift a later page, which is the whole point of a cursor.
+func (s *Store) IncidentsPage(ctx context.Context, openOnly bool, before time.Time, beforeID string, limit int) ([]Incident, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+
+	query := `
+		SELECT id, opened_at, COALESCE(closed_at, 0), verdict, scope,
+		       COALESCE(scope_value, ''), headline, confidence,
+		       COALESCE(closed_reason, ''), COALESCE(annotation, ''), COALESCE(annotated_at, 0)
+		FROM incident`
+	args := make([]any, 0, 4)
+
+	clauses := make([]string, 0, 2)
+	if openOnly {
+		clauses = append(clauses, "closed_at IS NULL")
+	}
+	if !before.IsZero() && beforeID != "" {
+		clauses = append(clauses, "(opened_at < ? OR (opened_at = ? AND id < ?))")
+		ts := before.UnixMilli()
+		args = append(args, ts, ts, beforeID)
+	}
+	if len(clauses) > 0 {
+		// #nosec G202 -- the clauses are fixed literals; no caller input is concatenated.
+		query += " WHERE " + strings.Join(clauses, " AND ")
+	}
+	query += ` ORDER BY opened_at DESC, id DESC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := s.reader.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("store: incidents page: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []Incident
+	for rows.Next() {
+		inc, err := scanIncident(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, inc)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: incidents page: %w", err)
 	}
 	return out, nil
 }

@@ -2009,3 +2009,85 @@ func TestRecentCountryEventsKeepsTheWorstPerCountry(t *testing.T) {
 		t.Fatal("an event outside the window was included")
 	}
 }
+
+func TestIncidentsPageUsesTheKeyNotAnOffset(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	ctx := context.Background()
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+
+	open := func(id string, at time.Time) {
+		t.Helper()
+		inc := store.Incident{
+			ID: id, OpenedAt: at, Verdict: "INCIDENT", Scope: "sector",
+			ScopeValue: "airline", Headline: id, Confidence: "high",
+		}
+		if err := s.OpenIncident(ctx, inc, nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	open("inc-a", base)
+	open("inc-b", base.Add(time.Minute))
+	open("inc-c", base.Add(2*time.Minute))
+
+	// Newest first, and one extra row is the caller's job: the store returns
+	// exactly what it was asked for.
+	page, err := s.IncidentsPage(ctx, false, time.Time{}, "", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page) != 2 || page[0].ID != "inc-c" || page[1].ID != "inc-b" {
+		t.Fatalf("first page = %+v", page)
+	}
+
+	// Resuming after inc-b excludes the boundary and everything newer, even
+	// though inc-a is now the only older row.
+	page, err = s.IncidentsPage(ctx, false, base.Add(time.Minute), "inc-b", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page) != 1 || page[0].ID != "inc-a" {
+		t.Fatalf("second page = %+v", page)
+	}
+
+	// The tie-break is id descending, so a shared timestamp cannot repeat or
+	// skip a row between pages.
+	open("inc-d", base.Add(3*time.Minute))
+	open("inc-e", base.Add(3*time.Minute))
+	page, err = s.IncidentsPage(ctx, false, time.Time{}, "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page) != 1 || page[0].ID != "inc-e" {
+		t.Fatalf("tie first = %+v", page)
+	}
+	page, err = s.IncidentsPage(ctx, false, base.Add(3*time.Minute), "inc-e", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page) != 1 || page[0].ID != "inc-d" {
+		t.Fatalf("tie second = %+v", page)
+	}
+
+	// openOnly filters closed incidents out of both the page and the cursor
+	// walk.
+	if err := s.CloseIncident(ctx, "inc-e", "cleared", base.Add(4*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	page, err = s.IncidentsPage(ctx, true, time.Time{}, "", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, inc := range page {
+		if inc.ID == "inc-e" {
+			t.Fatalf("a closed incident appeared in the open page: %+v", page)
+		}
+	}
+
+	// A non-positive limit falls back to the documented page size.
+	page, err = s.IncidentsPage(ctx, true, time.Time{}, "", 0)
+	if err != nil || len(page) == 0 {
+		t.Fatalf("default limit = %d rows, %v", len(page), err)
+	}
+}

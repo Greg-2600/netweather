@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -69,9 +70,10 @@ type errorEnvelope struct {
 type dataEnvelope struct {
 	Data json.RawMessage `json:"data"`
 	Meta struct {
-		RequestID string `json:"request_id"`
-		Count     int    `json:"count"`
-		Limit     int    `json:"limit"`
+		RequestID  string `json:"request_id"`
+		Count      int    `json:"count"`
+		Limit      int    `json:"limit"`
+		NextCursor string `json:"next_cursor"`
 	} `json:"meta"`
 }
 
@@ -3394,4 +3396,137 @@ func TestSecurityHeaders(t *testing.T) {
 			t.Errorf("%s = %q, want %q", k, got, v)
 		}
 	}
+}
+
+type pageCall struct {
+	openOnly bool
+	before   time.Time
+	beforeID string
+	limit    int
+}
+
+type fakeIncidentPager struct {
+	*fakeIncidents
+	pages [][]store.Incident
+	calls []pageCall
+	err   error
+}
+
+func (f *fakeIncidentPager) IncidentsPage(_ context.Context, openOnly bool, before time.Time, beforeID string, limit int) ([]store.Incident, error) {
+	f.calls = append(f.calls, pageCall{openOnly: openOnly, before: before, beforeID: beforeID, limit: limit})
+	if f.err != nil {
+		return nil, f.err
+	}
+	if len(f.pages) == 0 {
+		return nil, nil
+	}
+	page := f.pages[0]
+	f.pages = f.pages[1:]
+	return page, nil
+}
+
+func TestIncidentsCursorPagination(t *testing.T) {
+	t.Parallel()
+
+	opened := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	rows := []store.Incident{
+		{ID: "inc-3", OpenedAt: opened, Verdict: "INCIDENT", Scope: "sector", Headline: "c", Confidence: "high"},
+		{ID: "inc-2", OpenedAt: opened.Add(-time.Hour), Verdict: "INCIDENT", Scope: "sector", Headline: "b", Confidence: "high"},
+		{ID: "inc-1", OpenedAt: opened.Add(-2 * time.Hour), Verdict: "INCIDENT", Scope: "sector", Headline: "a", Confidence: "high"},
+	}
+	pager := &fakeIncidentPager{
+		fakeIncidents: &fakeIncidents{},
+		pages:         [][]store.Incident{rows, {rows[2]}},
+	}
+
+	h := newIncidentsHandler(t, pager)
+	rec := do(h, http.MethodGet, "/api/v1/incidents?limit=2&open=true", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var first dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &first); err != nil {
+		t.Fatal(err)
+	}
+	var items []struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(first.Data, &items); err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 || items[0].ID != "inc-3" || items[1].ID != "inc-2" {
+		t.Fatalf("first page = %+v", items)
+	}
+	if first.Meta.NextCursor == "" {
+		t.Fatal("a full page had no next_cursor")
+	}
+	if first.Meta.Limit != 2 || first.Meta.Count != 2 {
+		t.Fatalf("meta = %+v", first.Meta)
+	}
+
+	// The first call asks for one extra row, which is how the handler knows a
+	// next page exists.
+	if len(pager.calls) != 1 || pager.calls[0].limit != 3 || !pager.calls[0].openOnly {
+		t.Fatalf("first call = %+v", pager.calls)
+	}
+
+	// Resuming sends the last key of the previous page, not an offset.
+	rec = do(h, http.MethodGet,
+		"/api/v1/incidents?limit=2&cursor="+url.QueryEscape(first.Meta.NextCursor), testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("page 2 status = %d, body=%s", rec.Code, rec.Body)
+	}
+	var second dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &second); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(second.Data, &items); err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ID != "inc-1" {
+		t.Fatalf("second page = %+v", items)
+	}
+	if second.Meta.NextCursor != "" {
+		t.Fatalf("last page carried next_cursor %q", second.Meta.NextCursor)
+	}
+	last := pager.calls[len(pager.calls)-1]
+	if last.beforeID != "inc-2" || !last.before.Equal(opened.Add(-time.Hour)) {
+		t.Fatalf("resume key = (%s, %v), want the previous page's last row", last.beforeID, last.before)
+	}
+}
+
+func TestIncidentsCursorRejectsBadInput(t *testing.T) {
+	t.Parallel()
+
+	pager := &fakeIncidentPager{fakeIncidents: &fakeIncidents{}}
+	h := newIncidentsHandler(t, pager)
+
+	rec := do(h, http.MethodGet, "/api/v1/incidents?cursor=not-a-cursor", testToken)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if len(pager.calls) != 0 {
+		t.Fatal("a bad cursor reached the store")
+	}
+
+	// A reader that cannot page must say so rather than repeat page one.
+	rec = do(newIncidentsHandler(t, incidentFixture()), http.MethodGet,
+		"/api/v1/incidents?cursor="+url.QueryEscape(encodeTestCursor(t)), testToken)
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("status = %d, want 501", rec.Code)
+	}
+}
+
+func encodeTestCursor(t *testing.T) string {
+	t.Helper()
+
+	payload, err := json.Marshal(map[string]any{
+		"ts": time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC).UnixMilli(),
+		"id": "inc-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return base64.RawURLEncoding.EncodeToString(payload)
 }
