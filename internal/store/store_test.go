@@ -65,8 +65,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 2 {
-		t.Errorf("schema version = %d, want 2", stats.SchemaVersion)
+	if stats.SchemaVersion != 3 {
+		t.Errorf("schema version = %d, want 3", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -94,7 +94,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 2 {
+	if err != nil || version != 3 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -730,5 +730,110 @@ func TestExportProbesRange(t *testing.T) {
 	}
 	if empty != 0 {
 		t.Fatalf("empty window returned %d rows", empty)
+	}
+}
+
+func TestFoldBuildsHourlyAndDaily(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	now := time.Date(2026, 11, 17, 12, 30, 0, 0, time.UTC)
+	base := now.Add(-26 * time.Hour) // previous day, still inside the 48h fold window
+
+	if err := s.Record(ctx, []store.Probe{probeAt(base, state.Up)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Record(ctx, []store.Probe{probeAt(base.Add(5*time.Minute), state.Down)}); err != nil {
+		t.Fatal(err)
+	}
+
+	stats, err := s.Fold(ctx, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Hours == 0 || stats.Days == 0 {
+		t.Fatalf("fold stats = %+v, want both resolutions", stats)
+	}
+
+	hour, err := s.RollupFor(ctx, "1h", "t1", "local", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hour.N != 2 || hour.Up != 1 || hour.Down != 1 {
+		t.Fatalf("hourly = %+v", hour)
+	}
+
+	day, err := s.RollupFor(ctx, "1d", "t1", "local", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if day.N != 2 || day.Up != 1 || day.Down != 1 {
+		t.Fatalf("daily = %+v", day)
+	}
+}
+
+func TestPruneAppliesRetention(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	old := now.Add(-200 * time.Hour) // beyond both 72h probes and 7d rollups
+	recent := now.Add(-time.Hour)
+
+	if err := s.Record(ctx, []store.Probe{probeAt(old, state.Up)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Record(ctx, []store.Probe{probeAt(recent, state.Down)}); err != nil {
+		t.Fatal(err)
+	}
+
+	stats, err := s.Prune(ctx, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Probes != 1 {
+		t.Fatalf("pruned probes = %d, want 1", stats.Probes)
+	}
+	if stats.Rollup5m == 0 {
+		t.Fatal("old 5-minute rollup was not pruned")
+	}
+
+	count, err := s.CountProbes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("probes remaining = %d, want 1", count)
+	}
+
+	oldRoll, err := s.RollupFor(ctx, "5m", "t1", "local", old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if oldRoll.N != 0 {
+		t.Fatalf("old rollup survived: %+v", oldRoll)
+	}
+
+	recentRoll, err := s.RollupFor(ctx, "5m", "t1", "local", recent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recentRoll.N != 1 {
+		t.Fatalf("recent rollup = %+v", recentRoll)
+	}
+}
+
+func TestRollupForRejectsUnknownResolution(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	if _, err := s.RollupFor(context.Background(), "2w", "t1", "local", time.Now()); err == nil {
+		t.Fatal("unknown resolution should be an error")
 	}
 }

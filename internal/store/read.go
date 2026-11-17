@@ -211,7 +211,7 @@ func (s *Store) TargetExists(ctx context.Context, id string) (bool, error) {
 	}
 }
 
-// Rollup is one 5-minute bucket.
+// Rollup is one bucket at the requested resolution.
 type Rollup struct {
 	Bucket   time.Time
 	N        int
@@ -222,7 +222,47 @@ type Rollup struct {
 	Unknown  int
 }
 
-// RollupAt reads one bucket; a missing bucket is a zero-value Rollup.
+// RollupFor reads one bucket at 5m, 1h, or 1d resolution. A missing bucket is a
+// zero, not an error.
+func (s *Store) RollupFor(ctx context.Context, resolution, targetID, vantageID string, bucket time.Time) (Rollup, error) {
+	r := Rollup{Bucket: bucket.UTC()}
+
+	var (
+		query    string
+		bucketID int64
+	)
+	switch resolution {
+	case "5m":
+		query = `SELECT n, up, degraded, down, blocked, unknown
+		         FROM rollup_5m WHERE target_id = ? AND vantage_id = ? AND bucket = ?`
+		bucketID = bucket.UnixMilli() / 300000
+		r.Bucket = bucket.UTC().Truncate(5 * time.Minute)
+	case "1h":
+		query = `SELECT n, up, degraded, down, blocked, unknown
+		         FROM rollup_1h WHERE target_id = ? AND vantage_id = ? AND bucket = ?`
+		bucketID = bucket.UnixMilli() / 3600000
+		r.Bucket = bucket.UTC().Truncate(time.Hour)
+	case "1d":
+		query = `SELECT n, up, degraded, down, blocked, unknown
+		         FROM rollup_1d WHERE target_id = ? AND vantage_id = ? AND bucket = ?`
+		bucketID = bucket.UnixMilli() / 86400000
+		r.Bucket = bucket.UTC().Truncate(24 * time.Hour)
+	default:
+		return r, fmt.Errorf("store: unknown rollup resolution %q", resolution)
+	}
+
+	err := s.reader.QueryRowContext(ctx, query, targetID, vantageID, bucketID).
+		Scan(&r.N, &r.Up, &r.Degraded, &r.Down, &r.Blocked, &r.Unknown)
+	if errors.Is(err, sql.ErrNoRows) {
+		return r, nil
+	}
+	if err != nil {
+		return r, fmt.Errorf("store: rollup %s: %w", resolution, err)
+	}
+	return r, nil
+}
+
+// RollupAt reads one 5-minute bucket.
 func (s *Store) RollupAt(ctx context.Context, targetID, vantageID string, bucket time.Time) (Rollup, error) {
 	r := Rollup{Bucket: bucket.UTC().Truncate(5 * time.Minute)}
 

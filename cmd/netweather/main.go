@@ -211,6 +211,7 @@ func serve(lg *logging.Logger) error {
 		}
 	}
 	go incidents.Loop(ctx, st, st, st, "local", incidentInterval, lg.Logger)
+	go maintenanceLoop(ctx, st, lg)
 
 	go func() {
 		<-ctx.Done()
@@ -446,6 +447,48 @@ func newAgent(targets []agent.Target, st *store.Store, lg *logging.Logger) *agen
 	ag := agent.New(targets, runner, st)
 	ag.Logger = lg.Logger
 	return ag
+}
+
+// maintenanceLoop folds closed rollups and applies retention. It runs once at
+// startup so a long downtime self-heals, then every ten minutes.
+func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger) {
+	run := func() {
+		folded, err := st.Fold(ctx, time.Now())
+		if err != nil {
+			lg.Warn("rollup fold failed",
+				"event", "rollup_fold_failed", "component", "maintenance", "error", err)
+		} else if folded.Hours > 0 || folded.Days > 0 {
+			lg.Info("rollups folded",
+				"event", "rollup_folded", "component", "maintenance",
+				"hours", folded.Hours, "days", folded.Days)
+		}
+
+		pruned, err := st.Prune(ctx, time.Now())
+		if err != nil {
+			lg.Warn("retention prune failed",
+				"event", "prune_failed", "component", "maintenance", "error", err)
+		} else if pruned.Probes > 0 || pruned.Rollup5m > 0 {
+			lg.Info("retention pruned",
+				"event", "prune", "component", "maintenance",
+				"probes", pruned.Probes,
+				"rollup_5m", pruned.Rollup5m,
+				"rollup_1h", pruned.Rollup1h,
+				"rollup_1d", pruned.Rollup1d)
+		}
+	}
+
+	run()
+
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			run()
+		}
+	}
 }
 
 func probeLoop(ctx context.Context, lg *logging.Logger, ag *agent.Agent, changes *board.Broadcast) {
