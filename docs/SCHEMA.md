@@ -654,17 +654,18 @@ A day listed in the operator's calendar, or one the both-direction rule marks wh
 | Table | Keep | Job cadence | Notes |
 |---|---|---|---|
 | `probe` | 72h | 10 min, batches of 5000 | Pin ±1h around incidents first |
-| `probe_archive` | 1y | nightly | Bounded by incident count |
-| `rollup_5m` | 7d | hourly | |
-| `rollup_1h` | 30d | daily | |
-| `rollup_1d` | 1y | weekly | |
-| `anomaly` | forever | — | Small; the evaluation corpus |
+| `probe_archive` | 1y | 10 min | Bounded by incident count |
+| `rollup_5m` | 7d | 10 min | |
+| `rollup_1h` | 30d | 10 min | |
+| `rollup_1d` | 1y | 10 min | |
+| `scope_sample` | 28 weeks | 10 min | Exactly the hour-of-week baseline window; older rows cannot be read again |
+| `anomaly` | 90d | 10 min | Evidence around incidents, not the permanent record |
 | `incident`, `attribution`, `incident_target` | forever | — | Small |
-| `dns_observation` | 7d | hourly | |
+| `dns_observation` | 7d | 10 min | |
 | `dns_baseline` | forever | — | One row per resolver per target |
 | `cert_pin` | forever | — | |
-| `self_check` | 30d | daily | |
-| `external_event` | 90d | daily | |
+| `self_check` | 30d | 10 min | |
+| `external_event` | 90d | 10 min | |
 | `coverage_snapshot` | forever | — | 750 rows/day worst case |
 
 Deletion is batched and never a single unbounded `DELETE`:

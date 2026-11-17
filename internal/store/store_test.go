@@ -3805,3 +3805,46 @@ func TestFleetHealthCountsTheMeasurabilityCalibration(t *testing.T) {
 		t.Fatalf("fleet = %+v, want one unmeasurable target and nothing judged", fleet)
 	}
 }
+
+func TestPruneCoversSelfChecksAndScopeSamples(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+
+	// One self-check outside the 30-day window and one inside it.
+	if err := s.RecordSelfCheck(ctx, store.SelfCheck{
+		TS: now.Add(-31 * 24 * time.Hour), Check: "disk", OK: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordSelfCheck(ctx, store.SelfCheck{
+		TS: now.Add(-time.Hour), Check: "disk", OK: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Two scope samples outside the 28-week baseline window and one inside.
+	for _, at := range []time.Time{
+		now.AddDate(0, 0, -210),
+		now.AddDate(0, 0, -200),
+		now.Add(-time.Hour),
+	} {
+		if err := s.SampleScopes(ctx, "local", at); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	stats, err := s.Prune(ctx, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.SelfChecks != 1 {
+		t.Errorf("self checks pruned = %d, want 1", stats.SelfChecks)
+	}
+	if stats.ScopeSamples != 2 {
+		t.Errorf("scope samples pruned = %d, want the two outside the baseline window", stats.ScopeSamples)
+	}
+}

@@ -1000,11 +1000,13 @@ Every probe and rollup row carries `vantage_id`, and rollups are keyed `(target_
 | 5-minute rollups | 7d | ~80 MB |
 | Hourly rollups | 30d | ~32 MB |
 | Daily rollups | 1y | ~16 MB |
-| Incidents, anomalies, external events | forever / 90d | small |
+| Scope samples (the hour-of-week baseline) | 28 weeks | ~140 MB |
+| Incidents | forever | small |
+| Anomalies, external events, self-checks | 90d / 30d | small |
 
-Steady state ≈ **340 MB** for 750 targets at ~430k probes/day, with a hard ceiling well under 1 GB. The maintenance tick (ten minutes) folds and prunes in batches of ≤5000 rows, and **one write transaction per dispatcher tick** — never one fsync per probe.
+Steady state ≈ **480 MB** for 750 targets at ~430k probes/day, with a hard ceiling well under 1 GB. The maintenance tick (ten minutes) folds and prunes in batches of ≤5000 rows, and **one write transaction per dispatcher tick** — never one fsync per probe.
 
-**Implemented, the prune:** `store.Prune` deletes raw probes in 5,000-row batches, then the archive at one year, then the three rollup tiers at 7/30/365 days, then `anomaly` and `external_event` at 90 days. Feed events are aged on `observed_at`, so an event a feed is still reporting keeps refreshing and a long outage is not deleted while it is current; an anomaly is aged on its own timestamp. Incidents are never pruned.
+**Implemented, the prune:** `store.Prune` deletes raw probes in 5,000-row batches, then the archive at one year, then the three rollup tiers at 7/30/365 days, then `anomaly` and `external_event` at 90 days, `self_check` at 30 days, and `scope_sample` at the 28-week baseline window. Feed events are aged on `observed_at`, so an event a feed is still reporting keeps refreshing and a long outage is not deleted while it is current; an anomaly is aged on its own timestamp. Incidents are never pruned.
 
 **Rollups are incremented, never recomputed.** Each tick upserts into the current 5-minute bucket; hourly is folded from 5-minute at bucket close; daily from hourly. Recomputing a 5-minute rollup by scanning raw probes is the one query that would make this design slow at 750 targets.
 

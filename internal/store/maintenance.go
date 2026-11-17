@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/Greg-2600/netweather/internal/baseline"
 )
 
 // FoldStats reports how many buckets were folded.
@@ -112,6 +114,8 @@ type PruneStats struct {
 	Rollup1d       int64
 	Anomalies      int64
 	ExternalEvents int64
+	SelfChecks     int64
+	ScopeSamples   int64
 }
 
 // Prune applies the retention policy from SCHEMA.md §11. Raw probes are deleted
@@ -173,6 +177,23 @@ func (s *Store) Prune(ctx context.Context, now time.Time) (PruneStats, error) {
 	}
 	stats.ExternalEvents, err = s.deleteOlderThan(ctx,
 		`DELETE FROM external_event WHERE observed_at < ?`, retention90)
+	if err != nil {
+		return stats, err
+	}
+
+	// Self-checks are 30 days (SCHEMA.md §11): a check this old is not the
+	// explanation for anything the board shows now.
+	stats.SelfChecks, err = s.deleteOlderThan(ctx, `DELETE FROM self_check WHERE ts < ?`,
+		now.Add(-30*24*time.Hour).UnixMilli())
+	if err != nil {
+		return stats, err
+	}
+
+	// Scope samples are the hour-of-week baseline. Keep exactly the window the
+	// detector reads (28 weekly samples = 28 weeks); older rows can never be
+	// consulted again and would otherwise grow without bound.
+	stats.ScopeSamples, err = s.deleteOlderThan(ctx, `DELETE FROM scope_sample WHERE bucket < ?`,
+		now.AddDate(0, 0, -7*baseline.Window).UnixMilli()/3600000)
 	if err != nil {
 		return stats, err
 	}
