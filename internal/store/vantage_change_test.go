@@ -49,3 +49,39 @@ func TestVantageChange(t *testing.T) {
 		t.Fatalf("latest = %+v, want the second move", change)
 	}
 }
+
+func TestPruneDropsOldVantageChanges(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	ctx := context.Background()
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+
+	// One move outside the 90-day window and one inside it. A flapping VPN
+	// must not grow the table without bound.
+	if err := s.RecordVantageChange(ctx,
+		"203.0.113.9,AS7922,US", "198.51.100.4,AS9009,NL",
+		now.Add(-120*24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordVantageChange(ctx,
+		"198.51.100.4,AS9009,NL", "192.0.2.10,AS64500,DE",
+		now.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	stats, err := s.Prune(ctx, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.VantageChanges != 1 {
+		t.Fatalf("vantage changes pruned = %d, want 1", stats.VantageChanges)
+	}
+	change, ok, err := s.LatestVantageChange(ctx)
+	if err != nil || !ok {
+		t.Fatalf("latest = (%+v, %v, %v)", change, ok, err)
+	}
+	if change.Current != "192.0.2.10,AS64500,DE" {
+		t.Fatalf("the recent move was pruned: %+v", change)
+	}
+}

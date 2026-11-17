@@ -666,7 +666,9 @@ A day listed in the operator's calendar, or one the both-direction rule marks wh
 | `cert_pin` | forever | — | |
 | `self_check` | 30d | 10 min | |
 | `external_event` | 90d | 10 min | |
-| `coverage_snapshot` | forever | — | 750 rows/day worst case |
+| `vantage_change` | 90d | 10 min | The board reads the newest row and shows it for 24h |
+| `atypical_day` | forever | - | One row per day per excluded scope; the baseline calendar |
+| `coverage_snapshot` | forever | - | 750 rows/day worst case |
 
 Deletion is batched and never a single unbounded `DELETE`:
 

@@ -116,6 +116,7 @@ type PruneStats struct {
 	ExternalEvents int64
 	SelfChecks     int64
 	ScopeSamples   int64
+	VantageChanges int64
 }
 
 // Prune applies the retention policy from SCHEMA.md §11. Raw probes are deleted
@@ -194,6 +195,16 @@ func (s *Store) Prune(ctx context.Context, now time.Time) (PruneStats, error) {
 	// consulted again and would otherwise grow without bound.
 	stats.ScopeSamples, err = s.deleteOlderThan(ctx, `DELETE FROM scope_sample WHERE bucket < ?`,
 		now.AddDate(0, 0, -7*baseline.Window).UnixMilli()/3600000)
+	if err != nil {
+		return stats, err
+	}
+
+	// An egress move is evidence about when the baselines reset, not a
+	// permanent record: the board reads the newest row and shows it for 24
+	// hours. Ninety days is generous, and it keeps a flapping VPN from growing
+	// the table without bound.
+	stats.VantageChanges, err = s.deleteOlderThan(ctx,
+		`DELETE FROM vantage_change WHERE changed_at < ?`, retention90)
 	if err != nil {
 		return stats, err
 	}
