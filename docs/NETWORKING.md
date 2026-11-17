@@ -360,7 +360,7 @@ services:
       - ./config:/config:ro
       - ./secrets/ui_token:/run/secrets/ui_token:ro
     environment:
-      NETWEATHER_LOG: info
+      NETWEATHER_LOG_LEVEL: info
       NETWEATHER_UI_LISTEN: 0.0.0.0:2600
       NETWEATHER_UI_TOKEN_FILE: /run/secrets/ui_token
       NETWEATHER_TRACE_ENABLED: "false"
