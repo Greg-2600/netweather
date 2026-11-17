@@ -137,6 +137,9 @@ CREATE TABLE target_source (
 
 `target_source` exists because a seeded target is **untrusted input** (`DESIGN.md` §4). Every seeded row carries where it came from and a hash of the payload, so a poisoned list can be traced and rolled back.
 
+**Implemented in migration `0022`:** `netweather seed` records `seed:builtin` with a SHA-256 of the shipped entry list, `seed --country-anchors` records `seed:root-zone` with a SHA-256 of the fetched zone, and a config load records `config:<path>` with a SHA-256 of the file or, for a directory, every file in a stable order with its relative path. The upsert updates `fetched_at` and `sha256` in place, so a reload shows a changed payload without adding a second row for the same source. The row is written in the same load that upserts the target, and a failed write fails the load rather than leaving a target with no provenance.
+
+
 ### 4.1 Reconciliation on config load
 
 ```

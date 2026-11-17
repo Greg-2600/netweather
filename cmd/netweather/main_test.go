@@ -1590,3 +1590,93 @@ func TestNextDropReport(t *testing.T) {
 		})
 	}
 }
+
+func TestSeedRecordsProvenance(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("NETWEATHER_CONFIG", "")
+	t.Setenv("NETWEATHER_SEED", "")
+	t.Setenv("NETWEATHER_DATA", filepath.Join(dir, "data"))
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(dir, "data", "netweather.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	if _, err := seedTargets(ctx, st); err != nil {
+		t.Fatalf("seedTargets: %v", err)
+	}
+
+	sources, err := st.TargetSources(ctx, "svc-chase")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sources) != 1 || sources[0].Source != "seed:builtin" {
+		t.Fatalf("sources = %+v, want one seed:builtin row", sources)
+	}
+	if len(sources[0].SHA256) != 64 {
+		t.Fatalf("sha256 = %q, want 64 hex characters", sources[0].SHA256)
+	}
+	if sources[0].FetchedAt.IsZero() {
+		t.Fatal("fetched_at was not recorded")
+	}
+}
+
+func TestConfigLoadRecordsProvenance(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "targets.yaml")
+	t.Setenv("NETWEATHER_CONFIG", cfg)
+	t.Setenv("NETWEATHER_DATA", filepath.Join(dir, "data"))
+
+	body := `version: 1
+targets:
+  - name: Example
+    host: example.com
+    port: 443
+    probe: http
+    class: reference
+    tier: 0
+`
+	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(dir, "data", "netweather.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	if _, err := loadTargets(ctx, st); err != nil {
+		t.Fatalf("loadTargets: %v", err)
+	}
+	sources, err := st.TargetSources(ctx, "example-com-http")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sources) != 1 || sources[0].Source != "config:"+cfg {
+		t.Fatalf("sources = %+v, want config:%s", sources, cfg)
+	}
+	first := sources[0].SHA256
+	if len(first) != 64 {
+		t.Fatalf("sha256 = %q", first)
+	}
+
+	// An edit changes the hash in place rather than adding a second source
+	// row for the same file.
+	if err := os.WriteFile(cfg, []byte(body+"    # edited\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadTargets(ctx, st); err != nil {
+		t.Fatal(err)
+	}
+	sources, err = st.TargetSources(ctx, "example-com-http")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sources) != 1 || sources[0].SHA256 == first {
+		t.Fatalf("sources after the edit = %+v, want one row with a new hash", sources)
+	}
+}

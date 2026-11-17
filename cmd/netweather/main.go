@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -579,6 +581,16 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 		return nil, err
 	}
 
+	// Provenance for the whole file or directory (THREAT_MODEL.md T35). One
+	// hash for the payload, recorded per target so a poisoned list can be
+	// traced back to the input that produced it.
+	source := "config:" + path
+	payloadSHA, err := configPayloadSHA(path)
+	if err != nil {
+		return nil, fmt.Errorf("config payload hash: %w", err)
+	}
+	loadedAt := time.Now().UTC()
+
 	out := make([]agent.Target, 0, len(f.Targets))
 	for _, t := range f.Targets {
 		var (
@@ -631,6 +643,9 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 		}); err != nil {
 			return nil, err
 		}
+		if err := st.RecordTargetSource(ctx, t.ID, source, payloadSHA, loadedAt); err != nil {
+			return nil, err
+		}
 
 		out = append(out, agent.Target{
 			ID:           t.ID,
@@ -666,7 +681,74 @@ func seedTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 	if os.Getenv("NETWEATHER_SEED") == "none" {
 		return nil, nil
 	}
-	return applySeedEntries(ctx, st, seed.Default())
+	entries := seed.Default()
+	return applySeedEntries(ctx, st, entries, "seed:builtin", seedPayloadSHA(entries))
+}
+
+// payloadSHA is the provenance hash for a target payload. It is a hex SHA-256
+// of canonical text, never of a map, so the same input always hashes the same
+// (THREAT_MODEL.md T35).
+func payloadSHA(text string) string {
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])
+}
+
+// seedPayloadSHA hashes the starter entries in their declared order.
+func seedPayloadSHA(entries []seed.Entry) string {
+	var b strings.Builder
+	for _, e := range entries {
+		fmt.Fprintf(&b, "%s|%s|%d|%s|%s|%s|%d\n",
+			e.ID, e.Host, e.Port, e.Probe, e.Class, e.Sector, e.Tier)
+	}
+	return payloadSHA(b.String())
+}
+
+// configPayloadSHA hashes a target file, or a directory's files in a stable
+// order with their relative paths, so an edit to any sites file is visible in
+// the provenance row.
+func configPayloadSHA(path string) (string, error) {
+	info, err := os.Stat(path) // #nosec G703 -- operator-supplied NETWEATHER_CONFIG.
+	if err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	if !info.IsDir() {
+		raw, err := os.ReadFile(path) // #nosec G304 G703 -- operator-supplied NETWEATHER_CONFIG.
+		if err != nil {
+			return "", err
+		}
+		h.Write(raw)
+		return hex.EncodeToString(h.Sum(nil)), nil
+	}
+
+	var files []string
+	err = filepath.WalkDir(path, func(p string, entry os.DirEntry, err error) error { // #nosec G703 -- operator-supplied NETWEATHER_CONFIG.
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(path, p)
+		if err != nil {
+			return err
+		}
+		files = append(files, rel)
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(files)
+	for _, rel := range files {
+		raw, err := os.ReadFile(filepath.Join(path, rel)) // #nosec G304 G703 -- files discovered under NETWEATHER_CONFIG.
+		if err != nil {
+			return "", err
+		}
+		_, _ = fmt.Fprintf(h, "%s\x00%d\x00", rel, len(raw))
+		h.Write(raw)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // applySeedEntries reconciles starter entries into the store and returns the
@@ -674,7 +756,8 @@ func seedTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 // anchors, so both go through one path: an entry that names a probe and a port
 // is stored with them, and an entry that names neither keeps the shipped
 // HTTP-on-443 default.
-func applySeedEntries(ctx context.Context, st *store.Store, entries []seed.Entry) ([]agent.Target, error) {
+func applySeedEntries(ctx context.Context, st *store.Store, entries []seed.Entry, source, payload string) ([]agent.Target, error) {
+	loadedAt := time.Now().UTC()
 	out := make([]agent.Target, 0, len(entries))
 	for _, e := range entries {
 		interval := schedule.DefaultInterval(e.Tier)
@@ -731,6 +814,9 @@ func applySeedEntries(ctx context.Context, st *store.Store, entries []seed.Entry
 			Tier:      int(e.Tier),
 			IntervalS: int(interval / time.Second),
 		}); err != nil {
+			return nil, err
+		}
+		if err := st.RecordTargetSource(ctx, e.ID, source, payload, loadedAt); err != nil {
 			return nil, err
 		}
 
@@ -791,8 +877,10 @@ func seedCommand(args []string, out io.Writer) error {
 	defer func() { _ = st.Close() }()
 
 	// --country-anchors needs one fetch either way; a diff and an apply should
-	// compare and write the same set.
+	// compare and write the same set. The zone hash travels with the entries so
+	// the store records which root-zone payload produced them.
 	var anchors []seed.Entry
+	var anchorsSHA string
 	if *countryAnchors {
 		fetchCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 		defer cancel()
@@ -805,6 +893,7 @@ func seedCommand(args []string, out io.Writer) error {
 		if len(anchors) == 0 {
 			return errors.New("seed: country anchors: the root zone contained no ccTLD delegations")
 		}
+		anchorsSHA = payloadSHA(zone)
 	}
 
 	if *diff {
@@ -834,7 +923,7 @@ func seedCommand(args []string, out io.Writer) error {
 	}
 
 	if *countryAnchors {
-		targets, err := applySeedEntries(ctx, st, anchors)
+		targets, err := applySeedEntries(ctx, st, anchors, "seed:root-zone", anchorsSHA)
 		if err != nil {
 			return err
 		}
