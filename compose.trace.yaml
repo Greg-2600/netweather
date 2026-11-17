@@ -12,7 +12,7 @@ services:
     cap_add:
       - NET_RAW
     environment:
-      # Nothing prevents the API from accepting trace requests without the
-      # capability; the handler answers 503 with the socket error instead. This
-      # variable is documentation for the operator, not a switch.
-      NETWEATHER_TRACE: "true"
+      # The capability is not consent: tracing stays off until this is true, and
+      # the API answers 503 explaining the opt-in when it is not. Both halves
+      # live in this one file so enabling raw sockets is a visible choice.
+      NETWEATHER_TRACE_ENABLED: "true"

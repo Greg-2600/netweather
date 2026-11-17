@@ -92,6 +92,12 @@ func (s *server) handleTrace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !s.deps.TraceEnabled {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable,
+			"traceroute is disabled; set NETWEATHER_TRACE_ENABLED=true and grant CAP_NET_RAW")
+		return
+	}
+
 	if s.deps.Tracer == nil || s.deps.Resolver == nil || s.deps.Targets == nil {
 		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable,
 			"traceroute is not configured on this instance")

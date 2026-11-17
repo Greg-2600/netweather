@@ -3143,14 +3143,15 @@ func newTraceHandler(t *testing.T, targets api.TargetReader, tracer api.Tracer, 
 	h, err := api.New(
 		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
 		api.Deps{
-			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
-			Targets:   targets,
-			Tracer:    tracer,
-			Resolver:  resolver,
-			Vantage:   "local",
-			Version:   "test",
-			Commit:    "deadbeef",
-			StartedAt: time.Now(),
+			Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Targets:      targets,
+			Tracer:       tracer,
+			TraceEnabled: true,
+			Resolver:     resolver,
+			Vantage:      "local",
+			Version:      "test",
+			Commit:       "deadbeef",
+			StartedAt:    time.Now(),
 		},
 	)
 	if err != nil {
@@ -4210,5 +4211,38 @@ func TestTargetDetailCarriesEveryVantage(t *testing.T) {
 	rec = do(newTargetDetailHandler(t, targets, nil), http.MethodGet, "/api/v1/targets/t1", testToken)
 	if strings.Contains(rec.Body.String(), `"vantages"`) {
 		t.Fatalf("an unconfigured comparison was reported: %s", rec.Body)
+	}
+}
+
+func TestTraceIsOffUntilEnabled(t *testing.T) {
+	t.Parallel()
+
+	// The dependency set is complete, but the explicit opt-in is absent: raw
+	// sockets are not consent (IMAGE.md §5).
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Targets: traceTargets(),
+			Tracer: &fakeTracer{result: probe.TraceResult{
+				Destination: netip.MustParseAddr("203.0.113.10"),
+				Reached:     true,
+			}},
+			Resolver:  &fakeResolver{addrs: []netip.Addr{netip.MustParseAddr("203.0.113.10")}},
+			Vantage:   "local",
+			Version:   "test",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+
+	rec := do(h, http.MethodPost, "/api/v1/targets/t1/trace", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 without the opt-in", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "NETWEATHER_TRACE_ENABLED") {
+		t.Fatalf("the refusal does not name the switch: %s", rec.Body)
 	}
 }

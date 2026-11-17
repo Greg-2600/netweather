@@ -340,6 +340,15 @@ func serve(lg *logging.Logger) error {
 	// useful without database access; unknown is reported as absent.
 	schemaVersion, _ := st.SchemaVersion(ctx)
 
+	// Traceroute is the most visible thing this binary can do. The capability
+	// alone is not consent: it stays off until the operator sets this, which is
+	// why the documented trace override flips exactly this variable (IMAGE.md
+	// §5).
+	traceEnabled := strings.EqualFold(strings.TrimSpace(os.Getenv("NETWEATHER_TRACE_ENABLED")), "true")
+	if traceEnabled {
+		lg.Info("traceroute enabled", "event", "trace_enabled", "component", "startup")
+	}
+
 	// Stopping one host is the abuse-response path (ACCEPTABLE_USE.md §7).
 	// The row and its history stay; the live schedulers drop it immediately,
 	// and a config reload can bring it back.
@@ -393,6 +402,7 @@ func serve(lg *logging.Logger) error {
 		Debug:           scopes,
 		IncidentWatcher: incidentChanges,
 		Tracer:          probe.NewTrace(),
+		TraceEnabled:    traceEnabled,
 		Resolver:        netx.New(),
 		Metrics:         metricsHandler,
 		Vantage:         "local",

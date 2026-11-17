@@ -786,7 +786,8 @@ Auth: bearer. One on-demand IPv4 ICMP traceroute. The result is a hint about whe
 - Global budget: **10 runs per hour**, shared by every client, because a target's abuse desk sees the operator's egress address rather than a user. Exhaustion is `429` with `Retry-After`.
 - `timeout: true` marks a hop that never answered. Routers rate-limit TTL-exceeded, so a star is not loss. Three consecutive silent hops end the walk early.
 - The destination not answering is `200` with `reached: false`, not an error.
-- Traceroute needs `CAP_NET_RAW`. Without it the endpoint is `503` with the socket error in the message, and the rest of the monitor is unaffected (`compose.trace.yaml` grants the capability). IPv6 destinations are `400` in this release.
+- Traceroute needs `CAP_NET_RAW`. Without it the endpoint is `503` with the socket error in the message, and the rest of the monitor is unaffected (`compose.trace.yaml` grants the capability).
+- The capability is not consent: the endpoint is also `503` unless `NETWEATHER_TRACE_ENABLED=true`, with that variable named in the refusal. The documented override sets both, so enabling raw sockets is a visible second file rather than a line someone uncomments.
 - Every run logs `event=traceroute` with the request id, destination, hop count, and whether the destination answered.
 
 ### 6.22 `GET /api/v1/corridors` - stable

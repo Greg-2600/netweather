@@ -42,6 +42,18 @@ func doctorCommand(args []string, out io.Writer) error {
 	dialer := netx.New()
 	instruments := newInstruments()
 
+	// Traceroute is off unless the operator opted in. When it is off, the raw
+	// socket is not a missing capability but a deliberate choice, so the doctor
+	// reports the configuration rather than a warning that suggests a bug.
+	traceCheck := doctor.Check{Name: "traceroute (optional)", Run: func(context.Context) (string, error) {
+		return "disabled by NETWEATHER_TRACE_ENABLED (opt-in, with CAP_NET_RAW)", nil
+	}}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("NETWEATHER_TRACE_ENABLED")), "true") {
+		traceCheck.Run = capabilityCheck("raw ICMP socket", func() (io.Closer, error) {
+			return probe.NewTrace().Open()
+		})
+	}
+
 	checks := []doctor.Check{
 		{Name: "data dir", Fatal: true, Run: diskCheck(dataDir)},
 		{Name: "resolver", Fatal: true, Run: dnsCheck(instruments.DNS)},
@@ -56,9 +68,7 @@ func doctorCommand(args []string, out io.Writer) error {
 			}
 			return transport, nil
 		})},
-		{Name: "traceroute (optional)", Run: capabilityCheck("raw ICMP socket", func() (io.Closer, error) {
-			return probe.NewTrace().Open()
-		})},
+		traceCheck,
 		{Name: "egress policy", Fatal: true, Run: func(context.Context) (string, error) {
 			if !dialer.Policy.PortAllowed(443) || dialer.Policy.PortAllowed(22) {
 				return "", fmt.Errorf("outbound allowlist is not the documented set")

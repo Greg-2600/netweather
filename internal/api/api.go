@@ -237,6 +237,10 @@ type Deps struct {
 	Debug DebugScopes
 	// Tracer runs on-demand traceroute. Nil disables the trace action.
 	Tracer Tracer
+	// TraceEnabled is the explicit opt-in from NETWEATHER_TRACE_ENABLED. Raw
+	// sockets are not enough: tracing is the most visible thing this binary can
+	// do, so it stays off until the operator asks (IMAGE.md 5).
+	TraceEnabled bool
 	// Resolver turns a target hostname into addresses for a trace.
 	Resolver HostResolver
 	// StreamLimit caps concurrent SSE connections. Nil uses the defaults.
