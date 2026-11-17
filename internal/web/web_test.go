@@ -345,6 +345,14 @@ func TestLoginAndBoardRender(t *testing.T) {
 	if strings.Contains(page, `data-testid="empty-board"`) {
 		t.Error("empty state rendered with targets present")
 	}
+
+	// Failures cluster first: the board answers "what is down?", not "what is
+	// alphabetical".
+	down := strings.Index(page, `data-target="united.com"`)
+	up := strings.Index(page, `data-target="chase.com"`)
+	if down < 0 || up < 0 || down > up {
+		t.Fatalf("failures are not clustered first (down=%d, up=%d)", down, up)
+	}
 }
 
 func TestBoardEscapesTargetNames(t *testing.T) {

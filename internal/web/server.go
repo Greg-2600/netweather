@@ -181,6 +181,8 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "board unavailable", http.StatusServiceUnavailable)
 		return
 	}
+	// Failures first: the grid answers "what is down?", not "what is alphabetical".
+	targets = board.Order(targets)
 
 	csrf, _ := s.auth.csrfFrom(r)
 	view := boardView{
