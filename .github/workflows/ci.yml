@@ -40,7 +40,12 @@ jobs:
         run: go run ./internal/devtool cover
 
       - name: fuzz (short)
-        run: go test -run=^$ -fuzz=FuzzScrubStringIsIdempotent -fuzztime=20s ./internal/logging
+        run: |
+          go test -run=^$ -fuzz=FuzzScrubStringIsIdempotent -fuzztime=10s ./internal/logging
+          go test -run=^$ -fuzz=FuzzParseLevel -fuzztime=5s ./internal/logging
+          go test -run=^$ -fuzz=FuzzParse -fuzztime=10s ./internal/config
+          go test -run=^$ -fuzz=FuzzClassify -fuzztime=10s ./internal/classify
+          go test -run=^$ -fuzz=FuzzRank -fuzztime=10s ./internal/correlate
 
   lint:
     runs-on: ubuntu-latest

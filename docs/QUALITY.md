@@ -232,14 +232,16 @@ func FuzzClassify(f *testing.F) {
 }
 ```
 
-Fuzz targets:
+Fuzz targets, implemented:
 
-- `classify` — totality, determinism, no panic on arbitrary bytes
-- `parseResponse` — truncated headers, huge headers, invalid UTF-8, chunked weirdness
-- `parseConfig` — arbitrary YAML/TXT must produce an error, never a panic
-- `attribution` — invariants: score is monotonic in failures, winner share ≤ 1
+- `FuzzClassify` (`internal/classify`) — totality, determinism, no panic on arbitrary status, header, body, and final-URL bytes. The classifier reads the response in place, so this also covers response parsing: there is no separate `parseResponse`.
+- `FuzzParse` (`internal/config`) — arbitrary YAML/TXT must produce a validated file or an error, never a panic. `config.Parse` exists so the parser can be fuzzed without the filesystem.
+- `FuzzRank` (`internal/correlate`) — share stays in [0,1], failures never exceed members, scores are finite and non-negative, ordering is deterministic, and a winner always clears the gates.
+- `FuzzScrubStringIsIdempotent` and `FuzzParseLevel` (`internal/logging`) — redaction is idempotent, and a level parse either succeeds or errors.
 
-`rapid` (property-based) is worth it for the attribution scorer: generate random failure distributions and assert the chosen cluster always contains the most failures.
+Each runs for a short time in CI (`.github/workflows/ci.yml`) and locally with `go test -run=^$ -fuzz=<name> ./<package>`.
+
+`rapid` (property-based) is worth it for the attribution scorer: generate random failure distributions and assert the chosen cluster always contains the most failures. `FuzzRank` covers the deterministic invariants today; the generator is the remaining step.
 
 ### 5.3 Integration — the fake internet
 

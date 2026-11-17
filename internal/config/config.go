@@ -129,7 +129,13 @@ func Load(path string) (*File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("config: %w", err)
 	}
+	return Parse(raw)
+}
 
+// Parse validates a config from raw bytes. It exists so the parser can be
+// fuzzed without the filesystem, and so callers that already hold the bytes do
+// not have to write them out first.
+func Parse(raw []byte) (*File, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	dec.KnownFields(true)
 
