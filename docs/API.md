@@ -200,7 +200,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
-    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history"],
+    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -680,6 +680,34 @@ Auth: bearer. Daily coverage snapshots for one scope, oldest first.
 - Oldest first so a client can draw a line without reversing it.
 - A scope with no snapshots returns `200` and an empty list; history starts on the first day the process ran.
 
+### 6.21 `POST /api/v1/targets/{id}/trace` — experimental
+
+Auth: bearer. One on-demand IPv4 ICMP traceroute. The result is a hint about where a path bends; it never changes a target's state.
+
+```json
+{
+  "data": {
+    "target": "Chase",
+    "host": "www.chase.com",
+    "destination": "203.0.113.10",
+    "reached": true,
+    "hops": [
+      {"ttl": 1, "addr": "10.0.0.1", "rtt_ms": 4},
+      {"ttl": 2, "timeout": true},
+      {"ttl": 3, "addr": "203.0.113.10", "rtt_ms": 11}
+    ]
+  },
+  "meta": {"request_id": "…"}
+}
+```
+
+- `POST` only. A trace is an action, not a read.
+- Global budget: **10 runs per hour**, shared by every client, because a target's abuse desk sees the operator's egress address rather than a user. Exhaustion is `429` with `Retry-After`.
+- `timeout: true` marks a hop that never answered. Routers rate-limit TTL-exceeded, so a star is not loss. Three consecutive silent hops end the walk early.
+- The destination not answering is `200` with `reached: false`, not an error.
+- Traceroute needs `CAP_NET_RAW`. Without it the endpoint is `503` with the socket error in the message, and the rest of the monitor is unaffected (`compose.trace.yaml` grants the capability). IPv6 destinations are `400` in this release.
+- Every run logs `event=traceroute` with the request id, destination, hop count, and whether the destination answered.
+
 ---
 
 ## 7. Specified, not implemented
@@ -703,11 +731,7 @@ Two limitations are stated rather than hidden: `Last-Event-ID` replay is not imp
 
 ### 7.3 Actions (POST)
 
-| Endpoint | Tier | Purpose |
-|---|---|---|
-| `POST /api/v1/targets/{id}/trace` | experimental | On-demand traceroute; subject to the ≤10/hour global limit |
-
-The debug-scope actions are **implemented**; see §6.19.
+All action endpoints are **implemented**: the debug scopes in §6.19 and the traceroute in §6.21.
 
 Actions require `Content-Type: application/json` and an `Idempotency-Key` header. A repeated key returns the original result rather than acting twice — important for `pause` behind a retrying proxy. Debug-scope creation currently does not require an idempotency key; repeating it creates a second scope, which is visible in the list and expires on its own.
 

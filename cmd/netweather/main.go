@@ -242,6 +242,8 @@ func serve(lg *logging.Logger) error {
 		Feeds:           st,
 		Debug:           scopes,
 		IncidentWatcher: incidentChanges,
+		Tracer:          probe.NewTrace(),
+		Resolver:        netx.New(),
 		Metrics:         metricsHandler,
 		Vantage:         "local",
 		Fallback:        ui,

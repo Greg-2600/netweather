@@ -279,6 +279,8 @@ Degradation is mandatory:
 - `trace` is disabled with a visible reason, not an error
 - **The monitor must never fail to start because of a missing capability**
 
+**Implemented:** `probe.Trace` walks IPv4 ICMP TTLs and reports each hop or a star. The API action `POST /api/v1/targets/{id}/trace` is capped at ten runs per hour across the instance and answers `503` with the socket error when the capability is missing — the process itself starts normally. `compose.trace.yaml` adds `CAP_NET_RAW` as an overlay; the default file grants no capabilities. A target not answering is `200` with `reached: false`, not an error. `doctor`, `tcpping`, and the ICMP probe remain specified.
+
 `tcpping` is the portable RTT instrument; `icmp` is an optimisation on hosts that allow it. Windows and macOS hosts differ enough that this must be documented rather than guessed.
 
 ### 5.6 Vantage points

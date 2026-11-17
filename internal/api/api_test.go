@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"strings"
 	"sync"
@@ -20,6 +21,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/baseline"
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/logging"
+	"github.com/Greg-2600/netweather/internal/probe"
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
 )
@@ -2580,6 +2582,251 @@ func TestCoverageHistoryUnavailableAndAuth(t *testing.T) {
 
 	rec = do(newCoverageHistoryHandler(t, &fakeCoverageHistory{}),
 		http.MethodGet, "/api/v1/coverage/history", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+type fakeTracer struct {
+	result probe.TraceResult
+	calls  int
+	got    netip.Addr
+}
+
+func (f *fakeTracer) Run(_ context.Context, dst netip.Addr) probe.TraceResult {
+	f.calls++
+	f.got = dst
+	return f.result
+}
+
+type fakeResolver struct {
+	addrs []netip.Addr
+	err   error
+	hosts []string
+}
+
+func (f *fakeResolver) CheckHost(_ context.Context, host string) ([]netip.Addr, error) {
+	f.hosts = append(f.hosts, host)
+	return f.addrs, f.err
+}
+
+func newTraceHandler(t *testing.T, targets api.TargetReader, tracer api.Tracer, resolver api.HostResolver) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Targets:   targets,
+			Tracer:    tracer,
+			Resolver:  resolver,
+			Vantage:   "local",
+			Version:   "test",
+			Commit:    "deadbeef",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func traceTargets() *fakeTargets {
+	return &fakeTargets{rows: map[string]store.TargetRow{
+		"t1": {
+			Target: store.Target{
+				ID: "t1", Host: "chase.com", Port: 443, Probe: "http",
+				Name: "Chase", Class: "service", Sector: "financial/banking",
+				Country: "US", Tier: 2, IntervalS: 300,
+			},
+			State: state.Down,
+		},
+	}}
+}
+
+func TestTraceAction(t *testing.T) {
+	t.Parallel()
+
+	tracer := &fakeTracer{result: probe.TraceResult{
+		Destination: netip.MustParseAddr("203.0.113.10"),
+		Reached:     true,
+		Hops: []probe.TraceHop{
+			{TTL: 1, Addr: netip.MustParseAddr("10.0.0.1"), RTT: 4 * time.Millisecond},
+			{TTL: 2, Addr: netip.MustParseAddr("203.0.113.10"), RTT: 11 * time.Millisecond},
+		},
+	}}
+	resolver := &fakeResolver{addrs: []netip.Addr{netip.MustParseAddr("203.0.113.10")}}
+
+	rec := do(newTraceHandler(t, traceTargets(), tracer, resolver),
+		http.MethodPost, "/api/v1/targets/t1/trace", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Target      string `json:"target"`
+		Host        string `json:"host"`
+		Destination string `json:"destination"`
+		Reached     bool   `json:"reached"`
+		Hops        []struct {
+			TTL     int    `json:"ttl"`
+			Addr    string `json:"addr"`
+			RTTMS   int64  `json:"rtt_ms"`
+			Timeout bool   `json:"timeout"`
+		} `json:"hops"`
+	}
+	if err := json.Unmarshal(env.Data, &got); err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Target != "Chase" || got.Host != "chase.com" || !got.Reached {
+		t.Fatalf("response = %+v", got)
+	}
+	if len(got.Hops) != 2 || got.Hops[0].Addr != "10.0.0.1" || got.Hops[0].RTTMS != 4 {
+		t.Fatalf("hops = %+v", got.Hops)
+	}
+	if tracer.got != netip.MustParseAddr("203.0.113.10") {
+		t.Fatalf("traced %v, want the resolved address", tracer.got)
+	}
+	if len(resolver.hosts) != 1 || resolver.hosts[0] != "chase.com" {
+		t.Fatalf("resolved hosts = %v", resolver.hosts)
+	}
+}
+
+func TestTraceRecordsTimeouts(t *testing.T) {
+	t.Parallel()
+
+	tracer := &fakeTracer{result: probe.TraceResult{
+		Destination: netip.MustParseAddr("203.0.113.10"),
+		Hops: []probe.TraceHop{
+			{TTL: 1, Addr: netip.MustParseAddr("10.0.0.1"), RTT: time.Millisecond},
+			{TTL: 2},
+		},
+	}}
+	resolver := &fakeResolver{addrs: []netip.Addr{netip.MustParseAddr("203.0.113.10")}}
+
+	rec := do(newTraceHandler(t, traceTargets(), tracer, resolver),
+		http.MethodPost, "/api/v1/targets/t1/trace", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Reached bool `json:"reached"`
+		Hops    []struct {
+			TTL     int    `json:"ttl"`
+			Addr    string `json:"addr"`
+			Timeout bool   `json:"timeout"`
+		} `json:"hops"`
+	}
+	if err := json.Unmarshal(env.Data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Reached {
+		t.Fatal("a silent path reported reached")
+	}
+	if len(got.Hops) != 2 || !got.Hops[1].Timeout || got.Hops[1].Addr != "" {
+		t.Fatalf("hops = %+v", got.Hops)
+	}
+}
+
+func TestTraceRateLimit(t *testing.T) {
+	t.Parallel()
+
+	tracer := &fakeTracer{result: probe.TraceResult{
+		Destination: netip.MustParseAddr("203.0.113.10"),
+		Reached:     true,
+	}}
+	resolver := &fakeResolver{addrs: []netip.Addr{netip.MustParseAddr("203.0.113.10")}}
+	h := newTraceHandler(t, traceTargets(), tracer, resolver)
+
+	for i := 0; i < 10; i++ {
+		rec := do(h, http.MethodPost, "/api/v1/targets/t1/trace", testToken)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("run %d: status = %d", i+1, rec.Code)
+		}
+	}
+
+	rec := do(h, http.MethodPost, "/api/v1/targets/t1/trace", testToken)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429 after the hourly budget", rec.Code)
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Error("429 without a Retry-After hint")
+	}
+	if tracer.calls != 10 {
+		t.Fatalf("tracer ran %d times, want 10", tracer.calls)
+	}
+}
+
+func TestTraceRejectsBadRequests(t *testing.T) {
+	t.Parallel()
+
+	okTracer := &fakeTracer{result: probe.TraceResult{Destination: netip.MustParseAddr("203.0.113.10")}}
+	okResolver := &fakeResolver{addrs: []netip.Addr{netip.MustParseAddr("203.0.113.10")}}
+
+	// GET is not an action.
+	rec := do(newTraceHandler(t, traceTargets(), okTracer, okResolver),
+		http.MethodGet, "/api/v1/targets/t1/trace", testToken)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("GET status = %d, want 405", rec.Code)
+	}
+
+	// Unconfigured.
+	rec = do(newHandler(t, testToken, nil), http.MethodPost, "/api/v1/targets/t1/trace", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unconfigured status = %d, want 503", rec.Code)
+	}
+
+	// Unknown target.
+	rec = do(newTraceHandler(t, &fakeTargets{rows: map[string]store.TargetRow{}}, okTracer, okResolver),
+		http.MethodPost, "/api/v1/targets/nope/trace", testToken)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown target status = %d, want 404", rec.Code)
+	}
+
+	// A target that does not resolve.
+	rec = do(newTraceHandler(t, traceTargets(), okTracer, &fakeResolver{err: errors.New("nxdomain")}),
+		http.MethodPost, "/api/v1/targets/t1/trace", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("resolve failure status = %d, want 503", rec.Code)
+	}
+
+	// No trace capability: a visible reason, not a 500.
+	unavailable := &fakeTracer{result: probe.TraceResult{
+		ErrorClass: "trace_unavailable", Err: errors.New("CAP_NET_RAW is required"),
+	}}
+	rec = do(newTraceHandler(t, traceTargets(), unavailable, okResolver),
+		http.MethodPost, "/api/v1/targets/t1/trace", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unavailable status = %d, want 503", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "CAP_NET_RAW") {
+		t.Fatalf("reason was not surfaced: %s", rec.Body)
+	}
+
+	// IPv6 is unsupported in this release.
+	unsupported := &fakeTracer{result: probe.TraceResult{
+		ErrorClass: "trace_unsupported", Err: errors.New("IPv4 only"),
+	}}
+	rec = do(newTraceHandler(t, traceTargets(), unsupported, okResolver),
+		http.MethodPost, "/api/v1/targets/t1/trace", testToken)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("unsupported status = %d, want 400", rec.Code)
+	}
+
+	// Auth is required.
+	rec = do(newTraceHandler(t, traceTargets(), okTracer, okResolver),
+		http.MethodPost, "/api/v1/targets/t1/trace", "")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rec.Code)
 	}

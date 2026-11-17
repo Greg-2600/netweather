@@ -1,0 +1,18 @@
+# Traceroute overlay. Apply with the base file:
+#
+#   docker compose -f compose.yaml -f compose.trace.yaml up -d
+#
+# Traceroute needs raw ICMP sockets, which means CAP_NET_RAW. That is a
+# meaningful capability, so it is not granted by the default file: an operator
+# who wants path walks opts in here. Everything else keeps working without it.
+name: netweather
+
+services:
+  netweather:
+    cap_add:
+      - NET_RAW
+    environment:
+      # Nothing prevents the API from accepting trace requests without the
+      # capability; the handler answers 503 with the socket error instead. This
+      # variable is documentation for the operator, not a switch.
+      NETWEATHER_TRACE: "true"

@@ -135,6 +135,10 @@ type Deps struct {
 	Feeds FeedReader
 	// Debug manages time-boxed verbose logging. Nil disables the routes.
 	Debug DebugScopes
+	// Tracer runs on-demand traceroute. Nil disables the trace action.
+	Tracer Tracer
+	// Resolver turns a target hostname into addresses for a trace.
+	Resolver HostResolver
 	// Metrics is the Prometheus handler. Nil keeps /metrics unmounted, which is
 	// the default: exposing it is an operator decision.
 	Metrics http.Handler
@@ -148,6 +152,9 @@ type Deps struct {
 type server struct {
 	deps     Deps
 	authMode string
+	// traceBudget is per-instance, not per-client: the operator's egress IP is
+	// what a target's abuse desk sees.
+	traceBudget *traceGovernor
 }
 
 // New builds the HTTP handler. It validates the exposure guardrail before it
@@ -163,7 +170,7 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	if deps.StartedAt.IsZero() {
 		deps.StartedAt = time.Now()
 	}
-	s := &server{deps: deps, authMode: cfg.AuthMode()}
+	s := &server{deps: deps, authMode: cfg.AuthMode(), traceBudget: newTraceGovernor()}
 
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("/api/v1/board", onlyGET(s.handleBoard))
@@ -173,7 +180,7 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	apiMux.HandleFunc("/api/v1/resume", onlyPOST(s.handleResume))
 	apiMux.HandleFunc("/api/v1/meta", onlyGET(s.handleMeta))
 	apiMux.HandleFunc("/api/v1/logs", onlyGET(s.handleLogs))
-	apiMux.HandleFunc("/api/v1/targets/", onlyGET(s.handleTargetProbes))
+	apiMux.HandleFunc("/api/v1/targets/", s.handleTargetSubtree)
 	apiMux.HandleFunc("/api/v1/scopes/", onlyGET(s.handleScope))
 	apiMux.HandleFunc("/api/v1/anomalies", onlyGET(s.handleAnomalies))
 	apiMux.HandleFunc("/api/v1/coverage", onlyGET(s.handleCoverage))
@@ -280,7 +287,7 @@ type metaResponse struct {
 
 // capabilities is the runtime truth. A client should feature-detect here rather
 // than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history"}
+var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace"}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}
@@ -436,6 +443,16 @@ type probeItem struct {
 
 // handleTargetProbes serves /api/v1/targets/{id}/probes: the newest observations
 // for one target, newest first. It is the drawer's data.
+// handleTargetSubtree dispatches the target subtree. Its reads are GET-only,
+// but the trace action is POST, so one method gate cannot cover both.
+func (s *server) handleTargetSubtree(w http.ResponseWriter, r *http.Request) {
+	if strings.HasSuffix(r.URL.Path, "/trace") {
+		s.handleTrace(w, r)
+		return
+	}
+	onlyGET(s.handleTargetProbes)(w, r)
+}
+
 func (s *server) handleTargetProbes(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/api/v1/targets/")
 	id, suffix, ok := strings.Cut(rest, "/")
