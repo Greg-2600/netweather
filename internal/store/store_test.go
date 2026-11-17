@@ -2215,3 +2215,61 @@ func TestCorridorsUpsertSamplesAndEvents(t *testing.T) {
 		t.Fatalf("after removal = %+v", got)
 	}
 }
+
+func TestSeriesForTargetsReadsManyTargetsInOneQuery(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	if err := s.UpsertTarget(ctx, store.Target{
+		ID: "t2", Host: "united.com", Port: 443, Probe: "http",
+		Name: "United", Class: "service", Tier: 2, IntervalS: 300,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 11, 17, 12, 30, 0, 0, time.UTC)
+	base := now.Add(-3 * time.Hour)
+	record := func(id string, at time.Time, st state.State) {
+		t.Helper()
+		p := probeAt(at, st)
+		p.TargetID = id
+		if err := s.Record(ctx, []store.Probe{p}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	record("t1", base, state.Up)
+	record("t1", base.Add(5*time.Minute), state.Down)
+	record("t2", base, state.Up)
+
+	if _, err := s.Fold(ctx, now); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.SeriesForTargets(ctx, []string{"t1", "t2", "missing"}, "local", "1h",
+		base.Add(-time.Hour), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got["t1"]) != 1 || got["t1"][0].N != 2 || got["t1"][0].Up != 1 {
+		t.Fatalf("t1 = %+v", got["t1"])
+	}
+	if len(got["t2"]) != 1 || got["t2"][0].Up != 1 {
+		t.Fatalf("t2 = %+v", got["t2"])
+	}
+	if _, ok := got["missing"]; ok {
+		t.Fatal("a target with no rollups appeared in the result")
+	}
+
+	// No ids is an empty map, not an error.
+	if empty, err := s.SeriesForTargets(ctx, nil, "local", "1h", base, now); err != nil || len(empty) != 0 {
+		t.Fatalf("empty = %+v, %v", empty, err)
+	}
+
+	// An unknown resolution is refused rather than guessed.
+	if _, err := s.SeriesForTargets(ctx, []string{"t1"}, "local", "2h", base, now); err == nil {
+		t.Fatal("an unknown resolution was accepted")
+	}
+}

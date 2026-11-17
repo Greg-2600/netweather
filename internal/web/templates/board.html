@@ -124,6 +124,8 @@
             <img class="favicon" src="{{.Icon}}" alt="" aria-hidden="true" loading="lazy" width="32" height="32">
             <span class="name">{{.Name}}</span>
             <span class="host">{{.Host}}</span>
+            {{if .Spark}}<span class="tile-spark mono" data-testid="tile-spark"
+                  title="24-hour availability shape" aria-hidden="true">{{.Spark}}</span>{{end}}
             <span class="state"><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Text}}</span>
             {{if .Badge}}<span class="badge" title="{{.BadgeTitle}}" data-testid="tile-badge">{{.Badge}}</span>{{end}}
           </a>

@@ -2922,3 +2922,103 @@ func TestBoardCollectsUnmeasurableIntoItsOwnQuietSection(t *testing.T) {
 		t.Error("the unmeasurable section starts expanded")
 	}
 }
+
+type fakeSeriesBatch struct {
+	series map[string][]store.Rollup
+	err    error
+}
+
+func (f *fakeSeriesBatch) SeriesForTargets(context.Context, []string, string, string, time.Time, time.Time) (map[string][]store.Rollup, error) {
+	return f.series, f.err
+}
+
+func newServerWithSeriesBatch(t *testing.T, token string, m *board.Memory, batch web.SeriesBatch) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:      m,
+		Watcher:     m,
+		SeriesBatch: batch,
+		Vantage:     "local",
+		Token:       token,
+		Version:     "test",
+		StartedAt:   time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestBoardSparklineInComfortableDensity(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(
+		board.Target{ID: "1", Name: "Chase", Host: "chase.com", Sector: "banking", State: board.StateUp},
+		board.Target{ID: "2", Name: "United", Host: "united.com", Sector: "airline", State: board.StateDown},
+	)
+	batch := &fakeSeriesBatch{series: map[string][]store.Rollup{
+		"1": {
+			{N: 4, Up: 4},
+			{N: 4, Up: 4},
+		},
+	}}
+
+	ts := newServerWithSeriesBatch(t, testToken, m, batch)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	get := func(path string) string {
+		t.Helper()
+		resp, err := client.Get(ts.URL + path) //nolint:bodyclose // body() closes it
+		if err != nil {
+			t.Fatal(err)
+		}
+		return body(t, resp)
+	}
+
+	// Comfortable renders the shape for the target that has history.
+	page := get("/?density=comfortable")
+	if !strings.Contains(page, `data-testid="tile-spark"`) {
+		t.Fatalf("comfortable board has no sparkline:\n%s", page)
+	}
+	if got := strings.Count(page, `data-testid="tile-spark"`); got != 1 {
+		t.Fatalf("sparklines = %d, want only the target with history", got)
+	}
+	if !strings.Contains(page, "██") {
+		t.Error("two fully healthy buckets did not render as full blocks")
+	}
+
+	// Compact stays compact: the shape is a comfortable-density feature.
+	page = get("/")
+	if strings.Contains(page, `data-testid="tile-spark"`) {
+		t.Error("compact density rendered a sparkline")
+	}
+}
+
+func TestBoardSparklineFailureIsNotFatal(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithSeriesBatch(t, testToken, fixture(), &fakeSeriesBatch{err: errors.New("db down")})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/?density=comfortable") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want the board to survive a history failure", resp.StatusCode)
+	}
+	if strings.Contains(page, `data-testid="tile-spark"`) {
+		t.Error("a sparkline rendered from a failed query")
+	}
+	if !strings.Contains(page, `data-testid="tile"`) {
+		t.Error("a history failure removed the tiles")
+	}
+}

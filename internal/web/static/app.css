@@ -403,6 +403,15 @@ body.auth {
 .tile .host { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
 .tile .state { font-size: 0.8rem; color: var(--muted); }
 
+/* Comfortable density's 24-hour shape (DESIGN.md §10.2). Decorative: the
+   state text beside it carries the meaning. */
+.tile .tile-spark {
+  font-size: 0.85rem;
+  line-height: 1;
+  letter-spacing: -0.06em;
+  color: var(--muted);
+}
+
 /* Corner marker: the stage or status behind the state (DESIGN.md §10.2). */
 .tile .badge {
   position: absolute;

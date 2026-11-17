@@ -46,6 +46,7 @@ type Deps struct {
 	Coverage        Coverage
 	CoverageTrend   CoverageHistory
 	Series          Series
+	SeriesBatch     SeriesBatch
 	Changes         StateChanges
 	// StreamLimit caps concurrent SSE connections. Nil uses the defaults.
 	StreamLimit   *streamlimit.Limiter
@@ -72,6 +73,13 @@ type CoverageHistory interface {
 // Series supplies rollup buckets for the target drawer's 24-hour strip.
 type Series interface {
 	Series(ctx context.Context, targetID, vantageID, resolution string, from, to time.Time) ([]store.Rollup, error)
+}
+
+// SeriesBatch supplies many targets' history in one query. It is optional so a
+// small deployment or a test can render the board without it; the comfortable
+// density omits the sparkline rather than issuing one query per tile.
+type SeriesBatch interface {
+	SeriesForTargets(ctx context.Context, targetIDs []string, vantageID, resolution string, from, to time.Time) (map[string][]store.Rollup, error)
 }
 
 // StateChanges supplies the target drawer's transition history.

@@ -217,6 +217,10 @@ type tileView struct {
 	CertIssuer    string
 	CertNotAfter  string
 	CertPinned    bool
+	// Spark is the 24-hour healthy-share shape, rendered only in comfortable
+	// density. Empty means "no history", which the tile shows as nothing rather
+	// than a fabricated line.
+	Spark string
 }
 
 type countView struct {
@@ -605,6 +609,37 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.deps.Control != nil {
 		view.Paused = s.deps.Control.Paused()
+	}
+
+	// Comfortable density shows a 24-hour shape per tile (DESIGN.md §10.2).
+	// One query for the visible set, not one per tile; without a batch reader
+	// the tiles simply omit it rather than paying a read per target.
+	if params.Density == densityComfortable && s.deps.SeriesBatch != nil {
+		vantage := s.deps.Vantage
+		if vantage == "" {
+			vantage = "local"
+		}
+		ids := make([]string, 0, len(targets))
+		for _, group := range view.Groups {
+			for _, tile := range group.Targets {
+				ids = append(ids, tile.ID)
+			}
+		}
+		now := time.Now().UTC()
+		series, err := s.deps.SeriesBatch.SeriesForTargets(
+			r.Context(), ids, vantage, "1h", now.Add(-24*time.Hour), now)
+		if err != nil {
+			s.deps.Logger.Warn("board sparkline history failed",
+				"event", "board_spark_failed", "component", "http", "error", err)
+		} else {
+			for gi := range view.Groups {
+				for ti := range view.Groups[gi].Targets {
+					if points := series[view.Groups[gi].Targets[ti].ID]; len(points) > 0 {
+						view.Groups[gi].Targets[ti].Spark = rollupSpark(points)
+					}
+				}
+			}
+		}
 	}
 
 	for _, st := range []board.State{
@@ -1702,6 +1737,60 @@ func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "corridors.html", view)
+}
+
+// rollupSpark renders up to 24 hourly buckets as block characters by healthy
+// share. An empty bucket is drawn mid-scale rather than as a gap: a missing
+// hour is "no probes", not zero availability.
+func rollupSpark(points []store.Rollup) string {
+	if len(points) < 2 {
+		return ""
+	}
+
+	shares := make([]float64, 0, len(points))
+	for _, p := range points {
+		if p.N <= 0 {
+			shares = append(shares, 0.5)
+			continue
+		}
+		shares = append(shares, float64(p.Up)/float64(p.N))
+	}
+
+	const columns = 24
+	if len(shares) > columns {
+		buckets := make([]float64, 0, columns)
+		size := float64(len(shares)) / columns
+		for i := 0; i < columns; i++ {
+			start := int(float64(i) * size)
+			end := int(float64(i+1) * size)
+			if end <= start {
+				end = start + 1
+			}
+			if end > len(shares) {
+				end = len(shares)
+			}
+			sum := 0.0
+			for _, v := range shares[start:end] {
+				sum += v
+			}
+			buckets = append(buckets, sum/float64(end-start))
+		}
+		shares = buckets
+	}
+
+	blocks := []rune("▁▂▃▄▅▆▇█")
+	var out strings.Builder
+	for _, share := range shares {
+		index := int(math.Round(share * float64(len(blocks)-1)))
+		if index < 0 {
+			index = 0
+		}
+		if index >= len(blocks) {
+			index = len(blocks) - 1
+		}
+		out.WriteRune(blocks[index])
+	}
+	return out.String()
 }
 
 // sparklineOf renders up to 24 RTT buckets as block characters. Fewer than two

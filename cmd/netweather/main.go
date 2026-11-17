@@ -253,6 +253,7 @@ func serve(lg *logging.Logger) error {
 		Coverage:            st,
 		CoverageTrend:       st,
 		Series:              st,
+		SeriesBatch:         st,
 		Changes:             st,
 		Control:             ag,
 		Vantage:             "local",

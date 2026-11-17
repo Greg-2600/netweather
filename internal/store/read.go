@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/state"
@@ -428,6 +429,71 @@ func (s *Store) Series(ctx context.Context, targetID, vantageID, resolution stri
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("store: series: %w", err)
+	}
+	return out, nil
+}
+
+// SeriesForTargets reads one resolution for many targets in a single query.
+//
+// The board's comfortable density needs a shape per tile, and one query per
+// target would turn a 750-target page into 750 reads. The map is keyed by
+// target id; a target with no rollups is simply absent.
+func (s *Store) SeriesForTargets(ctx context.Context, targetIDs []string, vantageID, resolution string, from, to time.Time) (map[string][]Rollup, error) {
+	out := make(map[string][]Rollup, len(targetIDs))
+	if len(targetIDs) == 0 {
+		return out, nil
+	}
+
+	var (
+		table string
+		unit  int64
+	)
+	switch resolution {
+	case "5m":
+		table, unit = "rollup_5m", 300000
+	case "1h":
+		table, unit = "rollup_1h", 3600000
+	case "1d":
+		table, unit = "rollup_1d", 86400000
+	default:
+		return nil, fmt.Errorf("store: unknown resolution %q", resolution)
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(targetIDs)), ",")
+	// #nosec G201 -- the table is one of three fixed literals chosen above; only
+	// the placeholder count is interpolated.
+	query := fmt.Sprintf(`SELECT target_id, bucket, n, up, degraded, down, blocked, unknown,
+	                COALESCE(ewma50_ms, 0), COALESCE(ewma95_ms, 0)
+	         FROM %s WHERE target_id IN (%s) AND vantage_id = ?
+	           AND bucket >= ? AND bucket < ? ORDER BY target_id, bucket`, table, placeholders)
+
+	args := make([]any, 0, len(targetIDs)+3)
+	for _, id := range targetIDs {
+		args = append(args, id)
+	}
+	args = append(args, vantageID, from.UnixMilli()/unit, to.UnixMilli()/unit)
+
+	rows, err := s.reader.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("store: series for targets: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var (
+			id     string
+			r      Rollup
+			bucket int64
+		)
+		if err := rows.Scan(&id, &bucket, &r.N, &r.Up, &r.Degraded, &r.Down, &r.Blocked, &r.Unknown,
+			&r.Ewma50MS, &r.Ewma95MS); err != nil {
+			return nil, fmt.Errorf("store: scan series for targets: %w", err)
+		}
+		r.Bucket = time.UnixMilli(bucket * unit).UTC()
+		out[id] = append(out[id], r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: series for targets: %w", err)
 	}
 	return out, nil
 }
