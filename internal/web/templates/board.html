@@ -76,10 +76,10 @@
              data-target="{{.Host}}"
              data-state="{{.State}}"
              aria-label="{{.Aria}}">
-            <span class="glyph" aria-hidden="true">{{.Glyph}}</span>
+            <img class="favicon" src="{{.Icon}}" alt="" aria-hidden="true" loading="lazy" width="32" height="32">
             <span class="name">{{.Name}}</span>
             <span class="host">{{.Host}}</span>
-            <span class="state">{{.Text}}</span>
+            <span class="state"><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Text}}</span>
             {{if .Badge}}<span class="badge" title="{{.BadgeTitle}}" data-testid="tile-badge">{{.Badge}}</span>{{end}}
           </a>
           {{end}}

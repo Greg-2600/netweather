@@ -60,6 +60,7 @@ func New(deps Deps) (http.Handler, error) {
 	mux.HandleFunc("/incidents", s.requireSession(http.HandlerFunc(s.handleIncidents)).ServeHTTP)
 	mux.HandleFunc("/incidents/", s.requireSession(http.HandlerFunc(s.handleIncident)).ServeHTTP)
 	mux.HandleFunc("/coverage", s.requireSession(http.HandlerFunc(s.handleCoverage)).ServeHTTP)
+	mux.HandleFunc("/icon/", s.requireSession(http.HandlerFunc(s.handleIcon)).ServeHTTP)
 	mux.HandleFunc("/pause", s.requireSession(http.HandlerFunc(s.handlePause)).ServeHTTP)
 	mux.HandleFunc("/resume", s.requireSession(http.HandlerFunc(s.handleResume)).ServeHTTP)
 	mux.Handle("/", s.requireSession(http.HandlerFunc(s.handleBoard)))
@@ -190,6 +191,7 @@ type tileView struct {
 	Aria          string
 	Badge         string
 	BadgeTitle    string
+	Icon          string
 	Port          int
 	Probe         string
 	Tier          int
@@ -399,7 +401,7 @@ func toTile(t board.Target) tileView {
 		ID: t.ID, Name: t.Name, Host: t.Host, Sector: t.Sector,
 		State: string(t.State), Text: t.State.Text(), Glyph: t.State.Glyph(),
 		Class: t.State.CSSClass(), Since: since, Aria: aria,
-		Badge: badge, BadgeTitle: badgeTitle,
+		Badge: badge, BadgeTitle: badgeTitle, Icon: iconURL(t.ID),
 		Port: t.Port, Probe: t.Probe, Tier: t.Tier, IntervalS: t.IntervalS,
 		ASN: t.ASN, Prefix: t.Prefix, CDN: t.CDN, Measurability: t.Measurability,
 		ASCountry: t.ASCountry, ASName: t.ASName,

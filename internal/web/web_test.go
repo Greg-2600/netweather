@@ -699,6 +699,103 @@ func TestBoardHealthySectorsStartCollapsed(t *testing.T) {
 	}
 }
 
+func TestGeneratedTargetIcons(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/icon/1.svg") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "image/svg+xml") {
+		t.Fatalf("Content-Type = %q", ct)
+	}
+	if cc := resp.Header.Get("Cache-Control"); !strings.Contains(cc, "private") {
+		t.Fatalf("Cache-Control = %q", cc)
+	}
+	for _, want := range []string{"<svg", `aria-label="Chase"`, ">C<", "hsl("} {
+		if !strings.Contains(page, want) {
+			t.Errorf("icon missing %q:\n%s", want, page)
+		}
+	}
+
+	// Two targets must not get the same colour by accident of sharing a host
+	// prefix; the hue is derived from the host, so distinct hosts differ.
+	resp2, err := client.Get(ts.URL + "/icon/2.svg") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := body(t, resp2)
+	if page == second {
+		t.Error("two targets rendered identical icons")
+	}
+}
+
+func TestIconRejectsMissingTargetsAndBadPaths(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	for _, path := range []string{"/icon/nope.svg", "/icon/1.png", "/icon/.svg"} {
+		resp, err := client.Get(ts.URL + path) //nolint:bodyclose // body() closes it
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = body(t, resp)
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s: status = %d, want 404", path, resp.StatusCode)
+		}
+	}
+}
+
+func TestIconRequiresSession(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testToken, fixture())
+	_, jar := newClient(t)
+	client := noRedirectClient(jar)
+
+	resp, err := client.Get(ts.URL + "/icon/1.svg") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = body(t, resp)
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("status = %d, want a redirect to login", resp.StatusCode)
+	}
+}
+
+func TestBoardTilesUseGeneratedIcons(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `class="favicon"`) {
+		t.Fatalf("tiles have no icon element:\n%s", page)
+	}
+	if !strings.Contains(page, `src="/icon/1.svg"`) {
+		t.Error("tile icon does not point at the generated endpoint")
+	}
+}
+
 func TestBoardGroupsBySector(t *testing.T) {
 	t.Parallel()
 

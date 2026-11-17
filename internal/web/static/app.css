@@ -250,7 +250,8 @@ body.auth {
   outline-offset: 2px;
 }
 
-.tile .glyph { font-size: 1.1rem; line-height: 1; }
+.tile .favicon { width: 2rem; height: 2rem; border-radius: 7px; display: block; }
+.tile .glyph { font-size: 0.85rem; line-height: 1; }
 .tile .name { font-weight: 600; overflow-wrap: anywhere; }
 .tile .host { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
 .tile .state { font-size: 0.8rem; color: var(--muted); }

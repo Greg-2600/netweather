@@ -827,6 +827,8 @@ The same state is exposed machine-readably under `/api/v1`; the contract, envelo
 
 The wall of favicons. Grouping is a toggle: **sector (default)** · state · CDN · ASN · country · failure stage.
 
+**Implemented:** tiles render a generated square icon per target (`/icon/{id}.svg`): the name's initial on a colour derived from the host. It is generated rather than fetched, because pulling `/favicon.ico` from every target would add requests with no measurement justification (`ACCEPTABLE_USE.md`). The icon is session-protected like the board, and each tile keeps its state colour, text, corner stage badge, and accessible name.
+
 - **Compact** (default at 750+): 40–48px tiles, ring colour + corner stage badge (`DNS`/`TLS`/`403`/`429`). ~760 per screen, so 750 targets is about one screen — no virtualisation needed.
 - **Comfortable**: 96px tiles, name + 24h sparkline. Paginated by group, never all at once.
 - Healthy groups collapsed by default. Problems expanded.
