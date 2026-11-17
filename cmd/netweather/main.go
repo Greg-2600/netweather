@@ -25,7 +25,7 @@ import (
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, "netweather:", err)
+		_, _ = fmt.Fprintln(os.Stderr, "netweather:", err)
 		os.Exit(1)
 	}
 }
@@ -49,7 +49,7 @@ func run(args []string, stdout io.Writer) error {
 
 	switch command {
 	case "version", "-v", "--version":
-		fmt.Fprintln(stdout, version.String())
+		_, _ = fmt.Fprintln(stdout, version.String())
 		return nil
 
 	case "healthcheck":
@@ -126,7 +126,10 @@ func serve(lg *logging.Logger) error {
 		return err
 	}
 
-	ln, err := net.Listen("tcp", cfg.Listen)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", cfg.Listen)
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", cfg.Listen, err)
 	}
@@ -142,12 +145,11 @@ func serve(lg *logging.Logger) error {
 		ErrorLog:       slog.NewLogLogger(lg.Handler(), slog.LevelWarn),
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// Shutdown needs its own deadline, but must inherit the parent's values
+		// while ignoring its cancellation (which is the reason we are here).
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(shutdownCtx)
 	}()

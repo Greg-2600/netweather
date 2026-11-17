@@ -108,6 +108,8 @@ func randomToken() string {
 }
 
 func (a *authenticator) setSessionCookie(w http.ResponseWriter, value string, now time.Time) {
+	// #nosec G124 -- Secure follows the deployment's TLS posture; HttpOnly and
+	// SameSite are always set, and the cookie never carries the token itself.
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    value,
@@ -120,6 +122,7 @@ func (a *authenticator) setSessionCookie(w http.ResponseWriter, value string, no
 }
 
 func (a *authenticator) clearSessionCookie(w http.ResponseWriter) {
+	// #nosec G124 -- same rationale as setSessionCookie.
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",
@@ -132,6 +135,7 @@ func (a *authenticator) clearSessionCookie(w http.ResponseWriter) {
 }
 
 func (a *authenticator) setCSRFCookie(w http.ResponseWriter, value string, now time.Time) {
+	// #nosec G124 -- CSRF token, not a credential; HttpOnly and SameSite are set.
 	http.SetCookie(w, &http.Cookie{
 		Name:     csrfCookieName,
 		Value:    value,

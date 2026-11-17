@@ -9,6 +9,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -46,6 +47,8 @@ func main() {
 		err = taskFmt(args)
 	case "vet":
 		err = runGo("vet", "./...")
+	case "lint":
+		err = runTool("golangci-lint", "run")
 	case "test":
 		err = taskTest()
 	case "cover":
@@ -78,6 +81,7 @@ func usage() {
 
   go run ./internal/devtool fmt [-check]   gofumpt + gci (write, or only check)
   go run ./internal/devtool vet            go vet ./...
+  go run ./internal/devtool lint           golangci-lint (pinned in go.mod)
   go run ./internal/devtool test           race (when available) + shuffle + count=1
   go run ./internal/devtool cover          coverage profile + per-package gates
   go run ./internal/devtool ui             Playwright suite (needs a browser)
@@ -91,22 +95,16 @@ func usage() {
 // --- process helpers -------------------------------------------------------
 
 func goBinary() (string, error) {
-	if p, err := exec.LookPath("go"); err == nil {
-		return p, nil
+	p, err := exec.LookPath("go")
+	if err != nil {
+		return "", errors.New("cannot find the go toolchain; add it to PATH")
 	}
-	// A binary built with `go run` knows where its toolchain lives.
-	candidate := filepath.Join(runtime.GOROOT(), "bin", "go")
-	if runtime.GOOS == "windows" {
-		candidate += ".exe"
-	}
-	if _, err := os.Stat(candidate); err == nil {
-		return candidate, nil
-	}
-	return "", errors.New("cannot find the go toolchain; add it to PATH")
+	return p, nil
 }
 
 func command(name string, args ...string) *exec.Cmd {
-	cmd := exec.Command(name, args...)
+	// #nosec G204 -- name is the Go toolchain or git; args are build flags we build ourselves.
+	cmd := exec.CommandContext(context.Background(), name, args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return cmd
 }
@@ -124,7 +122,8 @@ func runTool(tool string, args ...string) error {
 }
 
 func capture(name string, args ...string) (string, error) {
-	out, err := exec.Command(name, args...).Output()
+	// #nosec G204 -- fixed tool names and literal git subcommands.
+	out, err := exec.CommandContext(context.Background(), name, args...).Output()
 	return strings.TrimSpace(string(out)), err
 }
 
@@ -133,7 +132,8 @@ func goEnv(key string) string {
 	if err != nil {
 		return ""
 	}
-	out, err := exec.Command(goBin, "env", key).Output()
+	// #nosec G204 -- goBin comes from LookPath("go"), and key is an internal constant.
+	out, err := exec.CommandContext(context.Background(), goBin, "env", key).Output()
 	if err != nil {
 		return ""
 	}
@@ -151,14 +151,16 @@ func taskFmt(args []string) error {
 	}
 
 	if check {
-		out, err := exec.Command(mustTool(), "tool", "gofumpt", "-l", ".").Output()
+		// #nosec G204 -- pinned go tool, literal arguments.
+		out, err := exec.CommandContext(context.Background(), mustTool(), "tool", "gofumpt", "-l", ".").Output()
 		if err != nil {
 			return fmt.Errorf("gofumpt: %w", err)
 		}
 		if files := strings.TrimSpace(string(out)); files != "" {
 			return fmt.Errorf("gofumpt would reformat:\n%s", files)
 		}
-		diff, err := exec.Command(mustTool(), "tool", "gci", "diff", "-s", "standard", "-s", "default", ".").Output()
+		// #nosec G204 -- pinned go tool, literal arguments.
+		diff, err := exec.CommandContext(context.Background(), mustTool(), "tool", "gci", "diff", "-s", "standard", "-s", "default", ".").Output()
 		if err != nil {
 			return fmt.Errorf("gci: %w", err)
 		}
@@ -211,10 +213,8 @@ func taskCover() error {
 	if err != nil {
 		return fmt.Errorf("tests failed; coverage is meaningless: %w", err)
 	}
-	// Keep a local copy for tooling and for humans.
-	if b, err := os.ReadFile(profile); err == nil {
-		_ = os.WriteFile(coverageFile, b, 0o644)
-	}
+	// The profile lives in the temp dir; nothing else needs a copy, and writing
+	// one into the repo would be an unowned artefact.
 
 	stats, total, covered, err := parseCoverage(profile)
 	if err != nil {
@@ -275,11 +275,12 @@ func taskCover() error {
 }
 
 func parseCoverage(path string) ([]pkgCoverage, int, int, error) {
+	// #nosec G304 -- the path is either a temp file we created or ./coverage.out.
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("open coverage profile: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	byPkg := make(map[string]*pkgCoverage)
 	sc := bufio.NewScanner(f)
@@ -379,7 +380,7 @@ func ldflags(version, commit, date string) string {
 
 func taskBuild() error {
 	version, commit, date := buildMetadata()
-	if err := os.MkdirAll(distDir, 0o755); err != nil {
+	if err := os.MkdirAll(distDir, 0o750); err != nil {
 		return err
 	}
 	out := filepath.Join(distDir, "netweather")
@@ -406,7 +407,7 @@ func taskRepro() error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	digests := make([]string, 0, 2)
 	for i := 0; i < 2; i++ {
@@ -435,7 +436,7 @@ func taskRepro() error {
 
 func taskSnapshot() error {
 	version, commit, date := buildMetadata()
-	if err := os.MkdirAll(distDir, 0o755); err != nil {
+	if err := os.MkdirAll(distDir, 0o750); err != nil {
 		return err
 	}
 
@@ -479,7 +480,7 @@ func taskSnapshot() error {
 	}
 
 	sumPath := filepath.Join(distDir, "SHA256SUMS")
-	if err := os.WriteFile(sumPath, []byte(strings.Join(sums, "\n")+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(sumPath, []byte(strings.Join(sums, "\n")+"\n"), 0o600); err != nil {
 		return err
 	}
 	fmt.Println("wrote", sumPath, "for version", version)
@@ -487,11 +488,12 @@ func taskSnapshot() error {
 }
 
 func fileSHA256(path string) (string, error) {
+	// #nosec G304 -- path is a build output this process just wrote.
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
@@ -506,7 +508,10 @@ func taskVerify() error {
 		fn   func() error
 	}{
 		{"fmt -check", func() error { return taskFmt([]string{"-check"}) }},
+		{"modules", func() error { return runGo("mod", "verify") }},
+		{"tidy", func() error { return runGo("mod", "tidy", "-diff") }},
 		{"vet", func() error { return runGo("vet", "./...") }},
+		{"lint", func() error { return runTool("golangci-lint", "run") }},
 		{"test", taskTest},
 		{"cover", taskCover},
 		{"build", taskBuild},

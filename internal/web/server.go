@@ -293,7 +293,7 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	flusher.Flush()
 
-	watcher, _ := s.deps.Watcher.(board.Watcher)
+	watcher := s.deps.Watcher
 	if watcher == nil {
 		s.heartbeatOnly(w, r, flusher)
 		return

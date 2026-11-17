@@ -459,7 +459,8 @@ Always `-race -covermode=atomic`. Coverage is uploaded per-PR and diffed, so a P
 |---|---|---|
 | format | `devtool fmt -check` (gofumpt + gci) | ✅ |
 | vet | `go vet ./...` | ✅ |
-| lint | `golangci-lint run` | ✅ |
+| lint | `go tool golangci-lint run` (pinned in `go.mod`) | ✅ |
+| modules | `go mod verify` + `go mod tidy -diff` (no uncommitted tidy) | ✅ |
 | test | `devtool test` (`-race`, `-shuffle=on`, `-count=1`) | ✅ |
 | coverage | `devtool cover`: profile + per-package floors (70% default; 95% classify, 90% correlate, 85% schedule once they exist) | ✅ |
 | ui test (browser) | Playwright + chromium, `-tags=uitest` | ✅ (paths touching `internal/web`, `internal/board`, templates) |

@@ -25,6 +25,11 @@ jobs:
       - name: format
         run: go run ./internal/devtool fmt -check
 
+      - name: modules
+        run: |
+          go mod verify
+          go mod tidy -diff
+
       - name: vet
         run: go vet ./...
 
@@ -45,10 +50,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
 
-      - uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+      # Pinned in go.mod as a tool directive: the same version as a laptop.
+      - name: lint
+        run: go tool golangci-lint run
 
   vuln:
     runs-on: ubuntu-latest

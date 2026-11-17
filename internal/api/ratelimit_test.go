@@ -38,12 +38,18 @@ func TestRateLimitNeverExceedsBurst(t *testing.T) {
 	now := time.Date(2026, 11, 16, 3, 0, 0, 0, time.UTC)
 	b := newBucket(10, 2, func() time.Time { return now })
 
-	if !b.allow() || !b.allow() {
-		t.Fatal("burst not available")
+	if !b.allow() {
+		t.Fatal("burst not available (first token)")
+	}
+	if !b.allow() {
+		t.Fatal("burst not available (second token)")
 	}
 	now = now.Add(time.Hour) // long idle must not accumulate beyond burst
-	if !b.allow() || !b.allow() {
-		t.Fatal("refill after idle should give exactly the burst")
+	if !b.allow() {
+		t.Fatal("refill after idle should give the first burst token")
+	}
+	if !b.allow() {
+		t.Fatal("refill after idle should give the second burst token")
 	}
 	if b.allow() {
 		t.Fatal("bucket exceeded its burst cap")

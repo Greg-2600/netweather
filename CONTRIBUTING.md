@@ -19,7 +19,7 @@ go test ./...
 One entry point, identical on Windows, macOS, Linux, and CI:
 
 ```sh
-go run ./internal/devtool verify   # fmt -check, vet, test, coverage gates, build
+go run ./internal/devtool verify   # fmt -check, modules, vet, lint, test, coverage gates, build
 go run ./internal/devtool test     # race (when cgo is available) + shuffle + count=1
 go run ./internal/devtool cover    # coverage profile + per-package floors
 go run ./internal/devtool build    # dist/netweather with version, commit, date

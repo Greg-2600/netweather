@@ -1,0 +1,149 @@
+internal\web\web_test.go:137:25: response body must be closed (bodyclose)
+	resp, err := client.Get(ts.URL + "/")
+	                       ^
+internal\web\web_test.go:155:30: response body must be closed (bodyclose)
+	resp, err := client.PostForm(ts.URL+"/login", url.Values{"token": {testToken}})
+	                            ^
+internal\web\web_test.go:316:31: response body must be closed (bodyclose)
+	resp, err := streamClient.Get(ts.URL + "/events")
+	                             ^
+cmd\netweather\main.go:152:19: Non-inherited new context, use function like `context.WithXXX` instead (contextcheck)
+		_ = srv.Shutdown(shutdownCtx)
+		                ^
+cmd\netweather\main.go:52:15: Error return value of `fmt.Fprintln` is not checked (errcheck)
+		fmt.Fprintln(stdout, version.String())
+		            ^
+internal\devtool\main.go:282:15: Error return value of `f.Close` is not checked (errcheck)
+	defer f.Close()
+	             ^
+internal\devtool\main.go:409:20: Error return value of `os.RemoveAll` is not checked (errcheck)
+	defer os.RemoveAll(dir)
+	                  ^
+internal\devtool\main.go:494:15: Error return value of `f.Close` is not checked (errcheck)
+	defer f.Close()
+	             ^
+internal\web\web_test.go:83:23: Error return value of `resp.Body.Close` is not checked (errcheck)
+	defer resp.Body.Close()
+	                     ^
+internal\web\web_test.go:320:23: Error return value of `resp.Body.Close` is not checked (errcheck)
+	defer resp.Body.Close()
+	                     ^
+internal\board\board.go:31:2: missing cases in expression switch: StateUnknown (exhaustive)
+	switch s {
+	^
+internal\board\board.go:53:2: missing cases in expression switch: StateUnknown (exhaustive)
+	switch s {
+	^
+internal\logging\ring.go:259:2: missing cases in expression switch: slog.KindAny, slog.KindGroup, slog.KindLogValuer (exhaustive)
+	switch v.Kind() {
+	^
+internal\api\config_test.go:128:12: G302: Expect file permissions to be 0600 or less (gosec)
+	if err := os.Chmod(path, 0o644); err != nil {
+	          ^
+internal\devtool\main.go:109:9: G204: Subprocess launched with variable (gosec)
+	cmd := exec.Command(name, args...)
+	       ^
+internal\devtool\main.go:127:14: G204: Subprocess launched with variable (gosec)
+	out, err := exec.Command(name, args...).Output()
+	            ^
+internal\devtool\main.go:136:14: G204: Subprocess launched with variable (gosec)
+	out, err := exec.Command(goBin, "env", key).Output()
+	            ^
+internal\devtool\main.go:154:15: G204: Subprocess launched with a potential tainted input or cmd arguments (gosec)
+		out, err := exec.Command(mustTool(), "tool", "gofumpt", "-l", ".").Output()
+		            ^
+internal\devtool\main.go:161:16: G204: Subprocess launched with a potential tainted input or cmd arguments (gosec)
+		diff, err := exec.Command(mustTool(), "tool", "gci", "diff", "-s", "standard", "-s", "default", ".").Output()
+		             ^
+internal\devtool\main.go:215:15: G304: Potential file inclusion via variable (gosec)
+	if b, err := os.ReadFile(profile); err == nil {
+	             ^
+internal\devtool\main.go:216:7: G306: Expect WriteFile permissions to be 0600 or less (gosec)
+		_ = os.WriteFile(coverageFile, b, 0o644)
+		    ^
+internal\devtool\main.go:278:12: G304: Potential file inclusion via variable (gosec)
+	f, err := os.Open(path)
+	          ^
+internal\devtool\main.go:382:12: G301: Expect directory permissions to be 0750 or less (gosec)
+	if err := os.MkdirAll(distDir, 0o755); err != nil {
+	          ^
+internal\devtool\main.go:438:12: G301: Expect directory permissions to be 0750 or less (gosec)
+	if err := os.MkdirAll(distDir, 0o755); err != nil {
+	          ^
+internal\devtool\main.go:482:12: G306: Expect WriteFile permissions to be 0600 or less (gosec)
+	if err := os.WriteFile(sumPath, []byte(strings.Join(sums, "\n")+"\n"), 0o644); err != nil {
+	          ^
+internal\logging\logger_test.go:176:15: G304: Potential file inclusion via variable (gosec)
+	data, err := os.ReadFile(path)
+	             ^
+internal\logging\redact_test.go:54:2: G101: Potential hardcoded credentials: Password in URL (gosec)
+	in := "dial failed: https://user:pw@example.com/x?access_token=abc123&limit=5: timeout"
+	^
+internal\web\auth.go:111:32: G124: http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute (gosec)
+	http.SetCookie(w, &http.Cookie{
+	                              ^
+internal\web\auth.go:123:32: G124: http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute (gosec)
+	http.SetCookie(w, &http.Cookie{
+	                              ^
+internal\web\auth.go:135:32: G124: http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute (gosec)
+	http.SetCookie(w, &http.Cookie{
+	                              ^
+cmd\netweather\main.go:129:23: net.Listen must not be called. use (*net.ListenConfig).Listen (noctx)
+	ln, err := net.Listen("tcp", cfg.Listen)
+	                     ^
+internal\api\api_test.go:41:28: net/http/httptest.NewRequest must not be called. use net/http/httptest.NewRequestWithContext (noctx)
+	req := httptest.NewRequest(method, path, nil)
+	                          ^
+internal\api\api_test.go:322:28: net/http/httptest.NewRequest must not be called. use net/http/httptest.NewRequestWithContext (noctx)
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	                          ^
+internal\api\api_test.go:335:28: net/http/httptest.NewRequest must not be called. use net/http/httptest.NewRequestWithContext (noctx)
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	                          ^
+internal\web\web_test.go:94:25: (*net/http.Client).Get must not be called. use (*net/http.Client).Do(*http.Request) (noctx)
+	resp, err := client.Get(ts.URL + "/login")
+	                       ^
+internal\web\web_test.go:101:29: (*net/http.Client).PostForm must not be called. use (*net/http.Client).Do(*http.Request) (noctx)
+	resp, err = client.PostForm(ts.URL+"/login", url.Values{"token": {token}, "csrf": {csrf}})
+	                           ^
+internal\web\web_test.go:117:23: net/http.Get must not be called. use net/http.NewRequestWithContext and (*net/http.Client).Do(*http.Request) (noctx)
+	resp, err := http.Get(ts.URL + "/robots.txt")
+	                     ^
+internal\web\web_test.go:170:25: (*net/http.Client).Get must not be called. use (*net/http.Client).Do(*http.Request) (noctx)
+	resp, err := client.Get(ts.URL + "/login")
+	                       ^
+internal\web\web_test.go:176:29: (*net/http.Client).PostForm must not be called. use (*net/http.Client).Do(*http.Request) (noctx)
+	resp, err = client.PostForm(ts.URL+"/login", url.Values{"token": {"wrong-token-000000"}, "csrf": {csrf}})
+	                           ^
+internal\web\web_test.go:203:25: (*net/http.Client).Get must not be called. use (*net/http.Client).Do(*http.Request) (noctx)
+	resp, err := client.Get(ts.URL + "/")
+	                       ^
+internal\web\web_test.go:293:24: net/http.Get must not be called. use net/http.NewRequestWithContext and (*net/http.Client).Do(*http.Request) (noctx)
+		resp, err := http.Get(ts.URL + path)
+		                     ^
+internal\web\web_test.go:364:23: net/http.Get must not be called. use net/http.NewRequestWithContext and (*net/http.Client).Do(*http.Request) (noctx)
+	resp, err := http.Get(ts.URL + "/")
+	                     ^
+internal\web\web_test.go:393:29: (*net/http.Client).PostForm must not be called. use (*net/http.Client).Do(*http.Request) (noctx)
+	resp, err = client.PostForm(ts.URL+"/logout", url.Values{"csrf": {csrf}})
+	                           ^
+internal\api\ratelimit_test.go:41:5: SA4000: identical expressions on the left and right side of the '||' operator (staticcheck)
+	if !b.allow() || !b.allow() {
+	   ^
+internal\api\ratelimit_test.go:45:5: SA4000: identical expressions on the left and right side of the '||' operator (staticcheck)
+	if !b.allow() || !b.allow() {
+	   ^
+internal\devtool\main.go:98:29: SA1019: runtime.GOROOT has been deprecated since Go 1.24: The root used during the Go build will not be meaningful if the binary is copied to another machine. Use the system path to locate the ΓÇ£goΓÇ¥ binary, and use ΓÇ£go env GOROOTΓÇ¥ to find its GOROOT. (staticcheck)
+	candidate := filepath.Join(runtime.GOROOT(), "bin", "go")
+	                           ^
+internal\web\server.go:296:16: S1040: type assertion to the same type: s.deps.Watcher already has type board.Watcher (staticcheck)
+	watcher, _ := s.deps.Watcher.(board.Watcher)
+	              ^
+47 issues:
+* bodyclose: 3
+* contextcheck: 1
+* errcheck: 6
+* exhaustive: 3
+* gosec: 17
+* noctx: 13
+* staticcheck: 4

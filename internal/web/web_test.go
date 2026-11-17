@@ -80,7 +80,7 @@ func csrfFrom(t *testing.T, body string) string {
 
 func body(t *testing.T, resp *http.Response) string {
 	t.Helper()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -91,14 +91,14 @@ func body(t *testing.T, resp *http.Response) string {
 func login(t *testing.T, ts *httptest.Server, client *http.Client, token string) {
 	t.Helper()
 
-	resp, err := client.Get(ts.URL + "/login")
+	resp, err := client.Get(ts.URL + "/login") //nolint:bodyclose // body() closes it
 	if err != nil {
 		t.Fatal(err)
 	}
 	page := body(t, resp)
 	csrf := csrfFrom(t, page)
 
-	resp, err = client.PostForm(ts.URL+"/login", url.Values{"token": {token}, "csrf": {csrf}})
+	resp, err = client.PostForm(ts.URL+"/login", url.Values{"token": {token}, "csrf": {csrf}}) //nolint:bodyclose // body() closes it
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestRobotsDisallowsEverything(t *testing.T) {
 
 	ts := newServer(t, testToken, fixture())
 
-	resp, err := http.Get(ts.URL + "/robots.txt")
+	resp, err := http.Get(ts.URL + "/robots.txt") //nolint:bodyclose // body() closes it
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,6 +138,8 @@ func TestBoardRequiresLogin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() { _ = resp.Body.Close() }()
+
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("status = %d, want 303", resp.StatusCode)
 	}
@@ -156,6 +158,8 @@ func TestLoginRejectsMissingCSRF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() { _ = resp.Body.Close() }()
+
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", resp.StatusCode)
 	}
@@ -167,13 +171,13 @@ func TestLoginRejectsWrongToken(t *testing.T) {
 	ts := newServer(t, testToken, fixture())
 	client, jar := newClient(t)
 
-	resp, err := client.Get(ts.URL + "/login")
+	resp, err := client.Get(ts.URL + "/login") //nolint:bodyclose // body() closes it
 	if err != nil {
 		t.Fatal(err)
 	}
 	csrf := csrfFrom(t, body(t, resp))
 
-	resp, err = client.PostForm(ts.URL+"/login", url.Values{"token": {"wrong-token-000000"}, "csrf": {csrf}})
+	resp, err = client.PostForm(ts.URL+"/login", url.Values{"token": {"wrong-token-000000"}, "csrf": {csrf}}) //nolint:bodyclose // body() closes it
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +204,7 @@ func TestLoginAndBoardRender(t *testing.T) {
 	client, _ := newClient(t)
 	login(t, ts, client, testToken)
 
-	resp, err := client.Get(ts.URL + "/")
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +242,7 @@ func TestBoardEscapesTargetNames(t *testing.T) {
 	client, _ := newClient(t)
 	login(t, ts, client, testToken)
 
-	resp, err := client.Get(ts.URL + "/")
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +263,7 @@ func TestTargetDetail(t *testing.T) {
 	client, _ := newClient(t)
 	login(t, ts, client, testToken)
 
-	resp, err := client.Get(ts.URL + "/targets/2")
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +275,7 @@ func TestTargetDetail(t *testing.T) {
 		t.Fatal("detail page missing content")
 	}
 
-	resp, err = client.Get(ts.URL + "/targets/nope")
+	resp, err = client.Get(ts.URL + "/targets/nope") //nolint:bodyclose // body() closes it
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +294,7 @@ func TestStaticAssets(t *testing.T) {
 		"/static/app.css": "text/css",
 		"/static/app.js":  "javascript",
 	} {
-		resp, err := http.Get(ts.URL + path)
+		resp, err := http.Get(ts.URL + path) //nolint:bodyclose // body() closes it
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -317,7 +321,7 @@ func TestSSEDeliversStateDelta(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
 		t.Fatalf("Content-Type = %q", ct)
@@ -346,7 +350,7 @@ func TestSSERequiresSession(t *testing.T) {
 	_, jar := newClient(t)
 	client := noRedirectClient(jar)
 
-	resp, err := client.Get(ts.URL + "/events")
+	resp, err := client.Get(ts.URL + "/events") //nolint:bodyclose // body() closes it
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +365,7 @@ func TestAuthDisabledOnLoopbackStyleConfig(t *testing.T) {
 
 	ts := newServer(t, "", fixture())
 
-	resp, err := http.Get(ts.URL + "/")
+	resp, err := http.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,13 +388,13 @@ func TestLogoutClearsSession(t *testing.T) {
 	client, jar := newClient(t)
 	login(t, ts, client, testToken)
 
-	resp, err := client.Get(ts.URL + "/")
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
 	if err != nil {
 		t.Fatal(err)
 	}
 	csrf := csrfFrom(t, body(t, resp))
 
-	resp, err = client.PostForm(ts.URL+"/logout", url.Values{"csrf": {csrf}})
+	resp, err = client.PostForm(ts.URL+"/logout", url.Values{"csrf": {csrf}}) //nolint:bodyclose // body() closes it
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +405,7 @@ func TestLogoutClearsSession(t *testing.T) {
 	}
 
 	noRedirect := noRedirectClient(jar)
-	resp, err = noRedirect.Get(ts.URL + "/")
+	resp, err = noRedirect.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
 	if err != nil {
 		t.Fatal(err)
 	}
