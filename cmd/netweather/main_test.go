@@ -237,7 +237,7 @@ targets:
 	}
 }
 
-func TestLoadTargetsRejectsUnimplementedProbe(t *testing.T) {
+func TestLoadTargetsAcceptsICMPAnchor(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "icmp.yaml")
 	yaml := `version: 1
 targets:
@@ -247,6 +247,8 @@ targets:
     probe: icmp
     class: network
     tier: 3
+    interval_s: 120
+    icmp_anchor: true
 `
 	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
 		t.Fatal(err)
@@ -260,8 +262,19 @@ targets:
 	}
 	defer func() { _ = st.Close() }()
 
-	if _, err := loadTargets(ctx, st); err == nil || !strings.Contains(err.Error(), "not implemented") {
-		t.Fatalf("error = %v, want an explicit unimplemented-probe error", err)
+	got, err := loadTargets(ctx, st)
+	if err != nil {
+		t.Fatalf("loadTargets: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("targets = %d", len(got))
+	}
+	target := got[0]
+	if target.Instrument != "icmp" || target.Address != "192.0.2.1" || target.URL != "" {
+		t.Fatalf("icmp target = %+v", target)
+	}
+	if !target.ICMPAnchor || !target.Expect.ICMPAnchor {
+		t.Fatalf("icmp_anchor was not carried into the expectation: %+v", target)
 	}
 }
 

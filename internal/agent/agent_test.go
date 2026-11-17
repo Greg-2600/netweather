@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync"
 	"testing"
@@ -445,6 +446,14 @@ func TestNTPNeverProducesATargetState(t *testing.T) {
 	}
 }
 
+type refusedEcho struct{}
+
+func (refusedEcho) SendEcho(netip.Addr, int, int) error { return errors.New("network unreachable") }
+func (refusedEcho) Recv(time.Time) (netip.Addr, probe.TraceMessage, error) {
+	return netip.Addr{}, probe.TraceMessage{}, errors.New("no reply")
+}
+func (refusedEcho) Close() error { return nil }
+
 func TestInstrumentsDispatch(t *testing.T) {
 	t.Parallel()
 
@@ -452,11 +461,20 @@ func TestInstrumentsDispatch(t *testing.T) {
 		return nil, &net.OpError{Op: "dial", Err: errors.New("refused")}
 	}
 
+	ping := probe.NewICMP()
+	ping.Timeout = 20 * time.Millisecond
+	ping.Count = 1
+	ping.Open = func() (probe.EchoTransport, error) { return refusedEcho{}, nil }
+	ping.Resolve = func(context.Context, string) (netip.Addr, error) {
+		return netip.MustParseAddr("192.0.2.1"), nil
+	}
+
 	inst := agent.Instruments{
-		TLS: &probe.TLS{Dial: boom},
-		TCP: &probe.TCP{Dial: boom},
-		DNS: probe.NewDNS(boom),
-		NTP: probe.NewNTPWithDial(boom),
+		TLS:  &probe.TLS{Dial: boom},
+		TCP:  &probe.TCP{Dial: boom},
+		DNS:  probe.NewDNS(boom),
+		NTP:  probe.NewNTPWithDial(boom),
+		ICMP: ping,
 	}
 
 	if got := inst.Run(context.Background(), agent.Target{Instrument: "tcp", Address: "x.example:443"}); got.ErrorClass != "tcp_refused" {
@@ -475,9 +493,14 @@ func TestInstrumentsDispatch(t *testing.T) {
 	}); got.ErrorClass != "ntp_unreachable" {
 		t.Errorf("ntp dispatch: class = %q", got.ErrorClass)
 	}
+	if got := inst.Run(context.Background(), agent.Target{
+		Instrument: "icmp", Address: "192.0.2.1",
+	}); got.ErrorClass != "icmp_unreachable" {
+		t.Errorf("icmp dispatch: class = %q", got.ErrorClass)
+	}
 
 	empty := agent.Instruments{}
-	for _, instrument := range []string{"tcp", "tls", "dns", "ntp", "http"} {
+	for _, instrument := range []string{"tcp", "tls", "dns", "ntp", "icmp", "http"} {
 		if got := empty.Run(context.Background(), agent.Target{Instrument: instrument}); got.Err == nil {
 			t.Errorf("%s: a missing instrument must be an error, not a silent success", instrument)
 		}

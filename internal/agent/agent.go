@@ -53,6 +53,7 @@ type Instruments struct {
 	TCP  *probe.TCP
 	DNS  *probe.DNS
 	NTP  *probe.NTP
+	ICMP *probe.ICMP
 }
 
 // Run executes the instrument named by the target.
@@ -82,6 +83,12 @@ func (i Instruments) Run(ctx context.Context, t Target) probe.Result {
 		}
 		r := i.NTP.Do(ctx, t.Address)
 		return probe.Result{Latency: r.RTT, Offset: r.Offset, ErrorClass: r.ErrorClass, Err: r.Err}
+	case "icmp":
+		if i.ICMP == nil {
+			return probe.Result{Err: fmt.Errorf("agent: icmp instrument not configured")}
+		}
+		r := i.ICMP.Do(ctx, t.Address)
+		return probe.Result{Latency: r.RTT, Loss: r.Lost, ErrorClass: r.ErrorClass, Err: r.Err}
 	default:
 		if i.HTTP == nil {
 			return probe.Result{Err: fmt.Errorf("agent: http instrument not configured")}

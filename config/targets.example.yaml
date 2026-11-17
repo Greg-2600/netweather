@@ -66,3 +66,16 @@ targets:
     class: reference
     tier: 0
     interval_s: 600
+
+  # ICMP anchors are chosen because they answer ICMP. A timeout on a service
+  # target is meaningless, so only icmp_anchor targets can be DOWN from it.
+  # This needs CAP_NET_RAW (see compose.trace.yaml) or an unprivileged ping
+  # socket; without either the anchor reports UNKNOWN, never DOWN.
+  # - name: Gateway anchor
+  #   host: 192.0.2.1
+  #   port: 0
+  #   probe: icmp
+  #   icmp_anchor: true
+  #   class: network
+  #   tier: 3
+  #   interval_s: 120

@@ -151,9 +151,11 @@ That rule catches the real threat — a locally trusted CA being used to interce
 
 | Class | Condition | Candidate state |
 |---|---|---|
-| `icmp_timeout` | no echo reply | DOWN **only** for `icmp`-class targets (anchors, corridors) — *specified* |
-| `icmp_unreachable` | ICMP unreachable / admin prohibited | DOWN — *specified* |
-| `icmp_loss_partial` | < 5 of 5 replies | `DEGRADED` — **never** DOWN — *specified* |
+| `icmp_timeout` | no echo reply | DOWN **only** for `icmp`-class targets (anchors, corridors) — **implemented** |
+| `icmp_unreachable` | ICMP unreachable / admin prohibited, or a send failure | DOWN — **implemented** |
+| `icmp_loss_partial` | 1-4 of 5 replies | `DEGRADED` — **never** DOWN — **implemented** |
+| `icmp_unavailable` | no raw socket / missing capability | `UNKNOWN` — visibility failure, not target failure — **implemented** |
+| `icmp_config` | unresolvable host or IPv6 destination | `UNKNOWN` via the unclassified path — **implemented** |
 | `ntp_timeout` | no reply within the exchange timeout | self-health warning only — **implemented** |
 | `ntp_unreachable` | dial/read failure | self-health warning only — **implemented** |
 | `ntp_bad_response` | wrong mode, or stratum > 15 | self-health warning only — **implemented** |

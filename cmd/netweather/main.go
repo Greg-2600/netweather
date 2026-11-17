@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	neturl "net/url"
 	"os"
 	"os/signal"
@@ -333,10 +334,11 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 		switch t.Probe {
 		case "http":
 			url = targetURL(t.Host, t.Port)
-		case "tls", "tcp":
+		case "tls", "tcp", "dns", "ntp":
 			address = net.JoinHostPort(t.Host, strconv.Itoa(t.Port))
-		case "dns", "ntp":
-			address = net.JoinHostPort(t.Host, strconv.Itoa(t.Port))
+		case "icmp":
+			// ICMP has no port; config validation already forced port 0.
+			address = t.Host
 		default:
 			return nil, fmt.Errorf("target %s: probe %q is not implemented yet", t.Host, t.Probe)
 		}
@@ -345,6 +347,9 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 		if err != nil {
 			return nil, fmt.Errorf("target %s: %w", t.Host, err)
 		}
+		// Only an ICMP anchor may be classified DOWN from an ICMP timeout; on a
+		// service target the classifier refuses to make that claim.
+		expect.ICMPAnchor = t.ICMPAnchor
 		if err := st.UpsertTarget(ctx, store.Target{
 			ID:        t.ID,
 			Host:      t.Host,
@@ -514,12 +519,28 @@ func healthcheck() error {
 
 func newInstruments() agent.Instruments {
 	dialer := netx.New()
+
+	// ICMP resolves through the guarded dialer like every other instrument, so
+	// a hostname anchor cannot leak a lookup to the host resolver.
+	ping := probe.NewICMP()
+	ping.Resolve = func(ctx context.Context, host string) (netip.Addr, error) {
+		addrs, err := dialer.CheckHost(ctx, host)
+		if err != nil {
+			return netip.Addr{}, err
+		}
+		if len(addrs) == 0 {
+			return netip.Addr{}, fmt.Errorf("icmp: %q resolved to no addresses", host)
+		}
+		return addrs[0], nil
+	}
+
 	return agent.Instruments{
 		HTTP: probe.NewHTTP(dialer),
 		TLS:  probe.NewTLS(dialer),
 		TCP:  probe.NewTCP(dialer),
 		DNS:  probe.NewDNS(dialer.DialContext),
 		NTP:  probe.NewNTP(dialer),
+		ICMP: ping,
 	}
 }
 

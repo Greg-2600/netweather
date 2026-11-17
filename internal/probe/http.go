@@ -39,7 +39,10 @@ type Result struct {
 	Latency  time.Duration
 	// Offset is set only by the NTP instrument: clock offset from the server,
 	// positive when the local clock is behind.
-	Offset     time.Duration
+	Offset time.Duration
+	// Loss is set only by the ICMP instrument: unanswered echoes out of the
+	// configured count.
+	Loss       int
 	ErrorClass string
 	Err        error
 }

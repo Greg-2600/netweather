@@ -41,12 +41,11 @@ type TraceMessage struct {
 }
 
 // TraceTransport is the socket seam. Production uses a raw ICMP socket; tests
-// script replies without needing CAP_NET_RAW.
+// script replies without needing CAP_NET_RAW. It adds the TTL control that a
+// walk needs on top of the ping socket.
 type TraceTransport interface {
+	EchoTransport
 	SetTTL(ttl int) error
-	SendEcho(dst netip.Addr, id, seq int) error
-	Recv(deadline time.Time) (from netip.Addr, msg TraceMessage, err error)
-	Close() error
 }
 
 const (
@@ -73,7 +72,7 @@ func NewTrace() *Trace {
 	return &Trace{
 		MaxHops: DefaultTraceHops,
 		Timeout: DefaultTraceTimeout,
-		Open:    openICMPTrace,
+		Open:    func() (TraceTransport, error) { return openICMPTrace() },
 	}
 }
 
@@ -96,7 +95,7 @@ func (t *Trace) Run(ctx context.Context, dst netip.Addr) TraceResult {
 
 	open := t.Open
 	if open == nil {
-		open = openICMPTrace
+		open = func() (TraceTransport, error) { return openICMPTrace() }
 	}
 	transport, err := open()
 	if err != nil {
@@ -188,7 +187,7 @@ type icmpTrace struct {
 	conn *icmp.PacketConn
 }
 
-func openICMPTrace() (TraceTransport, error) {
+func openICMPTrace() (*icmpTrace, error) {
 	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
 	if err != nil {
 		return nil, fmt.Errorf("probe: raw ICMP socket unavailable (CAP_NET_RAW is required): %w", err)
