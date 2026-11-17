@@ -777,6 +777,10 @@ type incidentDetailView struct {
 	Targets           []string
 	Corroboration     []corroborationView
 	CorroborationNote string
+	Annotation        string
+	AnnotatedAt       string
+	CSRF              string
+	CanAnnotate       bool
 }
 
 // corroborationView is one external event that overlapped the incident.
@@ -828,6 +832,10 @@ func (s *server) handleIncidents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleIncident(w http.ResponseWriter, r *http.Request) {
+	if strings.HasSuffix(r.URL.Path, "/annotate") {
+		s.handleIncidentAnnotate(w, r)
+		return
+	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -911,10 +919,66 @@ func (s *server) handleIncident(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	view.Annotation = inc.Annotation
+	if !inc.AnnotatedAt.IsZero() {
+		view.AnnotatedAt = inc.AnnotatedAt.UTC().Format("2006-01-02 15:04")
+	}
+	csrf, _ := s.auth.csrfFrom(r)
+	view.CSRF = csrf
+	view.CanAnnotate = s.deps.Annotator != nil
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "incident.html", view)
+}
+
+// handleIncidentAnnotate stores the operator's ground truth from the incident
+// page. It is the same write as the API action, behind a CSRF-checked form.
+func (s *server) handleIncidentAnnotate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.deps.Annotator == nil {
+		http.Error(w, "annotation is not configured", http.StatusServiceUnavailable)
+		return
+	}
+	if err := r.ParseForm(); err != nil || !s.auth.csrfMatches(r, r.PostFormValue("csrf")) {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	rest := strings.TrimPrefix(r.URL.Path, "/incidents/")
+	id := strings.TrimSuffix(rest, "/annotate")
+	if id == "" || strings.Contains(id, "/") {
+		http.Error(w, "no such incident", http.StatusNotFound)
+		return
+	}
+
+	text := strings.TrimSpace(r.PostFormValue("annotation"))
+	if text == "" || len(text) > 500 {
+		http.Error(w, "annotation must be 1-500 characters", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.deps.Annotator.AnnotateIncident(r.Context(), id, text, time.Now().UTC()); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "no such incident", http.StatusNotFound)
+			return
+		}
+		s.deps.Logger.Error("annotation failed",
+			"event", "annotation_failed", "component", "http", "incident_id", id, "error", err)
+		http.Error(w, "annotation unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	s.deps.Logger.Info("incident annotated",
+		"event", "incident_annotated", "component", "http", "incident_id", id)
+
+	// #nosec G710 -- fixed prefix plus an id validated to contain no slash.
+	http.Redirect(w, r, "/incidents/"+id, http.StatusSeeOther)
 }
 
 // --- coverage --------------------------------------------------------------

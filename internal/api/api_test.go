@@ -865,6 +865,161 @@ func newIncidentDetailHandler(t *testing.T, incidents api.IncidentReader, corr a
 	return h
 }
 
+type fakeAnnotator struct {
+	mu         sync.Mutex
+	annotation string
+	id         string
+	at         time.Time
+	err        error
+}
+
+func (f *fakeAnnotator) AnnotateIncident(_ context.Context, id, annotation string, at time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	f.id, f.annotation, f.at = id, annotation, at
+	return nil
+}
+
+func newAnnotationHandler(t *testing.T, annotator api.IncidentAnnotator) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Annotator: annotator,
+			Version:   "test",
+			Commit:    "deadbeef",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func postAnnotation(h http.Handler, path, token, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestAnnotateIncidentAPI(t *testing.T) {
+	t.Parallel()
+
+	annotator := &fakeAnnotator{}
+	rec := postAnnotation(newAnnotationHandler(t, annotator),
+		"/api/v1/incidents/inc-1/annotation", testToken, `{"annotation":"  AWS us-east-1, confirmed  "}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		ID          string `json:"id"`
+		Annotation  string `json:"annotation"`
+		AnnotatedAt string `json:"annotated_at"`
+	}
+	if err := json.Unmarshal(env.Data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != "inc-1" || got.Annotation != "AWS us-east-1, confirmed" {
+		t.Fatalf("response = %+v", got)
+	}
+	if got.AnnotatedAt == "" {
+		t.Error("annotated_at missing")
+	}
+	if annotator.annotation != "AWS us-east-1, confirmed" {
+		t.Fatalf("stored annotation = %q, want the trimmed text", annotator.annotation)
+	}
+}
+
+func TestAnnotateIncidentValidation(t *testing.T) {
+	t.Parallel()
+
+	h := newAnnotationHandler(t, &fakeAnnotator{})
+
+	tests := []struct {
+		name string
+		body string
+		want int
+	}{
+		{"empty", `{"annotation":"   "}`, http.StatusBadRequest},
+		{"missing", `{}`, http.StatusBadRequest},
+		{"too long", `{"annotation":"` + strings.Repeat("x", 501) + `"}`, http.StatusBadRequest},
+		{"unknown field", `{"annotation":"x","bogus":1}`, http.StatusBadRequest},
+		{"bad json", `not json`, http.StatusBadRequest},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			rec := postAnnotation(h, "/api/v1/incidents/inc-1/annotation", testToken, tc.body)
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d: %s", rec.Code, tc.want, rec.Body)
+			}
+		})
+	}
+
+	// Wrong content type and the wrong method are different failures.
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/incidents/inc-1/annotation",
+		strings.NewReader(`{"annotation":"x"}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("Content-Type", "text/plain")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("wrong content type status = %d, want 415", rec.Code)
+	}
+
+	rec = do(h, http.MethodGet, "/api/v1/incidents/inc-1/annotation", testToken)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("GET status = %d, want 405", rec.Code)
+	}
+}
+
+func TestAnnotateIncidentUnavailableAndMissing(t *testing.T) {
+	t.Parallel()
+
+	// No annotator configured: the route says so instead of accepting and
+	// discarding the write.
+	rec := postAnnotation(newAnnotationHandler(t, nil),
+		"/api/v1/incidents/inc-1/annotation", testToken, `{"annotation":"x"}`)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+
+	// Unknown incident is 404, not a silent success.
+	rec = postAnnotation(newAnnotationHandler(t, &fakeAnnotator{err: sql.ErrNoRows}),
+		"/api/v1/incidents/nope/annotation", testToken, `{"annotation":"x"}`)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown id status = %d, want 404", rec.Code)
+	}
+
+	// A storage failure is 503.
+	rec = postAnnotation(newAnnotationHandler(t, &fakeAnnotator{err: errors.New("db down")}),
+		"/api/v1/incidents/inc-1/annotation", testToken, `{"annotation":"x"}`)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("storage failure status = %d, want 503", rec.Code)
+	}
+
+	rec = postAnnotation(newAnnotationHandler(t, &fakeAnnotator{}),
+		"/api/v1/incidents/inc-1/annotation", "", `{"annotation":"x"}`)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status = %d, want 401", rec.Code)
+	}
+}
+
 func TestIncidentDetailCorroboration(t *testing.T) {
 	t.Parallel()
 

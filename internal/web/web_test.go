@@ -1865,6 +1865,168 @@ func newServerWithCorroboration(t *testing.T, token string, m *board.Memory, his
 	return ts
 }
 
+type fakeAnnotator struct {
+	mu         sync.Mutex
+	history    *fakeIncidentHistory
+	id         string
+	annotation string
+	at         time.Time
+	err        error
+}
+
+func (f *fakeAnnotator) AnnotateIncident(_ context.Context, id, annotation string, at time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	f.id, f.annotation, f.at = id, annotation, at
+	// Mirror the store so the re-rendered page shows what was saved.
+	if f.history != nil {
+		for i := range f.history.items {
+			if f.history.items[i].ID == id {
+				f.history.items[i].Annotation = annotation
+				f.history.items[i].AnnotatedAt = at
+			}
+		}
+	}
+	return nil
+}
+
+func (f *fakeAnnotator) last() (string, string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.id, f.annotation
+}
+
+func newServerWithAnnotator(t *testing.T, token string, m *board.Memory, history web.IncidentHistory, annotator web.IncidentAnnotator) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		Incidents: history,
+		Annotator: annotator,
+		Token:     token,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestIncidentPageAnnotatesGroundTruth(t *testing.T) {
+	t.Parallel()
+
+	history := incidentsFixture()
+	annotator := &fakeAnnotator{history: history}
+	ts := newServerWithAnnotator(t, testToken, fixture(), history, annotator)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/incidents/inc-open") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="save-annotation"`) {
+		t.Fatalf("annotation form missing:\n%s", page)
+	}
+	if !strings.Contains(page, `data-testid="no-annotation"`) {
+		t.Error("unannotated incident did not state that it has no ground truth")
+	}
+
+	csrf := csrfFrom(t, page)
+	form := url.Values{
+		"csrf":       {csrf},
+		"annotation": {"AWS us-east-1, confirmed on the status page"},
+	}
+	resp, err = client.PostForm(ts.URL+"/incidents/inc-open/annotate", form) //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = body(t, resp)
+
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/incidents/inc-open" {
+		t.Fatalf("annotation ended at %s with status %d", resp.Request.URL.Path, resp.StatusCode)
+	}
+	if !strings.Contains(page, `data-testid="incident-annotation"`) {
+		t.Fatalf("saved annotation not rendered:\n%s", page)
+	}
+	if !strings.Contains(page, "AWS us-east-1, confirmed") {
+		t.Fatal("annotation text missing after save")
+	}
+
+	id, text := annotator.last()
+	if id != "inc-open" || text != "AWS us-east-1, confirmed on the status page" {
+		t.Fatalf("annotator received (%q, %q)", id, text)
+	}
+}
+
+func TestIncidentAnnotationRejectsBadRequests(t *testing.T) {
+	t.Parallel()
+
+	history := incidentsFixture()
+	annotator := &fakeAnnotator{history: history}
+	ts := newServerWithAnnotator(t, testToken, fixture(), history, annotator)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	// A wrong CSRF token is a 400, not a write.
+	badForm := url.Values{
+		"csrf":       {"wrong"},
+		"annotation": {"x"},
+	}
+	resp, err := client.PostForm(ts.URL+"/incidents/inc-open/annotate", badForm) //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = body(t, resp)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad csrf status = %d, want 400", resp.StatusCode)
+	}
+
+	// Empty annotations are refused with a valid CSRF token.
+	pageResp, err := client.Get(ts.URL + "/incidents/inc-open") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	csrf := csrfFrom(t, body(t, pageResp))
+
+	emptyForm := url.Values{
+		"csrf":       {csrf},
+		"annotation": {"   "},
+	}
+	resp, err = client.PostForm(ts.URL+"/incidents/inc-open/annotate", emptyForm) //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = body(t, resp)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("empty annotation status = %d, want 400", resp.StatusCode)
+	}
+
+	// Without an annotator the form is not offered and the POST is 503.
+	bare := newServerWithAnnotator(t, testToken, fixture(), incidentsFixture(), nil)
+	client2, _ := newClient(t)
+	login(t, bare, client2, testToken)
+
+	pageResp, err = client2.Get(bare.URL + "/incidents/inc-open") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(body(t, pageResp), `data-testid="save-annotation"`) {
+		t.Error("annotation form rendered without an annotator")
+	}
+}
+
 func TestIncidentDetailShowsCorroboration(t *testing.T) {
 	t.Parallel()
 

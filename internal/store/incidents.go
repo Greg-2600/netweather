@@ -179,6 +179,26 @@ func (s *Store) CloseIncident(ctx context.Context, id, reason string, at time.Ti
 	return nil
 }
 
+// AnnotateIncident records the operator's ground truth for an incident. It is
+// what turns a stored incident into a labelled example for the backtest corpus
+// (SCHEMA.md §7); an unknown id is an error so a typo does not silently vanish.
+func (s *Store) AnnotateIncident(ctx context.Context, id, annotation string, at time.Time) error {
+	res, err := s.writer.ExecContext(ctx, `
+		UPDATE incident SET annotation = NULLIF(?, ''), annotated_at = ?
+		WHERE id = ?`, annotation, at.UnixMilli(), id)
+	if err != nil {
+		return fmt.Errorf("store: annotate incident: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("store: annotate incident: %w", err)
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // Incidents lists incidents newest first; openOnly filters to unclosed ones.
 func (s *Store) Incidents(ctx context.Context, openOnly bool, limit int) ([]Incident, error) {
 	if limit <= 0 {

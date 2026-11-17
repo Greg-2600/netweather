@@ -78,6 +78,26 @@
       <p class="muted" data-testid="no-corroboration">{{.CorroborationNote}}</p>
       {{end}}
 
+      <h2 class="section-title">Ground truth</h2>
+      {{if .Annotation}}
+      <p data-testid="incident-annotation">{{.Annotation}}
+        <span class="muted small">recorded {{.AnnotatedAt}}</span>
+      </p>
+      {{else}}
+      <p class="muted" data-testid="no-annotation">
+        Not annotated. One line of ground truth turns this incident into a labelled example.
+      </p>
+      {{end}}
+      {{if .CanAnnotate}}
+      <form method="post" action="/incidents/{{.ID}}/annotate" class="annotate">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <label class="muted small" for="annotation">What actually happened?</label>
+        <textarea id="annotation" name="annotation" rows="2" maxlength="500" required
+                  placeholder="e.g. AWS us-east-1, confirmed on the status page"></textarea>
+        <button type="submit" data-testid="save-annotation">Save annotation</button>
+      </form>
+      {{end}}
+
       <p><a href="/incidents">← Back to incidents</a></p>
     </article>
   </main>

@@ -370,6 +370,22 @@ The incident plus every ranked attribution candidate, not only the winner — wh
 
 `corroboration` lists external feed events that overlap the incident's window (two hours before it opened through its close or now) and match its country or ASN when the scope names one. It is evidence, never a verdict: a matching outage makes the incident more believable, and a matching statuspage incident points at the provider rather than at your path. A sector or global incident has no place to match, so the list is everything in the window, highest severity first. The array is always present; a failed corroboration query is logged and leaves it empty rather than hiding the incident.
 
+The incident object carries `annotation` and `annotated_at` when the operator has recorded ground truth (see §6.8.1).
+
+### 6.8.1 `POST /api/v1/incidents/{id}/annotation` — stable
+
+Auth: bearer. `Content-Type: application/json`. Records what actually happened. It is the hook that turns a stored incident into a labelled example for the backtest corpus.
+
+```json
+{"annotation": "AWS us-east-1, confirmed on the status page"}
+```
+
+- `annotation` is required and trimmed; 1-500 characters.
+- A second call replaces the previous annotation: the incident keeps the latest ground truth, not a history.
+- `404` for an unknown id. The write is never silently discarded.
+- `415` unless the body is JSON; `400` on unknown fields or malformed JSON.
+- The UI's incident page posts the same value through a CSRF-checked form.
+
 ### 6.9 `GET /api/v1/targets` — stable
 
 Auth: bearer. The same rows as the board, with filters. All filters combine with AND.
@@ -740,7 +756,7 @@ Concurrent streams are capped at 64 total and 8 per peer address (`THREAT_MODEL.
 
 ### 7.3 Actions (POST)
 
-All action endpoints are **implemented**: the debug scopes in §6.19 and the traceroute in §6.21.
+All action endpoints are **implemented**: the debug scopes in §6.19, the traceroute in §6.21, and the incident annotation in §6.8.1.
 
 `Idempotency-Key` is honored on every mutating request: a repeated key with the same method and path replays the original response (status, headers, body) with `Idempotent-Replayed: true`, instead of acting twice. This matters for `pause` behind a retrying proxy and for a client that retries a scope creation after a timeout.
 

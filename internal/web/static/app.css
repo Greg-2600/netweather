@@ -122,6 +122,26 @@ button.link {
 
 button.link:hover { color: var(--text); }
 
+/* Ground-truth annotation form on the incident page. */
+.annotate {
+  display: grid;
+  gap: 0.35rem;
+  max-width: 32rem;
+  margin: 0.4rem 0 1rem;
+}
+
+.annotate textarea {
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem;
+  resize: vertical;
+}
+
+.annotate button { justify-self: start; }
+
 /* --- login --------------------------------------------------------------- */
 
 body.auth {

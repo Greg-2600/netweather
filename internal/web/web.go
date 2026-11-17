@@ -29,6 +29,9 @@ type Deps struct {
 	Incidents IncidentHistory
 	// Corroboration supplies external feed events for an incident.
 	Corroboration Corroboration
+	// Annotator records the operator's ground truth on an incident. Nil hides
+	// the annotation form rather than showing a form that cannot save.
+	Annotator IncidentAnnotator
 	// Feeds supplies feed health for the board's staleness strip. Nil means the
 	// strip is omitted rather than shown as healthy.
 	Feeds FeedHealth
@@ -93,6 +96,11 @@ type Corroboration interface {
 // (DESIGN.md P5).
 type FeedHealth interface {
 	FeedStates(ctx context.Context) ([]store.FeedState, error)
+}
+
+// IncidentAnnotator records the operator's ground truth for an incident.
+type IncidentAnnotator interface {
+	AnnotateIncident(ctx context.Context, id, annotation string, at time.Time) error
 }
 
 // Control is the probe kill switch, shared with the API.

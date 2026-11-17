@@ -1767,3 +1767,54 @@ func TestCertificateObservationsRoundTrip(t *testing.T) {
 		t.Fatalf("a non-TLS probe carried a certificate: %+v", rows[0])
 	}
 }
+
+func TestAnnotateIncident(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	inc := store.Incident{
+		ID: "inc-a", OpenedAt: base, Verdict: "INCIDENT",
+		Scope: "sector", ScopeValue: "airline", Headline: "x", Confidence: "high",
+	}
+	if err := s.OpenIncident(ctx, inc, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	at := base.Add(time.Hour)
+	if err := s.AnnotateIncident(ctx, "inc-a", "AWS us-east-1, confirmed", at); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _, _, err := s.IncidentByID(ctx, "inc-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Annotation != "AWS us-east-1, confirmed" {
+		t.Fatalf("annotation = %q", got.Annotation)
+	}
+	if !got.AnnotatedAt.Equal(at) {
+		t.Fatalf("annotated_at = %v, want %v", got.AnnotatedAt, at)
+	}
+
+	// A second annotation replaces the first; the incident keeps the latest
+	// ground truth rather than a history.
+	at2 := at.Add(time.Hour)
+	if err := s.AnnotateIncident(ctx, "inc-a", "actually the ISP", at2); err != nil {
+		t.Fatal(err)
+	}
+	got, _, _, err = s.IncidentByID(ctx, "inc-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Annotation != "actually the ISP" || !got.AnnotatedAt.Equal(at2) {
+		t.Fatalf("updated incident = %+v", got)
+	}
+
+	// An unknown id is an error, not a silent no-op.
+	if err := s.AnnotateIncident(ctx, "nope", "x", at); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("unknown id error = %v, want sql.ErrNoRows", err)
+	}
+}

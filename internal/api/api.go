@@ -49,6 +49,12 @@ type CorroborationReader interface {
 	Corroboration(ctx context.Context, inc store.Incident, now time.Time, limit int) ([]store.ExternalEvent, error)
 }
 
+// IncidentAnnotator records the operator's ground truth for an incident. It is
+// the hook that turns a stored incident into a labelled example.
+type IncidentAnnotator interface {
+	AnnotateIncident(ctx context.Context, id, annotation string, at time.Time) error
+}
+
 // ScopeReader is the read side for scope health and coverage.
 type ScopeReader interface {
 	ScopeStates(ctx context.Context, vantageID, scope, value string) (map[state.State]int, int, error)
@@ -126,6 +132,8 @@ type Deps struct {
 	// Corroboration reads external feed events for an incident. Nil omits the
 	// section rather than pretending no earlier event existed.
 	Corroboration CorroborationReader
+	// Annotator records the operator's ground truth. Nil disables the route.
+	Annotator IncidentAnnotator
 	// Scopes reads scope health/coverage. Nil disables the route.
 	Scopes ScopeReader
 	// Anomalies reads detector output. Nil disables the route.
@@ -217,7 +225,7 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	apiMux.HandleFunc("/api/v1/debug/scopes", s.handleDebugScopes)
 	apiMux.HandleFunc("/api/v1/debug/scopes/", s.handleDebugScopeByID)
 	apiMux.HandleFunc("/api/v1/incidents", onlyGET(s.handleIncidents))
-	apiMux.HandleFunc("/api/v1/incidents/", onlyGET(s.handleIncidentByID))
+	apiMux.HandleFunc("/api/v1/incidents/", s.handleIncidentSubtree)
 	apiMux.HandleFunc("/", s.handleNotFound)
 
 	// 60 requests/minute sustained, 20 burst (docs/API.md §8).
@@ -610,14 +618,16 @@ func (s *server) serveProbes(w http.ResponseWriter, r *http.Request, id string) 
 }
 
 type incidentItem struct {
-	ID         string `json:"id"`
-	OpenedAt   string `json:"opened_at"`
-	ClosedAt   string `json:"closed_at,omitempty"`
-	Verdict    string `json:"verdict"`
-	Scope      string `json:"scope"`
-	ScopeValue string `json:"scope_value,omitempty"`
-	Headline   string `json:"headline"`
-	Confidence string `json:"confidence"`
+	ID          string `json:"id"`
+	OpenedAt    string `json:"opened_at"`
+	ClosedAt    string `json:"closed_at,omitempty"`
+	Verdict     string `json:"verdict"`
+	Scope       string `json:"scope"`
+	ScopeValue  string `json:"scope_value,omitempty"`
+	Headline    string `json:"headline"`
+	Confidence  string `json:"confidence"`
+	Annotation  string `json:"annotation,omitempty"`
+	AnnotatedAt string `json:"annotated_at,omitempty"`
 }
 
 type attributionItem struct {
@@ -660,9 +670,13 @@ func toIncidentItem(inc store.Incident) incidentItem {
 		ScopeValue: inc.ScopeValue,
 		Headline:   inc.Headline,
 		Confidence: inc.Confidence,
+		Annotation: inc.Annotation,
 	}
 	if !inc.ClosedAt.IsZero() {
 		item.ClosedAt = inc.ClosedAt.UTC().Format(time.RFC3339)
+	}
+	if !inc.AnnotatedAt.IsZero() {
+		item.AnnotatedAt = inc.AnnotatedAt.UTC().Format(time.RFC3339)
 	}
 	return item
 }
@@ -698,6 +712,86 @@ func (s *server) handleIncidents(w http.ResponseWriter, r *http.Request) {
 
 // handleIncidentByID returns one incident with its ranked attribution and the
 // targets it covers.
+// handleIncidentSubtree routes the incident detail read and the annotation
+// action. They differ in method, so one gate cannot cover both.
+func (s *server) handleIncidentSubtree(w http.ResponseWriter, r *http.Request) {
+	if strings.HasSuffix(r.URL.Path, "/annotation") {
+		s.handleIncidentAnnotation(w, r)
+		return
+	}
+	onlyGET(s.handleIncidentByID)(w, r)
+}
+
+type annotationRequest struct {
+	Annotation string `json:"annotation"`
+}
+
+// handleIncidentAnnotation records the operator's ground truth. It is the hook
+// that turns a stored incident into a labelled example for the backtest corpus.
+func (s *server) handleIncidentAnnotation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		writeError(w, r, http.StatusMethodNotAllowed, CodeMethodNotAllowed,
+			r.Method+" is not allowed on "+r.URL.Path)
+		return
+	}
+	if s.deps.Annotator == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "annotation is not configured")
+		return
+	}
+	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		writeError(w, r, http.StatusUnsupportedMediaType, CodeInvalidArgument,
+			"Content-Type must be application/json")
+		return
+	}
+
+	id := strings.TrimPrefix(r.URL.Path, "/api/v1/incidents/")
+	id = strings.TrimSuffix(id, "/annotation")
+	if id == "" || strings.Contains(id, "/") {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such incident")
+		return
+	}
+
+	var req annotationRequest
+	dec := json.NewDecoder(io.LimitReader(r.Body, 8<<10))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "invalid JSON body: "+err.Error())
+		return
+	}
+
+	text := strings.TrimSpace(req.Annotation)
+	if text == "" {
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "annotation must not be empty")
+		return
+	}
+	if len(text) > 500 {
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "annotation must be 500 characters or fewer")
+		return
+	}
+
+	now := time.Now().UTC()
+	if err := s.deps.Annotator.AnnotateIncident(r.Context(), id, text, now); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, r, http.StatusNotFound, CodeNotFound, "no such incident")
+			return
+		}
+		s.deps.Logger.Error("annotation failed",
+			"event", "annotation_failed", "component", "http", "incident_id", id, "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "annotation unavailable")
+		return
+	}
+
+	s.deps.Logger.Info("incident annotated",
+		"event", "incident_annotated", "component", "http",
+		"request_id", requestIDFrom(r), "incident_id", id)
+
+	writeData(w, r, map[string]string{
+		"id": id, "annotation": text,
+		"annotated_at": now.Format(time.RFC3339),
+	}, nil)
+}
+
 func (s *server) handleIncidentByID(w http.ResponseWriter, r *http.Request) {
 	if s.deps.Incidents == nil {
 		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "incidents are not configured")
