@@ -82,6 +82,13 @@ type FeedReader interface {
 	ExternalEvents(ctx context.Context, limit int) ([]store.ExternalEvent, error)
 }
 
+// DebugScopes is the time-boxed verbose-logging registry.
+type DebugScopes interface {
+	Add(sc logging.Scope, ttl time.Duration) (logging.Scope, error)
+	Remove(id string) bool
+	List() []logging.Scope
+}
+
 // Deps is everything the HTTP layer needs. It is deliberately small: the API
 // reads state, it does not own it.
 type Deps struct {
@@ -115,6 +122,8 @@ type Deps struct {
 	Exporter Exporter
 	// Feeds reads external corroboration. Nil disables the route.
 	Feeds FeedReader
+	// Debug manages time-boxed verbose logging. Nil disables the routes.
+	Debug DebugScopes
 	// Metrics is the Prometheus handler. Nil keeps /metrics unmounted, which is
 	// the default: exposing it is an operator decision.
 	Metrics http.Handler
@@ -161,6 +170,8 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	apiMux.HandleFunc("/api/v1/export", onlyGET(s.handleExport))
 	apiMux.HandleFunc("/api/v1/events", onlyGET(s.handleEvents))
 	apiMux.HandleFunc("/api/v1/feeds", onlyGET(s.handleFeeds))
+	apiMux.HandleFunc("/api/v1/debug/scopes", s.handleDebugScopes)
+	apiMux.HandleFunc("/api/v1/debug/scopes/", s.handleDebugScopeByID)
 	apiMux.HandleFunc("/api/v1/incidents", onlyGET(s.handleIncidents))
 	apiMux.HandleFunc("/api/v1/incidents/", onlyGET(s.handleIncidentByID))
 	apiMux.HandleFunc("/", s.handleNotFound)
@@ -257,7 +268,7 @@ type metaResponse struct {
 
 // capabilities is the runtime truth. A client should feature-detect here rather
 // than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds"}
+var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug"}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}
@@ -1439,6 +1450,116 @@ func (s *server) handleFeeds(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, r, out, &Meta{Count: len(out.Events), Limit: limit})
+}
+
+type debugScopeRequest struct {
+	Target     string `json:"target"`
+	Vantage    string `json:"vantage"`
+	Component  string `json:"component"`
+	ErrorClass string `json:"error_class"`
+	Level      string `json:"level"`
+	TTL        string `json:"ttl"`
+}
+
+// handleDebugScopes lists and creates time-boxed verbose sessions. There is no
+// "trace everything" body: a scope needs at least one selector.
+func (s *server) handleDebugScopes(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Debug == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "debug scopes are not configured")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet, http.MethodHead:
+		list := s.deps.Debug.List()
+		writeData(w, r, list, &Meta{Count: len(list)})
+
+	case http.MethodPost:
+		if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+			writeError(w, r, http.StatusUnsupportedMediaType, CodeInvalidArgument, "Content-Type must be application/json")
+			return
+		}
+
+		var req debugScopeRequest
+		dec := json.NewDecoder(io.LimitReader(r.Body, 8<<10))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&req); err != nil {
+			writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "invalid JSON body: "+err.Error())
+			return
+		}
+		if req.Level == "" {
+			req.Level = "debug"
+		}
+
+		ttl, err := time.ParseDuration(req.TTL)
+		if err != nil {
+			writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "ttl must be a duration such as 10m")
+			return
+		}
+
+		scope, err := s.deps.Debug.Add(logging.Scope{
+			Target: req.Target, Vantage: req.Vantage,
+			Component: req.Component, ErrorClass: req.ErrorClass,
+			Level: req.Level,
+		}, ttl)
+		if err != nil {
+			writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, err.Error())
+			return
+		}
+
+		s.deps.Logger.Info("debug scope enabled",
+			"event", "debug_scope_enabled",
+			"component", "http",
+			"request_id", requestIDFrom(r),
+			"scope_id", scope.ID,
+			"target", scope.Target,
+			"component_scope", scope.Component,
+			"error_class", scope.ErrorClass,
+			"level", scope.Level,
+			"expires_at", scope.ExpiresAt.Format(time.RFC3339),
+		)
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": scope,
+			"meta": map[string]string{"request_id": requestIDFrom(r)},
+		})
+
+	default:
+		w.Header().Set("Allow", "GET, HEAD, POST")
+		writeError(w, r, http.StatusMethodNotAllowed, CodeMethodNotAllowed,
+			r.Method+" is not allowed on "+r.URL.Path)
+	}
+}
+
+// handleDebugScopeByID ends one session early.
+func (s *server) handleDebugScopeByID(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Debug == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "debug scopes are not configured")
+		return
+	}
+	if r.Method != http.MethodDelete {
+		w.Header().Set("Allow", "DELETE")
+		writeError(w, r, http.StatusMethodNotAllowed, CodeMethodNotAllowed,
+			r.Method+" is not allowed on "+r.URL.Path)
+		return
+	}
+
+	id := strings.TrimPrefix(r.URL.Path, "/api/v1/debug/scopes/")
+	if id == "" || strings.Contains(id, "/") {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such scope")
+		return
+	}
+	if !s.deps.Debug.Remove(id) {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such scope")
+		return
+	}
+
+	s.deps.Logger.Info("debug scope disabled",
+		"event", "debug_scope_disabled", "component", "http",
+		"request_id", requestIDFrom(r), "scope_id", id)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *server) handleControl(w http.ResponseWriter, r *http.Request) {

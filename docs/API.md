@@ -200,7 +200,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
-    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds"],
+    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -626,6 +626,28 @@ Auth: bearer. Feed health and recent external events. Feeds are opt-in (`NETWEAT
 - `severity` is the feed's own score. It is evidence, not a verdict, and it never changes a target's state on its own.
 - An unknown feed name in `NETWEATHER_FEEDS` is ignored rather than fatal; the list is operator input, not a security boundary.
 
+### 6.19 `POST/GET /api/v1/debug/scopes`, `DELETE /api/v1/debug/scopes/{id}` — experimental
+
+Auth: bearer. Time-boxed verbose logging for one target, component, vantage, or error class. Global `trace` is deliberately not expressible.
+
+`POST` body:
+
+```json
+{"target": "chase.com", "component": "agent", "error_class": "tls_timeout",
+ "level": "trace", "ttl": "10m"}
+```
+
+- At least one of `target`, `vantage`, `component`, or `error_class` is required.
+- `level` is `debug` (default) or `trace`. A `debug` scope admits `DEBUG` and more severe records; a `trace` scope additionally admits `TRACE`.
+- `ttl` is required and capped at 1 hour. There is no "forever".
+- The response is `201` with the created scope, including `id`, `created_at`, and `expires_at`.
+
+`GET` lists active scopes (newest first). `DELETE /{id}` ends one early and returns `204`; an unknown id is `404`.
+
+Scopes persist in `/data/debug.json`, so a restart does not silently keep one enabled; scopes that expired while the process was down are dropped at startup with one `INFO` line each. Expiry is logged as `debug scope expired`. Enable/disable actions are logged at `INFO` with the request id.
+
+The scope handler is the only level decision: sinks are built at `TRACE`, so enabling a scope works even when `NETWEATHER_LOG_LEVEL=info`. Records matching an active scope are also pinned in the ring, so the evidence outlives the session.
+
 ---
 
 ## 7. Specified, not implemented
@@ -651,11 +673,11 @@ Two limitations are stated rather than hidden: `Last-Event-ID` replay is not imp
 
 | Endpoint | Tier | Purpose |
 |---|---|---|
-| `POST /api/v1/debug/scopes` | experimental | Enable scoped `debug`/`trace` for a target, with a mandatory `ttl` ≤ 1h |
-| `DELETE /api/v1/debug/scopes/{id}` | experimental | End a scope early |
 | `POST /api/v1/targets/{id}/trace` | experimental | On-demand traceroute; subject to the ≤10/hour global limit |
 
-Actions require `Content-Type: application/json` and an `Idempotency-Key` header. A repeated key returns the original result rather than acting twice — important for `pause` behind a retrying proxy.
+The debug-scope actions are **implemented**; see §6.19.
+
+Actions require `Content-Type: application/json` and an `Idempotency-Key` header. A repeated key returns the original result rather than acting twice — important for `pause` behind a retrying proxy. Debug-scope creation currently does not require an idempotency key; repeating it creates a second scope, which is visible in the list and expires on its own.
 
 ### 7.4 `/metrics`
 

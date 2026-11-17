@@ -18,7 +18,10 @@ const timeFormat = "2006-01-02T15:04:05.000Z07:00"
 type Logger struct {
 	*slog.Logger
 
-	Ring    *Ring
+	Ring   *Ring
+	scoped *scopedHandler
+	Scopes *Scopes
+
 	console *AsyncWriter
 	file    *AsyncWriter
 	rot     *RotatingFile
@@ -63,8 +66,22 @@ func New(cfg Config, stdout io.Writer) (*Logger, error) {
 		handlers = append(handlers, out.Ring)
 	}
 
-	out.Logger = slog.New(multiHandler(handlers))
+	// The sinks are built at TRACE and never filter; scopedHandler is the only
+	// level decision. That is what lets an active scope pass debug records
+	// through a logger configured at INFO.
+	out.scoped = &scopedHandler{min: cfg.Level, next: multiHandler(handlers)}
+	out.Logger = slog.New(out.scoped)
 	return out, nil
+}
+
+// UseScopes attaches the debug-scope registry. It is called once at startup,
+// before the logging goroutines begin.
+func (l *Logger) UseScopes(s *Scopes) {
+	if l == nil || l.scoped == nil {
+		return
+	}
+	l.Scopes = s
+	l.scoped.scopes = s
 }
 
 // Close flushes sinks in order: console, file writer, file handle.
@@ -125,7 +142,9 @@ func detectFormat(w io.Writer) string {
 
 func handlerOptions(cfg Config) *slog.HandlerOptions {
 	return &slog.HandlerOptions{
-		Level:     cfg.Level,
+		// TRACE is the floor: scopedHandler decides what actually passes, so a
+		// sink-level filter here would silently drop scoped verbose records.
+		Level:     LevelTrace,
 		AddSource: cfg.AddSource,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 			a = RedactAttr(groups, a)

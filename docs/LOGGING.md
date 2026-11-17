@@ -115,14 +115,16 @@ netweather debug status
 netweather debug disable --all
 ```
 
-Semantics (planned, phase 0.5):
+Semantics (**implemented** for the HTTP surface):
 
-- Scope by `target`, `vantage`, `component`, or `error_class`.
-- **Time-boxed by construction.** There is no `--for infinity`; the maximum is 1 hour, and the state is persisted in `/data/debug.json` so a restart does not silently keep it on.
+- Scope by `target`, `vantage`, `component`, or `error_class`. A scope must name at least one; "trace everything" is deliberately not expressible.
+- **Time-boxed by construction.** There is no "forever"; the maximum is 1 hour, and the state is persisted in `/data/debug.json` so a restart does not silently keep it on.
 - A scoped session pins the ring's `debug` records for that target, so the evidence survives the session ending.
 - Expiry logs one `INFO` line: `debug scope expired`.
 
-Until this lands, `NETWEATHER_LOG_LEVEL=trace` is the only lever, and it is global.
+The HTTP contract is in `API.md` §6.19 (`POST/GET /api/v1/debug/scopes`, `DELETE /api/v1/debug/scopes/{id}`). The CLI verbs in the sketch above are not implemented yet; until they are, use `curl` with the bearer token.
+
+Level semantics: a `debug` scope admits `DEBUG` and more severe records matching its selectors; a `trace` scope additionally admits `TRACE`. Sinks are always built at `TRACE` and the scope handler is the only level decision, so enabling a scope works even when `NETWEATHER_LOG_LEVEL=info`.
 
 ---
 

@@ -2277,6 +2277,142 @@ func TestFeedsUnavailableBadLimitAndAuth(t *testing.T) {
 	}
 }
 
+func newDebugHandler(t *testing.T, scopes api.DebugScopes) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Debug:     scopes,
+			Version:   "test",
+			Commit:    "deadbeef",
+			StartedAt: time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func TestDebugScopeCreateListDelete(t *testing.T) {
+	t.Parallel()
+
+	scopes := logging.NewScopes("")
+	h := newDebugHandler(t, scopes)
+
+	body := strings.NewReader(`{"target":"chase.com","level":"trace","ttl":"10m"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/debug/scopes", body)
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var created struct {
+		Data logging.Scope `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.Data.ID == "" || created.Data.Level != "trace" || created.Data.Target != "chase.com" {
+		t.Fatalf("created = %+v", created.Data)
+	}
+	scopeID := created.Data.ID
+
+	rec = do(h, http.MethodGet, "/api/v1/debug/scopes", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list status = %d", rec.Code)
+	}
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var list []logging.Scope
+	if err := json.Unmarshal(env.Data, &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].ID != scopeID {
+		t.Fatalf("list = %+v", list)
+	}
+
+	rec = do(h, http.MethodDelete, "/api/v1/debug/scopes/"+scopeID, testToken)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d", rec.Code)
+	}
+	if len(scopes.List()) != 0 {
+		t.Fatal("scope survived delete")
+	}
+}
+
+func TestDebugScopeValidation(t *testing.T) {
+	t.Parallel()
+
+	h := newDebugHandler(t, logging.NewScopes(""))
+
+	tests := []struct {
+		name        string
+		body        string
+		contentType string
+		want        int
+	}{
+		{"no selectors", `{"level":"debug","ttl":"1m"}`, "application/json", http.StatusBadRequest},
+		{"bad ttl", `{"target":"chase.com","ttl":"soon"}`, "application/json", http.StatusBadRequest},
+		{"missing ttl", `{"target":"chase.com"}`, "application/json", http.StatusBadRequest},
+		{"unknown field", `{"target":"chase.com","ttl":"1m","bogus":1}`, "application/json", http.StatusBadRequest},
+		{"wrong content type", `{}`, "text/plain", http.StatusUnsupportedMediaType},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/debug/scopes", strings.NewReader(tc.body))
+			req.Header.Set("Authorization", "Bearer "+testToken)
+			req.Header.Set("Content-Type", tc.contentType)
+
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d: %s", rec.Code, tc.want, rec.Body)
+			}
+		})
+	}
+}
+
+func TestDebugScopeUnavailableAuthAndMethods(t *testing.T) {
+	t.Parallel()
+
+	rec := do(newHandler(t, testToken, nil), http.MethodGet, "/api/v1/debug/scopes", testToken)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+
+	h := newDebugHandler(t, logging.NewScopes(""))
+	rec = do(h, http.MethodGet, "/api/v1/debug/scopes", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+
+	rec = do(h, http.MethodPut, "/api/v1/debug/scopes", testToken)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405", rec.Code)
+	}
+
+	rec = do(h, http.MethodDelete, "/api/v1/debug/scopes/nope", testToken)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+
+	rec = do(h, http.MethodGet, "/api/v1/debug/scopes/nope", testToken)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405", rec.Code)
+	}
+}
+
 func TestSecurityHeaders(t *testing.T) {
 	t.Parallel()
 

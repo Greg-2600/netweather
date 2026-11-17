@@ -126,6 +126,20 @@ func serve(lg *logging.Logger) error {
 		dataDir = "./data"
 	}
 
+	// Scoped verbose logging is time-boxed and persisted, so a restart cannot
+	// silently inherit an old debug session.
+	scopes := logging.NewScopes(filepath.Join(dataDir, "debug.json"))
+	if expired, err := scopes.Load(); err != nil {
+		lg.Warn("debug scopes unavailable", "event", "debug_scopes_load_failed", "error", err)
+	} else {
+		for _, sc := range expired {
+			lg.Info("debug scope expired while stopped",
+				"event", "debug_scope_expired", "component", "logging",
+				"scope_id", sc.ID, "target", sc.Target, "component_scope", sc.Component)
+		}
+	}
+	lg.UseScopes(scopes)
+
 	st, err := store.Open(ctx, filepath.Join(dataDir, "netweather.db"))
 	if err != nil {
 		lg.Error("store unavailable", "event", "store_open_failed", "error", err)
@@ -214,6 +228,7 @@ func serve(lg *logging.Logger) error {
 		SelfChecks: st,
 		Exporter:   st,
 		Feeds:      st,
+		Debug:      scopes,
 		Metrics:    metricsHandler,
 		Vantage:    "local",
 		Fallback:   ui,
@@ -251,7 +266,7 @@ func serve(lg *logging.Logger) error {
 	}
 	go incidents.Loop(ctx, st, st, st, "local", incidentInterval, lg.Logger)
 	go anomaly.Loop(ctx, st, st, "local", incidentInterval, lg.Logger)
-	go maintenanceLoop(ctx, st, lg, selfRunner)
+	go maintenanceLoop(ctx, st, lg, selfRunner, scopes)
 	go configLoop(ctx, st, ag, lg.Logger)
 
 	go func() {
@@ -624,7 +639,23 @@ func buildFeedPollers(st *store.Store) []*feeds.Poller {
 // maintenanceLoop folds closed rollups, applies retention, and runs the
 // self-checks. It runs once at startup so a long downtime self-heals, then every
 // ten minutes.
-func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger, self *selfcheck.Runner) {
+func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger, self *selfcheck.Runner, scopes *logging.Scopes) {
+	runDebugPrune := func() {
+		if scopes == nil {
+			return
+		}
+		for _, sc := range scopes.Prune() {
+			lg.Info("debug scope expired",
+				"event", "debug_scope_expired",
+				"component", "logging",
+				"scope_id", sc.ID,
+				"target", sc.Target,
+				"component_scope", sc.Component,
+				"level", sc.Level,
+			)
+		}
+	}
+
 	runSelfChecks := func() {
 		if self == nil {
 			return
@@ -649,6 +680,7 @@ func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger, s
 
 	run := func() {
 		runSelfChecks()
+		runDebugPrune()
 
 		if err := st.SampleScopes(ctx, "local", time.Now()); err != nil {
 			lg.Warn("scope sampling failed",
