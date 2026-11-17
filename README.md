@@ -125,7 +125,7 @@ networks:
       com.docker.network.driver.mtu: 1400          # VPN uplinks are not 1500
 ```
 
-Ships with ~10 targets. Scale is opt-in via `netweather seed`.
+Ships with ~14 targets across banking, airlines, cloud, social, developer, and reference. Scale is opt-in via `netweather seed`.
 
 Everything optional is a compose profile, so the default file publishes one port and grants zero capabilities: `tor` (corroboration vantage), `tailscale` (tailnet access without publishing a port), `ripe-atlas` (RIPE's own probe, separate trust domain). Traceroute is a separate `compose.trace.yaml` because it needs `CAP_NET_RAW`.
 

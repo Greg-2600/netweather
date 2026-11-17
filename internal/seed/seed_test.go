@@ -7,16 +7,17 @@ import (
 	"github.com/Greg-2600/netweather/internal/seed"
 )
 
-func TestDefaultIsTenPublicHTTPSpendpoints(t *testing.T) {
+func TestDefaultIsPublicHTTPSpendpoints(t *testing.T) {
 	t.Parallel()
 
 	entries := seed.Default()
-	if len(entries) != 10 {
-		t.Fatalf("len = %d, want 10", len(entries))
+	if len(entries) < 10 {
+		t.Fatalf("len = %d, want at least a working board (10+)", len(entries))
 	}
 
 	seenID := map[string]struct{}{}
 	seenHost := map[string]struct{}{}
+	sectors := map[string]bool{}
 	for _, e := range entries {
 		if e.ID == "" || e.Name == "" || e.Host == "" || e.URL == "" {
 			t.Errorf("incomplete entry: %+v", e)
@@ -35,11 +36,20 @@ func TestDefaultIsTenPublicHTTPSpendpoints(t *testing.T) {
 			t.Errorf("duplicate host %q", e.Host)
 		}
 		seenHost[e.Host] = struct{}{}
+		sectors[e.Sector] = true
 
 		switch e.Class {
 		case "service", "reference":
 		default:
 			t.Errorf("%s: unexpected class %q", e.ID, e.Class)
+		}
+	}
+
+	// The shipped board must show the sectors the product is about, or the
+	// first thing an operator sees is a uniform grid.
+	for _, sector := range []string{"financial/banking", "airline", "cloud", "social"} {
+		if !sectors[sector] {
+			t.Errorf("no starter target in sector %q", sector)
 		}
 	}
 

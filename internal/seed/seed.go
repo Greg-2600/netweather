@@ -19,7 +19,9 @@ type Entry struct {
 	Tier   schedule.Tier
 }
 
-// Default is the shipped list of ten.
+// Default is the shipped starter list. It covers the sectors the product is
+// about: banking, airlines, cloud, social, developer, and reference. Scale is
+// opt-in through a target file; this list is a working board, not a census.
 func Default() []Entry {
 	return []Entry{
 		{"svc-chase", "Chase", "www.chase.com", "https://www.chase.com/", "service", "financial/banking", schedule.TierService},
@@ -28,6 +30,10 @@ func Default() []Entry {
 		{"svc-delta", "Delta", "www.delta.com", "https://www.delta.com/", "service", "airline", schedule.TierService},
 		{"svc-cloudflare", "Cloudflare", "www.cloudflare.com", "https://www.cloudflare.com/", "service", "cloud", schedule.TierCritical},
 		{"svc-aws", "AWS", "aws.amazon.com", "https://aws.amazon.com/", "service", "cloud", schedule.TierCritical},
+		{"svc-facebook", "Facebook", "www.facebook.com", "https://www.facebook.com/", "service", "social", schedule.TierService},
+		{"svc-x", "X", "x.com", "https://x.com/", "service", "social", schedule.TierService},
+		{"svc-instagram", "Instagram", "www.instagram.com", "https://www.instagram.com/", "service", "social", schedule.TierService},
+		{"svc-reddit", "Reddit", "www.reddit.com", "https://www.reddit.com/", "service", "social", schedule.TierService},
 		{"svc-github", "GitHub", "github.com", "https://github.com/", "service", "developer", schedule.TierCritical},
 		{"svc-wikipedia", "Wikipedia", "www.wikipedia.org", "https://www.wikipedia.org/", "service", "reference", schedule.TierService},
 		{"svc-hn", "Hacker News", "news.ycombinator.com", "https://news.ycombinator.com/", "service", "news", schedule.TierService},

@@ -16,6 +16,7 @@ import (
 
 	"github.com/Greg-2600/netweather/internal/agent"
 	"github.com/Greg-2600/netweather/internal/logging"
+	"github.com/Greg-2600/netweather/internal/seed"
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
 )
@@ -110,12 +111,17 @@ func TestSeedTargetsSeedsTheDefaultList(t *testing.T) {
 	}
 	defer func() { _ = st.Close() }()
 
+	want := len(seed.Default())
+	if want == 0 {
+		t.Fatal("the default seed list is empty")
+	}
+
 	got, err := seedTargets(ctx, st)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 10 {
-		t.Fatalf("agent targets = %d, want 10", len(got))
+	if len(got) != want {
+		t.Fatalf("agent targets = %d, want %d", len(got), want)
 	}
 	for _, tg := range got {
 		if tg.Interval <= 0 || tg.URL == "" || tg.Vantage != "local" {
@@ -127,8 +133,8 @@ func TestSeedTargetsSeedsTheDefaultList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 10 {
-		t.Fatalf("stored targets = %d, want 10", len(rows))
+	if len(rows) != want {
+		t.Fatalf("stored targets = %d, want %d", len(rows), want)
 	}
 	for _, r := range rows {
 		if r.State != state.Unknown {
