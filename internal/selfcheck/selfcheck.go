@@ -10,8 +10,11 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -296,6 +299,78 @@ func Port53Check(dns *probe.DNS, tcp *probe.TCP, server, name string) Check {
 				tcpRes.Latency.Round(time.Millisecond)), nil
 		},
 	}
+}
+
+// EgressIPCheck records the public address this host egresses from.
+//
+// If the ISP re-IPs the link or the operator moves to a VPN, every baseline,
+// ASN label, and geo assumption silently becomes wrong. Recording the address
+// is what lets maintenance notice (DESIGN.md §7.5). lookup is optional and
+// enriches the value with the ASN and country from the guarded resolver.
+func EgressIPCheck(httpProbe *probe.HTTP, url string, lookup func(ctx context.Context, addr netip.Addr) (asn int, country string)) Check {
+	return Check{
+		Name: "egress-ip",
+		Run: func(ctx context.Context) (bool, string, string, error) {
+			if httpProbe == nil {
+				return false, "", "http instrument is not configured", nil
+			}
+			if strings.TrimSpace(url) == "" {
+				url = "https://1.1.1.1/cdn-cgi/trace"
+			}
+
+			res := httpProbe.Do(ctx, url)
+			if res.Failed() {
+				return false, "", res.ErrorClass + ": " + errText(res.Err), nil
+			}
+			if res.Status != http.StatusOK {
+				// A captive portal or an error page can still be a 200 with the
+				// wrong body; anything other than 200 is not a trace answer.
+				return false, "", fmt.Sprintf("trace URL returned HTTP %d", res.Status), nil
+			}
+
+			raw := traceField(string(res.Body), "ip")
+			addr, err := netip.ParseAddr(raw)
+			if err != nil {
+				return false, "", "response has no usable ip field", nil
+			}
+
+			value := addr.Unmap().String()
+			detail := "observed via " + url
+			if lookup != nil {
+				if asn, country := lookup(ctx, addr); asn > 0 {
+					value = fmt.Sprintf("%s,AS%d,%s", addr.Unmap(), asn, country)
+				}
+			}
+			return true, value, detail, nil
+		},
+	}
+}
+
+// VantageChange reports whether the egress record moved between two runs. A
+// missing or failed observation on either side is not a change: an unknown is
+// not evidence that the address moved.
+func VantageChange(previous, current Result) (bool, string) {
+	if !previous.OK || !current.OK {
+		return false, ""
+	}
+	if previous.Value == "" || current.Value == "" {
+		return false, ""
+	}
+	if previous.Value == current.Value {
+		return false, ""
+	}
+	return true, fmt.Sprintf("egress changed from %s to %s", previous.Value, current.Value)
+}
+
+// traceField reads one key=value line from a Cloudflare trace response.
+func traceField(body, key string) string {
+	for _, line := range strings.Split(body, "\n") {
+		k, v, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if ok && k == key {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }
 
 // ClockCheck compares the local clock with the Date header of one HTTP response.

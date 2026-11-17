@@ -3,8 +3,10 @@ package selfcheck_test
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -416,7 +418,9 @@ func TestPort53CheckNamesTheBlockedTransport(t *testing.T) {
 }
 
 type dateTransport struct {
-	date string
+	date   string
+	status int
+	body   string
 }
 
 func (d dateTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -424,10 +428,18 @@ func (d dateTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if d.date != "" {
 		h.Set("Date", d.date)
 	}
+	status := d.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	body := io.NopCloser(strings.NewReader(d.body))
+	if d.body == "" {
+		body = http.NoBody
+	}
 	return &http.Response{
-		StatusCode: 200,
+		StatusCode: status,
 		Header:     h,
-		Body:       http.NoBody,
+		Body:       body,
 		Request:    req,
 	}, nil
 }
@@ -471,5 +483,88 @@ func TestClockCheckMissingInstrument(t *testing.T) {
 
 	if ok, _, _, _ := selfcheck.ClockCheck(nil, "", 0).Run(context.Background()); ok {
 		t.Fatal("a missing instrument reported success")
+	}
+}
+
+func TestEgressIPCheckRecordsTheAddress(t *testing.T) {
+	t.Parallel()
+
+	body := "fl=1f2\nh=1.1.1.1\nip=203.0.113.9\nts=1763263200\n"
+	check := selfcheck.EgressIPCheck(
+		probe.NewHTTPWithTransport(dateTransport{body: body}),
+		"https://1.1.1.1/cdn-cgi/trace", nil)
+
+	ok, value, detail, err := check.Run(context.Background())
+	if err != nil || !ok {
+		t.Fatalf("check = (%v, %q, %q, %v)", ok, value, detail, err)
+	}
+	if value != "203.0.113.9" {
+		t.Fatalf("value = %q", value)
+	}
+	if !strings.Contains(detail, "1.1.1.1") {
+		t.Fatalf("detail = %q", detail)
+	}
+}
+
+func TestEgressIPCheckEnrichesWithASNAndCountry(t *testing.T) {
+	t.Parallel()
+
+	body := "ip=203.0.113.9\n"
+	lookup := func(context.Context, netip.Addr) (int, string) { return 64500, "US" }
+	check := selfcheck.EgressIPCheck(
+		probe.NewHTTPWithTransport(dateTransport{body: body}), "https://trace.example/", lookup)
+
+	ok, value, _, err := check.Run(context.Background())
+	if err != nil || !ok {
+		t.Fatalf("check = (%v, %q, %v)", ok, value, err)
+	}
+	if value != "203.0.113.9,AS64500,US" {
+		t.Fatalf("value = %q, want the recorded identity tuple", value)
+	}
+}
+
+func TestEgressIPCheckFailures(t *testing.T) {
+	t.Parallel()
+
+	if ok, _, _, _ := selfcheck.EgressIPCheck(nil, "", nil).Run(context.Background()); ok {
+		t.Fatal("a missing instrument reported success")
+	}
+
+	noIP := selfcheck.EgressIPCheck(
+		probe.NewHTTPWithTransport(dateTransport{body: "fl=1\nh=x\n"}), "https://trace.example/", nil)
+	if ok, _, detail, _ := noIP.Run(context.Background()); ok || !strings.Contains(detail, "ip") {
+		t.Fatalf("missing ip = (%v, %q)", ok, detail)
+	}
+
+	badStatus := selfcheck.EgressIPCheck(
+		probe.NewHTTPWithTransport(dateTransport{status: 502, body: "ip=203.0.113.9\n"}),
+		"https://trace.example/", nil)
+	if ok, _, detail, _ := badStatus.Run(context.Background()); ok || !strings.Contains(detail, "502") {
+		t.Fatalf("bad status = (%v, %q)", ok, detail)
+	}
+}
+
+func TestVantageChange(t *testing.T) {
+	t.Parallel()
+
+	first := selfcheck.Result{Check: "egress-ip", OK: true, Value: "203.0.113.9,AS7922,US"}
+	same := selfcheck.Result{Check: "egress-ip", OK: true, Value: "203.0.113.9,AS7922,US"}
+	moved := selfcheck.Result{Check: "egress-ip", OK: true, Value: "198.51.100.4,AS9009,NL"}
+
+	if changed, _ := selfcheck.VantageChange(first, same); changed {
+		t.Fatal("an identical record was reported as a change")
+	}
+	changed, detail := selfcheck.VantageChange(first, moved)
+	if !changed || !strings.Contains(detail, "203.0.113.9") || !strings.Contains(detail, "198.51.100.4") {
+		t.Fatalf("change = (%v, %q)", changed, detail)
+	}
+
+	// An unknown is not evidence that the address moved.
+	failed := selfcheck.Result{Check: "egress-ip", OK: false, Value: ""}
+	if changed, _ := selfcheck.VantageChange(first, failed); changed {
+		t.Fatal("a failed observation was reported as a change")
+	}
+	if changed, _ := selfcheck.VantageChange(failed, first); changed {
+		t.Fatal("a missing previous observation was reported as a change")
 	}
 }

@@ -191,12 +191,34 @@ func serve(lg *logging.Logger) error {
 	// The monitor must be able to see before its board is believable, so the
 	// self-checks run at startup and with maintenance, not only on request.
 	instruments := newInstruments()
+	// Egress identity: every baseline is relative to the address this host
+	// leaves from, so the address is worth recording and worth noticing when it
+	// moves (DESIGN.md §7.5).
+	egressResolver := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return netx.New().DialContext(ctx, "udp", "1.1.1.1:53")
+		},
+	}
+	egressLookup := func(ctx context.Context, addr netip.Addr) (int, string) {
+		asn, _, err := enrich.ASN(ctx, egressResolver, addr)
+		if err != nil {
+			return 0, ""
+		}
+		_, country, err := enrich.Org(ctx, egressResolver, asn)
+		if err != nil {
+			return asn, ""
+		}
+		return asn, country
+	}
+
 	selfRunner := &selfcheck.Runner{Checks: []selfcheck.Check{
 		selfcheck.DiskCheck(dataDir),
 		selfcheck.DNSCheck(instruments.DNS, "1.1.1.1:53", "example.com"),
 		selfcheck.Port53Check(instruments.DNS, instruments.TCP, "1.1.1.1:53", "example.com"),
 		selfcheck.MTUCheck(nil),
 		selfcheck.EgressCheck(instruments.TCP, "1.1.1.1:443"),
+		selfcheck.EgressIPCheck(instruments.HTTP, "https://1.1.1.1/cdn-cgi/trace", egressLookup),
 		selfcheck.ClockCheck(instruments.HTTP, "https://www.cloudflare.com/", time.Minute),
 	}}
 
@@ -1199,6 +1221,18 @@ func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger, s
 		if self == nil {
 			return
 		}
+
+		// Read the previous run before recording, so the egress comparison has
+		// something to compare against.
+		previous := map[string]selfcheck.Result{}
+		if rows, err := st.LatestSelfChecks(ctx); err == nil {
+			for _, row := range rows {
+				previous[row.Check] = selfcheck.Result{
+					Check: row.Check, OK: row.OK, Value: row.Value,
+				}
+			}
+		}
+
 		results, err := self.Record(ctx, st)
 		if err != nil {
 			lg.Warn("self-check record failed",
@@ -1208,6 +1242,12 @@ func maintenanceLoop(ctx context.Context, st *store.Store, lg *logging.Logger, s
 			gate.Observe(results)
 		}
 		for _, res := range results {
+			if res.Check == "egress-ip" {
+				if changed, detail := selfcheck.VantageChange(previous["egress-ip"], res); changed {
+					lg.Warn("vantage changed",
+						"event", "vantage_changed", "component", "maintenance", "detail", detail)
+				}
+			}
 			if res.OK {
 				lg.Debug("self-check ok",
 					"event", "selfcheck", "component", "maintenance",

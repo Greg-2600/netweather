@@ -444,7 +444,7 @@ Per-resolver baselines are the fix for `CLASSIFIER.md` §3.2. A resolver's own h
 CREATE TABLE self_check (
     id     INTEGER PRIMARY KEY,
     ts     INTEGER NOT NULL,
-    "check" TEXT NOT NULL,                    -- 'clock','egress','resolver','disk','mtu','port53','heartbeat'
+    "check" TEXT NOT NULL,                    -- 'clock','egress','egress-ip','resolver','disk','mtu','port53','heartbeat'
     ok     INTEGER NOT NULL,
     value  TEXT,                              -- e.g. '203.0.113.9,AS7922,US'
     detail TEXT

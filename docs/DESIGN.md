@@ -660,7 +660,7 @@ Every correlation depends on assumptions that can silently break. Check them.
 | Check | Interval | Why it matters |
 |---|---|---|
 | **Clock offset** (NTP, 4 servers) | 5 min | Correlation is timestamp-based. Warn above 2s; suppress correlation above 10s. |
-| **Egress IP** | 5 min | If your ISP re-IPs you or you move to a VPN, your ASN, geo, and every baseline change. Record `(ip, asn, country)`. |
+| **Egress IP** | 5 min | If your ISP re-IPs you or you move to a VPN, your ASN, geo, and every baseline change. Record `(ip, asn, country)`. **Implemented:** the `egress-ip` check reads the public address from Cloudflare's trace endpoint and enriches it with the Cymru ASN and country. Maintenance compares consecutive successful observations and logs `event=vantage_changed` when the tuple moves; a failed or missing observation is not treated as a change. |
 | **Resolver identity** | 5 min | DHCP handing out a different resolver changes every DNS result. Record the resolver set. |
 | **Disk headroom** | hourly | SQLite full = silent data loss. Warn at 85%. |
 | **Probe heartbeat** | 60s | Feeds the `STALE` verdict (§3.3). |
