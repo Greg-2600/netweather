@@ -232,6 +232,19 @@ type boardView struct {
 	// describe the whole fleet, so the summary does not lie about what is
 	// hidden.
 	Focus bool
+	// Feeds is the staleness strip. A dead feed is visible rather than blank.
+	Feeds       []feedView
+	FeedNote    string
+	FeedWarning bool
+}
+
+// feedView is one feed's health on the board. Status is text, not only colour.
+type feedView struct {
+	Name   string
+	Status string
+	Age    string
+	Detail string
+	Stale  bool
 }
 
 // sectorGroupView is one sector's slice of the board. Sectors are the unit the
@@ -381,6 +394,50 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 			view.Counts = append(view.Counts, countView{
 				State: string(st), Label: st.Text(), Glyph: st.Glyph(), Class: st.CSSClass(), Count: n,
 			})
+		}
+	}
+
+	// A dead feed is a failure mode, not a blank space (DESIGN.md P5). The strip
+	// says "stale" and "never succeeded" explicitly; a missing source says so
+	// rather than looking healthy.
+	if s.deps.Feeds == nil {
+		view.FeedNote = "Feed health is not configured on this instance."
+	} else {
+		states, err := s.deps.Feeds.FeedStates(r.Context())
+		switch {
+		case err != nil:
+			s.deps.Logger.Warn("feed health failed",
+				"event", "feed_health_failed", "component", "http", "error", err)
+			view.FeedNote = "Feed health is temporarily unavailable."
+		case len(states) == 0:
+			view.FeedNote = "No external feeds are enabled."
+		default:
+			now := time.Now().UTC()
+			for _, f := range states {
+				row := feedView{Name: f.Feed, Status: "ok"}
+				if f.LastOKAt.IsZero() {
+					row.Status = "never"
+					row.Stale = true
+				} else {
+					age := now.Sub(f.LastOKAt)
+					row.Age = age.Round(time.Minute).String()
+					if age > 30*time.Minute {
+						row.Status = "stale"
+						row.Stale = true
+					}
+				}
+				if f.ConsecutiveFailures > 0 {
+					row.Detail = fmt.Sprintf("%d consecutive failure(s): %s",
+						f.ConsecutiveFailures, f.LastErr)
+					if !row.Stale {
+						row.Status = "failing"
+					}
+				}
+				if row.Stale {
+					view.FeedWarning = true
+				}
+				view.Feeds = append(view.Feeds, row)
+			}
 		}
 	}
 

@@ -731,6 +731,107 @@ func TestBoardFocusWithNothingToShow(t *testing.T) {
 	}
 }
 
+type fakeFeedHealth struct {
+	states []store.FeedState
+	err    error
+}
+
+func (f *fakeFeedHealth) FeedStates(context.Context) ([]store.FeedState, error) {
+	return f.states, f.err
+}
+
+func newServerWithFeeds(t *testing.T, token string, m *board.Memory, feeds web.FeedHealth) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		Feeds:     feeds,
+		Token:     token,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestBoardShowsFeedHealthAndStaleness(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	feeds := &fakeFeedHealth{states: []store.FeedState{
+		{Feed: "ioda", LastOKAt: now.Add(-2 * time.Minute)},
+		{Feed: "radar", LastOKAt: now.Add(-3 * time.Hour), LastErr: "503 from upstream", ConsecutiveFailures: 2},
+		{Feed: "statuspage"},
+	}}
+
+	ts := newServerWithFeeds(t, testToken, fixture(), feeds)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="feed-health"`) {
+		t.Fatalf("feed strip missing:\n%s", page)
+	}
+	for _, want := range []string{
+		`data-feed="ioda" data-status="ok"`,
+		`data-feed="radar" data-status="stale"`,
+		`data-feed="statuspage" data-status="never"`,
+		`data-testid="feed-warning"`,
+		"corroboration may be missing",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("feed strip missing %q", want)
+		}
+	}
+}
+
+func TestBoardFeedHealthStatesAreExplicit(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		feeds web.FeedHealth
+		want  string
+	}{
+		{"unconfigured", nil, "not configured"},
+		{"empty", &fakeFeedHealth{}, "No external feeds are enabled"},
+		{"failed", &fakeFeedHealth{err: errors.New("db down")}, "temporarily unavailable"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ts := newServerWithFeeds(t, testToken, fixture(), tc.feeds)
+			client, _ := newClient(t)
+			login(t, ts, client, testToken)
+
+			resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+			if err != nil {
+				t.Fatal(err)
+			}
+			page := body(t, resp)
+			if !strings.Contains(page, `data-testid="feed-note"`) || !strings.Contains(page, tc.want) {
+				t.Fatalf("feed note missing %q:\n%s", tc.want, page)
+			}
+			if strings.Contains(page, `data-testid="feed-warning"`) {
+				t.Error("a note-only state rendered a stale-feed warning")
+			}
+		})
+	}
+}
+
 func TestBoardHealthySectorsStartCollapsed(t *testing.T) {
 	t.Parallel()
 

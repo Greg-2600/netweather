@@ -33,7 +33,7 @@ The ordering matters. #3 is checked first, because if your egress is broken, eve
 | P2 | **Classify bot protection, never evade it** | No TLS impersonation, no headless browser by default |
 | P3 | **One vantage point cannot prove an outage** | Every verdict carries a confidence and a corroboration source |
 | P4 | **Breadth beats depth** | 350 ASNs across 100 countries is worth more than 1000 brand domains |
-| P5 | **Silence is a failure mode** | Every panel shows staleness; a dead feed is visible, not blank |
+| P5 | **Silence is a failure mode** | Every panel shows staleness; a dead feed is visible, not blank. **Implemented:** the board carries a feed-health strip (`stale`, `never`, consecutive failures), and a missing or failed feed source says so rather than rendering as healthy. |
 | P6 | **Never cry wolf** | Baseline-relative thresholds; `BLOCKED` excluded from health |
 | P7 | **Boring, small, portable** | Go, SQLite, one binary, ~20MB image, read-only rootfs |
 
@@ -836,6 +836,7 @@ The wall of favicons. Grouping is a toggle: **sector (default)** · state · CDN
 - **Compact** (default at 750+): 40–48px tiles, ring colour + corner stage badge (`DNS`/`TLS`/`403`/`429`). ~760 per screen, so 750 targets is about one screen — no virtualisation needed.
 - **Comfortable**: 96px tiles, name + 24h sparkline. Paginated by group, never all at once.
 - Healthy groups collapsed by default. Problems expanded.
+- The feed-health strip shows each external feed as `ok`, `stale`, `failing`, or `never`; a stale or never-succeeded feed adds a banner, because a dead corroboration source must be visible on the board, not only in the API (P5).
 - Focus mode: hide everything not `DOWN`/`DEGRADED`/`TAMPER`.
 - `UNMEASURABLE` collapsed into its own muted section at the bottom.
 

@@ -184,6 +184,27 @@ body.auth {
 
 .chip b { color: var(--text); }
 
+/* Feed staleness: text and border, not only colour (DESIGN.md P5, 10.7). */
+.feeds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+  font-size: 0.78rem;
+}
+
+.feed {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.1rem 0.45rem;
+  color: var(--muted);
+}
+
+.feed.stale {
+  border-color: var(--down);
+  color: var(--down);
+}
+
 .board {
   display: flex;
   flex-direction: column;

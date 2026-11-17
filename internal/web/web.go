@@ -29,6 +29,9 @@ type Deps struct {
 	Incidents IncidentHistory
 	// Corroboration supplies external feed events for an incident.
 	Corroboration Corroboration
+	// Feeds supplies feed health for the board's staleness strip. Nil means the
+	// strip is omitted rather than shown as healthy.
+	Feeds FeedHealth
 	// IncidentWatcher wakes the UI stream when an incident opens or closes.
 	IncidentWatcher board.Watcher
 	Coverage        Coverage
@@ -83,6 +86,13 @@ type IncidentHistory interface {
 // panel rather than implying nothing else was happening.
 type Corroboration interface {
 	Corroboration(ctx context.Context, inc store.Incident, now time.Time, limit int) ([]store.ExternalEvent, error)
+}
+
+// FeedHealth supplies feed health for the board's staleness strip. A feed that
+// has stopped answering must be visible on the board, not only in the API
+// (DESIGN.md P5).
+type FeedHealth interface {
+	FeedStates(ctx context.Context) ([]store.FeedState, error)
 }
 
 // Control is the probe kill switch, shared with the API.

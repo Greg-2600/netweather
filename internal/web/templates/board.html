@@ -54,6 +54,23 @@
       </a>
     </section>
 
+    {{if .Feeds}}
+    <p class="feeds" aria-label="Feed health" data-testid="feed-health">
+      {{range .Feeds}}
+      <span class="feed{{if .Stale}} stale{{end}}" data-testid="feed"
+            data-feed="{{.Name}}" data-status="{{.Status}}"
+            title="{{.Detail}}">{{.Name}}: {{.Status}}{{if .Age}} ({{.Age}}){{end}}</span>
+      {{end}}
+    </p>
+    {{else if .FeedNote}}
+    <p class="muted small" data-testid="feed-note">{{.FeedNote}}</p>
+    {{end}}
+    {{if .FeedWarning}}
+    <p class="banner" data-testid="feed-warning" role="status">
+      An external feed is stale or failing; corroboration may be missing.
+    </p>
+    {{end}}
+
     <section class="board" aria-label="Target status" data-testid="board">
       {{if not .Groups}}
       <p class="empty" data-testid="empty-board">

@@ -215,6 +215,7 @@ func serve(lg *logging.Logger) error {
 		History:         st,
 		Incidents:       st,
 		Corroboration:   st,
+		Feeds:           st,
 		IncidentWatcher: incidentChanges,
 		Coverage:        st,
 		CoverageTrend:   st,
