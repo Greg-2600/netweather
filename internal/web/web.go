@@ -73,6 +73,10 @@ type Deps struct {
 	// can explain a hard stop instead of showing stale tiles as if they were
 	// fresh (ACCEPTABLE_USE.md §4). Nil means no budget.
 	Budget BudgetState
+	// TorBudget reports the Tor vantage's daily volume allowance. Nil means Tor
+	// is not configured; a configured budget is shown so a paused corroboration
+	// source is visible (DESIGN.md §5.7).
+	TorBudget BudgetState
 	// IncidentWatcher wakes the UI stream when an incident opens or closes.
 	IncidentWatcher board.Watcher
 	Coverage        Coverage

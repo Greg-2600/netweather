@@ -460,7 +460,7 @@ func TestNewTorAgentIsOffByDefault(t *testing.T) {
 	defer func() { _ = st.Close() }()
 
 	lg := &logging.Logger{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	ag, err := newTorAgent(ctx, st, nil, lg, "netweather/test")
+	ag, _, err := newTorAgent(ctx, st, nil, lg, "netweather/test")
 	if err != nil {
 		t.Fatalf("disabled tor: %v", err)
 	}
@@ -481,7 +481,7 @@ func TestNewTorAgentRejectsBadProxy(t *testing.T) {
 	defer func() { _ = st.Close() }()
 
 	lg := &logging.Logger{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	if _, err := newTorAgent(ctx, st, nil, lg, "netweather/test"); err == nil {
+	if _, _, err := newTorAgent(ctx, st, nil, lg, "netweather/test"); err == nil {
 		t.Fatal("an invalid SOCKS address must fail loudly")
 	}
 }
@@ -505,7 +505,7 @@ func TestNewTorAgentBuildsOne(t *testing.T) {
 	}
 
 	lg := &logging.Logger{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	ag, err := newTorAgent(ctx, st, direct, lg, "netweather/test")
+	ag, _, err := newTorAgent(ctx, st, direct, lg, "netweather/test")
 	if err != nil {
 		t.Fatalf("newTorAgent: %v", err)
 	}
@@ -538,7 +538,7 @@ func TestNewTorAgentRequiresTcpTargets(t *testing.T) {
 	defer func() { _ = st.Close() }()
 
 	lg := &logging.Logger{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	_, err = newTorAgent(ctx, st, []agent.Target{{ID: "dns", Instrument: "dns"}}, lg, "netweather/test")
+	_, _, err = newTorAgent(ctx, st, []agent.Target{{ID: "dns", Instrument: "dns"}}, lg, "netweather/test")
 	if err == nil {
 		t.Fatal("a Tor vantage with only DNS targets should fail, not run empty")
 	}

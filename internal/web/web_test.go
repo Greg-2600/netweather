@@ -4404,3 +4404,86 @@ func TestCoveragePanelShowsTheConcentrationBlock(t *testing.T) {
 		}
 	}
 }
+
+func newServerWithTorBudget(t *testing.T, token string, m *board.Memory, tor web.BudgetState) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		TorBudget: tor,
+		Token:     token,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestBoardShowsTheTorBudget(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithTorBudget(t, testToken, fixture(), fakeBudget{
+		used: 12 << 20, allowance: 50 << 20,
+	})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="tor-budget"`) {
+		t.Fatalf("a configured Tor budget was silent:\n%s", page)
+	}
+	for _, want := range []string{"Tor budget:", "12 MB", "50 MB", "left"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("Tor budget line missing %q", want)
+		}
+	}
+}
+
+func TestBoardShowsASpentTorBudget(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithTorBudget(t, testToken, fixture(), fakeBudget{
+		used: 50 << 20, allowance: 50 << 20, exhausted: true,
+	})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, "Tor budget spent") ||
+		!strings.Contains(page, "paused until 00:00 UTC") {
+		t.Fatalf("a spent Tor budget was not stated:\n%s", page)
+	}
+}
+
+func TestBoardWithoutTorHasNoTorBudgetLine(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(body(t, resp), `data-testid="tor-budget"`) {
+		t.Fatal("a Tor budget line rendered without Tor")
+	}
+}

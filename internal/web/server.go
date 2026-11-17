@@ -283,6 +283,10 @@ type boardView struct {
 	// hard stop, so the board names the reason rather than showing old tiles as
 	// if they were fresh (ACCEPTABLE_USE.md §4).
 	BudgetNote string
+	// TorBudget is the Tor vantage's daily volume line, or empty when Tor is
+	// not configured. It is always shown while Tor is on, because a paused
+	// corroboration source explains why regional evidence went quiet.
+	TorBudget string
 	// Health is the Internet Health Index summary (DESIGN.md §11). OK is false
 	// when nothing could be scored, and the chip then states that instead of
 	// rendering a zero as health.
@@ -932,6 +936,20 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		view.BudgetNote = fmt.Sprintf(
 			"Daily egress budget spent (%s of %s). Probing stops until 00:00 UTC; the tiles show the last measurements, not fresh ones.",
 			humanBytes(s.deps.Budget.Used()), humanBytes(s.deps.Budget.Allowance()))
+	}
+
+	// The Tor vantage has its own allowance; when it is spent the corroboration
+	// path is paused until UTC midnight, and the board should say so rather
+	// than leave a silent gap in regional evidence (DESIGN.md §5.7).
+	if s.deps.TorBudget != nil && s.deps.TorBudget.Allowance() > 0 {
+		used, allowance := s.deps.TorBudget.Used(), s.deps.TorBudget.Allowance()
+		view.TorBudget = fmt.Sprintf("Tor budget: %s of %s used (%s left)",
+			humanBytes(used), humanBytes(allowance), humanBytes(allowance-used))
+		if s.deps.TorBudget.Exhausted() {
+			view.TorBudget = fmt.Sprintf(
+				"Tor budget spent (%s of %s). The Tor vantage is paused until 00:00 UTC.",
+				humanBytes(used), humanBytes(allowance))
+		}
 	}
 
 	// A coverage collapse is an advisory, not a tile colour: a mass bot-wall

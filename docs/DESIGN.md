@@ -433,6 +433,8 @@ This is the feature most likely to earn the project a bad reputation, so the lim
 - `ACCEPTABLE_USE.md` states plainly: this verifies your own view; it does not evade access controls
 - The UI shows Tor bandwidth consumed and remaining budget
 
+**Implemented:** `newTorAgent` returns the Tor `bytecap.Budget`, and the board shows `Tor budget: <used> of <allowance> used (<left> left)` whenever Tor is configured; when the allowance is spent the line says the vantage is paused until 00:00 UTC. The direct vantage keeps its own separate banner, because the two allowances protect different peers. A zero allowance means the cap is disabled and the line is omitted rather than claiming a budget of zero.
+
 ---
 
 ## 6. Scheduler

@@ -132,6 +132,10 @@
     <p class="banner" data-testid="budget-banner" role="status">{{.BudgetNote}}</p>
     {{end}}
 
+    {{if .TorBudget}}
+    <p class="muted small" data-testid="tor-budget">{{.TorBudget}}</p>
+    {{end}}
+
     {{if .CoverageNote}}
     <p class="banner" data-testid="coverage-advisory" role="status">{{.CoverageNote}}</p>
     {{end}}

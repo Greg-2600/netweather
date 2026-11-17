@@ -188,7 +188,7 @@ func serve(lg *logging.Logger) error {
 	}
 	userAgent := probe.BuildUserAgent(version.Version, contact)
 
-	torAgent, err := newTorAgent(ctx, st, targets, lg, userAgent)
+	torAgent, torBudget, err := newTorAgent(ctx, st, targets, lg, userAgent)
 	if err != nil {
 		lg.Error("tor vantage unavailable", "event", "tor_unavailable", "error", err)
 		return err
@@ -341,6 +341,12 @@ func serve(lg *logging.Logger) error {
 		// A typed nil in the interface would look configured and panic on the
 		// first method call, so the field is set only when a budget exists.
 		webDeps.Budget = directBudget
+	}
+	if torBudget != nil {
+		// The Tor vantage's own allowance is shown beside the direct one so a
+		// paused corroboration source is visible rather than inferred from
+		// missing samples (DESIGN.md §5.7).
+		webDeps.TorBudget = torBudget
 	}
 	ui, err := web.New(webDeps)
 	if err != nil {
@@ -1483,9 +1489,9 @@ func torExitCountry(ctx context.Context, httpProbe *probe.HTTP, lookup func(cont
 
 func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg *logging.Logger,
 	userAgent string,
-) (*agent.Agent, error) {
+) (*agent.Agent, *bytecap.Budget, error) {
 	if !strings.EqualFold(strings.TrimSpace(os.Getenv("NETWEATHER_TOR")), "true") {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	proxyAddr := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_SOCKS"))
@@ -1494,7 +1500,7 @@ func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg
 	}
 	dial, err := netx.Socks5(proxyAddr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// ACCEPTABLE_USE.md §8: the Tor vantage carries a daily volume budget. It
@@ -1504,7 +1510,7 @@ func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg
 	if raw := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_DAILY_MB")); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 0 {
-			return nil, fmt.Errorf("NETWEATHER_TOR_DAILY_MB %q is not a non-negative integer", raw)
+			return nil, nil, fmt.Errorf("NETWEATHER_TOR_DAILY_MB %q is not a non-negative integer", raw)
 		}
 		dailyMB = n
 	}
@@ -1520,14 +1526,14 @@ func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg
 	if raw := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_MAX")); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n <= 0 {
-			return nil, fmt.Errorf("NETWEATHER_TOR_MAX %q is not a positive integer", raw)
+			return nil, nil, fmt.Errorf("NETWEATHER_TOR_MAX %q is not a positive integer", raw)
 		}
 		maxTargets = n
 	}
 
 	selected := selectTorTargets(direct, maxTargets)
 	if len(selected) == 0 {
-		return nil, errors.New("tor vantage enabled but no tcp-based targets are configured")
+		return nil, nil, errors.New("tor vantage enabled but no tcp-based targets are configured")
 	}
 
 	// A country label is only honest when the exit is actually there. The
@@ -1540,7 +1546,7 @@ func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg
 		exitProbe.UserAgent = userAgent
 		value, err := torExitCountry(ctx, exitProbe, cymruLookup(), want)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		vantageID = "tor-" + strings.ToLower(strings.TrimSpace(want))
 		lg.Info("tor exit country verified",
@@ -1552,7 +1558,7 @@ func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg
 	}
 
 	if err := st.EnsureVantage(ctx, vantageID, "socks5", "corroboration"); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	torHTTP := probe.NewHTTPWithDial(torDial)
@@ -1570,7 +1576,7 @@ func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg
 	lg.Info("tor vantage enabled",
 		"event", "tor_enabled", "component", "agent",
 		"proxy", proxyAddr, "targets", len(selected), "pace", torPace.String())
-	return ag, nil
+	return ag, budget, nil
 }
 
 // selectTorTargets copies the TCP-based targets under the vantage, sorted by id
