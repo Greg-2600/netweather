@@ -131,6 +131,13 @@
           </a>
           {{end}}
         </div>
+        {{if .Hidden}}
+        <p class="muted small group-more" data-testid="group-more">
+          {{.Hidden}} more not shown.
+          <a href="{{.MoreHref}}" data-testid="group-more-link">Show more</a>
+          <a href="{{.AllHref}}" data-testid="group-all-link">Show all</a>
+        </p>
+        {{end}}
       </details>
       {{end}}
     </section>

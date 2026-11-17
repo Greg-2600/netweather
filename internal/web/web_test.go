@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -3023,5 +3024,75 @@ func TestBoardSparklineFailureIsNotFatal(t *testing.T) {
 	}
 	if !strings.Contains(page, `data-testid="tile"`) {
 		t.Error("a history failure removed the tiles")
+	}
+}
+
+func TestBoardPaginatesGroupsInComfortableDensity(t *testing.T) {
+	t.Parallel()
+
+	targets := make([]board.Target, 0, 65)
+	for i := 0; i < 65; i++ {
+		id := strconv.Itoa(i)
+		targets = append(targets, board.Target{
+			ID: "t" + id, Name: "Target " + id, Host: "t" + id + ".example",
+			Sector: "banking", State: board.StateUp,
+		})
+	}
+
+	ts := newServer(t, testToken, board.NewMemory(targets...))
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	get := func(path string) (int, string) {
+		t.Helper()
+		resp, err := client.Get(ts.URL + path) //nolint:bodyclose // body() closes it
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp.StatusCode, body(t, resp)
+	}
+
+	// The first comfortable page renders one page and says what is behind it.
+	status, page := get("/?density=comfortable")
+	if status != http.StatusOK {
+		t.Fatalf("status = %d", status)
+	}
+	if got := strings.Count(page, `data-testid="tile"`); got != 60 {
+		t.Fatalf("first page tiles = %d, want 60", got)
+	}
+	if !strings.Contains(page, `data-testid="group-more"`) || !strings.Contains(page, "5 more not shown") {
+		t.Fatalf("pager missing:\n%s", page)
+	}
+	if !strings.Contains(page, `data-testid="group-more-link"`) || !strings.Contains(page, `data-testid="group-all-link"`) {
+		t.Fatal("pager links missing")
+	}
+
+	// The links carry the density with them; following "show all" renders
+	// every tile and drops the pager.
+	_, page = get("/?group=sector&density=comfortable&show=banking:65")
+	if got := strings.Count(page, `data-testid="tile"`); got != 65 {
+		t.Fatalf("show-all tiles = %d, want 65", got)
+	}
+	if strings.Contains(page, `data-testid="group-more"`) {
+		t.Error("the pager survived a show-all request")
+	}
+
+	// Compact is the lens that fits, so it never pages.
+	_, page = get("/")
+	if got := strings.Count(page, `data-testid="tile"`); got != 65 {
+		t.Fatalf("compact tiles = %d, want all 65", got)
+	}
+	if strings.Contains(page, `data-testid="group-more"`) {
+		t.Error("compact density paged")
+	}
+
+	// A malformed show value is a typo, not a client error: the first page
+	// still renders.
+	status, page = get("/?density=comfortable&show=nonsense")
+	if status != http.StatusOK {
+		t.Fatalf("malformed show status = %d, want 200", status)
+	}
+	if got := strings.Count(page, `data-testid="tile"`); got != 60 {
+		t.Fatalf("malformed show tiles = %d, want the default page", got)
 	}
 }

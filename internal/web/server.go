@@ -287,6 +287,11 @@ type groupView struct {
 	// styled quietly: it is a visibility fact, not a failure (DESIGN.md §10.2).
 	Muted   bool
 	Targets []tileView
+	// Hidden is how many of the group's tiles are behind a page link. Zero
+	// means everything is rendered. MoreHref and AllHref are the paging links.
+	Hidden   int
+	MoreHref string
+	AllHref  string
 }
 
 // toggleOption is one entry in a board toggle (grouping or density).
@@ -313,7 +318,16 @@ type boardParams struct {
 	Focus   bool
 	Country string
 	Density string
+	// Show is how many tiles each group may render, keyed by group name. It is
+	// only meaningful in comfortable density, where the documented rule is
+	// "paginated by group, never all at once".
+	Show map[string]int
 }
+
+// boardPageSize is the first page of tiles in one group. Compact never pages
+// (it is designed to fit ~760 tiles); comfortable pages because the tiles are
+// large.
+const boardPageSize = 60
 
 func (p boardParams) href() string {
 	href := "/?group=" + p.Group
@@ -325,8 +339,78 @@ func (p boardParams) href() string {
 	}
 	if p.Density != "" && p.Density != densityCompact {
 		href += "&density=" + p.Density
+		// Show only travels with the density that uses it, so switching back to
+		// compact cannot leave a stale paging parameter in a link.
+		if len(p.Show) > 0 {
+			keys := make([]string, 0, len(p.Show))
+			for name := range p.Show {
+				keys = append(keys, name)
+			}
+			sort.Strings(keys)
+			parts := make([]string, 0, len(keys))
+			for _, name := range keys {
+				parts = append(parts, fmt.Sprintf("%s:%d", name, p.Show[name]))
+			}
+			href += "&show=" + url.QueryEscape(strings.Join(parts, ","))
+		}
 	}
 	return href
+}
+
+// parseShow reads the per-group page sizes. A malformed entry is ignored: the
+// board still renders its first page rather than returning an error for a URL
+// a human typed.
+func parseShow(raw string) map[string]int {
+	out := make(map[string]int)
+	for _, part := range strings.Split(raw, ",") {
+		name, number, ok := strings.Cut(strings.TrimSpace(part), ":")
+		if !ok {
+			continue
+		}
+		name = strings.TrimSpace(name)
+		n, err := strconv.Atoi(strings.TrimSpace(number))
+		if name == "" || err != nil || n <= 0 {
+			continue
+		}
+		out[name] = n
+	}
+	return out
+}
+
+// pageGroups truncates each group to its page size and fills the paging links.
+// Compact density is left alone: it is the lens that is meant to fit.
+func pageGroups(groups []groupView, params boardParams) {
+	for gi := range groups {
+		total := len(groups[gi].Targets)
+		limit := boardPageSize
+		if n, ok := params.Show[groups[gi].Name]; ok && n > limit {
+			limit = n
+		}
+		if total <= limit {
+			continue
+		}
+
+		groups[gi].Targets = groups[gi].Targets[:limit]
+		groups[gi].Hidden = total - limit
+
+		more := params
+		more.Show = cloneShow(params.Show)
+		more.Show[groups[gi].Name] = limit + boardPageSize
+		groups[gi].MoreHref = more.href()
+
+		all := params
+		all.Show = cloneShow(params.Show)
+		all.Show[groups[gi].Name] = total
+		groups[gi].AllHref = all.href()
+	}
+}
+
+func cloneShow(in map[string]int) map[string]int {
+	out := make(map[string]int, len(in)+1)
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 // normaliseDensity maps an unknown or empty value to the default. Compact is
@@ -575,6 +659,7 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		Focus:   focus,
 		Country: country,
 		Density: normaliseDensity(r.URL.Query().Get("density")),
+		Show:    parseShow(r.URL.Query().Get("show")),
 	}
 	// Unmeasurable targets are a visibility fact, not a failure: give them their
 	// own quiet section at the bottom instead of letting them sit among a
@@ -591,6 +676,12 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	groups := groupBy(measurable, params.Group)
 	if len(unmeasurable) > 0 {
 		groups = append(groups, unmeasurableGroup(unmeasurable))
+	}
+
+	// Comfortable tiles are large, so each group shows one page at a time
+	// (DESIGN.md §10.2). The paging links carry every other view control.
+	if params.Density == densityComfortable {
+		pageGroups(groups, params)
 	}
 
 	view := boardView{
