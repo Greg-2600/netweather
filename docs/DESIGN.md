@@ -835,7 +835,8 @@ Click any tile:
 
 - **Implemented:** state + why (the classifier's reason), the host, the 24-hour hourly strip, and the last 20 probes with stage, status, ms, error class and the detail line.
 - **Implemented:** the 24-hour strip's bar shows the healthy share per hour and each cell's title carries the counts and EWMA latency. It is not a p50/p95 chart: the rollups hold EWMAs, not percentiles (`SCHEMA.md` §6.2), and calling the smoothing a percentile would be the quiet lie the project avoids. A true percentile chart waits on the histogram.
-- **Specified:** ASN, prefix, CDN, official status, state-change history, DNS divergence, and certificate issuer/pin status.
+- **Implemented:** the metadata block (class, sector, country, probe, port, tier, interval, ASN, prefix, CDN, measurability) and the last 20 state transitions with their stored reason. Empty enrichment reads "not learned yet" rather than an empty cell; the enrichment passes themselves are still specified.
+- **Specified:** official status, DNS divergence, and certificate issuer/pin status.
 
 ### 10.6 Coverage panel
 

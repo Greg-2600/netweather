@@ -44,6 +44,12 @@ type Target struct {
 	Country   string
 	Tier      int
 	IntervalS int
+	// Enrichment, learned after the target exists. It is not part of the
+	// config contract, so UpsertTarget never overwrites it.
+	ASN           int
+	Prefix        string
+	CDN           string
+	Measurability string
 }
 
 // EnsureVantage inserts a vantage or updates its labels.

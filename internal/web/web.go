@@ -31,6 +31,7 @@ type Deps struct {
 	Coverage        Coverage
 	CoverageTrend   CoverageHistory
 	Series          Series
+	Changes         StateChanges
 	Control         Control
 	Vantage         string
 	Token           string
@@ -54,6 +55,11 @@ type CoverageHistory interface {
 // Series supplies rollup buckets for the target drawer's 24-hour strip.
 type Series interface {
 	Series(ctx context.Context, targetID, vantageID, resolution string, from, to time.Time) ([]store.Rollup, error)
+}
+
+// StateChanges supplies the target drawer's transition history.
+type StateChanges interface {
+	StateChanges(ctx context.Context, targetID, vantageID string, limit int) ([]store.StateChange, error)
 }
 
 // History supplies the drawer's recent observations. Nil means the page says so

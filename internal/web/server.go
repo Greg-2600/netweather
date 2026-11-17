@@ -178,18 +178,26 @@ func (s *server) setPaused(w http.ResponseWriter, r *http.Request, paused bool) 
 // --- board -----------------------------------------------------------------
 
 type tileView struct {
-	ID         string
-	Name       string
-	Host       string
-	Sector     string
-	State      string
-	Text       string
-	Glyph      string
-	Class      string
-	Since      string
-	Aria       string
-	Badge      string
-	BadgeTitle string
+	ID            string
+	Name          string
+	Host          string
+	Sector        string
+	State         string
+	Text          string
+	Glyph         string
+	Class         string
+	Since         string
+	Aria          string
+	Badge         string
+	BadgeTitle    string
+	Port          int
+	Probe         string
+	Tier          int
+	IntervalS     int
+	ASN           int
+	Prefix        string
+	CDN           string
+	Measurability string
 }
 
 type countView struct {
@@ -390,6 +398,8 @@ func toTile(t board.Target) tileView {
 		State: string(t.State), Text: t.State.Text(), Glyph: t.State.Glyph(),
 		Class: t.State.CSSClass(), Since: since, Aria: aria,
 		Badge: badge, BadgeTitle: badgeTitle,
+		Port: t.Port, Probe: t.Probe, Tier: t.Tier, IntervalS: t.IntervalS,
+		ASN: t.ASN, Prefix: t.Prefix, CDN: t.CDN, Measurability: t.Measurability,
 	}
 }
 
@@ -464,12 +474,42 @@ func toStrip(points []store.Rollup) []stripCell {
 	return out
 }
 
+type metaRow struct {
+	Label string
+	Value string
+}
+
+type changeRow struct {
+	TS     string
+	From   string
+	To     string
+	Reason string
+}
+
+// displayOr keeps empty enrichment honest instead of rendering an empty cell.
+func displayOr(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+func asnLabel(asn int) string {
+	if asn <= 0 {
+		return "not learned yet"
+	}
+	return fmt.Sprintf("AS%d", asn)
+}
+
 type targetView struct {
-	Tile      tileView
-	Probes    []probeView
-	History   bool
-	Strip     []stripCell
-	StripNote string
+	Tile       tileView
+	Probes     []probeView
+	History    bool
+	Strip      []stripCell
+	StripNote  string
+	Meta       []metaRow
+	Changes    []changeRow
+	ChangeNote string
 }
 
 // stripCell is one hour of the 24-hour strip. The bar is characters because the
@@ -532,6 +572,43 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 				view.StripNote = "No hourly rollups yet; the fold runs every ten minutes."
 			default:
 				view.Strip = toStrip(points)
+			}
+		}
+
+		view.Meta = []metaRow{
+			{"Class", displayOr(t.Class, "unknown")},
+			{"Sector", displayOr(t.Sector, "unclassified")},
+			{"Country", displayOr(t.Country, "unknown")},
+			{"Probe", displayOr(t.Probe, "http")},
+			{"Port", strconv.Itoa(t.Port)},
+			{"Tier", strconv.Itoa(t.Tier)},
+			{"Interval", fmt.Sprintf("%ds", t.IntervalS)},
+			{"ASN", asnLabel(t.ASN)},
+			{"Prefix", displayOr(t.Prefix, "not learned yet")},
+			{"CDN", displayOr(t.CDN, "not learned yet")},
+			{"Measurability", displayOr(t.Measurability, "ok")},
+		}
+
+		if s.deps.Changes == nil {
+			view.ChangeNote = "State history is not configured on this instance."
+		} else {
+			changes, err := s.deps.Changes.StateChanges(r.Context(), t.ID, vantage, 20)
+			switch {
+			case err != nil:
+				s.deps.Logger.Warn("state changes failed",
+					"event", "state_changes_failed", "component", "http", "target", t.Host, "error", err)
+				view.ChangeNote = "State history is temporarily unavailable."
+			case len(changes) == 0:
+				view.ChangeNote = "No state changes recorded yet."
+			default:
+				for _, c := range changes {
+					view.Changes = append(view.Changes, changeRow{
+						TS:     c.TS.UTC().Format("2006-01-02 15:04:05"),
+						From:   c.From.Text(),
+						To:     c.To.Text(),
+						Reason: c.Reason,
+					})
+				}
 			}
 		}
 

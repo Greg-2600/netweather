@@ -1423,3 +1423,98 @@ func TestSnapshotCoverageIsDailyAndIdempotent(t *testing.T) {
 		t.Fatalf("window = %+v", window)
 	}
 }
+
+func TestStateChangesAreReturnedNewestFirst(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	if err := s.Record(ctx, []store.Probe{probeAt(base, state.Up)}); err != nil {
+		t.Fatal(err)
+	}
+
+	down := probeAt(base.Add(time.Minute), state.Down)
+	down.Reason = "certificate expired"
+	if err := s.Record(ctx, []store.Probe{down}); err != nil {
+		t.Fatal(err)
+	}
+	recovered := probeAt(base.Add(2*time.Minute), state.Up)
+	recovered.Reason = "semantic ok"
+	if err := s.Record(ctx, []store.Probe{recovered}); err != nil {
+		t.Fatal(err)
+	}
+
+	changes, err := s.StateChanges(ctx, "t1", "local", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 2 {
+		t.Fatalf("changes = %d, want 2", len(changes))
+	}
+	if changes[0].From != state.Down || changes[0].To != state.Up || changes[0].Reason != "semantic ok" {
+		t.Fatalf("newest = %+v", changes[0])
+	}
+	if changes[1].From != state.Up || changes[1].To != state.Down || changes[1].Reason != "certificate expired" {
+		t.Fatalf("oldest = %+v", changes[1])
+	}
+
+	one, err := s.StateChanges(ctx, "t1", "local", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(one) != 1 || one[0].To != state.Up {
+		t.Fatalf("limit = %+v", one)
+	}
+
+	none, err := s.StateChanges(ctx, "missing", "local", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(none) != 0 {
+		t.Fatalf("unknown target returned %+v", none)
+	}
+}
+
+func TestTargetRowsCarryEnrichment(t *testing.T) {
+	t.Parallel()
+
+	s, path := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	raw, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = raw.Close() }()
+
+	if _, err := raw.ExecContext(ctx, `
+		UPDATE target SET asn = ?, prefix = ?, cdn = ?, measurability = ?
+		WHERE id = 't1'`, 64500, "203.0.113.0/24", "akamai", "mostly_blocked"); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := s.TargetsWithState(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d", len(rows))
+	}
+	got := rows[0]
+	if got.ASN != 64500 || got.Prefix != "203.0.113.0/24" || got.CDN != "akamai" ||
+		got.Measurability != "mostly_blocked" {
+		t.Fatalf("board row = %+v", got)
+	}
+
+	row, err := s.TargetByID(ctx, "local", "t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.ASN != 64500 || row.CDN != "akamai" {
+		t.Fatalf("detail row = %+v", row)
+	}
+}

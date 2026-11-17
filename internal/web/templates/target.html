@@ -22,6 +22,12 @@
         {{if .Tile.Since}}<span class="muted">since {{.Tile.Since}}</span>{{end}}
       </p>
 
+      <dl class="meta" data-testid="target-meta">
+        {{range .Meta}}
+        <dt>{{.Label}}</dt><dd class="mono">{{.Value}}</dd>
+        {{end}}
+      </dl>
+
       <h2 class="section-title">Last 24 hours</h2>
       {{if .Strip}}
       <p class="strip" data-testid="target-strip">
@@ -30,6 +36,25 @@
       <p class="muted small">Hourly buckets, left to right. The bar shows the healthy share; hover for counts and EWMA latency.</p>
       {{else}}
       <p class="muted" data-testid="no-strip">{{.StripNote}}</p>
+      {{end}}
+
+      <h2 class="section-title">State changes</h2>
+      {{if .Changes}}
+      <table class="probes" data-testid="state-changes">
+        <thead><tr><th>Time</th><th>From</th><th>To</th><th>Reason</th></tr></thead>
+        <tbody>
+          {{range .Changes}}
+          <tr data-testid="change-row">
+            <td class="mono">{{.TS}}</td>
+            <td>{{.From}}</td>
+            <td>{{.To}}</td>
+            <td class="detail">{{.Reason}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="muted" data-testid="no-changes">{{.ChangeNote}}</p>
       {{end}}
 
       <h2 class="section-title">Recent probes</h2>

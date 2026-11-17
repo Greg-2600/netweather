@@ -79,6 +79,16 @@ a { color: var(--accent); }
 
 .trend-bar { letter-spacing: -0.1em; color: var(--accent, #7ee2a8); }
 
+.meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.15rem 0.9rem;
+  margin: 0.75rem 0 0.25rem;
+  font-size: 0.82rem;
+}
+.meta dt { color: var(--muted); }
+.meta dd { margin: 0; overflow-wrap: anywhere; }
+
 .strip { display: flex; flex-wrap: nowrap; gap: 0.05rem; margin: 0.15rem 0 0.25rem; font-size: 1.15rem; line-height: 1; }
 .strip .cell { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .strip .strip-ok { color: var(--up); }

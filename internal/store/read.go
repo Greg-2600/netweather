@@ -119,6 +119,7 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 	rows, err := s.reader.QueryContext(ctx, `
 		SELECT t.id, t.host, t.port, t.probe, t.name, t.class,
 		       COALESCE(t.sector, ''), COALESCE(t.country, ''), t.tier, t.interval_s,
+		       COALESCE(t.asn, 0), COALESCE(t.prefix, ''), COALESCE(t.cdn, ''), t.measurability,
 		       COALESCE(ts.state, 'unknown'), COALESCE(ts.since, 0),
 		       COALESCE(p.stage, ''), COALESCE(p.error_class, ''), COALESCE(p.http_status, 0)
 		FROM target t
@@ -144,6 +145,7 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 		if err := rows.Scan(
 			&row.ID, &row.Host, &row.Port, &row.Probe, &row.Name, &row.Class,
 			&row.Sector, &row.Country, &row.Tier, &row.IntervalS,
+			&row.ASN, &row.Prefix, &row.CDN, &row.Measurability,
 			&row.State, &since,
 			&row.Stage, &row.ErrorClass, &row.HTTPStatus,
 		); err != nil {
@@ -267,12 +269,14 @@ func (s *Store) TargetByID(ctx context.Context, vantageID, id string) (TargetRow
 	err := s.reader.QueryRowContext(ctx, `
 		SELECT t.id, t.host, t.port, t.probe, t.name, t.class,
 		       COALESCE(t.sector, ''), COALESCE(t.country, ''), t.tier, t.interval_s,
+		       COALESCE(t.asn, 0), COALESCE(t.prefix, ''), COALESCE(t.cdn, ''), t.measurability,
 		       COALESCE(ts.state, 'unknown'), COALESCE(ts.since, 0)
 		FROM target t
 		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
 		WHERE t.id = ? AND t.enabled = 1`, vantageID, id).Scan(
 		&row.ID, &row.Host, &row.Port, &row.Probe, &row.Name, &row.Class,
 		&row.Sector, &row.Country, &row.Tier, &row.IntervalS,
+		&row.ASN, &row.Prefix, &row.CDN, &row.Measurability,
 		&row.State, &since,
 	)
 	if err != nil {
@@ -420,6 +424,48 @@ func (s *Store) RollupAt(ctx context.Context, targetID, vantageID string, bucket
 }
 
 // StateChangeCount is used by tests and diagnostics.
+// StateChange is one accepted transition, as stored at write time.
+type StateChange struct {
+	TS     time.Time
+	From   state.State
+	To     state.State
+	Reason string
+}
+
+// StateChanges returns the newest transitions for one target, newest first.
+func (s *Store) StateChanges(ctx context.Context, targetID, vantageID string, limit int) ([]StateChange, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+
+	rows, err := s.reader.QueryContext(ctx, `
+		SELECT ts, from_state, to_state, reason
+		FROM state_change
+		WHERE target_id = ? AND vantage_id = ?
+		ORDER BY ts DESC, id DESC LIMIT ?`, targetID, vantageID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("store: state changes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []StateChange
+	for rows.Next() {
+		var (
+			c  StateChange
+			ts int64
+		)
+		if err := rows.Scan(&ts, &c.From, &c.To, &c.Reason); err != nil {
+			return nil, fmt.Errorf("store: scan state change: %w", err)
+		}
+		c.TS = time.UnixMilli(ts).UTC()
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: state changes: %w", err)
+	}
+	return out, nil
+}
+
 func (s *Store) StateChangeCount(ctx context.Context, targetID, vantageID string) (int, error) {
 	var n int
 	err := s.reader.QueryRowContext(ctx, `

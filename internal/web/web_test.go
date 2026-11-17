@@ -71,6 +71,37 @@ func (f *fakeSeries) Series(context.Context, string, string, string, time.Time, 
 	return f.points, f.err
 }
 
+type fakeChanges struct {
+	changes []store.StateChange
+	err     error
+}
+
+func (f *fakeChanges) StateChanges(context.Context, string, string, int) ([]store.StateChange, error) {
+	return f.changes, f.err
+}
+
+func newServerWithDetails(t *testing.T, token string, m *board.Memory, changes web.StateChanges) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		Changes:   changes,
+		Vantage:   "local",
+		Token:     token,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
 func newServerWithSeries(t *testing.T, token string, m *board.Memory, series web.Series) *httptest.Server {
 	t.Helper()
 
@@ -113,6 +144,110 @@ func newServerWithHistory(t *testing.T, token string, m *board.Memory, history w
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
 	return ts
+}
+
+func TestTargetDetailShowsMetadata(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(board.Target{
+		ID: "2", Name: "United", Host: "united.com", Class: "service",
+		Sector: "airline", Country: "US", State: board.StateDown,
+		Port: 443, Probe: "tls", Tier: 2, IntervalS: 300,
+		ASN: 0, Prefix: "", CDN: "", Measurability: "ok",
+	})
+
+	ts := newServerWithDetails(t, testToken, m, &fakeChanges{})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="target-meta"`) {
+		t.Fatalf("metadata block missing:\n%s", page)
+	}
+	for _, want := range []string{
+		">Class<", ">service<", ">Probe<", ">tls<", ">Port<", ">443<",
+		">Tier<", ">2<", ">Interval<", ">300s<",
+		">ASN<", ">not learned yet<", ">Measurability<", ">ok<",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("metadata missing %q", want)
+		}
+	}
+}
+
+func TestTargetDetailShowsStateChanges(t *testing.T) {
+	t.Parallel()
+
+	changes := &fakeChanges{changes: []store.StateChange{
+		{
+			TS:   time.Date(2026, 11, 17, 12, 1, 0, 0, time.UTC),
+			From: state.Up, To: state.Down, Reason: "certificate expired",
+		},
+		{
+			TS:   time.Date(2026, 11, 17, 11, 0, 0, 0, time.UTC),
+			From: state.Down, To: state.Up, Reason: "semantic ok",
+		},
+	}}
+
+	ts := newServerWithDetails(t, testToken, fixture(), changes)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if got := strings.Count(page, `data-testid="change-row"`); got != 2 {
+		t.Fatalf("change rows = %d, want 2", got)
+	}
+	for _, want := range []string{"certificate expired", "semantic ok", "Down", "Up"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("state changes missing %q", want)
+		}
+	}
+	if strings.Contains(page, `data-testid="no-changes"`) {
+		t.Error("empty state rendered with changes present")
+	}
+}
+
+func TestTargetDetailStateChangesEmptyAndUnavailable(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithDetails(t, testToken, fixture(), &fakeChanges{})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	if !strings.Contains(page, `data-testid="no-changes"`) {
+		t.Fatal("empty state history did not say so")
+	}
+
+	ts2 := newServerWithDetails(t, testToken, fixture(), &fakeChanges{err: errors.New("db down")})
+	client2, _ := newClient(t)
+	login(t, ts2, client2, testToken)
+
+	resp, err = client2.Get(ts2.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = body(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("a history failure should not take the page down: %d", resp.StatusCode)
+	}
+	if !strings.Contains(page, "temporarily unavailable") {
+		t.Error("state history failure was not reported")
+	}
 }
 
 func TestTargetDetailShowsThe24HourStrip(t *testing.T) {
