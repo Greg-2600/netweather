@@ -61,7 +61,7 @@ func doctorCommand(args []string, out io.Writer) error {
 		{Name: "tls", Run: tlsCheck(instruments.TLS)},
 		{Name: "http", Run: httpCheck(instruments.HTTP)},
 		{Name: "ntp", Run: ntpCheck(instruments.NTP)},
-		{Name: "icmp (optional)", Run: capabilityCheck("raw ICMP socket", func() (io.Closer, error) {
+		{Name: "icmp (optional)", Run: capabilityCheck("ICMP socket", func() (io.Closer, error) {
 			transport, err := instruments.ICMP.Open()
 			if err != nil {
 				return nil, err

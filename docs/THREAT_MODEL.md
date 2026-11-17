@@ -246,7 +246,7 @@ Residual: encryption at rest is the host's responsibility. The document says so 
 |---|---|---|---|
 | T65 | Dashboard reveals egress ASN/IP | Deliberate: the tool's honesty depends on showing its vantage. `NETWEATHER_REDACT_EGRESS=true` hides the literal address on `/api/v1/selfcheck` while keeping the ASN and country; the stored tuple stays exact, because `VANTAGE_CHANGED` must compare it. Display-only: logs keep the address for debugging. | Enforced (opt-in display) |
 | T66 | Target list reveals the operator's interests | Auth-gated; not in any public endpoint; no telemetry | Enforced |
-| T67 | Telemetry or analytics | None. No outbound request that is not a probe, a feed poll, or a self-check | Enforced |
+| T67 | Telemetry or analytics | None. Every outbound request is a probe, a feed poll, a self-check, or opt-in enrichment (ASN/prefix/CDN and PeeringDB); nothing is sent to a telemetry endpoint, and there is no analytics code in the binary | Enforced |
 | T68 | Logs contain tokens or full URLs with credentials | Structured logs redact `Authorization`, cookies, query strings on `/login`, and feed tokens | Enforced |
 | T69 | Public instance indexed by search engines | `robots.txt` disallows everything and `X-Robots-Tag: noindex` is set | Enforced |
 | T70 | RIPE Atlas profile is a third-party daemon on host networking | Ships only as an opt-in profile; netweather never connects to it; the profile README states what RIPE sees (operator IP, uptime); its traffic is RIPE's, not netweather's, and is governed by RIPE's terms | Policy |

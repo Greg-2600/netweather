@@ -62,7 +62,7 @@ The honest table. Every row is a way the tool can lie.
 | `dns` | Container → `127.0.0.11` (Docker DNS) → host resolvers | Measures the host's resolver, not the target's | Query ccTLD authoritative servers **directly**, bypassing embedded DNS (§5) |
 | `doh` | Plain HTTPS egress | none | — |
 | `tcp` / `tls` / `http` | NAT'd, fine | MTU black-holing on large handshakes (§4) | MSS/MTU clamp; PMTU self-check |
-| `icmp` | Needs `NET_RAW` or `ping_group_range` | Silent fallback if absent | Fall back to `tcpping`, report the degradation |
+| `icmp` | Needs `NET_RAW` or `net.ipv4.ping_group_range` | The instrument is unavailable, not the target | Report the socket error; `doctor` names it as an optional capability. There is no silent `tcpping` substitution, because that would change what the anchor measures. |
 | `tcpping` | NAT'd TCP SYN; `RST` from a closed port still proves reachability | none | — |
 | `ntp` | UDP 123 out through NAT | Some networks block outbound 123 | Report `EGRESS_BLOCKED_123`, never `DOWN` |
 | `trace` | First hop is the bridge gateway; ICMP time-exceeded is conntrack-translated | Truncated traces look like a broken path | Label hop 0; treat "stopped after hop 1" as a container artifact (§8) |
