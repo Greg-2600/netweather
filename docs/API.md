@@ -733,7 +733,13 @@ Two limitations are stated rather than hidden: `Last-Event-ID` replay is not imp
 
 All action endpoints are **implemented**: the debug scopes in §6.19 and the traceroute in §6.21.
 
-Actions require `Content-Type: application/json` and an `Idempotency-Key` header. A repeated key returns the original result rather than acting twice — important for `pause` behind a retrying proxy. Debug-scope creation currently does not require an idempotency key; repeating it creates a second scope, which is visible in the list and expires on its own.
+`Idempotency-Key` is honored on every mutating request: a repeated key with the same method and path replays the original response (status, headers, body) with `Idempotent-Replayed: true`, instead of acting twice. This matters for `pause` behind a retrying proxy and for a client that retries a scope creation after a timeout.
+
+- Scoped by `METHOD path key`, so one key reused across different actions is not a cross-action cache.
+- Optional: a request without a key acts normally. The header is a retry contract, not a second authentication factor.
+- Cached outcomes are `< 500` only. A 5xx is transient and a retry may succeed, so it is never replayed.
+- The window is 24 hours, in memory, capped at 4096 entries. A restart forgets keys; the docs say so rather than implying durability.
+- Keys over 128 characters are `400`. `Content-Type: application/json` is required by the action handlers that take a body.
 
 ### 7.4 `/metrics`
 

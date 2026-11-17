@@ -978,6 +978,24 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	rc := http.NewResponseController(w)
 	_ = rc.SetWriteDeadline(time.Time{})
 
+	// Subscribe before the preamble is written. Writing "retry:" first would
+	// let a change land in the gap between the client seeing the preamble and
+	// this handler subscribing, which is a lost wake-up rather than a slow one.
+	var ch <-chan struct{}
+	watcher := s.deps.Watcher
+	if watcher != nil {
+		boardCh, cancel := watcher.Subscribe()
+		defer cancel()
+		ch = boardCh
+	}
+
+	var incidentCh <-chan struct{}
+	if s.deps.IncidentWatcher != nil {
+		incCh, incCancel := s.deps.IncidentWatcher.Subscribe()
+		defer incCancel()
+		incidentCh = incCh
+	}
+
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream; charset=utf-8")
 	h.Set("Cache-Control", "no-cache")
@@ -990,20 +1008,9 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	flusher.Flush()
 
-	watcher := s.deps.Watcher
 	if watcher == nil {
 		s.heartbeatOnly(w, r, flusher)
 		return
-	}
-
-	ch, cancel := watcher.Subscribe()
-	defer cancel()
-
-	var incidentCh <-chan struct{}
-	if s.deps.IncidentWatcher != nil {
-		incCh, incCancel := s.deps.IncidentWatcher.Subscribe()
-		defer incCancel()
-		incidentCh = incCh
 	}
 
 	last := s.stateMap(r.Context())

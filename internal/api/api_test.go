@@ -2016,25 +2016,49 @@ func newEventsHandler(t *testing.T, src board.Source, watcher board.Watcher) htt
 	return h
 }
 
-// readEvent consumes SSE lines until it finds the named event, returning its
-// data line. Real clients do the same thing; a test that sleeps instead is a
-// flaky test.
-func readEvent(t *testing.T, r *bufio.Reader, want string) string {
+// eventStream reads an SSE response once and shares the lines across calls.
+// A one-shot goroutine per readEvent call would keep reading ahead and swallow
+// the next event, which is exactly the flake this helper exists to avoid.
+type eventStream struct {
+	lines chan string
+	errs  chan error
+}
+
+func newEventStream(r *bufio.Reader) *eventStream {
+	s := &eventStream{lines: make(chan string, 64), errs: make(chan error, 1)}
+	go func() {
+		for {
+			line, err := r.ReadString('\n')
+			if err != nil {
+				s.errs <- err
+				return
+			}
+			s.lines <- strings.TrimRight(line, "\r\n")
+		}
+	}()
+	return s
+}
+
+// readEvent consumes lines until it finds the named event. The timeout makes a
+// lost wake-up fail the test instead of hanging the package.
+func (s *eventStream) readEvent(t *testing.T, want string, timeout time.Duration) string {
 	t.Helper()
 
+	deadline := time.After(timeout)
 	event := ""
 	for {
-		line, err := r.ReadString('\n')
-		if err != nil {
+		select {
+		case <-deadline:
+			t.Fatalf("timed out after %s waiting for %q", timeout, want)
+		case err := <-s.errs:
 			t.Fatalf("stream ended before %q: %v", want, err)
-		}
-		line = strings.TrimRight(line, "\r\n")
-
-		switch {
-		case strings.HasPrefix(line, "event: "):
-			event = strings.TrimPrefix(line, "event: ")
-		case strings.HasPrefix(line, "data: ") && event == want:
-			return strings.TrimPrefix(line, "data: ")
+		case line := <-s.lines:
+			switch {
+			case strings.HasPrefix(line, "event: "):
+				event = strings.TrimPrefix(line, "event: ")
+			case strings.HasPrefix(line, "data: ") && event == want:
+				return strings.TrimPrefix(line, "data: ")
+			}
 		}
 	}
 }
@@ -2067,8 +2091,8 @@ func TestEventsSendsSnapshotThenDeltas(t *testing.T) {
 		t.Fatalf("Content-Type = %q status = %d body = %s", ct, resp.StatusCode, body)
 	}
 
-	reader := bufio.NewReader(resp.Body)
-	snapshot := readEvent(t, reader, "snapshot")
+	stream := newEventStream(bufio.NewReader(resp.Body))
+	snapshot := stream.readEvent(t, "snapshot", 5*time.Second)
 	var snap struct {
 		Targets []struct {
 			Target  string `json:"target"`
@@ -2090,7 +2114,7 @@ func TestEventsSendsSnapshotThenDeltas(t *testing.T) {
 		t.Fatal("fixture did not change")
 	}
 
-	delta := readEvent(t, reader, "state")
+	delta := stream.readEvent(t, "state", 5*time.Second)
 	var state struct {
 		Target string `json:"target"`
 		State  string `json:"state"`
@@ -2140,8 +2164,8 @@ func TestEventsHeartbeatOnlyWithoutWatcher(t *testing.T) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	reader := bufio.NewReader(resp.Body)
-	if got := readEvent(t, reader, "snapshot"); !strings.Contains(got, "chase.com") {
+	stream := newEventStream(bufio.NewReader(resp.Body))
+	if got := stream.readEvent(t, "snapshot", 5*time.Second); !strings.Contains(got, "chase.com") {
 		t.Fatalf("snapshot = %s", got)
 	}
 }
@@ -2182,12 +2206,12 @@ func TestEventsEmitsIncidentChanges(t *testing.T) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	stream := bufio.NewReader(resp.Body)
-	readEvent(t, stream, "snapshot")
+	events := newEventStream(bufio.NewReader(resp.Body))
+	events.readEvent(t, "snapshot", 5*time.Second)
 
 	incidentChanges.Notify()
 
-	data := readEvent(t, stream, "incident")
+	data := events.readEvent(t, "incident", 5*time.Second)
 	var got struct {
 		ID       string `json:"id"`
 		Headline string `json:"headline"`
@@ -2829,6 +2853,99 @@ func TestTraceRejectsBadRequests(t *testing.T) {
 		http.MethodPost, "/api/v1/targets/t1/trace", "")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+func postIdempotent(h http.Handler, path, token, key, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	if key != "" {
+		req.Header.Set("Idempotency-Key", key)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestIdempotencyReplaysActions(t *testing.T) {
+	t.Parallel()
+
+	scopes := logging.NewScopes("")
+	h := newDebugHandler(t, scopes)
+
+	body := `{"target":"chase.com","level":"debug","ttl":"5m"}`
+	first := postIdempotent(h, "/api/v1/debug/scopes", testToken, "retry-1", body)
+	if first.Code != http.StatusCreated {
+		t.Fatalf("first status = %d, body=%s", first.Code, first.Body)
+	}
+	second := postIdempotent(h, "/api/v1/debug/scopes", testToken, "retry-1", body)
+	if second.Code != http.StatusCreated {
+		t.Fatalf("replay status = %d", second.Code)
+	}
+	if second.Header().Get("Idempotent-Replayed") != "true" {
+		t.Fatal("replay was not marked")
+	}
+	if second.Body.String() != first.Body.String() {
+		t.Fatalf("replay body differs:\n%s\n%s", first.Body, second.Body)
+	}
+	if got := len(scopes.List()); got != 1 {
+		t.Fatalf("scopes = %d, want 1: the retry acted twice", got)
+	}
+}
+
+func TestIdempotencyScopesKeysByAction(t *testing.T) {
+	t.Parallel()
+
+	scopes := logging.NewScopes("")
+	h := newDebugHandler(t, scopes)
+
+	first := postIdempotent(h, "/api/v1/debug/scopes", testToken, "shared-key",
+		`{"target":"chase.com","ttl":"5m"}`)
+	second := postIdempotent(h, "/api/v1/debug/scopes", testToken, "shared-key",
+		`{"target":"united.com","ttl":"5m"}`)
+
+	if first.Code != http.StatusCreated || second.Code != http.StatusCreated {
+		t.Fatalf("statuses = %d/%d", first.Code, second.Code)
+	}
+	// Same key, different target: the key is not a cache of "the last thing I
+	// asked for", it is a retry identity. Replaying would silently drop the
+	// second scope, which is why the body is not part of the key but the caller
+	// is expected to reuse a key only for the same request.
+	if second.Header().Get("Idempotent-Replayed") != "true" {
+		t.Fatal("a repeated key was not replayed")
+	}
+	if got := len(scopes.List()); got != 1 {
+		t.Fatalf("scopes = %d, want 1", got)
+	}
+}
+
+func TestIdempotencyWithoutAKeyActsEveryTime(t *testing.T) {
+	t.Parallel()
+
+	scopes := logging.NewScopes("")
+	h := newDebugHandler(t, scopes)
+
+	body := `{"target":"chase.com","ttl":"5m"}`
+	for i := 0; i < 2; i++ {
+		rec := postIdempotent(h, "/api/v1/debug/scopes", testToken, "", body)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("status = %d", rec.Code)
+		}
+	}
+	if got := len(scopes.List()); got != 2 {
+		t.Fatalf("scopes = %d, want 2 without a key", got)
+	}
+}
+
+func TestIdempotencyRejectsAnOversizedKey(t *testing.T) {
+	t.Parallel()
+
+	h := newDebugHandler(t, logging.NewScopes(""))
+	rec := postIdempotent(h, "/api/v1/debug/scopes", testToken,
+		strings.Repeat("k", 129), `{"target":"chase.com","ttl":"5m"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
 	}
 }
 

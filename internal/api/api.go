@@ -155,6 +155,8 @@ type server struct {
 	// traceBudget is per-instance, not per-client: the operator's egress IP is
 	// what a target's abuse desk sees.
 	traceBudget *traceGovernor
+	// idempotency replays action responses for a repeated Idempotency-Key.
+	idempotency *idempotencyStore
 }
 
 // New builds the HTTP handler. It validates the exposure guardrail before it
@@ -170,7 +172,12 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	if deps.StartedAt.IsZero() {
 		deps.StartedAt = time.Now()
 	}
-	s := &server{deps: deps, authMode: cfg.AuthMode(), traceBudget: newTraceGovernor()}
+	s := &server{
+		deps:        deps,
+		authMode:    cfg.AuthMode(),
+		traceBudget: newTraceGovernor(),
+		idempotency: newIdempotencyStore(),
+	}
 
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("/api/v1/board", onlyGET(s.handleBoard))
@@ -200,7 +207,7 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 
 	root := http.NewServeMux()
 	root.HandleFunc("/healthz", onlyGET(s.handleHealthz))
-	root.Handle("/api/", withRateLimit(limiter, withBearerAuth(cfg.Token, apiMux)))
+	root.Handle("/api/", withRateLimit(limiter, withBearerAuth(cfg.Token, withIdempotency(s.idempotency, apiMux))))
 	if deps.Metrics != nil {
 		// Aggregate metrics still describe the operator's fleet, so they get the
 		// same credential as the API.
@@ -1348,6 +1355,24 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return true
 	}
 
+	// Subscribe before the snapshot is written. A subscriber that only attaches
+	// afterwards can miss a change that happens in the gap, which is a real
+	// lost-wakeup for a client and a hang for a test that notifies as soon as it
+	// reads the snapshot.
+	var ch <-chan struct{}
+	if s.deps.Watcher != nil {
+		boardCh, cancel := s.deps.Watcher.Subscribe()
+		defer cancel()
+		ch = boardCh
+	}
+
+	var incidentCh <-chan struct{}
+	if s.deps.IncidentWatcher != nil {
+		incCh, incCancel := s.deps.IncidentWatcher.Subscribe()
+		defer incCancel()
+		incidentCh = incCh
+	}
+
 	last, err := s.streamSnapshot(r.Context())
 	if err != nil {
 		_ = writeState("error", map[string]string{"message": "board unavailable"})
@@ -1359,19 +1384,9 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	flusher.Flush()
 
-	if s.deps.Watcher == nil {
+	if ch == nil {
 		s.heartbeat(w, r, flusher)
 		return
-	}
-
-	ch, cancel := s.deps.Watcher.Subscribe()
-	defer cancel()
-
-	var incidentCh <-chan struct{}
-	if s.deps.IncidentWatcher != nil {
-		incCh, incCancel := s.deps.IncidentWatcher.Subscribe()
-		defer incCancel()
-		incidentCh = incCh
 	}
 
 	emitIncidents := func(ctx context.Context) bool {
