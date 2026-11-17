@@ -29,6 +29,10 @@ type corridorEventItem struct {
 	Kind      string `json:"kind"`
 	StartedAt string `json:"started_at"`
 	Detail    string `json:"detail,omitempty"`
+	// Trace is the one walk captured when the event opened. It is absent when
+	// raw sockets were unavailable or the walk failed; the step change is
+	// still the fact.
+	Trace string `json:"trace,omitempty"`
 }
 
 // handleCorridors lists the configured corridors with their newest observation
@@ -66,6 +70,7 @@ func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
 				Kind:      status.Open.Kind,
 				StartedAt: status.Open.StartedAt.UTC().Format(time.RFC3339),
 				Detail:    status.Open.Detail,
+				Trace:     status.Open.Trace,
 			}
 		}
 		out = append(out, item)

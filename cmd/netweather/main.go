@@ -313,7 +313,7 @@ func serve(lg *logging.Logger) error {
 	go maintenanceLoop(ctx, st, lg, selfRunner, healthGate, scopes)
 	go configLoop(ctx, st, ag, lg.Logger)
 	go enrichmentLoop(ctx, st, lg)
-	go corridorLoop(ctx, st, ag.Paused, lg)
+	go corridorLoop(ctx, st, ag.Paused, lg, corridorTraceStep(lg))
 
 	go func() {
 		<-ctx.Done()
@@ -825,7 +825,57 @@ func enrichmentLoop(ctx context.Context, st *store.Store, lg *logging.Logger) {
 // A step change opens one event; recovery closes it. Traces are deliberately
 // not automated here: a walk touches ~30 third-party routers and the manual
 // trace action is the documented way to localise a step.
-func corridorLoop(ctx context.Context, st *store.Store, paused func() bool, lg *logging.Logger) {
+// corridorTraceStep is the one-shot traceroute seam the corridor runner uses on
+// a step change. A failure (no raw sockets, an unresolvable endpoint, a walk
+// that cannot start) is returned as an error; the event still opens without a
+// trace, because the step change is the fact and the walk is the extra.
+func corridorTraceStep(lg *logging.Logger) func(context.Context, string) (string, error) {
+	dialer := netx.New()
+	return func(ctx context.Context, endpoint string) (string, error) {
+		host, _, err := net.SplitHostPort(endpoint)
+		if err != nil {
+			return "", err
+		}
+		addrs, err := dialer.CheckHost(ctx, host)
+		if err != nil {
+			return "", fmt.Errorf("resolve %s: %w", host, err)
+		}
+		if len(addrs) == 0 {
+			return "", fmt.Errorf("resolve %s: no address", host)
+		}
+
+		res := probe.NewTrace().Run(ctx, addrs[0])
+		if res.Failed() {
+			return "", fmt.Errorf("%s: %s: %w", host, res.ErrorClass, res.Err)
+		}
+		lg.Debug("corridor trace captured",
+			"event", "corridor_trace", "component", "corridor",
+			"endpoint", endpoint, "hops", len(res.Hops), "reached", res.Reached)
+		return formatTraceHops(res), nil
+	}
+}
+
+// formatTraceHops renders one walk for the corridor event. A silent hop is a
+// star because router rate limiting is a hint, not loss (DESIGN.md §5.4).
+func formatTraceHops(res probe.TraceResult) string {
+	var b strings.Builder
+	for _, hop := range res.Hops {
+		if hop.Addr.IsValid() {
+			fmt.Fprintf(&b, "%2d  %-15s  %s\n", hop.TTL, hop.Addr.String(),
+				hop.RTT.Round(time.Millisecond))
+			continue
+		}
+		fmt.Fprintf(&b, "%2d  *\n", hop.TTL)
+	}
+	destination := "unresolved"
+	if res.Destination.IsValid() {
+		destination = res.Destination.String()
+	}
+	fmt.Fprintf(&b, "destination %s reached=%t\n", destination, res.Reached)
+	return b.String()
+}
+
+func corridorLoop(ctx context.Context, st *store.Store, paused func() bool, lg *logging.Logger, traceStep func(context.Context, string) (string, error)) {
 	provider := func() ([]config.Corridor, error) {
 		path := strings.TrimSpace(os.Getenv("NETWEATHER_CONFIG"))
 		if path == "" {
@@ -914,10 +964,24 @@ func corridorLoop(ctx context.Context, st *store.Store, paused func() bool, lg *
 
 			switch {
 			case verdict.Step && !wasOpen:
+				// One trace per step change, and only here: a walk touches ~30
+				// third-party routers, so it is evidence captured once rather
+				// than a scheduled action (DESIGN.md §9, §9.1).
+				trace := ""
+				if traceStep != nil && len(c.Endpoints) > 1 {
+					text, err := traceStep(ctx, c.Endpoints[1])
+					if err != nil {
+						lg.Debug("corridor trace unavailable",
+							"event", "corridor_trace_failed", "component", "corridor",
+							"corridor", c.ID, "error", err)
+					} else {
+						trace = text
+					}
+				}
 				event := store.CorridorEvent{
 					ID:         fmt.Sprintf("ce-%d-%s", now.UnixMilli(), c.ID),
 					CorridorID: c.ID, Kind: verdict.Kind,
-					StartedAt: now, Detail: verdict.Detail,
+					StartedAt: now, Detail: verdict.Detail, Trace: trace,
 				}
 				if err := st.OpenCorridorEvent(ctx, event); err != nil {
 					lg.Warn("corridor event write failed",

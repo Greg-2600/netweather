@@ -939,3 +939,36 @@ func TestTorExitCountry(t *testing.T) {
 		t.Fatalf("trace failure error = %v", err)
 	}
 }
+
+func TestFormatTraceHops(t *testing.T) {
+	t.Parallel()
+
+	res := probe.TraceResult{
+		Hops: []probe.TraceHop{
+			{TTL: 1, Addr: netip.MustParseAddr("192.0.2.1"), RTT: 4 * time.Millisecond},
+			{TTL: 2}, // a silent hop is a star, not a loss claim
+			{TTL: 3, Addr: netip.MustParseAddr("198.51.100.9"), RTT: 22 * time.Millisecond},
+		},
+		Destination: netip.MustParseAddr("198.51.100.9"),
+		Reached:     true,
+	}
+	got := formatTraceHops(res)
+	for _, want := range []string{
+		" 1  192.0.2.1", "4ms",
+		" 2  *",
+		" 3  198.51.100.9", "22ms",
+		"destination 198.51.100.9 reached=true",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("trace missing %q:\n%s", want, got)
+		}
+	}
+
+	// A walk that never resolved a destination still renders, rather than
+	// printing an invalid address.
+	res = probe.TraceResult{Hops: []probe.TraceHop{{TTL: 1}}}
+	got = formatTraceHops(res)
+	if !strings.Contains(got, "destination unresolved reached=false") {
+		t.Fatalf("unresolved trace = %q", got)
+	}
+}

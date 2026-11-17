@@ -1867,6 +1867,8 @@ type corridorRow struct {
 	Kind      string
 	Detail    string
 	Since     string
+	// Trace is the one walk captured when the event opened, if any.
+	Trace string
 }
 
 func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
@@ -1926,6 +1928,7 @@ func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
 					row.StateCls = "state-down"
 					row.Kind = status.Open.Kind
 					row.Detail = status.Open.Detail
+					row.Trace = status.Open.Trace
 					row.Since = status.Open.StartedAt.UTC().Format("2006-01-02 15:04")
 				}
 				view.Rows = append(view.Rows, row)

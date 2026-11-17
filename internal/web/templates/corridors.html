@@ -48,7 +48,9 @@
           <td class="mono">{{.SampledAt}}</td>
           <td class="{{.StateCls}}">{{.State}}{{if .Kind}} ({{.Kind}}){{end}}</td>
           <td class="mono">{{.Since}}</td>
-          <td class="detail">{{.Detail}}</td>
+          <td class="detail">{{.Detail}}
+            {{if .Trace}}<details data-testid="corridor-trace"><summary>trace</summary><pre class="trace">{{.Trace}}</pre></details>{{end}}
+          </td>
         </tr>
         {{end}}
       </tbody>

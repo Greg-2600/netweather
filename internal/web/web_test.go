@@ -2750,6 +2750,7 @@ func TestCorridorPage(t *testing.T) {
 	open := store.CorridorEvent{
 		ID: "ce-1", CorridorID: "nyc-lon", Kind: "rtt_step",
 		StartedAt: started, Detail: "rtt 190ms against 82ms",
+		Trace: " 1  192.0.2.1  4ms\ndestination 198.51.100.9 reached=true\n",
 	}
 	corridors := &fakeCorridorStatus{
 		statuses: []store.CorridorStatus{
@@ -2792,6 +2793,8 @@ func TestCorridorPage(t *testing.T) {
 		// A three-sample shape and an empty five-cell loss bar.
 		"▁▅█",
 		"▱▱▱▱▱",
+		// The trace captured with the step change.
+		`data-testid="corridor-trace"`, "destination 198.51.100.9 reached=true",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("corridor page missing %q", want)

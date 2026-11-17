@@ -31,6 +31,10 @@ type CorridorEvent struct {
 	StartedAt  time.Time
 	EndedAt    time.Time
 	Detail     string
+	// Trace is the one traceroute captured when the event opened, already
+	// formatted. Empty means "none captured" (no raw sockets, or the walk
+	// failed), never "the path was short".
+	Trace string
 }
 
 // CorridorStatus is what a page or the API needs: the corridor, its newest
@@ -239,7 +243,7 @@ func (s *Store) CorridorStatus(ctx context.Context) ([]CorridorStatus, error) {
 
 	open := make(map[string]CorridorEvent, len(corridors))
 	rows, err = s.reader.QueryContext(ctx, `
-		SELECT id, corridor_id, kind, started_at, COALESCE(ended_at, 0), detail
+		SELECT id, corridor_id, kind, started_at, COALESCE(ended_at, 0), detail, trace
 		FROM corridor_event WHERE ended_at IS NULL`)
 	if err != nil {
 		return nil, fmt.Errorf("store: corridor events: %w", err)
@@ -250,7 +254,7 @@ func (s *Store) CorridorStatus(ctx context.Context) ([]CorridorStatus, error) {
 			started int64
 			ended   int64
 		)
-		if err := rows.Scan(&event.ID, &event.CorridorID, &event.Kind, &started, &ended, &event.Detail); err != nil {
+		if err := rows.Scan(&event.ID, &event.CorridorID, &event.Kind, &started, &ended, &event.Detail, &event.Trace); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("store: scan corridor event: %w", err)
 		}
@@ -281,9 +285,9 @@ func (s *Store) CorridorStatus(ctx context.Context) ([]CorridorStatus, error) {
 // OpenCorridorEvent records a new step change.
 func (s *Store) OpenCorridorEvent(ctx context.Context, event CorridorEvent) error {
 	_, err := s.writer.ExecContext(ctx, `
-		INSERT INTO corridor_event (id, corridor_id, kind, started_at, detail)
-		VALUES (?, ?, ?, ?, ?)`,
-		event.ID, event.CorridorID, event.Kind, event.StartedAt.UnixMilli(), event.Detail)
+		INSERT INTO corridor_event (id, corridor_id, kind, started_at, detail, trace)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		event.ID, event.CorridorID, event.Kind, event.StartedAt.UnixMilli(), event.Detail, event.Trace)
 	if err != nil {
 		return fmt.Errorf("store: open corridor event %q: %w", event.ID, err)
 	}
@@ -308,7 +312,7 @@ func (s *Store) CorridorEvents(ctx context.Context, limit int) ([]CorridorEvent,
 		limit = 20
 	}
 	rows, err := s.reader.QueryContext(ctx, `
-		SELECT id, corridor_id, kind, started_at, COALESCE(ended_at, 0), detail
+		SELECT id, corridor_id, kind, started_at, COALESCE(ended_at, 0), detail, trace
 		FROM corridor_event ORDER BY started_at DESC, id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("store: corridor events: %w", err)
@@ -322,7 +326,7 @@ func (s *Store) CorridorEvents(ctx context.Context, limit int) ([]CorridorEvent,
 			started int64
 			ended   int64
 		)
-		if err := rows.Scan(&event.ID, &event.CorridorID, &event.Kind, &started, &ended, &event.Detail); err != nil {
+		if err := rows.Scan(&event.ID, &event.CorridorID, &event.Kind, &started, &ended, &event.Detail, &event.Trace); err != nil {
 			return nil, fmt.Errorf("store: scan corridor event: %w", err)
 		}
 		event.StartedAt = time.UnixMilli(started).UTC()

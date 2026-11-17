@@ -3584,6 +3584,7 @@ func TestCorridorsAPI(t *testing.T) {
 	open := store.CorridorEvent{
 		ID: "ce-1", CorridorID: "nyc-lon", Kind: "rtt_step",
 		StartedAt: started, Detail: "rtt 190ms against 82ms",
+		Trace: " 1  192.0.2.1  4ms\ndestination 198.51.100.9 reached=true\n",
 	}
 	reader := &fakeCorridors{statuses: []store.CorridorStatus{
 		{Corridor: store.Corridor{ID: "nyc-lon", From: "NYC", To: "LON"}, Latest: &latest, Open: &open},
@@ -3613,6 +3614,7 @@ func TestCorridorsAPI(t *testing.T) {
 			Kind      string `json:"kind"`
 			StartedAt string `json:"started_at"`
 			Detail    string `json:"detail"`
+			Trace     string `json:"trace"`
 		} `json:"open_event"`
 	}
 	if err := json.Unmarshal(env.Data, &items); err != nil {
@@ -3630,6 +3632,9 @@ func TestCorridorsAPI(t *testing.T) {
 	}
 	if first.OpenEvent == nil || first.OpenEvent.Kind != "rtt_step" || first.OpenEvent.Detail == "" {
 		t.Fatalf("open_event = %+v", first.OpenEvent)
+	}
+	if !strings.Contains(first.OpenEvent.Trace, "reached=true") {
+		t.Fatalf("open_event trace = %q, want the captured walk", first.OpenEvent.Trace)
 	}
 	if items[1].Latest != nil || items[1].OpenEvent != nil {
 		t.Fatalf("a corridor with no sample reported one: %+v", items[1])

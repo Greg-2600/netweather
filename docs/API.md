@@ -762,7 +762,8 @@ Auth: bearer. The configured corridors (DESIGN.md §9) with each one's newest sa
       "to": "LON",
       "latest": {"ts": "2026-11-17T11:00:00Z", "rtt_ms": 83, "loss": 0, "ok": true},
       "open_event": {"kind": "rtt_step", "started_at": "2026-11-17T10:00:00Z",
-                     "detail": "rtt 190ms for two samples against a 82ms baseline (±3ms)"}
+                     "detail": "rtt 190ms for two samples against a 82ms baseline (±3ms)",
+                     "trace": " 1  192.0.2.1      4ms\ndestination 198.51.100.9 reached=true\n"}
     },
     {"id": "lon-sin", "from": "LON", "to": "SIN"}
   ],
@@ -771,6 +772,7 @@ Auth: bearer. The configured corridors (DESIGN.md §9) with each one's newest sa
 ```
 
 - `latest` is absent until the first five-minute sample lands. `open_event` is absent while the corridor is normal.
+- `trace` is the one traceroute captured when the event opened: the `corridor step change` trigger from DESIGN.md §9.1, captured once rather than scheduled. It is absent when the walk could not start (no `CAP_NET_RAW`, an unresolvable endpoint) or when the instance has no tracer; the step change is still the fact and the event still opens.
 - `ok: false` means the last sample got no reply from either endpoint; it is not a verdict about a target.
 - This is evidence about a path. It never changes a target's state and never opens a target incident.
 - `503` when no corridor reader is configured, rather than an empty list that reads as "all normal". A configured instance with no corridors returns `200` and an empty list.

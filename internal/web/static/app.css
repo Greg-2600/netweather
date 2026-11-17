@@ -532,3 +532,15 @@ table.probes td.detail { max-width: 18rem; overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: no-preference) {
   .tile { transition: border-color 120ms ease, background-color 120ms ease; }
 }
+/* One captured traceroute per corridor step change (DESIGN.md §9). Read-only
+   evidence, so it is a collapsed block rather than a column. */
+.detail pre.trace {
+  margin: 0.35rem 0 0;
+  padding: 0.4rem;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  white-space: pre-wrap;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  color: var(--muted);
+}

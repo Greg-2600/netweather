@@ -68,8 +68,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 17 {
-		t.Errorf("schema version = %d, want 17", stats.SchemaVersion)
+	if stats.SchemaVersion != 18 {
+		t.Errorf("schema version = %d, want 18", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -97,7 +97,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 17 {
+	if err != nil || version != 18 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -2173,6 +2173,7 @@ func TestCorridorsUpsertSamplesAndEvents(t *testing.T) {
 	if err := s.OpenCorridorEvent(ctx, store.CorridorEvent{
 		ID: "ev-1", CorridorID: "nyc-lon", Kind: "rtt_step",
 		StartedAt: base, Detail: "rtt 120ms against 80ms",
+		Trace: " 1  192.0.2.1  4ms\ndestination 192.0.2.9 reached=true\n",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -2182,6 +2183,9 @@ func TestCorridorsUpsertSamplesAndEvents(t *testing.T) {
 	}
 	if status[1].Open == nil || status[1].Open.Kind != "rtt_step" {
 		t.Fatalf("open event not reported: %+v", status[1])
+	}
+	if !strings.Contains(status[1].Open.Trace, "reached=true") {
+		t.Fatalf("open event lost its trace: %+v", status[1].Open)
 	}
 
 	if err := s.CloseCorridorEvent(ctx, "nyc-lon", base.Add(time.Hour)); err != nil {
