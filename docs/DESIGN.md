@@ -335,6 +335,8 @@ Rules:
 - Instruments are declared per vantage, because a vantage may not support all of them (§5.7).
 - **Timeouts are per-vantage.** A Tor handshake routinely exceeds the 8s that is generous on a direct path.
 
+**Implemented, the shipped configuration surface:** the target file has no `vantages:` block. The direct vantage is implicit (`local`, `direct`, `primary`), and the Tor vantage is enabled by environment: `NETWEATHER_TOR=true`, `NETWEATHER_TOR_SOCKS` (default `tor:9050`), an optional verified `NETWEATHER_TOR_EXIT_COUNTRY`, `NETWEATHER_TOR_MAX` (default 25 targets), and `NETWEATHER_TOR_DAILY_MB` (default 50 MB). The agent applies the 2s pace and ten-minute interval floor from §5.7. The YAML above is the intended general shape, not input the binary accepts today: a second source of truth for the same knobs is the drift `DESIGN.md` §13.2 rejects. The rules still hold — a non-primary vantage is stored under its own vantage id and can never move a target to `DOWN`.
+
 #### The abstraction: one dialer
 
 The pattern worth borrowing from `proxychains` is not the tool — it's that the transport is **transparent to everything above it**. Copy that as an internal interface:
