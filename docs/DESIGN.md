@@ -910,6 +910,8 @@ Measurable:    94.9% (712/750)     ✓
 
 Every state carries a **shape or glyph** as well as colour: ring style (solid/dashed/hollow), corner badge, and a pattern in compact mode. Colour alone is not sufficient.
 
+**Implemented:** every state has a distinct ring style in `app.css` — solid 1px for `UP` and `UP_REACHABILITY`, dashed for `DEGRADED` and `UNKNOWN`, solid 2px for `DOWN`, dotted for `BLOCKED` and `UNMEASURABLE`, double for `CONFIG_ERROR` — and compact density adds a diagonal fill pattern to `DOWN` and `BLOCKED`. The state glyph and text remain inside every tile, and the tile's `aria-label` carries the state text, so colour is never the only carrier. A Playwright test reads the computed ring style and width for three states and fails if they are identical, and checks the compact pattern is present.
+
 ### 10.8 Live updates
 
 SSE stream of state deltas only - not full page. The UI consumes it at `GET /events` with the session cookie; API clients use `/api/v1/events` with a bearer token or the same cookie (`API.md` §7.2).

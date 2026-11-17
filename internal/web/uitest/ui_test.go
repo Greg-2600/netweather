@@ -438,3 +438,56 @@ func toFloat(v any) (float64, bool) {
 		return 0, false
 	}
 }
+
+// TestStateShapesDifferByMoreThanColour is the browser-side check for
+// DESIGN.md §10.7: every state changes the ring style and, in compact density,
+// the fill pattern, so a reader who cannot tell red from green still sees a
+// different tile.
+func TestStateShapesDifferByMoreThanColour(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.login(t)
+
+	raw, err := h.page.Evaluate(`() => {
+		const pick = (host, prop) => {
+			const el = document.querySelector('[data-target="' + host + '"]');
+			return el ? getComputedStyle(el).getPropertyValue(prop) : '';
+		};
+		return {
+			upStyle: pick('chase.com', 'border-top-style'),
+			upWidth: pick('chase.com', 'border-top-width'),
+			downStyle: pick('united.com', 'border-top-style'),
+			downWidth: pick('united.com', 'border-top-width'),
+			blockedStyle: pick('cloudflare.com', 'border-top-style'),
+			blockedWidth: pick('cloudflare.com', 'border-top-width'),
+			downPattern: pick('united.com', 'background-image'),
+		};
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := raw.(map[string]any)
+	if !ok {
+		t.Fatalf("evaluation returned %T", raw)
+	}
+	str := func(key string) string {
+		value, _ := got[key].(string)
+		return value
+	}
+
+	if str("upStyle") != "solid" || str("upWidth") != "1px" {
+		t.Errorf("up ring = %q/%q, want solid/1px", str("upStyle"), str("upWidth"))
+	}
+	if str("downStyle") != "solid" || str("downWidth") != "2px" {
+		t.Errorf("down ring = %q/%q, want solid/2px", str("downStyle"), str("downWidth"))
+	}
+	if str("blockedStyle") != "dotted" {
+		t.Errorf("blocked ring = %q, want dotted", str("blockedStyle"))
+	}
+	if str("upStyle") == str("blockedStyle") || str("upWidth") == str("downWidth") {
+		t.Error("states differ only by colour")
+	}
+	if !strings.Contains(str("downPattern"), "linear-gradient") {
+		t.Errorf("down tile has no compact pattern: %q", str("downPattern"))
+	}
+}

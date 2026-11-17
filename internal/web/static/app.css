@@ -424,6 +424,43 @@ body.auth {
   outline-offset: 2px;
 }
 
+/* --- state shapes (DESIGN.md §10.7) --------------------------------------- */
+
+/* Colour is never the only carrier. Each state also changes the ring style, so
+   a reader who cannot distinguish red from green still sees a different tile:
+   solid thin for up, dashed for soft states, solid thick for down, dotted for
+   blocked and unmeasured, double for a configuration error. Text and glyph stay
+   in the tile as the primary explanation. */
+.tile.state-up { border-style: solid; border-width: 1px; }
+.tile.state-up_reachability { border-style: solid; border-width: 1px; border-color: var(--line); }
+.tile.state-degraded { border-style: dashed; border-width: 1px; }
+.tile.state-down { border-style: solid; border-width: 2px; }
+.tile.state-blocked { border-style: dotted; border-width: 1px; }
+.tile.state-unknown { border-style: dashed; border-width: 1px; border-color: var(--line); }
+.tile.state-unmeasurable { border-style: dotted; border-width: 1px; border-color: var(--line); }
+.tile.state-config_error { border-style: double; border-width: 3px; }
+
+/* A low-cadence pattern in compact density: an outage reads as a shape even
+   when the palette is flattened by a screenshot or a monochrome display. */
+.board.density-compact .tile.state-down {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255, 156, 151, 0.07) 0,
+    rgba(255, 156, 151, 0.07) 6px,
+    transparent 6px,
+    transparent 12px
+  );
+}
+.board.density-compact .tile.state-blocked {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.04) 0,
+    rgba(255, 255, 255, 0.04) 5px,
+    transparent 5px,
+    transparent 10px
+  );
+}
+
 .tile .favicon { width: 2rem; height: 2rem; border-radius: 7px; display: block; }
 .tile .glyph { font-size: 0.85rem; line-height: 1; }
 .tile .name { font-weight: 600; overflow-wrap: anywhere; }
