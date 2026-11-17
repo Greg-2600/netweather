@@ -53,6 +53,10 @@ type compressWriter struct {
 	http.ResponseWriter
 	status    int
 	headerSet bool
+	// wroteHeader is the real header write. It is deferred until the body
+	// crosses the threshold, because Content-Encoding must be set before the
+	// header reaches the wire.
+	wroteHeader bool
 
 	buf      bytes.Buffer
 	gz       *gzip.Writer
@@ -78,6 +82,21 @@ func (w *compressWriter) WriteHeader(status int) {
 		// The compressed length is unknown until the stream ends.
 		w.Header().Del("Content-Length")
 	}
+	// Do not write the header yet: Write needs the chance to set
+	// Content-Encoding when the body crosses the threshold.
+}
+
+// commitHeader sends the status line and headers exactly once, before the first
+// body byte. Any Content-Encoding decision must already be made.
+func (w *compressWriter) commitHeader() {
+	if w.wroteHeader {
+		return
+	}
+	w.wroteHeader = true
+	status := w.status
+	if status == 0 {
+		status = http.StatusOK
+	}
 	w.ResponseWriter.WriteHeader(status)
 }
 
@@ -95,6 +114,7 @@ func (w *compressWriter) Write(p []byte) (int, error) {
 	}
 
 	w.Header().Set("Content-Encoding", "gzip")
+	w.commitHeader()
 	w.gz = gzip.NewWriter(w.ResponseWriter)
 	if _, err := w.gz.Write(w.buf.Bytes()); err != nil {
 		return 0, err
@@ -107,6 +127,7 @@ func (w *compressWriter) writeNow(p []byte) (int, error) {
 	if w.gz != nil {
 		return w.gz.Write(p)
 	}
+	w.commitHeader()
 	return w.ResponseWriter.Write(p)
 }
 
@@ -121,6 +142,7 @@ func (w *compressWriter) Flush() {
 		// small body; either way, send what is buffered as identity.
 		w.disabled = true
 		if w.buf.Len() > 0 {
+			w.commitHeader()
 			_, _ = w.ResponseWriter.Write(w.buf.Bytes())
 			w.buf.Reset()
 		}
@@ -128,6 +150,7 @@ func (w *compressWriter) Flush() {
 	if w.gz != nil {
 		_ = w.gz.Flush()
 	}
+	w.commitHeader()
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
@@ -145,11 +168,13 @@ func (w *compressWriter) Close() error {
 		return w.gz.Close()
 	}
 	if w.disabled || w.buf.Len() == 0 {
+		// A handler that wrote only a status still needs its headers sent.
+		if w.headerSet {
+			w.commitHeader()
+		}
 		return nil
 	}
-	if !w.headerSet {
-		w.ResponseWriter.WriteHeader(http.StatusOK)
-	}
+	w.commitHeader()
 	_, err := w.ResponseWriter.Write(w.buf.Bytes())
 	return err
 }

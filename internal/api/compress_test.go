@@ -3,6 +3,7 @@ package api //nolint:testpackage // white-box tests cover writer internals
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -182,5 +183,65 @@ func TestCompressibleType(t *testing.T) {
 		if got := compressibleType(contentType); got != want {
 			t.Errorf("compressibleType(%q) = %v, want %v", contentType, got, want)
 		}
+	}
+}
+
+func TestCompressionOverARealServerKeepsJSONReadable(t *testing.T) {
+	t.Parallel()
+
+	body := `{"data":"` + strings.Repeat("x", 4096) + `"}`
+	srv := httptest.NewServer(withCompression(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	})))
+	defer srv.Close()
+
+	// An explicit Accept-Encoding means the caller decompresses; the wire must
+	// carry both the header and the bytes. Before the header was deferred, this
+	// response had gzip bytes with no Content-Encoding and every client saw
+	// binary garbage.
+	req, err := http.NewRequest(http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Accept-Encoding", "gzip")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if got := resp.Header.Get("Content-Encoding"); got != "gzip" {
+		t.Fatalf("Content-Encoding on the wire = %q, want gzip", got)
+	}
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("body is not gzip: %v", err)
+	}
+	plain, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(plain) != body {
+		t.Fatalf("decompressed body = %d bytes, want %d", len(plain), len(body))
+	}
+
+	// A default client asks for gzip and transparently decompresses. A JSON
+	// decoder on that client is the check that a real API consumer would make.
+	resp2, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp2.Body.Close() }()
+	var decoded map[string]string
+	if err := json.NewDecoder(resp2.Body).Decode(&decoded); err != nil {
+		t.Fatalf("a compressed API response was not readable: %v", err)
+	}
+	if decoded["data"] != strings.Repeat("x", 4096) {
+		t.Fatal("the decoded payload is not the one that was written")
 	}
 }
