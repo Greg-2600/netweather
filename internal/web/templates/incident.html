@@ -80,6 +80,31 @@
       <p class="muted" data-testid="no-corroboration">{{.CorroborationNote}}</p>
       {{end}}
 
+      <h2 class="section-title">Probes around the event</h2>
+      {{if .Archive}}
+      <table class="probes" data-testid="incident-probes">
+        <thead>
+          <tr><th>Time</th><th>State</th><th>Stage</th><th>Class</th><th>Latency</th><th>Detail</th></tr>
+        </thead>
+        <tbody>
+          {{range .Archive}}
+          <tr data-testid="incident-probe-row" data-state="{{.State}}">
+            <td class="mono">{{.TS}}</td>
+            <td><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Text}}</td>
+            <td>{{.Stage}}</td>
+            <td class="mono">{{.ErrorClass}}</td>
+            <td class="mono">{{.Latency}}</td>
+            <td class="detail">{{.Detail}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      <p class="muted small">Pinned from the raw probe stream when this incident opened,
+        one hour either side, and kept for a year.</p>
+      {{else}}
+      <p class="muted" data-testid="no-incident-probes">{{.ArchiveNote}}</p>
+      {{end}}
+
       <h2 class="section-title">Ground truth</h2>
       {{if .Annotation}}
       <p data-testid="incident-annotation">{{.Annotation}}

@@ -1157,6 +1157,28 @@ type probeView struct {
 	Detail     string
 }
 
+// toProbeView renders one stored observation for the probe tables. Times are
+// local to the reader's clock, not the target's: the page is about "when did
+// this happen to me".
+func toProbeView(row store.ProbeRow) probeView {
+	latency := "-"
+	if row.LatencyMS > 0 {
+		latency = fmt.Sprintf("%d ms", row.LatencyMS)
+	}
+	return probeView{
+		TS:         row.TS.UTC().Format("15:04:05"),
+		State:      string(row.State),
+		Text:       row.State.Text(),
+		Glyph:      row.State.Glyph(),
+		Stage:      row.Stage,
+		ErrorClass: row.ErrorClass,
+		HTTPStatus: row.HTTPStatus,
+		Latency:    latency,
+		Confidence: row.Confidence,
+		Detail:     row.Detail,
+	}
+}
+
 func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
@@ -1387,6 +1409,10 @@ type incidentDetailView struct {
 	AnnotatedAt       string
 	CSRF              string
 	CanAnnotate       bool
+	// Archive is the probes pinned around the event (SCHEMA.md §5). It is what
+	// keeps an old incident readable after the raw 72-hour window is pruned.
+	Archive     []probeView
+	ArchiveNote string
 }
 
 // corroborationView is one external event that overlapped the incident.
@@ -1521,6 +1547,28 @@ func (s *server) handleIncident(w http.ResponseWriter, r *http.Request) {
 					row.EndedAt = e.EndedAt.UTC().Format("2006-01-02 15:04")
 				}
 				view.Corroboration = append(view.Corroboration, row)
+			}
+		}
+	}
+
+	// The probes around the event. They are pinned when the incident opens, so
+	// this panel still answers "what did it look like" after the raw 72-hour
+	// window is gone (SCHEMA.md §5).
+	if s.deps.IncidentProbes == nil {
+		view.ArchiveNote = "The probe archive is not configured on this instance."
+	} else {
+		rows, err := s.deps.IncidentProbes.IncidentProbes(r.Context(), inc.ID, 40)
+		switch {
+		case err != nil:
+			s.deps.Logger.Warn("incident probes failed",
+				"event", "incident_probes_failed", "component", "http",
+				"incident_id", inc.ID, "error", err)
+			view.ArchiveNote = "Archived probes are temporarily unavailable."
+		case len(rows) == 0:
+			view.ArchiveNote = "No probes were pinned around this incident. The archive starts with the next one; the raw probes are pruned after 72 hours."
+		default:
+			for _, row := range rows {
+				view.Archive = append(view.Archive, toProbeView(row))
 			}
 		}
 	}

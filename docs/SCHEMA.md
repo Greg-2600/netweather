@@ -186,7 +186,7 @@ CREATE INDEX probe_ts          ON probe(ts);
 
 **Migration `0011`** added `cert_issuer` and `cert_not_after` (unix ms, NULL when the observation was not TLS). They are per-observation facts from the TLS instrument, not target configuration, so they live on `probe` rather than `target`. The `cert_pin` table below is separate and is implemented in migration `0013`.
 
-`probe_archive` is the same shape plus `pinned_at` and `incident_id`, with no `ts` index (it is always queried by target or incident):
+`probe_archive` is the same shape plus `pinned_at` and `incident_id`, with no `ts` index (it is always queried by target or incident). **Migration `0020`** adds it:
 
 ```sql
 CREATE TABLE probe_archive (
@@ -211,6 +211,8 @@ CREATE TABLE probe_archive (
 
 CREATE INDEX probe_archive_incident ON probe_archive(incident_id, ts);
 ```
+
+**How rows get there.** `OpenIncident` copies every `probe` row within ±1 hour of `opened_at` into the archive in the same transaction that writes the incident, using `INSERT OR IGNORE`. The `(target_id, vantage_id, ts)` primary key is what makes that idempotent: a retried open, or a second incident over the same window, cannot duplicate rows or steal them from the incident that pinned them first. `RecentProbes` unions `probe` with `probe_archive`, so a drawer keeps working after the raw rows are pruned, and `UNION` (not `UNION ALL`) collapses a probe that is still in both. `Prune` deletes archive rows older than one year, after the 72-hour raw delete.
 
 `target_state` is a cache of the latest observation per `(target, vantage)`. It is rebuilt from the last `state_change` on startup if it is ever suspect.
 

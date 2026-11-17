@@ -106,6 +106,7 @@ func (s *Store) foldDay(ctx context.Context, day time.Time) (int64, error) {
 // PruneStats reports deleted rows per table.
 type PruneStats struct {
 	Probes   int64
+	Archive  int64
 	Rollup5m int64
 	Rollup1h int64
 	Rollup1d int64
@@ -132,6 +133,15 @@ func (s *Store) Prune(ctx context.Context, now time.Time) (PruneStats, error) {
 		if n == 0 {
 			break
 		}
+	}
+
+	// Incident-pinned probes are the long memory (DESIGN.md §12, SCHEMA.md §5):
+	// a year, then they go too. This runs after the raw prune so a pinned row
+	// can never be deleted as a raw probe first.
+	stats.Archive, err = s.deleteOlderThan(ctx, `DELETE FROM probe_archive WHERE ts < ?`,
+		now.Add(-365*24*time.Hour).UnixMilli())
+	if err != nil {
+		return stats, err
 	}
 
 	stats.Rollup5m, err = s.deleteOlderThan(ctx, `DELETE FROM rollup_5m WHERE bucket < ?`,

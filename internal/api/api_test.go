@@ -3832,3 +3832,87 @@ func TestMetaReportsTheEgressBudget(t *testing.T) {
 		t.Fatalf("an unconfigured budget was reported: %s", rec.Body)
 	}
 }
+
+type fakeIncidentProbes struct {
+	rows []store.ProbeRow
+	err  error
+}
+
+func (f *fakeIncidentProbes) IncidentProbes(context.Context, string, int) ([]store.ProbeRow, error) {
+	return f.rows, f.err
+}
+
+func newIncidentsHandlerWithProbes(t *testing.T, reader api.IncidentReader, probes api.IncidentProbeReader) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Incidents:      reader,
+			IncidentProbes: probes,
+			Version:        "test",
+			Commit:         "deadbeef",
+			StartedAt:      time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func TestIncidentDetailCarriesArchivedProbes(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 11, 17, 11, 30, 0, 0, time.UTC)
+	probes := &fakeIncidentProbes{rows: []store.ProbeRow{
+		{TS: at, State: state.Down, Stage: "http", ErrorClass: "tcp_refused", Confidence: "high", Detail: "refused"},
+		{TS: at.Add(5 * time.Minute), State: state.Up, Stage: "http", HTTPStatus: 200, LatencyMS: 42, Confidence: "high"},
+	}}
+
+	rec := do(newIncidentsHandlerWithProbes(t, incidentFixture(), probes),
+		http.MethodGet, "/api/v1/incidents/inc-1", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+	}
+
+	var env struct {
+		Data struct {
+			Probes []struct {
+				TS         string `json:"ts"`
+				State      string `json:"state"`
+				ErrorClass string `json:"error_class"`
+				HTTPStatus int    `json:"http_status"`
+				LatencyMS  int    `json:"latency_ms"`
+			} `json:"probes"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if len(env.Data.Probes) != 2 {
+		t.Fatalf("probes = %+v, want 2", env.Data.Probes)
+	}
+	if env.Data.Probes[0].State != "down" || env.Data.Probes[0].ErrorClass != "tcp_refused" {
+		t.Fatalf("first probe = %+v", env.Data.Probes[0])
+	}
+	if env.Data.Probes[1].State != "up" || env.Data.Probes[1].HTTPStatus != 200 || env.Data.Probes[1].LatencyMS != 42 {
+		t.Fatalf("second probe = %+v", env.Data.Probes[1])
+	}
+	// Oldest first, like the store query.
+	if env.Data.Probes[0].TS != "2026-11-17T11:30:00Z" {
+		t.Fatalf("first ts = %q", env.Data.Probes[0].TS)
+	}
+
+	// A failed archive read is a missing panel, not a failed incident.
+	broken := &fakeIncidentProbes{err: errors.New("disk gone")}
+	rec = do(newIncidentsHandlerWithProbes(t, incidentFixture(), broken),
+		http.MethodGet, "/api/v1/incidents/inc-1", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status with a broken archive = %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"probes":[]`) {
+		t.Fatalf("a broken archive invented samples: %s", rec.Body)
+	}
+}

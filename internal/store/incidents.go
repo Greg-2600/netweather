@@ -156,10 +156,67 @@ func (s *Store) OpenIncident(ctx context.Context, inc Incident, targetIDs []stri
 		}
 	}
 
+	// Pin the probes around the event before the nightly prune can delete them
+	// (DESIGN.md §12). The archive's primary key makes the copy idempotent, so
+	// a retried open cannot duplicate rows.
+	if _, err := tx.ExecContext(ctx, `
+		INSERT OR IGNORE INTO probe_archive (
+			probe_id, target_id, vantage_id, ts, state, stage, error_class,
+			http_status, latency_ms, family, cdn, asn, confidence, detail,
+			pinned_at, incident_id)
+		SELECT p.id, p.target_id, p.vantage_id, p.ts, p.state, p.stage, p.error_class,
+		       p.http_status, p.latency_ms, p.family, p.cdn, p.asn, p.confidence,
+		       p.detail, ?, ?
+		FROM probe p
+		WHERE p.ts BETWEEN ? AND ?`,
+		opened, inc.ID, opened-incidentPinWindow.Milliseconds(), opened+incidentPinWindow.Milliseconds()); err != nil {
+		return fmt.Errorf("store: pin incident probes: %w", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("store: commit incident: %w", err)
 	}
 	return nil
+}
+
+// incidentPinWindow is the ±1 hour DESIGN.md §12 keeps around an incident.
+const incidentPinWindow = time.Hour
+
+// IncidentProbes returns the archived samples around one incident, oldest
+// first. A drawer opened after the raw probes were pruned reads this.
+func (s *Store) IncidentProbes(ctx context.Context, incidentID string, limit int) ([]ProbeRow, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.reader.QueryContext(ctx, `
+		SELECT ts, state, stage, COALESCE(error_class, ''), COALESCE(http_status, 0),
+		       COALESCE(latency_ms, 0), confidence, COALESCE(detail, '')
+		FROM probe_archive
+		WHERE incident_id = ?
+		ORDER BY ts ASC
+		LIMIT ?`, incidentID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("store: incident probes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []ProbeRow
+	for rows.Next() {
+		var (
+			row ProbeRow
+			ts  int64
+		)
+		if err := rows.Scan(&ts, &row.State, &row.Stage, &row.ErrorClass, &row.HTTPStatus,
+			&row.LatencyMS, &row.Confidence, &row.Detail); err != nil {
+			return nil, fmt.Errorf("store: scan incident probe: %w", err)
+		}
+		row.TS = time.UnixMilli(ts).UTC()
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: incident probes: %w", err)
+	}
+	return out, nil
 }
 
 // OpenIncidents returns unclosed incidents, newest first. The detector uses it

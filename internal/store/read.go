@@ -237,18 +237,30 @@ type ProbeRow struct {
 	Detail     string
 }
 
-// RecentProbes returns the newest observations for a target and vantage.
+// RecentProbes returns the newest observations for a target and vantage,
+// including samples pinned into the incident archive. UNION collapses a probe
+// that is still in both places, so a drawer does not show a duplicate.
 func (s *Store) RecentProbes(ctx context.Context, targetID, vantageID string, limit int) ([]ProbeRow, error) {
 	if limit <= 0 {
 		limit = 20
 	}
 	rows, err := s.reader.QueryContext(ctx, `
-		SELECT ts, state, stage, COALESCE(error_class, ''), COALESCE(http_status, 0),
-		       COALESCE(latency_ms, 0), confidence, COALESCE(detail, '')
-		FROM probe
-		WHERE target_id = ? AND vantage_id = ?
-		ORDER BY ts DESC, id DESC
-		LIMIT ?`, targetID, vantageID, limit)
+		SELECT ts, state, stage, error_class, http_status, latency_ms, confidence, detail
+		FROM (
+			SELECT ts, state, stage, COALESCE(error_class, '') AS error_class,
+			       COALESCE(http_status, 0) AS http_status,
+			       COALESCE(latency_ms, 0) AS latency_ms, confidence,
+			       COALESCE(detail, '') AS detail
+			FROM probe
+			WHERE target_id = ? AND vantage_id = ?
+			UNION
+			SELECT ts, state, stage, COALESCE(error_class, ''), COALESCE(http_status, 0),
+			       COALESCE(latency_ms, 0), confidence, COALESCE(detail, '')
+			FROM probe_archive
+			WHERE target_id = ? AND vantage_id = ?
+		)
+		ORDER BY ts DESC
+		LIMIT ?`, targetID, vantageID, targetID, vantageID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("store: recent probes: %w", err)
 	}

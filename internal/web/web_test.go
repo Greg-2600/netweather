@@ -3677,3 +3677,100 @@ func TestBoardWithoutSpentBudgetHasNoBanner(t *testing.T) {
 		})
 	}
 }
+
+type fakeIncidentProbes struct {
+	rows []store.ProbeRow
+	err  error
+}
+
+func (f *fakeIncidentProbes) IncidentProbes(context.Context, string, int) ([]store.ProbeRow, error) {
+	return f.rows, f.err
+}
+
+func newServerWithIncidentProbes(t *testing.T, token string, m *board.Memory, history web.IncidentHistory, probes web.IncidentProbeReader) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:         m,
+		Watcher:        m,
+		Incidents:      history,
+		IncidentProbes: probes,
+		Token:          token,
+		Version:        "test",
+		StartedAt:      time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestIncidentDetailShowsArchivedProbes(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 11, 17, 11, 30, 0, 0, time.UTC)
+	probes := &fakeIncidentProbes{rows: []store.ProbeRow{
+		{TS: at, State: state.Down, Stage: "http", ErrorClass: "tcp_refused", LatencyMS: 0, Confidence: "high", Detail: "refused"},
+		{TS: at.Add(5 * time.Minute), State: state.Up, Stage: "http", LatencyMS: 42, Confidence: "high", Detail: "200"},
+	}}
+
+	ts := newServerWithIncidentProbes(t, testToken, fixture(), incidentsFixture(), probes)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/incidents/inc-open") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="incident-probes"`) {
+		t.Fatalf("archive panel missing:\n%s", page)
+	}
+	for _, want := range []string{"incident-probe-row", "tcp_refused", "42 ms", "Pinned from the raw probe stream"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("archive panel missing %q", want)
+		}
+	}
+	// Oldest first: the failure is explained by what came after it.
+	if strings.Index(page, "11:30:00") > strings.Index(page, "11:35:00") {
+		t.Error("archived probes are not oldest-first")
+	}
+}
+
+func TestIncidentDetailWithoutArchiveStatesIt(t *testing.T) {
+	t.Parallel()
+
+	// No reader: the panel must say so rather than render an empty table.
+	ts := newServerWithIncidents(t, testToken, fixture(), incidentsFixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/incidents/inc-open") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="no-incident-probes"`) ||
+		!strings.Contains(page, "archive is not configured") {
+		t.Fatalf("an unwired archive was silent:\n%s", page)
+	}
+
+	// A wired reader with no rows is a different, honest message.
+	empty := newServerWithIncidentProbes(t, testToken, fixture(), incidentsFixture(), &fakeIncidentProbes{})
+	client2, _ := newClient(t)
+	login(t, empty, client2, testToken)
+	resp, err = client2.Get(empty.URL + "/incidents/inc-open") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = body(t, resp)
+	if !strings.Contains(page, "No probes were pinned around this incident") {
+		t.Fatalf("an empty archive was not stated:\n%s", page)
+	}
+}

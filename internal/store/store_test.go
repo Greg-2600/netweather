@@ -68,8 +68,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 19 {
-		t.Errorf("schema version = %d, want 19", stats.SchemaVersion)
+	if stats.SchemaVersion != 20 {
+		t.Errorf("schema version = %d, want 20", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -97,7 +97,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 19 {
+	if err != nil || version != 20 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -2794,5 +2794,138 @@ func TestOpenReadOnlyDoesNotMigrate(t *testing.T) {
 	}
 	if stats.Total != 1 {
 		t.Fatalf("read-only fleet total = %d, want 1", stats.Total)
+	}
+}
+
+func TestOpenIncidentPinsProbesAroundTheEvent(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	// Five hourly probes: the two outriders are outside the ±1h window.
+	var probes []store.Probe
+	for _, offset := range []time.Duration{-2 * time.Hour, -time.Hour, 0, time.Hour, 2 * time.Hour} {
+		probes = append(probes, probeAt(base.Add(offset), state.Down))
+	}
+	if err := s.Record(ctx, probes); err != nil {
+		t.Fatal(err)
+	}
+
+	inc := store.Incident{
+		ID: "inc-pin", OpenedAt: base, Verdict: "INCIDENT",
+		Scope: "sector", ScopeValue: "airline", Headline: "pin", Confidence: "high",
+	}
+	if err := s.OpenIncident(ctx, inc, []string{"t1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	pinned, err := s.IncidentProbes(ctx, "inc-pin", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pinned) != 3 {
+		t.Fatalf("pinned = %d probes, want 3 (±1h)", len(pinned))
+	}
+	// Oldest first, and the window edges are included.
+	for i, want := range []time.Time{base.Add(-time.Hour), base, base.Add(time.Hour)} {
+		if !pinned[i].TS.Equal(want) {
+			t.Errorf("pinned[%d] = %s, want %s", i, pinned[i].TS, want)
+		}
+	}
+
+	// The archive primary key makes a second pin idempotent: another incident
+	// over the same window cannot duplicate the rows or steal them, so the
+	// first incident keeps its samples.
+	if err := s.OpenIncident(ctx, store.Incident{
+		ID: "inc-second", OpenedAt: base, Verdict: "INCIDENT",
+		Scope: "sector", ScopeValue: "cloud", Headline: "second", Confidence: "high",
+	}, []string{"t1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	again, err := s.IncidentProbes(ctx, "inc-pin", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again) != 3 {
+		t.Fatalf("pinned after a second open = %d, want 3", len(again))
+	}
+	stolen, err := s.IncidentProbes(ctx, "inc-second", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stolen) != 0 {
+		t.Fatalf("the second incident took %d pinned rows", len(stolen))
+	}
+}
+
+func TestRecentProbesReadsTheArchiveAfterPrune(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	var probes []store.Probe
+	for _, offset := range []time.Duration{-time.Hour, 0, time.Hour} {
+		probes = append(probes, probeAt(base.Add(offset), state.Down))
+	}
+	if err := s.Record(ctx, probes); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.OpenIncident(ctx, store.Incident{
+		ID: "inc-archive", OpenedAt: base, Verdict: "INCIDENT",
+		Scope: "sector", ScopeValue: "airline", Headline: "archive", Confidence: "high",
+	}, []string{"t1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// While the raw probes are still present the union must not double them.
+	live, err := s.RecentProbes(ctx, "t1", "local", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(live) != 3 {
+		t.Fatalf("recent = %d, want 3 with no duplicates", len(live))
+	}
+
+	// Prune past the 72-hour raw window: the raw rows go, the pinned ones stay.
+	stats, err := s.Prune(ctx, base.Add(100*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Probes != 3 || stats.Archive != 0 {
+		t.Fatalf("prune = %+v, want 3 raw and 0 archived", stats)
+	}
+	if n, err := s.CountProbes(ctx); err != nil || n != 0 {
+		t.Fatalf("raw probes after prune = %d, err = %v", n, err)
+	}
+
+	archived, err := s.RecentProbes(ctx, "t1", "local", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archived) != 3 {
+		t.Fatalf("archived recent = %d, want 3", len(archived))
+	}
+	// Newest first, like the raw query.
+	if !archived[0].TS.Equal(base.Add(time.Hour)) {
+		t.Fatalf("archived[0] = %s, want the newest", archived[0].TS)
+	}
+
+	// A year later the archive goes too.
+	stats, err = s.Prune(ctx, base.Add(366*24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Archive != 3 {
+		t.Fatalf("archive prune = %d, want 3", stats.Archive)
+	}
+	if got, err := s.RecentProbes(ctx, "t1", "local", 10); err != nil || len(got) != 0 {
+		t.Fatalf("recent after a year = %d rows, err = %v", len(got), err)
 	}
 }

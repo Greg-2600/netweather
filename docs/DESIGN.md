@@ -950,7 +950,9 @@ Steady state ≈ **340 MB** for 750 targets at ~430k probes/day, with a hard cei
 
 Rollup latency columns are **EWMA, not percentiles**, and are named `ewma50_ms` / `ewma95_ms` in the schema. Calling an EWMA a p95 is the kind of quiet lie this project exists to avoid.
 
-Raw probes within ±1 hour of a confirmed incident are copied to `probe_archive` before pruning, so a drawer opened a month later can still show the 20 probes around the event. Retention without that is 72 hours of memory.
+Raw probes within ±1 hour of a confirmed incident are copied to `probe_archive` before pruning, so a drawer opened a month later can still show the probes around the event. Retention without that is 72 hours of memory.
+
+**Implemented:** `store.OpenIncident` pins the ±1 hour window in the same transaction that writes the incident, keyed by `(target_id, vantage_id, ts)` so a retry or a second incident over the same window cannot duplicate or steal rows. `store.RecentProbes` unions the raw and archived tables, `store.IncidentProbes` reads one incident's samples oldest first, `Prune` deletes the archive after one year, and the incident page and `GET /api/v1/incidents/{id}` show the samples with their stage, error class, and latency.
 
 Full schema, PRAGMAs, retention jobs, and query shapes in [`SCHEMA.md`](SCHEMA.md).
 

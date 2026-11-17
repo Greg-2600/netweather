@@ -61,6 +61,14 @@ type IncidentPager interface {
 	IncidentsPage(ctx context.Context, openOnly bool, before time.Time, beforeID string, limit int) ([]store.Incident, error)
 }
 
+// IncidentProbeReader reads the probes pinned around an incident. It is
+// optional: without it the detail response carries no samples, rather than
+// implying the incident had none. The archive outlives the 72-hour raw window
+// (SCHEMA.md §5), which is what makes an old incident still readable.
+type IncidentProbeReader interface {
+	IncidentProbes(ctx context.Context, incidentID string, limit int) ([]store.ProbeRow, error)
+}
+
 // CorroborationReader returns external feed events that overlap an incident.
 type CorroborationReader interface {
 	Corroboration(ctx context.Context, inc store.Incident, now time.Time, limit int) ([]store.ExternalEvent, error)
@@ -158,6 +166,9 @@ type Deps struct {
 	Probes ProbeReader
 	// Incidents reads the incident log. Nil disables the routes.
 	Incidents IncidentReader
+	// IncidentProbes reads the pinned probes around an incident. Nil means the
+	// detail response carries no samples; the UI says the archive is not wired.
+	IncidentProbes IncidentProbeReader
 	// Corroboration reads external feed events for an incident. Nil omits the
 	// section rather than pretending no earlier event existed.
 	Corroboration CorroborationReader
@@ -744,6 +755,24 @@ type incidentDetail struct {
 	Attribution   []attributionItem   `json:"attribution"`
 	Targets       []string            `json:"targets"`
 	Corroboration []corroborationItem `json:"corroboration"`
+	// Probes are the observations pinned around the event, oldest first. They
+	// come from probe_archive and therefore survive the raw 72-hour prune
+	// (SCHEMA.md §5).
+	Probes []incidentProbeItem `json:"probes"`
+}
+
+// incidentProbeItem is one archived observation. It is the same shape the
+// target history endpoint uses, without the target id: the incident already
+// names its targets.
+type incidentProbeItem struct {
+	TS         string `json:"ts"`
+	State      string `json:"state"`
+	Stage      string `json:"stage"`
+	ErrorClass string `json:"error_class,omitempty"`
+	HTTPStatus int    `json:"http_status,omitempty"`
+	LatencyMS  int    `json:"latency_ms,omitempty"`
+	Confidence string `json:"confidence"`
+	Detail     string `json:"detail,omitempty"`
 }
 
 // corroborationItem is one external event that overlaps the incident. It is
@@ -986,6 +1015,7 @@ func (s *server) handleIncidentByID(w http.ResponseWriter, r *http.Request) {
 		Attribution:   make([]attributionItem, 0, len(attrs)),
 		Targets:       targets,
 		Corroboration: make([]corroborationItem, 0),
+		Probes:        make([]incidentProbeItem, 0),
 	}
 	for _, a := range attrs {
 		detail.Attribution = append(detail.Attribution, attributionItem{
@@ -1013,6 +1043,29 @@ func (s *server) handleIncidentByID(w http.ResponseWriter, r *http.Request) {
 				item.EndedAt = e.EndedAt.UTC().Format(time.RFC3339)
 			}
 			detail.Corroboration = append(detail.Corroboration, item)
+		}
+	}
+
+	if s.deps.IncidentProbes != nil {
+		rows, err := s.deps.IncidentProbes.IncidentProbes(r.Context(), inc.ID, 20)
+		if err != nil {
+			// The archive is a panel, not the incident: a failed read states
+			// itself in the log and leaves the samples out.
+			s.deps.Logger.Warn("incident probes failed",
+				"event", "incident_probes_failed", "component", "http",
+				"incident_id", inc.ID, "error", err)
+		}
+		for _, row := range rows {
+			detail.Probes = append(detail.Probes, incidentProbeItem{
+				TS:         row.TS.UTC().Format(time.RFC3339),
+				State:      string(row.State),
+				Stage:      row.Stage,
+				ErrorClass: row.ErrorClass,
+				HTTPStatus: row.HTTPStatus,
+				LatencyMS:  row.LatencyMS,
+				Confidence: row.Confidence,
+				Detail:     row.Detail,
+			})
 		}
 	}
 

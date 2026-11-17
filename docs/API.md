@@ -200,7 +200,7 @@ Auth: bearer.
     "started_at": "2026-11-16T03:00:00.000Z",
     "uptime_s": 812,
     "auth": "bearer",
-    "schema_version": 19,
+    "schema_version": 20,
     "egress": {"used_bytes": 1048576, "limit_bytes": 2147483648, "exhausted": false},
     "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "annotations", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace", "corridors"],
     "ring": {"records": 128, "capacity": 2000}
@@ -366,6 +366,12 @@ The incident plus every ranked attribution candidate, not only the winner — wh
     "corroboration": [
       {"feed": "ioda", "external_id": "1001", "kind": "outage", "severity": 0.87,
        "country": "IR", "started_at": "2026-11-17T10:00:00Z"}
+    ],
+    "probes": [
+      {"ts": "2026-11-17T11:30:00Z", "state": "down", "stage": "http",
+       "error_class": "tcp_refused", "confidence": "high", "detail": "refused"},
+      {"ts": "2026-11-17T11:35:00Z", "state": "up", "stage": "http",
+       "http_status": 200, "latency_ms": 42, "confidence": "high"}
     ]
   },
   "meta": {"request_id": "…"}
@@ -373,6 +379,8 @@ The incident plus every ranked attribution candidate, not only the winner — wh
 ```
 
 `404` for an unknown id. Attribution is stored at open time and is not recomputed on read, so the incident keeps the evidence that produced it.
+
+`probes` is the ±1 hour window of observations pinned into `probe_archive` when the incident opened (`SCHEMA.md` §5), oldest first, up to 20 rows. It is what makes an incident readable after the raw probe stream is pruned at 72 hours. The array is always present: a failed archive read is logged and leaves it empty rather than hiding the incident, and an incident opened before the archive existed simply has none.
 
 `corroboration` lists external feed events that overlap the incident's window (two hours before it opened through its close or now) and match its country or ASN when the scope names one. It is evidence, never a verdict: a matching outage makes the incident more believable, and a matching statuspage incident points at the provider rather than at your path. A sector or global incident has no place to match, so the list is everything in the window, highest severity first. The array is always present; a failed corroboration query is logged and leaves it empty rather than hiding the incident.
 

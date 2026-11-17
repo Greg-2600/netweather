@@ -28,6 +28,9 @@ type Deps struct {
 	Watcher   board.Watcher
 	History   History
 	Incidents IncidentHistory
+	// IncidentProbes reads the probes pinned around an incident. Nil means the
+	// panel states that the archive is not wired.
+	IncidentProbes IncidentProbeReader
 	// Corroboration supplies external feed events for an incident.
 	Corroboration Corroboration
 	// Annotator records the operator's ground truth on an incident. Nil hides
@@ -109,6 +112,13 @@ type History interface {
 type IncidentHistory interface {
 	Incidents(ctx context.Context, openOnly bool, limit int) ([]store.Incident, error)
 	IncidentByID(ctx context.Context, id string) (store.Incident, []store.Attribution, []string, error)
+}
+
+// IncidentProbeReader reads the probes pinned around an incident (SCHEMA.md
+// §5). Nil means the panel says the archive is not wired rather than showing an
+// empty table.
+type IncidentProbeReader interface {
+	IncidentProbes(ctx context.Context, incidentID string, limit int) ([]store.ProbeRow, error)
 }
 
 // Corroboration supplies external feed events for an incident. Nil omits the
