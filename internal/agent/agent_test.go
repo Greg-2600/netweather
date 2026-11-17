@@ -387,6 +387,42 @@ func TestInstrumentsDispatch(t *testing.T) {
 	}
 }
 
+func TestSetTargetsSwapsTheLiveSet(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	p := newProber()
+	p.set("https://a.example/", probe.Result{Status: http.StatusOK})
+	p.set("https://b.example/", probe.Result{Status: http.StatusOK})
+	sink := &fakeSink{}
+
+	a := agent.New([]agent.Target{target("a", "a.example")}, p, sink)
+	a.Now = at(now)
+	a.Rand = zeroRand
+
+	if ran, _ := a.Step(context.Background()); ran != 1 {
+		t.Fatalf("initial step ran = %d", ran)
+	}
+
+	a.SetTargets([]agent.Target{target("b", "b.example")})
+	if a.TargetCount() != 1 {
+		t.Fatalf("count = %d", a.TargetCount())
+	}
+	if ids := a.TargetIDs(); len(ids) != 1 || ids[0] != "b" {
+		t.Fatalf("ids = %v", ids)
+	}
+
+	if ran, _ := a.Step(context.Background()); ran != 1 {
+		t.Fatalf("post-swap step ran = %d", ran)
+	}
+	if p.count("https://b.example/") != 1 {
+		t.Fatal("new target was not probed")
+	}
+	if p.count("https://a.example/") != 1 {
+		t.Fatal("removed target was probed again")
+	}
+}
+
 func TestPauseStopsProbing(t *testing.T) {
 	t.Parallel()
 

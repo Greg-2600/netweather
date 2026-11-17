@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Greg-2600/netweather/internal/agent"
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
 )
@@ -218,6 +220,88 @@ targets:
 
 	if _, err := loadTargets(ctx, st); err == nil || !strings.Contains(err.Error(), "not implemented") {
 		t.Fatalf("error = %v, want an explicit unimplemented-probe error", err)
+	}
+}
+
+func TestReloadTargetsDisablesRemoved(t *testing.T) {
+	dir := t.TempDir()
+	dataDir := filepath.Join(dir, "data")
+	cfg := filepath.Join(dir, "targets.yaml")
+
+	write := func(yaml string) {
+		t.Helper()
+		if err := os.WriteFile(cfg, []byte(yaml), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	write(`version: 1
+targets:
+  - name: A
+    host: a.example
+    port: 443
+    probe: http
+    class: service
+  - name: B
+    host: b.example
+    port: 443
+    probe: http
+    class: service
+`)
+	t.Setenv("NETWEATHER_CONFIG", cfg)
+	t.Setenv("NETWEATHER_DATA", dataDir)
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(dataDir, "netweather.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	ag := agent.New(nil, agent.Instruments{}, st)
+
+	if err := reloadTargets(ctx, st, ag, logger); err != nil {
+		t.Fatalf("initial reload: %v", err)
+	}
+	if ag.TargetCount() != 2 {
+		t.Fatalf("targets = %d, want 2", ag.TargetCount())
+	}
+
+	// Remove A from the file.
+	write(`version: 1
+targets:
+  - name: B
+    host: b.example
+    port: 443
+    probe: http
+    class: service
+`)
+	if err := reloadTargets(ctx, st, ag, logger); err != nil {
+		t.Fatalf("second reload: %v", err)
+	}
+	if ag.TargetCount() != 1 {
+		t.Fatalf("targets = %d, want 1", ag.TargetCount())
+	}
+
+	rows, err := st.TargetsWithState(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Host != "b.example" {
+		t.Fatalf("stored board = %+v", rows)
+	}
+	if exists, _ := st.TargetExists(ctx, "a-example-http"); exists {
+		t.Fatal("removed target is still enabled")
+	}
+
+	// An invalid edit is rejected without touching the live set.
+	write("version: 1\ntargets:\n  - name: x\n    host: x.com\n    port: 22\n    probe: tcp\n    class: service\n")
+	if err := reloadTargets(ctx, st, ag, logger); err == nil {
+		t.Fatal("invalid config should be rejected")
+	}
+	if ag.TargetCount() != 1 {
+		t.Fatal("a rejected reload changed the live target set")
 	}
 }
 

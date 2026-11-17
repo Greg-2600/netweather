@@ -478,6 +478,56 @@ func TestTargetExists(t *testing.T) {
 	}
 }
 
+func TestTargetIDsAndDisableTarget(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	if err := s.UpsertTarget(ctx, store.Target{
+		ID: "t2", Host: "united.com", Port: 443, Probe: "http",
+		Name: "United", Class: "service", Tier: 2, IntervalS: 300,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	ids, err := s.TargetIDs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("ids = %v", ids)
+	}
+
+	if err := s.DisableTarget(ctx, "t2"); err != nil {
+		t.Fatal(err)
+	}
+
+	ids, err = s.TargetIDs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 1 || ids[0] != "t1" {
+		t.Fatalf("ids after disable = %v", ids)
+	}
+
+	exists, err := s.TargetExists(ctx, "t2")
+	if err != nil || exists {
+		t.Fatalf("disabled target exists = %v, err = %v", exists, err)
+	}
+
+	// Disabling is not deleting: the board stops listing it, but the row stays
+	// for history.
+	rows, err := s.TargetsWithState(ctx, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d", len(rows))
+	}
+}
+
 func TestObservationsIncludeOnlyProbedTargets(t *testing.T) {
 	t.Parallel()
 

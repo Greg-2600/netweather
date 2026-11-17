@@ -212,6 +212,7 @@ func serve(lg *logging.Logger) error {
 	}
 	go incidents.Loop(ctx, st, st, st, "local", incidentInterval, lg.Logger)
 	go maintenanceLoop(ctx, st, lg)
+	go configLoop(ctx, st, ag, lg.Logger)
 
 	go func() {
 		<-ctx.Done()

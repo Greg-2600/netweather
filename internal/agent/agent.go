@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -81,7 +82,6 @@ type Sink interface {
 
 // Agent runs due targets and records the results.
 type Agent struct {
-	Targets []Target
 	Runner  Runner
 	Sink    Sink
 	Limiter *schedule.Limiter
@@ -89,16 +89,18 @@ type Agent struct {
 	Rand    func() float64
 	Logger  *slog.Logger
 
-	next   map[string]time.Time
-	primed bool
-	paused atomic.Bool
+	mu      sync.RWMutex
+	targets []Target
+	next    map[string]time.Time
+	primed  bool
+	paused  atomic.Bool
 }
 
 // New builds an agent. Now and Rand default to the real clock and math/rand;
 // tests override them before the first Step.
 func New(targets []Target, runner Runner, sink Sink) *Agent {
 	return &Agent{
-		Targets: targets,
+		targets: targets,
 		Runner:  runner,
 		Sink:    sink,
 		Limiter: schedule.NewLimiter(),
@@ -106,6 +108,55 @@ func New(targets []Target, runner Runner, sink Sink) *Agent {
 		Rand:    rand.Float64,
 		next:    make(map[string]time.Time, len(targets)),
 	}
+}
+
+// SetTargets replaces the target set at runtime. Existing schedules are kept;
+// removed targets lose their next-run entry, and new targets are spread across
+// their first interval rather than fired immediately.
+func (a *Agent) SetTargets(targets []Target) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.targets = targets
+
+	live := make(map[string]struct{}, len(targets))
+	for _, t := range targets {
+		live[t.ID] = struct{}{}
+	}
+	for id := range a.next {
+		if _, ok := live[id]; !ok {
+			delete(a.next, id)
+		}
+	}
+
+	if !a.primed {
+		return
+	}
+	now := a.now()
+	for _, t := range targets {
+		if _, ok := a.next[t.ID]; ok {
+			continue
+		}
+		a.next[t.ID] = now.Add(schedule.FirstRun(t.Interval, a.Rand))
+	}
+}
+
+// TargetCount reports the current target set size.
+func (a *Agent) TargetCount() int {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return len(a.targets)
+}
+
+// TargetIDs reports the current ids, for diagnostics and reload diffs.
+func (a *Agent) TargetIDs() []string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	out := make([]string, 0, len(a.targets))
+	for _, t := range a.targets {
+		out = append(out, t.ID)
+	}
+	return out
 }
 
 // Step probes every target that is due now and records one batch. It returns how
@@ -116,19 +167,25 @@ func (a *Agent) Step(ctx context.Context) (int, error) {
 	}
 
 	now := a.now()
+
+	a.mu.Lock()
 	if !a.primed {
-		a.prime(now)
+		a.primeLocked(now)
 		a.primed = true
 	}
-
-	batch := make([]store.Probe, 0, len(a.Targets))
-	ran := 0
-
-	for _, t := range a.Targets {
-		if !a.due(t, now) {
+	pending := make([]Target, 0, len(a.targets))
+	for _, t := range a.targets {
+		if at, ok := a.next[t.ID]; ok && now.Before(at) {
 			continue
 		}
+		pending = append(pending, t)
+	}
+	a.mu.Unlock()
 
+	batch := make([]store.Probe, 0, len(pending))
+	ran := 0
+
+	for _, t := range pending {
 		release, ok := a.Limiter.TryAcquire(t.Host)
 		if !ok {
 			// Another probe for the same registrable domain is in flight.
@@ -141,7 +198,10 @@ func (a *Agent) Step(ctx context.Context) (int, error) {
 		p := a.toProbe(t, res, now)
 		a.logProbe(t, p)
 		batch = append(batch, p)
+
+		a.mu.Lock()
 		a.next[t.ID] = now.Add(schedule.Next(t.Interval, schedule.DefaultJitter(t.Tier), a.Rand))
+		a.mu.Unlock()
 		ran++
 	}
 
@@ -155,7 +215,11 @@ func (a *Agent) Step(ctx context.Context) (int, error) {
 }
 
 // NextRun reports when a target is next due. Zero means "never scheduled".
-func (a *Agent) NextRun(id string) time.Time { return a.next[id] }
+func (a *Agent) NextRun(id string) time.Time {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.next[id]
+}
 
 // Pause stops probing. The agent keeps running so the UI and API stay
 // available; it simply stops emitting outbound traffic.
@@ -206,8 +270,8 @@ func (a *Agent) logProbe(t Target, p store.Probe) {
 	)
 }
 
-func (a *Agent) prime(now time.Time) {
-	for _, t := range a.Targets {
+func (a *Agent) primeLocked(now time.Time) {
+	for _, t := range a.targets {
 		if _, ok := a.next[t.ID]; ok {
 			continue
 		}
@@ -215,14 +279,6 @@ func (a *Agent) prime(now time.Time) {
 		// do not fire in the same second (DESIGN.md §6.5).
 		a.next[t.ID] = now.Add(schedule.FirstRun(t.Interval, a.Rand))
 	}
-}
-
-func (a *Agent) due(t Target, now time.Time) bool {
-	at, ok := a.next[t.ID]
-	if !ok {
-		return true
-	}
-	return !now.Before(at)
 }
 
 func (a *Agent) toProbe(t Target, res probe.Result, now time.Time) store.Probe {

@@ -211,6 +211,41 @@ func (s *Store) TargetExists(ctx context.Context, id string) (bool, error) {
 	}
 }
 
+// TargetIDs returns the enabled target ids. Config reconciliation uses it to
+// find targets that were removed from the file.
+func (s *Store) TargetIDs(ctx context.Context) ([]string, error) {
+	rows, err := s.reader.QueryContext(ctx, `SELECT id FROM target WHERE enabled = 1 ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("store: target ids: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("store: scan target id: %w", err)
+		}
+		out = append(out, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: target ids: %w", err)
+	}
+	return out, nil
+}
+
+// DisableTarget marks a target disabled rather than deleting it, so history and
+// incidents survive a config edit (SCHEMA.md §4.1).
+func (s *Store) DisableTarget(ctx context.Context, id string) error {
+	_, err := s.writer.ExecContext(ctx,
+		`UPDATE target SET enabled = 0, updated_at = ? WHERE id = ?`,
+		time.Now().UnixMilli(), id)
+	if err != nil {
+		return fmt.Errorf("store: disable target %q: %w", id, err)
+	}
+	return nil
+}
+
 // Rollup is one bucket at the requested resolution.
 type Rollup struct {
 	Bucket   time.Time
