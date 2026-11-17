@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"embed"
 	"errors"
 	"html/template"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/board"
+	"github.com/Greg-2600/netweather/internal/store"
 )
 
 //go:embed templates/*.html
@@ -22,10 +24,18 @@ type Deps struct {
 	Logger        *slog.Logger
 	Source        board.Source
 	Watcher       board.Watcher
+	History       History
+	Vantage       string
 	Token         string
 	SecureCookies bool
 	Version       string
 	StartedAt     time.Time
+}
+
+// History supplies the drawer's recent observations. Nil means the page says so
+// instead of pretending the target has never been probed.
+type History interface {
+	RecentProbes(ctx context.Context, targetID, vantageID string, limit int) ([]store.ProbeRow, error)
 }
 
 func loadTemplates() (*template.Template, error) {

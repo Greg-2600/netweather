@@ -225,6 +225,25 @@ func toTile(t board.Target) tileView {
 	}
 }
 
+type targetView struct {
+	Tile    tileView
+	Probes  []probeView
+	History bool
+}
+
+type probeView struct {
+	TS         string
+	State      string
+	Text       string
+	Glyph      string
+	Stage      string
+	ErrorClass string
+	HTTPStatus int
+	Latency    string
+	Confidence string
+	Detail     string
+}
+
 func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
@@ -239,13 +258,48 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, t := range targets {
-		if t.ID == id {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Header().Set("Content-Security-Policy",
-				"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
-			_ = s.tmpl.ExecuteTemplate(w, "target.html", toTile(t))
-			return
+		if t.ID != id {
+			continue
 		}
+
+		view := targetView{Tile: toTile(t)}
+		if s.deps.History != nil {
+			view.History = true
+
+			vantage := s.deps.Vantage
+			if vantage == "" {
+				vantage = "local"
+			}
+			rows, err := s.deps.History.RecentProbes(r.Context(), t.ID, vantage, 20)
+			if err != nil {
+				s.deps.Logger.Warn("probe history failed",
+					"event", "history_failed", "component", "http", "target", t.Host, "error", err)
+			}
+			for _, row := range rows {
+				latency := "—"
+				if row.LatencyMS > 0 {
+					latency = fmt.Sprintf("%d ms", row.LatencyMS)
+				}
+				view.Probes = append(view.Probes, probeView{
+					TS:         row.TS.UTC().Format("15:04:05"),
+					State:      string(row.State),
+					Text:       row.State.Text(),
+					Glyph:      row.State.Glyph(),
+					Stage:      row.Stage,
+					ErrorClass: row.ErrorClass,
+					HTTPStatus: row.HTTPStatus,
+					Latency:    latency,
+					Confidence: row.Confidence,
+					Detail:     row.Detail,
+				})
+			}
+		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Content-Security-Policy",
+			"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+		_ = s.tmpl.ExecuteTemplate(w, "target.html", view)
+		return
 	}
 	http.Error(w, "no such target", http.StatusNotFound)
 }

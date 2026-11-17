@@ -2,6 +2,7 @@ package web_test
 
 import (
 	"bufio"
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,6 +15,8 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/board"
+	"github.com/Greg-2600/netweather/internal/state"
+	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/web"
 )
 
@@ -45,6 +48,117 @@ func newServer(t *testing.T, token string, m *board.Memory) *httptest.Server {
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
 	return ts
+}
+
+type fakeHistory struct {
+	rows []store.ProbeRow
+	err  error
+}
+
+func (f *fakeHistory) RecentProbes(context.Context, string, string, int) ([]store.ProbeRow, error) {
+	return f.rows, f.err
+}
+
+func newServerWithHistory(t *testing.T, token string, m *board.Memory, history web.History) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:    m,
+		Watcher:   m,
+		History:   history,
+		Vantage:   "local",
+		Token:     token,
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestTargetDetailShowsProbeHistory(t *testing.T) {
+	t.Parallel()
+
+	history := &fakeHistory{rows: []store.ProbeRow{
+		{
+			TS: time.Date(2026, 11, 17, 12, 1, 0, 0, time.UTC), State: state.Down,
+			Stage: "tls", ErrorClass: "tls_cert_expired", LatencyMS: 41,
+			Confidence: "high", Detail: "certificate expired",
+		},
+		{
+			TS: time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC), State: state.Up,
+			Stage: "http", HTTPStatus: 200, LatencyMS: 80, Confidence: "high",
+		},
+	}}
+
+	ts := newServerWithHistory(t, testToken, fixture(), history)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if strings.Count(page, `data-testid="probe-row"`) != 2 {
+		t.Fatalf("probe rows missing:\n%s", page)
+	}
+	for _, want := range []string{"tls_cert_expired", "41 ms", "certificate expired", "12:01:00"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page missing %q", want)
+		}
+	}
+	if strings.Contains(page, `data-testid="no-probes"`) {
+		t.Error("empty-state shown with rows present")
+	}
+}
+
+func TestTargetDetailWithEmptyHistory(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithHistory(t, testToken, fixture(), &fakeHistory{})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="no-probes"`) {
+		t.Fatalf("empty history should say so explicitly:\n%s", page)
+	}
+	if strings.Contains(page, `data-testid="probe-row"`) {
+		t.Error("rows rendered for an empty history")
+	}
+}
+
+func TestTargetDetailWithoutHistoryConfiguration(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="no-history"`) {
+		t.Fatal("a missing history source must be stated, not implied")
+	}
 }
 
 func newClient(t *testing.T) (*http.Client, *cookiejar.Jar) {
@@ -263,7 +377,7 @@ func TestTargetDetail(t *testing.T) {
 	client, _ := newClient(t)
 	login(t, ts, client, testToken)
 
-	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it //nolint:bodyclose // body() closes it
 	if err != nil {
 		t.Fatal(err)
 	}

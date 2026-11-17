@@ -211,6 +211,31 @@ body.auth {
 .detail-state.state-up b { color: #7ee2a8; }
 .detail-state.state-degraded b { color: #f0b849; }
 
+.section-title {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 1.5rem 0 0.5rem;
+}
+
+table.probes {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+table.probes th,
+table.probes td {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+table.probes th { color: var(--muted); font-weight: 600; }
+table.probes td.detail { max-width: 18rem; overflow-wrap: anywhere; }
+
 @media (prefers-reduced-motion: no-preference) {
   .tile { transition: border-color 120ms ease, background-color 120ms ease; }
 }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{.Name}} · netweather</title>
+  <title>{{.Tile.Name}} · netweather</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/app.css">
 </head>
@@ -14,14 +14,39 @@
 
   <main>
     <article class="card" data-testid="target-detail">
-      <h1>{{.Name}}</h1>
-      <p class="mono muted">{{.Host}}</p>
-      <p class="detail-state {{.Class}}">
-        <span class="glyph" aria-hidden="true">{{.Glyph}}</span>
-        <b data-testid="target-state">{{.Text}}</b>
-        {{if .Since}}<span class="muted">since {{.Since}}</span>{{end}}
+      <h1>{{.Tile.Name}}</h1>
+      <p class="mono muted">{{.Tile.Host}}</p>
+      <p class="detail-state {{.Tile.Class}}">
+        <span class="glyph" aria-hidden="true">{{.Tile.Glyph}}</span>
+        <b data-testid="target-state">{{.Tile.Text}}</b>
+        {{if .Tile.Since}}<span class="muted">since {{.Tile.Since}}</span>{{end}}
       </p>
-      <p class="muted">Probe history, attribution, and the trace drawer live here once the store lands.</p>
+
+      <h2 class="section-title">Recent probes</h2>
+      {{if .Probes}}
+      <table class="probes" data-testid="probe-history">
+        <thead>
+          <tr><th>Time</th><th>State</th><th>Stage</th><th>Class</th><th>Latency</th><th>Detail</th></tr>
+        </thead>
+        <tbody>
+          {{range .Probes}}
+          <tr data-testid="probe-row" data-state="{{.State}}">
+            <td class="mono">{{.TS}}</td>
+            <td><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Text}}</td>
+            <td>{{.Stage}}</td>
+            <td class="mono">{{.ErrorClass}}</td>
+            <td class="mono">{{.Latency}}</td>
+            <td class="detail">{{.Detail}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else if .History}}
+      <p class="muted" data-testid="no-probes">No probes recorded yet.</p>
+      {{else}}
+      <p class="muted" data-testid="no-history">Probe history is not configured on this instance.</p>
+      {{end}}
+
       <p><a href="/">← Back to the board</a></p>
     </article>
   </main>
