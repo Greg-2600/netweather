@@ -724,6 +724,20 @@ type targetView struct {
 	Meta       []metaRow
 	Changes    []changeRow
 	ChangeNote string
+	// Corroboration is feed evidence for this target's country or ASN. It is
+	// never presented as the provider's own status (DESIGN.md §10.5).
+	Corroboration     []targetCorroborationView
+	CorroborationNote string
+}
+
+// targetCorroborationView is one feed event near the target's scope.
+type targetCorroborationView struct {
+	Feed      string
+	Kind      string
+	Severity  string
+	Place     string
+	StartedAt string
+	EndedAt   string
 }
 
 // stripCell is one hour of the 24-hour strip. The bar is characters because the
@@ -807,6 +821,44 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 			{"Certificate expires", displayOr(formatCertExpiry(t.CertNotAfter), "not a TLS probe")},
 			{"Certificate pin", pinLabel(t.CertPinned)},
 			{"Measurability", displayOr(t.Measurability, "ok")},
+		}
+
+		if s.deps.TargetCorroboration == nil {
+			view.CorroborationNote = "Feed corroboration is not configured on this instance."
+		} else if t.Country == "" && t.ASN == 0 {
+			view.CorroborationNote = "No country or ASN is learned yet, so there is no scope to match."
+		} else {
+			events, err := s.deps.TargetCorroboration.ScopeCorroboration(
+				r.Context(), t.Country, t.ASN, time.Now().UTC().Add(-24*time.Hour), 10)
+			switch {
+			case err != nil:
+				s.deps.Logger.Warn("target corroboration failed",
+					"event", "target_corroboration_failed", "component", "http",
+					"target", t.Host, "error", err)
+				view.CorroborationNote = "Feed corroboration is temporarily unavailable."
+			case len(events) == 0:
+				view.CorroborationNote = "No feed event in this target's country or ASN in the last 24 hours."
+			default:
+				for _, e := range events {
+					row := targetCorroborationView{
+						Feed: e.Feed, Kind: e.Kind,
+						Severity:  fmt.Sprintf("%.2f", e.Severity),
+						StartedAt: e.StartedAt.UTC().Format("2006-01-02 15:04"),
+					}
+					switch {
+					case e.Country != "":
+						row.Place = e.Country
+					case e.ASN > 0:
+						row.Place = fmt.Sprintf("AS%d", e.ASN)
+					default:
+						row.Place = "-"
+					}
+					if !e.EndedAt.IsZero() {
+						row.EndedAt = e.EndedAt.UTC().Format("2006-01-02 15:04")
+					}
+					view.Corroboration = append(view.Corroboration, row)
+				}
+			}
 		}
 
 		if s.deps.Changes == nil {

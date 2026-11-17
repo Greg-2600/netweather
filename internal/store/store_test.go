@@ -1892,3 +1892,68 @@ func TestCertPinLearnsAndFlagsOnce(t *testing.T) {
 		t.Fatal("an empty issuer was accepted")
 	}
 }
+
+func TestScopeCorroborationMatchesCountryOrASN(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	events := []store.ExternalEvent{
+		{
+			Feed: "ioda", ExternalID: "ir", Kind: "outage", Severity: 0.9,
+			Country: "IR", StartedAt: base.Add(-time.Hour), ObservedAt: base,
+		},
+		{
+			Feed: "radar", ExternalID: "asn", Kind: "hijack", Severity: 0.8,
+			ASN: 64500, StartedAt: base.Add(-2 * time.Hour), ObservedAt: base,
+		},
+		{
+			Feed: "ioda", ExternalID: "both", Kind: "outage", Severity: 0.95,
+			Country: "US", ASN: 13335, StartedAt: base.Add(-time.Hour), ObservedAt: base,
+		},
+		{
+			Feed: "ioda", ExternalID: "stale", Kind: "outage", Severity: 1,
+			Country: "IR", StartedAt: base.Add(-48 * time.Hour), ObservedAt: base,
+		},
+	}
+	if err := s.UpsertExternalEvents(ctx, events); err != nil {
+		t.Fatal(err)
+	}
+	since := base.Add(-24 * time.Hour)
+
+	// Country only: only the in-window IR event, not the 48-hour-old one.
+	got, err := s.ScopeCorroboration(ctx, "IR", 0, since, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ExternalID != "ir" {
+		t.Fatalf("country corroboration = %+v", got)
+	}
+
+	// ASN only: only the event that names it.
+	got, err = s.ScopeCorroboration(ctx, "", 64500, since, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ExternalID != "asn" {
+		t.Fatalf("asn corroboration = %+v", got)
+	}
+
+	// Both: a union, highest severity first.
+	got, err = s.ScopeCorroboration(ctx, "US", 64500, since, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ExternalID != "both" {
+		t.Fatalf("union corroboration = %+v", got)
+	}
+
+	// No scope is not an error and not a query.
+	got, err = s.ScopeCorroboration(ctx, "", 0, since, 10)
+	if err != nil || got != nil {
+		t.Fatalf("empty scope = %+v, %v", got, err)
+	}
+}

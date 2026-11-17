@@ -35,6 +35,8 @@ type Deps struct {
 	// Feeds supplies feed health for the board's staleness strip. Nil means the
 	// strip is omitted rather than shown as healthy.
 	Feeds FeedHealth
+	// TargetCorroboration supplies feed events for a target's country or ASN.
+	TargetCorroboration TargetCorroboration
 	// IncidentWatcher wakes the UI stream when an incident opens or closes.
 	IncidentWatcher board.Watcher
 	Coverage        Coverage
@@ -96,6 +98,12 @@ type Corroboration interface {
 // (DESIGN.md P5).
 type FeedHealth interface {
 	FeedStates(ctx context.Context) ([]store.FeedState, error)
+}
+
+// TargetCorroboration supplies feed events for a target's country or ASN. Nil
+// means the drawer says so rather than implying nothing is happening.
+type TargetCorroboration interface {
+	ScopeCorroboration(ctx context.Context, country string, asn int, since time.Time, limit int) ([]store.ExternalEvent, error)
 }
 
 // IncidentAnnotator records the operator's ground truth for an incident.

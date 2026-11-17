@@ -2409,3 +2409,122 @@ func TestIncidentDetailMissing(t *testing.T) {
 		t.Fatalf("status = %d, want 404", resp.StatusCode)
 	}
 }
+
+type fakeTargetCorr struct {
+	events     []store.ExternalEvent
+	err        error
+	gotCountry string
+	gotASN     int
+}
+
+func (f *fakeTargetCorr) ScopeCorroboration(_ context.Context, country string, asn int, _ time.Time, _ int) ([]store.ExternalEvent, error) {
+	f.gotCountry, f.gotASN = country, asn
+	return f.events, f.err
+}
+
+func newServerWithTargetCorr(t *testing.T, token string, m *board.Memory, corr web.TargetCorroboration) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:              slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:              m,
+		Watcher:             m,
+		TargetCorroboration: corr,
+		Vantage:             "local",
+		Token:               token,
+		Version:             "test",
+		StartedAt:           time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestTargetDrawerShowsFeedCorroboration(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(board.Target{
+		ID: "2", Name: "United", Host: "united.com", Country: "US", ASN: 62041,
+		State: board.StateDown, Port: 443, Probe: "tls", Tier: 2, IntervalS: 300,
+	})
+	corr := &fakeTargetCorr{events: []store.ExternalEvent{{
+		ID: 1, Feed: "ioda", ExternalID: "us-1", Kind: "outage", Severity: 0.9,
+		Country: "US", ASN: 62041,
+		StartedAt: time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC),
+	}}}
+
+	ts := newServerWithTargetCorr(t, testToken, m, corr)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="target-corroboration"`) {
+		t.Fatalf("corroboration table missing:\n%s", page)
+	}
+	for _, want := range []string{"ioda", "outage", ">US<", "0.90", "2026-11-17 10:00", "ongoing", "never a verdict"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("corroboration missing %q", want)
+		}
+	}
+	if corr.gotCountry != "US" || corr.gotASN != 62041 {
+		t.Fatalf("query scope = (%q, %d), want the target's own", corr.gotCountry, corr.gotASN)
+	}
+	if strings.Contains(page, `data-testid="no-target-corroboration"`) {
+		t.Error("empty state rendered with events present")
+	}
+}
+
+func TestTargetDrawerCorroborationStates(t *testing.T) {
+	t.Parallel()
+
+	withScope := board.NewMemory(board.Target{
+		ID: "2", Name: "United", Host: "united.com", Country: "US", ASN: 62041,
+		State: board.StateDown, Port: 443, Probe: "tls", Tier: 2, IntervalS: 300,
+	})
+	noScope := board.NewMemory(board.Target{
+		ID: "2", Name: "United", Host: "united.com",
+		State: board.StateDown, Port: 443, Probe: "http", Tier: 2, IntervalS: 300,
+	})
+
+	cases := []struct {
+		name string
+		m    *board.Memory
+		corr web.TargetCorroboration
+		want string
+	}{
+		{"unconfigured", withScope, nil, "not configured"},
+		{"no scope", noScope, &fakeTargetCorr{}, "no scope to match"},
+		{"empty", withScope, &fakeTargetCorr{}, "No feed event in this target"},
+		{"failed", withScope, &fakeTargetCorr{err: errors.New("db down")}, "temporarily unavailable"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ts := newServerWithTargetCorr(t, testToken, tc.m, tc.corr)
+			client, _ := newClient(t)
+			login(t, ts, client, testToken)
+
+			resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+			if err != nil {
+				t.Fatal(err)
+			}
+			page := body(t, resp)
+			if !strings.Contains(page, `data-testid="no-target-corroboration"`) || !strings.Contains(page, tc.want) {
+				t.Fatalf("note missing %q:\n%s", tc.want, page)
+			}
+			if strings.Contains(page, `data-testid="target-corroboration-row"`) {
+				t.Error("a row rendered without an event")
+			}
+		})
+	}
+}
