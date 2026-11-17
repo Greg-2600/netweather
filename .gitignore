@@ -33,3 +33,7 @@ Thumbs.db
 # stray coverage artefacts
 /coverage
 
+
+# local lint output
+/lint.txt
+
