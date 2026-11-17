@@ -81,7 +81,7 @@ func New(deps Deps) (http.Handler, error) {
 	mux.HandleFunc("/pause", s.requireSession(http.HandlerFunc(s.handlePause)).ServeHTTP)
 	mux.HandleFunc("/resume", s.requireSession(http.HandlerFunc(s.handleResume)).ServeHTTP)
 	mux.Handle("/", s.requireSession(http.HandlerFunc(s.handleBoard)))
-	return mux, nil
+	return withRequestID(mux), nil
 }
 
 // --- login -----------------------------------------------------------------
@@ -102,6 +102,33 @@ type loginView struct {
 // request is a few hundred bytes; anything larger is not a form this handler
 // understands, and parsing it costs memory for no benefit (THREAT_MODEL.md T10).
 const maxActionBody = 8 << 10
+
+// errorView is the browser surface's only error page. It carries a short
+// statement and the request id, never the internal error: the detail is in the
+// log line the handler already wrote (THREAT_MODEL.md T15).
+type errorView struct {
+	Insecure  bool
+	NoAuth    bool
+	Status    int
+	Headline  string
+	RequestID string
+}
+
+// renderError writes the generic page. It is deliberately not the API's JSON
+// envelope: a browser asked for HTML.
+func (s *server) renderError(w http.ResponseWriter, r *http.Request, status int, headline string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+	w.WriteHeader(status)
+	_ = s.tmpl.ExecuteTemplate(w, "error.html", errorView{
+		Insecure:  s.insecure(r),
+		NoAuth:    s.auth.disabled(),
+		Status:    status,
+		Headline:  headline,
+		RequestID: requestIDFrom(r),
+	})
+}
 
 func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
@@ -794,8 +821,11 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 
 	targets, err := s.deps.Source.Snapshot(r.Context())
 	if err != nil {
-		s.deps.Logger.Error("board snapshot failed", "event", "board_failed", "component", "http", "error", err)
-		http.Error(w, "board unavailable", http.StatusServiceUnavailable)
+		s.deps.Logger.Error("board snapshot failed",
+			"event", "board_failed", "component", "http",
+			"request_id", requestIDFrom(r), "error", err)
+		s.renderError(w, r, http.StatusServiceUnavailable,
+			"The board could not be read. The server log has the details for this request.")
 		return
 	}
 	// Failures first: the grid answers "what is down?", not "what is alphabetical".
@@ -1572,7 +1602,11 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Path[len("/targets/"):]
 	targets, err := s.deps.Source.Snapshot(r.Context())
 	if err != nil {
-		http.Error(w, "board unavailable", http.StatusServiceUnavailable)
+		s.deps.Logger.Error("target snapshot failed",
+			"event", "target_snapshot_failed", "component", "http",
+			"target_id", id, "request_id", requestIDFrom(r), "error", err)
+		s.renderError(w, r, http.StatusServiceUnavailable,
+			"The target could not be read. The server log has the details for this request.")
 		return
 	}
 	for _, t := range targets {
@@ -2383,8 +2417,11 @@ func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
 
 	targets, err := s.deps.Source.Snapshot(r.Context())
 	if err != nil {
-		s.deps.Logger.Error("world snapshot failed", "event", "world_failed", "component", "http", "error", err)
-		http.Error(w, "board unavailable", http.StatusServiceUnavailable)
+		s.deps.Logger.Error("world snapshot failed",
+			"event", "world_failed", "component", "http",
+			"request_id", requestIDFrom(r), "error", err)
+		s.renderError(w, r, http.StatusServiceUnavailable,
+			"The world view could not be read. The server log has the details for this request.")
 		return
 	}
 

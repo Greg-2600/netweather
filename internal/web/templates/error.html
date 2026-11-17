@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Unavailable - netweather</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="auth">
+  {{template "insecure" .}}
+  <main class="card">
+    <h1 class="brand">netweather</h1>
+    <p class="error" role="alert" data-testid="error-page">{{.Headline}}</p>
+    <p class="muted small">
+      The details are in the server log under this request id:
+      <span class="mono" data-testid="error-request-id">{{if .RequestID}}{{.RequestID}}{{else}}unavailable{{end}}</span>
+    </p>
+    <p class="muted small"><a href="/">Reload the board</a></p>
+  </main>
+</body>
+</html>
