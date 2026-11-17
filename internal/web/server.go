@@ -190,33 +190,35 @@ func (s *server) setPaused(w http.ResponseWriter, r *http.Request, paused bool) 
 // --- board -----------------------------------------------------------------
 
 type tileView struct {
-	ID            string
-	Name          string
-	Host          string
-	Sector        string
-	State         string
-	Text          string
-	Glyph         string
-	Class         string
-	Since         string
-	Aria          string
-	Badge         string
-	BadgeTitle    string
-	Icon          string
-	Port          int
-	Probe         string
-	Tier          int
-	IntervalS     int
-	ASN           int
-	Prefix        string
-	CDN           string
-	ASCountry     string
-	ASName        string
-	IXNames       string
-	Measurability string
-	CertIssuer    string
-	CertNotAfter  string
-	CertPinned    bool
+	ID                   string
+	Name                 string
+	Host                 string
+	Sector               string
+	State                string
+	Text                 string
+	Glyph                string
+	Class                string
+	Since                string
+	Aria                 string
+	Badge                string
+	BadgeTitle           string
+	Icon                 string
+	Port                 int
+	Probe                string
+	Tier                 int
+	IntervalS            int
+	ASN                  int
+	Prefix               string
+	CDN                  string
+	ASCountry            string
+	ASName               string
+	IXNames              string
+	Measurability        string
+	CertIssuer           string
+	CertNotAfter         string
+	CertPinned           bool
+	CertChainLen         int
+	CertIntermediateSPKI string
 	// Spark is the 24-hour healthy-share shape, rendered only in comfortable
 	// density. Empty means "no history", which the tile shows as nothing rather
 	// than a fabricated line.
@@ -729,7 +731,9 @@ func toTile(t board.Target) tileView {
 		ASN: t.ASN, Prefix: t.Prefix, CDN: t.CDN, Measurability: t.Measurability,
 		ASCountry: t.ASCountry, ASName: t.ASName, IXNames: t.IXNames,
 		CertIssuer: t.CertIssuer, CertNotAfter: formatCertExpiry(t.CertNotAfter),
-		CertPinned: t.CertPinned,
+		CertPinned:           t.CertPinned,
+		CertChainLen:         t.CertChainLen,
+		CertIntermediateSPKI: t.CertIntermediateSPKI,
 	}
 }
 
@@ -750,6 +754,23 @@ func pinLabel(known bool) string {
 		return "issuer learned"
 	}
 	return "not learned yet"
+}
+
+// chainLabel describes the learned chain shape. It is informational: a chain
+// change is reported, never used as a verdict (CLASSIFIER.md §3.5).
+func chainLabel(length int, intermediate string) string {
+	if length <= 0 {
+		return "not learned yet"
+	}
+	label := fmt.Sprintf("%d certificate(s)", length)
+	if intermediate != "" {
+		short := intermediate
+		if len(short) > 16 {
+			short = short[:16]
+		}
+		label += ", intermediate " + short + "…"
+	}
+	return label
 }
 
 // badgeFor is the corner marker from DESIGN.md §10.2: the stage or status that
@@ -955,6 +976,7 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 			{"Certificate issuer", displayOr(t.CertIssuer, "not a TLS probe")},
 			{"Certificate expires", displayOr(formatCertExpiry(t.CertNotAfter), "not a TLS probe")},
 			{"Certificate pin", pinLabel(t.CertPinned)},
+			{"Certificate chain", chainLabel(t.CertChainLen, t.CertIntermediateSPKI)},
 			{"Measurability", displayOr(t.Measurability, "ok")},
 		}
 

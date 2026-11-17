@@ -693,17 +693,18 @@ func TestStepLogsTheDecisionRecord(t *testing.T) {
 }
 
 type fakePins struct {
-	mu      sync.Mutex
-	changed bool
-	err     error
-	issuers []string
+	mu       sync.Mutex
+	changed  bool
+	advisory string
+	err      error
+	issuers  []string
 }
 
-func (f *fakePins) ObserveCertIssuer(_ context.Context, _, issuer string, _ time.Time) (bool, error) {
+func (f *fakePins) ObserveCert(_ context.Context, obs store.CertObservation, _ time.Time) (bool, string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.issuers = append(f.issuers, issuer)
-	return f.changed, f.err
+	f.issuers = append(f.issuers, obs.Issuer)
+	return f.changed, f.advisory, f.err
 }
 
 func TestCertificatePinFlagsANewIssuer(t *testing.T) {

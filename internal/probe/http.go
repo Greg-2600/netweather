@@ -47,8 +47,13 @@ type Result struct {
 	// certificate's issuer DN and expiry. Pinning is not implied.
 	CertIssuer   string
 	CertNotAfter time.Time
-	ErrorClass   string
-	Err          error
+	// CertChainLength and CertIntermediateSPKI describe the chain shape. They
+	// are recorded for the pin baseline and reported, never treated as a
+	// verdict on their own (CLASSIFIER.md §3.5).
+	CertChainLength      int
+	CertIntermediateSPKI string
+	ErrorClass           string
+	Err                  error
 }
 
 // Failed reports whether the exchange produced a transport-class failure.

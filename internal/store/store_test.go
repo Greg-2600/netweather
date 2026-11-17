@@ -67,8 +67,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 14 {
-		t.Errorf("schema version = %d, want 14", stats.SchemaVersion)
+	if stats.SchemaVersion != 15 {
+		t.Errorf("schema version = %d, want 15", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -96,7 +96,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 14 {
+	if err != nil || version != 15 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -2271,5 +2271,73 @@ func TestSeriesForTargetsReadsManyTargetsInOneQuery(t *testing.T) {
 	// An unknown resolution is refused rather than guessed.
 	if _, err := s.SeriesForTargets(ctx, []string{"t1"}, "local", "2h", base, now); err == nil {
 		t.Fatal("an unknown resolution was accepted")
+	}
+}
+
+func TestCertPinReportsChainChangesInformational(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	const issuer = "CN=R11,O=Let's Encrypt,C=US"
+
+	// The first observation records the chain as the baseline.
+	changed, advisory, err := s.ObserveCert(ctx, store.CertObservation{
+		TargetID: "t1", Issuer: issuer, ChainLength: 2, IntermediateSPKI: "aaaa",
+	}, now)
+	if err != nil || changed || advisory != "" {
+		t.Fatalf("baseline = (%v, %q, %v)", changed, advisory, err)
+	}
+
+	// Same issuer, different chain length: informational, not a change.
+	changed, advisory, err = s.ObserveCert(ctx, store.CertObservation{
+		TargetID: "t1", Issuer: issuer, ChainLength: 3, IntermediateSPKI: "bbbb",
+	}, now.Add(time.Hour))
+	if err != nil || changed {
+		t.Fatalf("chain change = (%v, %q, %v)", changed, advisory, err)
+	}
+	if !strings.Contains(advisory, "chain length changed") {
+		t.Fatalf("advisory = %q", advisory)
+	}
+
+	// The new shape becomes the baseline, so repeating it is quiet.
+	changed, advisory, err = s.ObserveCert(ctx, store.CertObservation{
+		TargetID: "t1", Issuer: issuer, ChainLength: 3, IntermediateSPKI: "bbbb",
+	}, now.Add(2*time.Hour))
+	if err != nil || changed || advisory != "" {
+		t.Fatalf("repeat = (%v, %q, %v)", changed, advisory, err)
+	}
+
+	// A different intermediate at the same length is also informational.
+	changed, advisory, err = s.ObserveCert(ctx, store.CertObservation{
+		TargetID: "t1", Issuer: issuer, ChainLength: 3, IntermediateSPKI: "cccc",
+	}, now.Add(3*time.Hour))
+	if err != nil || changed {
+		t.Fatalf("intermediate change = (%v, %q, %v)", changed, advisory, err)
+	}
+	if !strings.Contains(advisory, "intermediate certificate changed") {
+		t.Fatalf("advisory = %q", advisory)
+	}
+
+	// A new issuer is still the one-time flag, chain info notwithstanding.
+	changed, advisory, err = s.ObserveCert(ctx, store.CertObservation{
+		TargetID: "t1", Issuer: "CN=GTS CA 1P5,O=Google Trust Services LLC,C=US",
+		ChainLength: 3, IntermediateSPKI: "cccc",
+	}, now.Add(4*time.Hour))
+	if err != nil || !changed || advisory != "" {
+		t.Fatalf("new issuer = (%v, %q, %v)", changed, advisory, err)
+	}
+
+	// The read path exposes the learned shape: the longest chain and the most
+	// recent intermediate.
+	row, err := s.TargetByID(ctx, "local", "t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.CertChainLen != 3 || row.CertIntermediateSPKI != "cccc" {
+		t.Fatalf("row chain = (%d, %q)", row.CertChainLen, row.CertIntermediateSPKI)
 	}
 }

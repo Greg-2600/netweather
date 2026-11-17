@@ -67,6 +67,7 @@ func (i Instruments) Run(ctx context.Context, t Target) probe.Result {
 		return probe.Result{
 			Latency: r.Latency, ErrorClass: r.ErrorClass, Err: r.Err,
 			CertIssuer: r.Issuer, CertNotAfter: r.NotAfter,
+			CertChainLength: r.ChainLength, CertIntermediateSPKI: r.IntermediateSPKI,
 		}
 	case "tcp", "tcpping":
 		if i.TCP == nil {
@@ -105,11 +106,11 @@ type Sink interface {
 	Record(ctx context.Context, probes []store.Probe) error
 }
 
-// Pins learns and checks certificate issuers. store.Store satisfies it. Nil
-// disables pinning, which is the right default for a vantage that has no
+// Pins learns certificate issuers and chain shapes. store.Store satisfies it.
+// Nil disables pinning, which is the right default for a vantage that has no
 // business pinning someone else's names.
 type Pins interface {
-	ObserveCertIssuer(ctx context.Context, targetID, issuer string, at time.Time) (changed bool, err error)
+	ObserveCert(ctx context.Context, obs store.CertObservation, at time.Time) (changed bool, advisory string, err error)
 }
 
 // Agent runs due targets and records the results.
@@ -245,7 +246,10 @@ func (a *Agent) Step(ctx context.Context) (int, error) {
 		release()
 
 		if a.Pins != nil && t.Instrument == "tls" && res.CertIssuer != "" {
-			changed, err := a.Pins.ObserveCertIssuer(ctx, t.ID, res.CertIssuer, now)
+			changed, advisory, err := a.Pins.ObserveCert(ctx, store.CertObservation{
+				TargetID: t.ID, Issuer: res.CertIssuer,
+				ChainLength: res.CertChainLength, IntermediateSPKI: res.CertIntermediateSPKI,
+			}, now)
 			switch {
 			case err != nil:
 				a.logger().Debug("certificate pin check failed",
@@ -256,6 +260,13 @@ func (a *Agent) Step(ctx context.Context) (int, error) {
 				// arrival: CDN-fronted sites rotate CAs legitimately.
 				res.ErrorClass = "tls_issuer_unexpected"
 				res.Err = fmt.Errorf("agent: issuer changed for %s", t.Host)
+			case advisory != "":
+				// A chain-shape change is informational by design: an
+				// intermediate rotation is normal, and the chain is not a
+				// verdict (CLASSIFIER.md §3.5).
+				a.logger().Info("certificate chain changed",
+					"event", "cert_chain_changed", "component", "agent",
+					"target", t.Host, "detail", advisory)
 			}
 		}
 

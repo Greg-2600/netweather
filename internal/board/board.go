@@ -58,6 +58,10 @@ type Target struct {
 	CertNotAfter time.Time
 	// CertPinned reports whether an issuer set has been learned.
 	CertPinned bool
+	// CertChainLen and CertIntermediateSPKI are the learned chain shape. Zero
+	// and empty mean "not learned yet".
+	CertChainLen         int
+	CertIntermediateSPKI string
 }
 
 // Source returns the current board. It must be safe for concurrent use.

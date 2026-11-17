@@ -226,7 +226,7 @@ func TestTargetDetailShowsCertificateObservation(t *testing.T) {
 		Sector: "airline", Country: "US", State: board.StateUp,
 		Port: 443, Probe: "tls", Tier: 2, IntervalS: 300,
 		CertIssuer: "CN=R11,O=Let's Encrypt,C=US", CertNotAfter: expiry,
-		CertPinned: true,
+		CertPinned: true, CertChainLen: 2, CertIntermediateSPKI: "aabbccddeeff001122",
 	})
 
 	ts := newServerWithDetails(t, testToken, m, &fakeChanges{})
@@ -243,6 +243,7 @@ func TestTargetDetailShowsCertificateObservation(t *testing.T) {
 		">Certificate issuer<", "CN=R11,O=Let&#39;s Encrypt,C=US",
 		">Certificate expires<", "2027-01-16",
 		">Certificate pin<", ">issuer learned<",
+		">Certificate chain<", "2 certificate(s)", "intermediate aabbccddeeff0011",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("certificate row missing %q", want)

@@ -2,8 +2,10 @@ package probe
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"net"
 	"time"
 
@@ -42,8 +44,14 @@ type TLSResult struct {
 	Certificate *x509.Certificate
 	Issuer      string
 	NotAfter    time.Time
-	ErrorClass  string
-	Err         error
+	// ChainLength is how many certificates the server sent, including the leaf.
+	// It is a weak tamper signal and informational only (CLASSIFIER.md §3.5).
+	ChainLength int
+	// IntermediateSPKI is the SHA-256 hex of the first intermediate's DER
+	// subjectPublicKeyInfo. Empty when the server sent only a leaf.
+	IntermediateSPKI string
+	ErrorClass       string
+	Err              error
 }
 
 // Failed reports a transport-class failure.
@@ -85,11 +93,21 @@ func (p *TLS) Do(ctx context.Context, address string) TLSResult {
 
 	res := TLSResult{Latency: time.Since(start)}
 	state := client.ConnectionState()
+	res.ChainLength = len(state.PeerCertificates)
 	if len(state.PeerCertificates) > 0 {
 		leaf := state.PeerCertificates[0]
 		res.Certificate = leaf
 		res.Issuer = leaf.Issuer.String()
 		res.NotAfter = leaf.NotAfter
+	}
+	if len(state.PeerCertificates) > 1 {
+		// The first intermediate is the one that actually signs the leaf, so it
+		// is the meaningful part of the chain to remember. A chain that changes
+		// shape is recorded and reported, never treated as proof of tampering.
+		if der, err := x509.MarshalPKIXPublicKey(state.PeerCertificates[1].PublicKey); err == nil {
+			sum := sha256.Sum256(der)
+			res.IntermediateSPKI = hex.EncodeToString(sum[:])
+		}
 	}
 	return res
 }

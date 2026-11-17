@@ -118,6 +118,10 @@ type TargetRow struct {
 	CertNotAfter time.Time
 	// CertPinned reports whether any issuer has been learned for this target.
 	CertPinned bool
+	// CertChainLen and CertIntermediateSPKI describe the learned chain shape.
+	// Zero/empty means "not learned yet".
+	CertChainLen         int
+	CertIntermediateSPKI string
 }
 
 // TargetsWithState is the board query: every enabled target plus its current
@@ -131,7 +135,11 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 		       COALESCE(ts.state, 'unknown'), COALESCE(ts.since, 0),
 		       COALESCE(p.stage, ''), COALESCE(p.error_class, ''), COALESCE(p.http_status, 0),
 		       COALESCE(p.cert_issuer, ''), COALESCE(p.cert_not_after, 0),
-		       EXISTS(SELECT 1 FROM cert_pin cp WHERE cp.target_id = t.id)
+		       EXISTS(SELECT 1 FROM cert_pin cp WHERE cp.target_id = t.id),
+		       COALESCE((SELECT MAX(cp.chain_len) FROM cert_pin cp WHERE cp.target_id = t.id), 0),
+		       COALESCE((SELECT cp.intermediate_spki FROM cert_pin cp
+		                 WHERE cp.target_id = t.id AND cp.intermediate_spki IS NOT NULL
+		                 ORDER BY cp.last_seen DESC LIMIT 1), '')
 		FROM target t
 		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
 		LEFT JOIN probe p ON p.id = (
@@ -161,6 +169,7 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 			&row.State, &since,
 			&row.Stage, &row.ErrorClass, &row.HTTPStatus,
 			&row.CertIssuer, &notAfter, &row.CertPinned,
+			&row.CertChainLen, &row.CertIntermediateSPKI,
 		); err != nil {
 			return nil, fmt.Errorf("store: scan target: %w", err)
 		}
@@ -291,7 +300,11 @@ func (s *Store) TargetByID(ctx context.Context, vantageID, id string) (TargetRow
 		       COALESCE(ts.state, 'unknown'), COALESCE(ts.since, 0),
 		       COALESCE(p.stage, ''), COALESCE(p.error_class, ''), COALESCE(p.http_status, 0),
 		       COALESCE(p.cert_issuer, ''), COALESCE(p.cert_not_after, 0),
-		       EXISTS(SELECT 1 FROM cert_pin cp WHERE cp.target_id = t.id)
+		       EXISTS(SELECT 1 FROM cert_pin cp WHERE cp.target_id = t.id),
+		       COALESCE((SELECT MAX(cp.chain_len) FROM cert_pin cp WHERE cp.target_id = t.id), 0),
+		       COALESCE((SELECT cp.intermediate_spki FROM cert_pin cp
+		                 WHERE cp.target_id = t.id AND cp.intermediate_spki IS NOT NULL
+		                 ORDER BY cp.last_seen DESC LIMIT 1), '')
 		FROM target t
 		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
 		LEFT JOIN probe p ON p.id = (
@@ -307,6 +320,7 @@ func (s *Store) TargetByID(ctx context.Context, vantageID, id string) (TargetRow
 		&row.State, &since,
 		&row.Stage, &row.ErrorClass, &row.HTTPStatus,
 		&row.CertIssuer, &notAfter, &row.CertPinned,
+		&row.CertChainLen, &row.CertIntermediateSPKI,
 	)
 	if err != nil {
 		return TargetRow{}, err

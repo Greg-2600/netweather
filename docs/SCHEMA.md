@@ -423,9 +423,11 @@ CREATE INDEX dns_observation_target ON dns_observation(target_id, ts DESC);
 
 CREATE TABLE cert_pin (
     target_id  TEXT NOT NULL REFERENCES target(id),
-    issuer_set TEXT NOT NULL,                 -- JSON array of issuer DN hashes — never leaf SPKI
+    issuer_set TEXT NOT NULL,                 -- SHA-256 hex of the issuer DN - never leaf SPKI
     first_seen INTEGER NOT NULL,
     last_seen  INTEGER NOT NULL,
+    chain_len  INTEGER NOT NULL DEFAULT 0,    -- certificates sent, 0 = not observed
+    intermediate_spki TEXT,                   -- SHA-256 hex of the signing intermediate's SPKI
     PRIMARY KEY (target_id, issuer_set)
 ) WITHOUT ROWID;
 ```
@@ -435,6 +437,8 @@ Per-resolver baselines are the fix for `CLASSIFIER.md` §3.2. A resolver's own h
 `cert_pin` keeps a **set** of accepted issuer sets, with a grace rule in code: a new issuer is accepted on first sight and flagged once, never treated as `TAMPER` on arrival. CDN-fronted sites rotate CAs legitimately.
 
 **Implemented in migration `0013`:** `store.ObserveCertIssuer` records one row per target and issuer hash (SHA-256 of the issuer DN; the leaf SPKI is never stored). The first issuer for a target is a baseline and is not flagged. A new issuer after a baseline is inserted and reported as a one-time change, which the agent turns into `tls_issuer_unexpected`. A repeat of an accepted issuer only refreshes `last_seen`. The drawer's "Certificate pin" row shows whether a baseline exists, not that the certificate is trusted.
+
+**Migration `0015`** added `chain_len` and `intermediate_spki`. `store.ObserveCert` fills them from the handshake; a chain-shape change under a known issuer returns an advisory string and updates the recorded shape, and it is never a verdict. A repeat with no chain information leaves the stored columns alone.
 
 ---
 
