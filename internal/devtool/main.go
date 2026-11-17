@@ -32,6 +32,46 @@ const (
 	distDir      = "dist"
 )
 
+// coverageThresholds is the enforced per-package coverage floor. docs/QUALITY.md
+// §7 is the readable copy of this table; TestCoverageFloorsMatchQualityDoc fails
+// if the two drift, because a floor that only exists in prose is not a gate.
+var coverageThresholds = map[string]float64{
+	"/internal/agent":        85,
+	"/internal/anomaly":      90,
+	"/internal/api":          90,
+	"/internal/baseline":     95,
+	"/internal/board":        90,
+	"/internal/classify":     95,
+	"/internal/config":       90,
+	"/internal/confirm":      95,
+	"/internal/correlate":    90,
+	"/internal/corridor":     90,
+	"/internal/dnsdiv":       95,
+	"/internal/doctor":       85,
+	"/internal/enrich":       85,
+	"/internal/fakeinternet": 75,
+	"/internal/feeds":        85,
+	"/internal/ihi":          95,
+	"/internal/incidents":    85,
+	"/internal/logging":      80,
+	"/internal/metrics":      90,
+	"/internal/netx":         95,
+	"/internal/probe":        90,
+	"/internal/schedule":     85,
+	"/internal/seed":         85,
+	"/internal/selfcheck":    85,
+	"/internal/startup":      75,
+	"/internal/state":        90,
+	"/internal/store":        80,
+	"/internal/streamlimit":  90,
+	"/internal/bytecap":      90,
+	"/internal/web":          72,
+	"/cmd/netweather":        30, // serve is wiring; the container smoke test owns it
+	"/internal/verdict":      95,
+	"/internal/version":      70,
+	"/internal/devtool":      15, // profile parser + ldflags tests
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -243,42 +283,7 @@ func taskCover() error {
 		return err
 	}
 
-	thresholds := map[string]float64{
-		"/internal/agent":        85,
-		"/internal/anomaly":      90,
-		"/internal/api":          90,
-		"/internal/baseline":     95,
-		"/internal/board":        90,
-		"/internal/classify":     95,
-		"/internal/config":       90,
-		"/internal/confirm":      95,
-		"/internal/correlate":    90,
-		"/internal/corridor":     90,
-		"/internal/dnsdiv":       95,
-		"/internal/doctor":       85,
-		"/internal/enrich":       85,
-		"/internal/fakeinternet": 75,
-		"/internal/feeds":        85,
-		"/internal/ihi":          95,
-		"/internal/incidents":    85,
-		"/internal/logging":      80,
-		"/internal/metrics":      90,
-		"/internal/netx":         95,
-		"/internal/probe":        90,
-		"/internal/schedule":     85,
-		"/internal/seed":         85,
-		"/internal/selfcheck":    85,
-		"/internal/startup":      75,
-		"/internal/state":        90,
-		"/internal/store":        80,
-		"/internal/streamlimit":  90,
-		"/internal/bytecap":      90,
-		"/internal/web":          72,
-		"/cmd/netweather":        30, // serve is wiring; the container smoke test owns it
-		"/internal/verdict":      95,
-		"/internal/version":      70,
-		"/internal/devtool":      15, // profile parser + ldflags tests
-	}
+	thresholds := coverageThresholds
 
 	sort.Slice(stats, func(i, j int) bool { return stats[i].pkg < stats[j].pkg })
 
