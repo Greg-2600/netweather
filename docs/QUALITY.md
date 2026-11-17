@@ -465,11 +465,18 @@ func TestMain(m *testing.M) {
 
 | Scope | Gate |
 |---|---|
-| `internal/classify` | **95%** — it decides whether the tool is useful |
-| `internal/correlate` | **90%** |
-| `internal/schedule` | **85%** |
-| everything else | **70%** |
+| `internal/classify`, `internal/baseline`, `internal/dnsdiv`, `internal/netx` | **95%** |
+| `internal/anomaly`, `internal/api`, `internal/board`, `internal/config`, `internal/correlate`, `internal/corridor`, `internal/metrics`, `internal/probe`, `internal/state`, `internal/streamlimit`, `internal/torcap` | **90%** |
+| `internal/agent`, `internal/doctor`, `internal/enrich`, `internal/feeds`, `internal/incidents`, `internal/schedule`, `internal/seed`, `internal/selfcheck` | **85%** |
+| `internal/logging`, `internal/store` | **80%** |
+| `internal/fakeinternet`, `internal/startup` | **75%** |
+| `internal/web` | **72%** |
+| `cmd/netweather` | **30%** (wire-up; the container smoke test owns it) |
+| `internal/devtool` | **15%** (profile parser and ldflags tests) |
+| `internal/version` | **70%** |
 | overall | reported, not gated |
+
+The floors live in `internal/devtool/main.go`, which is the thing that enforces them; this table is the readable copy, and the two are checked together when either changes.
 
 Always `-race -covermode=atomic`. Coverage is uploaded per-PR and diffed, so a PR that drops `classify` coverage is visible even if the global number stays flat.
 
@@ -484,7 +491,7 @@ Always `-race -covermode=atomic`. Coverage is uploaded per-PR and diffed, so a P
 | lint | `go tool golangci-lint run` (pinned in `go.mod`) | ✅ |
 | modules | `go mod verify` + `go mod tidy -diff` (no uncommitted tidy) | ✅ |
 | test | `devtool test` (`-race`, `-shuffle=on`, `-count=1`) | ✅ |
-| coverage | `devtool cover`: profile + per-package floors (70% default; 95% classify, 90% correlate, 85% schedule once they exist) | ✅ |
+| coverage | `devtool cover`: profile + the per-package floors in §7 (the same numbers `internal/devtool/main.go` enforces) | ✅ |
 | ui test (browser) | Playwright + chromium, `-tags=uitest` | ✅ (paths touching `internal/web`, `internal/board`, templates) |
 | fuzz (short) | `go test -run=^$ -fuzz=FuzzScrubStringIsIdempotent -fuzztime=20s` | ✅ |
 | vuln | `go tool govulncheck ./...` (pinned in `go.mod`) | ✅ |

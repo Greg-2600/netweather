@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -864,21 +865,46 @@ func TestDNSDoNSErrors(t *testing.T) {
 	}
 }
 
+// listenUDPAndTCP binds a UDP socket and a TCP listener on the same loopback
+// port, which is what a DNS server does. Windows will not reliably let one
+// process co-bind a UDP socket to a TCP ephemeral port, so exhausting the
+// retries there is a platform limit, not a failure of the code under test; the
+// TCP retry path is covered on Linux CI.
+func listenUDPAndTCP(t *testing.T) (net.PacketConn, net.Listener) {
+	t.Helper()
+
+	var lastErr error
+	for attempt := 0; attempt < 10; attempt++ {
+		tcpLn, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		pc, err := net.ListenPacket("udp", tcpLn.Addr().String())
+		if err != nil {
+			lastErr = err
+			_ = tcpLn.Close()
+			continue
+		}
+		return pc, tcpLn
+	}
+	if runtime.GOOS == "windows" {
+		t.Skipf("Windows refuses the UDP/TCP co-bind this test needs: %v", lastErr)
+	}
+	t.Fatalf("bind a UDP/TCP pair: %v", lastErr)
+	return nil, nil
+}
+
 func TestDNSDoNSRetriesATruncatedAnswerOverTCP(t *testing.T) {
 	t.Parallel()
 
-	tcpLn, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = tcpLn.Close() })
+	udpPC, tcpLn := listenUDPAndTCP(t)
+	t.Cleanup(func() {
+		_ = udpPC.Close()
+		_ = tcpLn.Close()
+	})
 
 	addr := tcpLn.Addr().(*net.TCPAddr)
-	udpPC, err := net.ListenPacket("udp", addr.String())
-	if err != nil {
-		t.Fatalf("bind udp: %v", err)
-	}
-	t.Cleanup(func() { _ = udpPC.Close() })
 
 	go func() {
 		for {
