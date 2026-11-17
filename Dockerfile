@@ -30,8 +30,37 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # Without this, the non-root process cannot create /data/netweather.db.
 RUN mkdir -p /out/data
 
+# Debug variant (docs/IMAGE.md §1): the same binary plus a shell and the network
+# tools an operator needs on a remote instance. It is deliberately a second tag,
+# never the default: the release image has no shell. Pinned by digest like the
+# other stages.
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:e9b8c3739e5fb5fc778843a2ce74f8620588c9ddc9c44918cead527abcb0b628 AS debug
+
+USER 0
+# Wolfi's own repository carries the debugging tools; the base image points at
+# Chainguard's package repo, which does not carry them. `traceroute` is not a
+# separate Wolfi package, but the installed set provides the binary.
+RUN echo 'https://packages.wolfi.dev/os' >> /etc/apk/repositories \
+ && apk add --no-cache ca-certificates-bundle tzdata bind-tools iputils tcpdump curl netcat-openbsd \
+ && mkdir -p /data \
+ && chown 65532:65532 /data
+
+COPY --from=build /out/netweather /netweather
+
+USER 65532:65532
+EXPOSE 2600
+
+ENV NETWEATHER_UI_LISTEN=0.0.0.0:2600 \
+    NETWEATHER_DATA=/data
+
+VOLUME ["/data"]
+
+ENTRYPOINT ["/netweather"]
+CMD ["serve"]
+
 # Runtime: static, no shell, no package manager, no libc beyond what Go needs.
-# Pinned by digest for the same reason as the builder.
+# Pinned by digest for the same reason as the builder. This stays the last stage
+# so a plain `docker build` produces the release image, not the debug one.
 FROM cgr.dev/chainguard/static:latest@sha256:fc42af33e643f20d08baf03cddcc1c02ba57052dfb02edb0d79f3fc47bcea8d9
 
 COPY --from=build /out/netweather /netweather

@@ -10,8 +10,9 @@
 
 | Image | Role |
 |---|---|
-| `cgr.dev/chainguard/static` | **Release image.** No shell, no package manager, no libc tooling. CA certs + tzdata only. |
-| `cgr.dev/chainguard/wolfi-base` | **Debug image** (`:debug` tag). glibc, `apk`, and network tools for troubleshooting. |
+| `cgr.dev/chainguard/static` | **Release base.** No shell, no package manager, no libc tooling. CA certs + tzdata only. |
+| `ghcr.io/<owner>/netweather:<version>` | **Release image**, built from `cgr.dev/chainguard/static`. The default a deployment should run. |
+| `ghcr.io/<owner>/netweather:<version>-debug` | **Debug variant**, built from `cgr.dev/chainguard/wolfi-base`: glibc, `apk`, a shell, and network tools for troubleshooting. Same binary, different base and tag; never the default. **Published and signed** by the release job. |
 | `ghcr.io/<owner>/netweather-tor` | **Tor sidecar.** Built on Alpine, not Wolfi: Chainguard's Wolfi base does not package `tor`. Alpine 3.20 packages it, is small, and keeps the `torrc` baked in and the rebuild cadence ours. **Published and signed** by the release job; `compose.yaml` builds the same Dockerfile locally by default. |
 
 Why Wolfi rather than a pentest distro:
@@ -86,9 +87,14 @@ ENTRYPOINT ["/netweather"]
 
 # ---------- debug ----------
 FROM cgr.dev/chainguard/wolfi-base:latest AS debug
-RUN apk add --no-cache \
+USER 0
+# The base points at Chainguard's repo, which does not carry these tools; add
+# Wolfi's own repository first. The shipped build logs this line so the image is
+# reproducible from the Dockerfile alone.
+RUN echo 'https://packages.wolfi.dev/os' >> /etc/apk/repositories \
+ && apk add --no-cache \
       ca-certificates-bundle tzdata \
-      bind-tools iputils traceroute tcpdump
+      bind-tools iputils tcpdump curl netcat-openbsd
 COPY --from=build /out/netweather /netweather
 USER 65532:65532
 EXPOSE 2600
@@ -100,7 +106,7 @@ Notes:
 - `CGO_ENABLED=0` — the binary is fully static, which is why the release image needs no libc at all. SQLite is `modernc.org/sqlite` (pure Go) precisely so this stays true.
 - `-trimpath` and pinned digests in production for reproducibility.
 - The release image must contain **CA certificates and tzdata** — TLS verification and `TZ` both depend on them. Verify in CI rather than assuming.
-- Two targets, two tags: `netweather:1.2.3` and `netweather:1.2.3-debug`.
+- Two targets, two tags: `netweather:1.2.3` and `netweather:1.2.3-debug`. The release job builds, pushes, and signs both, and the plain tag stays the default: the debug tag is the one with a shell.
 
 Network topology (planes, MTU, DNS, access posture) is specified separately in [`NETWORKING.md`](NETWORKING.md) — the compose file below is the shape, that document is the reasoning.
 

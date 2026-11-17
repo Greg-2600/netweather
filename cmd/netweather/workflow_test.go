@@ -129,6 +129,66 @@ func TestCICarriesTheDeclaredScans(t *testing.T) {
 	}
 }
 
+// TestReleaseBuildsTheDebugVariant keeps IMAGE.md's debug image honest. The
+// docs promise a signed <version>-debug tag built from the debug target; a job
+// that silently disappears or stops targeting debug would leave an operator
+// with a documented image that does not exist.
+func TestReleaseBuildsTheDebugVariant(t *testing.T) {
+	t.Parallel()
+
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release.yml")) // #nosec G304 -- repo file.
+	if err != nil {
+		t.Fatalf("release.yml: %v", err)
+	}
+
+	var wf struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string         `yaml:"name"`
+				Uses string         `yaml:"uses"`
+				Run  string         `yaml:"run"`
+				With map[string]any `yaml:"with"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &wf); err != nil {
+		t.Fatalf("release.yml: %v", err)
+	}
+
+	debug, ok := wf.Jobs["debug-image"]
+	if !ok {
+		t.Fatal("release.yml has no debug-image job")
+	}
+	var built, tagged, signed bool
+	for _, step := range debug.Steps {
+		if strings.Contains(step.Uses, "docker/build-push-action") {
+			if fmt.Sprint(step.With["target"]) == "debug" {
+				built = true
+			}
+			if tags, ok := step.With["tags"].(string); ok && strings.Contains(tags, "-debug") {
+				tagged = true
+			}
+		}
+		if strings.Contains(step.Run, "cosign sign") {
+			signed = true
+		}
+	}
+	if !built {
+		t.Error("the debug job does not build the debug target")
+	}
+	if !tagged {
+		t.Error("the debug job does not push a -debug tag")
+	}
+	if !signed {
+		t.Error("the debug image is not signed")
+	}
+}
+
+// TestTorSidecarIsBakedIn pins the two properties that make the sidecar safe:
 // the torrc is client-only with no exit traffic, and compose builds that image
 // rather than pulling a third-party proxy.
 func TestTorSidecarIsBakedIn(t *testing.T) {
