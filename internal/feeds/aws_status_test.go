@@ -136,3 +136,67 @@ func TestAWSStatusRejectsBadResponses(t *testing.T) {
 		t.Fatal("malformed XML should be an error")
 	}
 }
+
+func TestAzureStatusUsesTheSharedRSSAdapter(t *testing.T) {
+	t.Parallel()
+
+	const feed = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>Azure SQL Database - Service Issue</title>
+      <description>Some connections are failing in West Europe.</description>
+      <pubDate>Tue, 17 Nov 2026 10:00:00 GMT</pubDate>
+      <guid>azure-1</guid>
+    </item>
+    <item>
+      <title>Azure Virtual Machines - Maintenance</title>
+      <description>Planned platform work.</description>
+      <pubDate>Tue, 17 Nov 2026 09:00:00 GMT</pubDate>
+      <guid>azure-2</guid>
+    </item>
+    <item>
+      <title>All services are healthy</title>
+      <description>Nothing to report.</description>
+      <pubDate>Tue, 17 Nov 2026 08:00:00 GMT</pubDate>
+      <guid>azure-3</guid>
+    </item>
+    <item>
+      <title>Azure Functions - Resolved</title>
+      <description>Recovered.</description>
+      <pubDate>Tue, 17 Nov 2026 07:00:00 GMT</pubDate>
+      <guid>azure-4</guid>
+    </item>
+  </channel>
+</rss>`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = w.Write([]byte(feed))
+	}))
+	defer srv.Close()
+
+	azure := feeds.NewAzureStatus(srv.Client())
+	azure.URL = srv.URL
+	azure.Now = func() time.Time { return time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC) }
+
+	events, err := azure.Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want the issue and the maintenance: %+v", len(events), events)
+	}
+	if events[0].Kind != "azure_status" || events[0].Severity != 0.8 {
+		t.Fatalf("issue = %+v", events[0])
+	}
+	if events[1].Severity != 0.2 {
+		t.Fatalf("maintenance = %+v", events[1])
+	}
+	for _, e := range events {
+		if strings.Contains(strings.ToLower(e.Payload), "resolved") ||
+			strings.Contains(strings.ToLower(e.Payload), "healthy") {
+			t.Fatalf("a normal or resolved item leaked: %+v", e)
+		}
+	}
+}

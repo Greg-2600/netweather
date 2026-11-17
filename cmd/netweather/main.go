@@ -866,6 +866,17 @@ func buildFeedPollers(st *store.Store, lg *logging.Logger) []*feeds.Poller {
 				Sink:   st,
 				Every:  5 * time.Minute,
 			})
+		case "azure-status":
+			azure := feeds.NewAzureStatus(client)
+			if endpoint := strings.TrimSpace(os.Getenv("NETWEATHER_AZURE_STATUS_URL")); endpoint != "" {
+				azure.URL = endpoint
+			}
+			out = append(out, &feeds.Poller{
+				Feed:   "azure-status",
+				Source: azure,
+				Sink:   st,
+				Every:  5 * time.Minute,
+			})
 		}
 	}
 	return out
