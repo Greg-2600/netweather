@@ -2139,6 +2139,19 @@ func TestCorridorsUpsertSamplesAndEvents(t *testing.T) {
 		t.Fatalf("windowed samples = %+v, %v", samples, err)
 	}
 
+	// The series query returns every corridor at once, oldest first, which is
+	// what the page's 24-hour shapes read.
+	series, err := s.CorridorSeries(ctx, base.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(series["nyc-lon"]) != 2 || !series["nyc-lon"][0].TS.Equal(base) {
+		t.Fatalf("series = %+v", series)
+	}
+	if len(series["lon-sin"]) != 0 {
+		t.Fatalf("a corridor with no samples appeared in the series: %+v", series["lon-sin"])
+	}
+
 	// Status reports the newest sample and no open event yet.
 	status, err := s.CorridorStatus(ctx)
 	if err != nil {

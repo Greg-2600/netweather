@@ -2699,12 +2699,18 @@ func TestBoardDensityToggle(t *testing.T) {
 }
 
 type fakeCorridorStatus struct {
-	statuses []store.CorridorStatus
-	err      error
+	statuses  []store.CorridorStatus
+	series    map[string][]store.CorridorSample
+	err       error
+	seriesErr error
 }
 
 func (f *fakeCorridorStatus) CorridorStatus(context.Context) ([]store.CorridorStatus, error) {
 	return f.statuses, f.err
+}
+
+func (f *fakeCorridorStatus) CorridorSeries(context.Context, time.Time) (map[string][]store.CorridorSample, error) {
+	return f.series, f.seriesErr
 }
 
 func newServerWithCorridors(t *testing.T, token string, m *board.Memory, corridors web.CorridorStatus) *httptest.Server {
@@ -2741,10 +2747,21 @@ func TestCorridorPage(t *testing.T) {
 		ID: "ce-1", CorridorID: "nyc-lon", Kind: "rtt_step",
 		StartedAt: started, Detail: "rtt 190ms against 82ms",
 	}
-	corridors := &fakeCorridorStatus{statuses: []store.CorridorStatus{
-		{Corridor: store.Corridor{ID: "nyc-lon", From: "NYC", To: "LON"}, Latest: &latest, Open: &open},
-		{Corridor: store.Corridor{ID: "lon-sin", From: "LON", To: "SIN"}},
-	}}
+	corridors := &fakeCorridorStatus{
+		statuses: []store.CorridorStatus{
+			{Corridor: store.Corridor{ID: "nyc-lon", From: "NYC", To: "LON"}, Latest: &latest, Open: &open},
+			{Corridor: store.Corridor{ID: "lon-sin", From: "LON", To: "SIN"}},
+		},
+		// Three successful samples: enough for a shape, and their median is the
+		// baseline the page prints.
+		series: map[string][]store.CorridorSample{
+			"nyc-lon": {
+				{CorridorID: "nyc-lon", TS: started, RTTMS: 80, OK: true},
+				{CorridorID: "nyc-lon", TS: started.Add(5 * time.Minute), RTTMS: 90, OK: true},
+				{CorridorID: "nyc-lon", TS: started.Add(10 * time.Minute), RTTMS: 100, OK: true},
+			},
+		},
+	}
 
 	ts := newServerWithCorridors(t, testToken, fixture(), corridors)
 	client, _ := newClient(t)
@@ -2766,10 +2783,59 @@ func TestCorridorPage(t *testing.T) {
 		"nyc-lon", "NYC → LON", "83 ms", "0%",
 		"step change", "rtt_step", "rtt 190ms against 82ms",
 		"waiting for a sample", "LON → SIN",
+		// The baseline is the median of the window, not the latest sample.
+		">90 ms<",
+		// A three-sample shape and an empty five-cell loss bar.
+		"▁▅█",
+		"▱▱▱▱▱",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("corridor page missing %q", want)
 		}
+	}
+	if strings.Contains(page, `data-testid="corridor-series-note"`) {
+		t.Error("a series note rendered with samples present")
+	}
+	// The corridor without samples has no fabricated shape.
+	if strings.Count(page, `data-testid="corridor-spark"`) != 1 {
+		t.Errorf("spark shapes = %d, want only the sampled corridor", strings.Count(page, `data-testid="corridor-spark"`))
+	}
+}
+
+func TestCorridorPageSeriesFailureIsStated(t *testing.T) {
+	t.Parallel()
+
+	latest := store.CorridorSample{CorridorID: "nyc-lon", TS: time.Now().UTC(), RTTMS: 83, OK: true}
+	corridors := &fakeCorridorStatus{
+		statuses: []store.CorridorStatus{
+			{Corridor: store.Corridor{ID: "nyc-lon", From: "NYC", To: "LON"}, Latest: &latest},
+		},
+		seriesErr: errors.New("db down"),
+	}
+
+	ts := newServerWithCorridors(t, testToken, fixture(), corridors)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/corridors") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	// A failed history query must not take the current sample away, and must
+	// say why the shapes are missing.
+	if !strings.Contains(page, `data-testid="corridor-series-note"`) {
+		t.Fatalf("series failure was silent:\n%s", page)
+	}
+	if !strings.Contains(page, "temporarily unavailable") {
+		t.Error("series note does not say the history is unavailable")
+	}
+	if !strings.Contains(page, `data-testid="corridor-row"`) || !strings.Contains(page, "83 ms") {
+		t.Error("a series failure removed the current sample")
+	}
+	if strings.Contains(page, `data-testid="corridor-spark"`) {
+		t.Error("a spark rendered without a series")
 	}
 }
 

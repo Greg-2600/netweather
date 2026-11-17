@@ -28,8 +28,9 @@
     <table class="probes" data-testid="corridors">
       <thead>
         <tr>
-          <th>Corridor</th><th>Path</th><th>RTT</th><th>Loss</th>
-          <th>Sampled</th><th>State</th><th>Since</th><th>Detail</th>
+          <th>Corridor</th><th>Path</th><th>RTT</th><th>Baseline</th>
+          <th>24h</th><th>Loss</th><th>Sampled</th><th>State</th>
+          <th>Since</th><th>Detail</th>
         </tr>
       </thead>
       <tbody>
@@ -38,7 +39,12 @@
           <td class="mono">{{.ID}}</td>
           <td>{{.From}} → {{.To}}</td>
           <td class="mono">{{.RTT}}</td>
-          <td class="mono">{{.Loss}}</td>
+          <td class="mono">{{.Baseline}}</td>
+          <td>{{if .Spark}}<span class="spark mono" data-testid="corridor-spark"
+              aria-label="24-hour RTT shape">{{.Spark}}</span>{{else}}<span class="muted small">-</span>{{end}}</td>
+          <td class="mono">{{.Loss}}
+            <span class="loss-bar" data-testid="corridor-loss-bar"
+                  aria-label="loss {{.Loss}}">{{.LossBar}}</span></td>
           <td class="mono">{{.SampledAt}}</td>
           <td class="{{.StateCls}}">{{.State}}{{if .Kind}} ({{.Kind}}){{end}}</td>
           <td class="mono">{{.Since}}</td>
@@ -47,6 +53,9 @@
         {{end}}
       </tbody>
     </table>
+    {{if .SeriesNote}}
+    <p class="muted small" data-testid="corridor-series-note">{{.SeriesNote}}</p>
+    {{end}}
     {{else}}
     <p class="muted" data-testid="no-corridors">{{.Note}}</p>
     {{end}}

@@ -116,10 +116,11 @@ type CountryEvents interface {
 	RecentCountryEvents(ctx context.Context, since time.Time) (map[string]store.ExternalEvent, error)
 }
 
-// CorridorStatus supplies the corridor page: each corridor's latest sample and
-// open step change (DESIGN.md §9).
+// CorridorStatus supplies the corridor page: each corridor's latest sample,
+// open step change, and the samples behind its sparkline (DESIGN.md §9/§10.4).
 type CorridorStatus interface {
 	CorridorStatus(ctx context.Context) ([]store.CorridorStatus, error)
+	CorridorSeries(ctx context.Context, since time.Time) (map[string][]store.CorridorSample, error)
 }
 
 // IncidentAnnotator records the operator's ground truth for an incident.

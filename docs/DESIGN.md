@@ -860,7 +860,7 @@ One tile per country: ccTLD code + flag, coloured by reachability, with an IODA 
 
 Ten rows: RTT sparkline, loss bar, baseline band, step-change highlight.
 
-**Implemented:** `/corridors` lists one row per configured corridor with its current RTT, loss, sample time, state (`normal`, `no reply`, `step change`, or `waiting for a sample`), event kind, detail, and when the change started. It is a table rather than a sparkline chart because the detection rule is the product: a line without its six-hour baseline invites reading an absolute RTT as a verdict. Still specified: the per-corridor RTT sparkline and loss bar.
+**Implemented:** `/corridors` lists one row per configured corridor with its current RTT, its 24-hour baseline (the median successful RTT in the window the step rule compares against), a 24-hour RTT sparkline, a five-cell loss bar beside the exact percentage, sample time, state (`normal`, `no reply`, `step change`, or `waiting for a sample`), event kind, detail, and when the change started. The shapes are text glyphs rather than an image or a chart library, and the sparkline is omitted when there are fewer than two successful samples: a fabricated shape is worse than an empty cell. A failed history query is stated on the page and does not remove the current sample. Still specified: the baseline band drawn behind the sparkline, which would need a per-sample threshold the table does not render.
 
 ### 10.5 Target drawer
 

@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -1609,10 +1610,11 @@ func worstStateFromClass(class string) board.State {
 // sample and the open step change, not a sparkline: the detection rule is the
 // product, and a sparkline without a baseline would invite the wrong question.
 type corridorsView struct {
-	Version string
-	CSRF    string
-	Rows    []corridorRow
-	Note    string
+	Version    string
+	CSRF       string
+	Rows       []corridorRow
+	Note       string
+	SeriesNote string
 }
 
 type corridorRow struct {
@@ -1620,7 +1622,10 @@ type corridorRow struct {
 	From      string
 	To        string
 	RTT       string
+	Baseline  string
+	Spark     string
 	Loss      string
+	LossBar   string
 	SampledAt string
 	State     string
 	StateCls  string
@@ -1651,16 +1656,28 @@ func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
 		case len(statuses) == 0:
 			view.Note = "No corridors are configured. Add a `corridors:` section to the target file."
 		default:
+			series, seriesErr := s.deps.Corridors.CorridorSeries(
+				r.Context(), time.Now().UTC().Add(-24*time.Hour))
+			if seriesErr != nil {
+				s.deps.Logger.Warn("corridor series failed",
+					"event", "corridor_series_failed", "component", "http", "error", seriesErr)
+				view.SeriesNote = "24-hour shapes are temporarily unavailable."
+				series = nil
+			}
+
 			for _, status := range statuses {
+				samples := series[status.Corridor.ID]
 				row := corridorRow{
 					ID: status.Corridor.ID, From: status.Corridor.From, To: status.Corridor.To,
 					State: "waiting for a sample", StateCls: "state-unknown",
-					RTT: "-", Loss: "-",
+					RTT: "-", Baseline: baselineOf(samples), Spark: sparklineOf(samples),
+					Loss: "-", LossBar: lossBarOf(0),
 				}
 				if status.Latest != nil {
 					row.SampledAt = status.Latest.TS.UTC().Format("2006-01-02 15:04")
 					row.RTT = fmt.Sprintf("%.0f ms", status.Latest.RTTMS)
 					row.Loss = fmt.Sprintf("%.0f%%", status.Latest.Loss)
+					row.LossBar = lossBarOf(status.Latest.Loss)
 					if status.Latest.OK {
 						row.State = "normal"
 						row.StateCls = "state-up"
@@ -1685,6 +1702,106 @@ func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "corridors.html", view)
+}
+
+// sparklineOf renders up to 24 RTT buckets as block characters. Fewer than two
+// successful samples have no shape to draw, and a fabricated one would be worse
+// than an empty cell.
+func sparklineOf(samples []store.CorridorSample) string {
+	rtts := make([]float64, 0, len(samples))
+	for _, s := range samples {
+		if s.OK {
+			rtts = append(rtts, s.RTTMS)
+		}
+	}
+	if len(rtts) < 2 {
+		return ""
+	}
+
+	const columns = 24
+	if len(rtts) > columns {
+		buckets := make([]float64, 0, columns)
+		size := float64(len(rtts)) / columns
+		for i := 0; i < columns; i++ {
+			start := int(float64(i) * size)
+			end := int(float64(i+1) * size)
+			if end <= start {
+				end = start + 1
+			}
+			if end > len(rtts) {
+				end = len(rtts)
+			}
+			sum := 0.0
+			for _, v := range rtts[start:end] {
+				sum += v
+			}
+			buckets = append(buckets, sum/float64(end-start))
+		}
+		rtts = buckets
+	}
+
+	low, high := rtts[0], rtts[0]
+	for _, v := range rtts {
+		if v < low {
+			low = v
+		}
+		if v > high {
+			high = v
+		}
+	}
+
+	blocks := []rune("▁▂▃▄▅▆▇█")
+	var out strings.Builder
+	for _, v := range rtts {
+		if high == low {
+			out.WriteRune(blocks[len(blocks)/2])
+			continue
+		}
+		index := int(math.Round((v - low) / (high - low) * float64(len(blocks)-1)))
+		if index < 0 {
+			index = 0
+		}
+		if index >= len(blocks) {
+			index = len(blocks) - 1
+		}
+		out.WriteRune(blocks[index])
+	}
+	return out.String()
+}
+
+// lossBarOf renders a five-cell bar; the percentage beside it is the text, so
+// colour is never the only carrier.
+func lossBarOf(loss float64) string {
+	const cells = 5
+	filled := int(math.Round(loss / 100 * cells))
+	if filled < 0 {
+		filled = 0
+	}
+	if filled > cells {
+		filled = cells
+	}
+	return strings.Repeat("▰", filled) + strings.Repeat("▱", cells-filled)
+}
+
+// baselineOf reports the median successful RTT over the window, which is the
+// number the step rule compares against.
+func baselineOf(samples []store.CorridorSample) string {
+	rtts := make([]float64, 0, len(samples))
+	for _, s := range samples {
+		if s.OK {
+			rtts = append(rtts, s.RTTMS)
+		}
+	}
+	if len(rtts) == 0 {
+		return "-"
+	}
+	sort.Float64s(rtts)
+	mid := len(rtts) / 2
+	median := rtts[mid]
+	if len(rtts)%2 == 0 {
+		median = (rtts[mid-1] + rtts[mid]) / 2
+	}
+	return fmt.Sprintf("%.0f ms", median)
 }
 
 // --- events ----------------------------------------------------------------

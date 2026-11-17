@@ -132,6 +132,39 @@ func (s *Store) RecordCorridorSample(ctx context.Context, sample CorridorSample)
 	return nil
 }
 
+// CorridorSeries returns samples since the cutoff keyed by corridor, oldest
+// first. One query for the page; the corridor count is bounded by the config.
+func (s *Store) CorridorSeries(ctx context.Context, since time.Time) (map[string][]CorridorSample, error) {
+	rows, err := s.reader.QueryContext(ctx, `
+		SELECT corridor_id, ts, COALESCE(rtt_ms, 0), loss, ok
+		FROM corridor_sample
+		WHERE ts >= ?
+		ORDER BY corridor_id, ts, id`, since.UnixMilli())
+	if err != nil {
+		return nil, fmt.Errorf("store: corridor series: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make(map[string][]CorridorSample)
+	for rows.Next() {
+		var (
+			sample CorridorSample
+			ts     int64
+			ok     int
+		)
+		if err := rows.Scan(&sample.CorridorID, &ts, &sample.RTTMS, &sample.Loss, &ok); err != nil {
+			return nil, fmt.Errorf("store: scan corridor series: %w", err)
+		}
+		sample.TS = time.UnixMilli(ts).UTC()
+		sample.OK = ok != 0
+		out[sample.CorridorID] = append(out[sample.CorridorID], sample)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: corridor series: %w", err)
+	}
+	return out, nil
+}
+
 // CorridorSamples returns samples since the cutoff, oldest first, which is the
 // order the detection rule reads them in.
 func (s *Store) CorridorSamples(ctx context.Context, corridorID string, since time.Time) ([]CorridorSample, error) {

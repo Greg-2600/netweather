@@ -95,6 +95,19 @@ a { color: var(--accent); }
 .strip .strip-warn { color: var(--degraded); }
 .strip .strip-down { color: var(--down); }
 
+/* Corridor shapes (DESIGN.md §10.4). The sparkline and the loss bar are text
+   glyphs, so they render without an image or a style attribute, and the
+   percentage beside them carries the same value. */
+.spark {
+  letter-spacing: -0.05em;
+  color: var(--text);
+}
+
+.loss-bar {
+  letter-spacing: -0.05em;
+  color: var(--muted);
+}
+
 ul.targets { margin: 0.25rem 0 1rem; padding-left: 1.1rem; }
 ul.targets li { margin: 0.1rem 0; }
 
