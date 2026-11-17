@@ -27,6 +27,8 @@ type Deps struct {
 	Watcher   board.Watcher
 	History   History
 	Incidents IncidentHistory
+	// Corroboration supplies external feed events for an incident.
+	Corroboration Corroboration
 	// IncidentWatcher wakes the UI stream when an incident opens or closes.
 	IncidentWatcher board.Watcher
 	Coverage        Coverage
@@ -75,6 +77,12 @@ type History interface {
 type IncidentHistory interface {
 	Incidents(ctx context.Context, openOnly bool, limit int) ([]store.Incident, error)
 	IncidentByID(ctx context.Context, id string) (store.Incident, []store.Attribution, []string, error)
+}
+
+// Corroboration supplies external feed events for an incident. Nil omits the
+// panel rather than implying nothing else was happening.
+type Corroboration interface {
+	Corroboration(ctx context.Context, inc store.Incident, now time.Time, limit int) ([]store.ExternalEvent, error)
 }
 
 // Control is the probe kill switch, shared with the API.

@@ -1679,6 +1679,112 @@ func TestIncidentDetailPage(t *testing.T) {
 	}
 }
 
+type fakeCorroboration struct {
+	events []store.ExternalEvent
+	err    error
+}
+
+func (f *fakeCorroboration) Corroboration(context.Context, store.Incident, time.Time, int) ([]store.ExternalEvent, error) {
+	return f.events, f.err
+}
+
+func newServerWithCorroboration(t *testing.T, token string, m *board.Memory, history web.IncidentHistory, corr web.Corroboration) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:        m,
+		Watcher:       m,
+		Incidents:     history,
+		Corroboration: corr,
+		Token:         token,
+		Version:       "test",
+		StartedAt:     time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestIncidentDetailShowsCorroboration(t *testing.T) {
+	t.Parallel()
+
+	corr := &fakeCorroboration{events: []store.ExternalEvent{
+		{
+			ID: 1, Feed: "ioda", ExternalID: "ir-1", Kind: "outage",
+			Severity: 0.9, Country: "IR",
+			StartedAt: time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC),
+		},
+	}}
+
+	ts := newServerWithCorroboration(t, testToken, fixture(), incidentsFixture(), corr)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/incidents/inc-open") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if !strings.Contains(page, `data-testid="incident-corroboration"`) {
+		t.Fatalf("corroboration table missing:\n%s", page)
+	}
+	for _, want := range []string{"ioda", "outage", ">IR<", "0.90", "ongoing"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("corroboration missing %q", want)
+		}
+	}
+	if strings.Contains(page, `data-testid="no-corroboration"`) {
+		t.Error("empty state rendered with events present")
+	}
+}
+
+func TestIncidentCorroborationEmptyAndUnconfigured(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithCorroboration(t, testToken, fixture(), incidentsFixture(), &fakeCorroboration{})
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/incidents/inc-open") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	if !strings.Contains(page, `data-testid="no-corroboration"`) {
+		t.Fatal("empty corroboration did not say so")
+	}
+	if !strings.Contains(page, "No feed event overlapped") {
+		t.Error("empty state lacks an explanation")
+	}
+
+	// A failed query still renders the incident, with a note.
+	ts2 := newServerWithCorroboration(t, testToken, fixture(), incidentsFixture(),
+		&fakeCorroboration{err: errors.New("db down")})
+	client2, _ := newClient(t)
+	login(t, ts2, client2, testToken)
+
+	resp, err = client2.Get(ts2.URL + "/incidents/inc-open") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = body(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("a corroboration failure should not hide the incident: %d", resp.StatusCode)
+	}
+	if !strings.Contains(page, "temporarily unavailable") {
+		t.Error("corroboration failure was not reported")
+	}
+}
+
 func TestIncidentDetailMissing(t *testing.T) {
 	t.Parallel()
 

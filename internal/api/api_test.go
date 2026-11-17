@@ -836,6 +836,110 @@ func incidentFixture() *fakeIncidents {
 	}
 }
 
+type fakeCorroboration struct {
+	events []store.ExternalEvent
+	err    error
+}
+
+func (f *fakeCorroboration) Corroboration(context.Context, store.Incident, time.Time, int) ([]store.ExternalEvent, error) {
+	return f.events, f.err
+}
+
+func newIncidentDetailHandler(t *testing.T, incidents api.IncidentReader, corr api.CorroborationReader) http.Handler {
+	t.Helper()
+
+	h, err := api.New(
+		api.Config{Listen: "127.0.0.1:2600", Token: testToken},
+		api.Deps{
+			Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Incidents:     incidents,
+			Corroboration: corr,
+			Version:       "test",
+			Commit:        "deadbeef",
+			StartedAt:     time.Now(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	return h
+}
+
+func TestIncidentDetailCorroboration(t *testing.T) {
+	t.Parallel()
+
+	corr := &fakeCorroboration{events: []store.ExternalEvent{
+		{
+			ID: 1, Feed: "ioda", ExternalID: "ir-1", Kind: "outage",
+			Severity: 0.9, Country: "IR",
+			StartedAt:  time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC),
+			ObservedAt: time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC),
+		},
+	}}
+
+	rec := do(newIncidentDetailHandler(t, incidentFixture(), corr),
+		http.MethodGet, "/api/v1/incidents/inc-1", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body)
+	}
+
+	var env dataEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Incident      map[string]any `json:"incident"`
+		Corroboration []struct {
+			Feed       string  `json:"feed"`
+			ExternalID string  `json:"external_id"`
+			Kind       string  `json:"kind"`
+			Severity   float64 `json:"severity"`
+			Country    string  `json:"country"`
+			StartedAt  string  `json:"started_at"`
+			EndedAt    string  `json:"ended_at"`
+		} `json:"corroboration"`
+	}
+	if err := json.Unmarshal(env.Data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Corroboration) != 1 {
+		t.Fatalf("corroboration = %+v", got.Corroboration)
+	}
+	first := got.Corroboration[0]
+	if first.Feed != "ioda" || first.Kind != "outage" || first.Country != "IR" {
+		t.Fatalf("first = %+v", first)
+	}
+	if first.StartedAt != "2026-11-17T10:00:00Z" || first.EndedAt != "" {
+		t.Fatalf("timeline = %+v", first)
+	}
+
+	// Without a reader, the array is present and empty rather than null: a
+	// client can iterate without a nil check.
+	rec = do(newIncidentDetailHandler(t, incidentFixture(), nil),
+		http.MethodGet, "/api/v1/incidents/inc-1", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unconfigured status = %d", rec.Code)
+	}
+	var raw struct {
+		Data struct {
+			Corroboration []any `json:"corroboration"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if raw.Data.Corroboration == nil || len(raw.Data.Corroboration) != 0 {
+		t.Fatalf("unconfigured corroboration = %#v", raw.Data.Corroboration)
+	}
+
+	// A failed corroboration query must not hide the incident.
+	rec = do(newIncidentDetailHandler(t, incidentFixture(), &fakeCorroboration{err: errors.New("db down")}),
+		http.MethodGet, "/api/v1/incidents/inc-1", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("corroboration failure status = %d, want the incident still served", rec.Code)
+	}
+}
+
 func TestIncidentsList(t *testing.T) {
 	t.Parallel()
 

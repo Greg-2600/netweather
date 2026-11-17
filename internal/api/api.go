@@ -44,6 +44,11 @@ type IncidentReader interface {
 	IncidentByID(ctx context.Context, id string) (store.Incident, []store.Attribution, []string, error)
 }
 
+// CorroborationReader returns external feed events that overlap an incident.
+type CorroborationReader interface {
+	Corroboration(ctx context.Context, inc store.Incident, now time.Time, limit int) ([]store.ExternalEvent, error)
+}
+
 // ScopeReader is the read side for scope health and coverage.
 type ScopeReader interface {
 	ScopeStates(ctx context.Context, vantageID, scope, value string) (map[state.State]int, int, error)
@@ -118,6 +123,9 @@ type Deps struct {
 	Probes ProbeReader
 	// Incidents reads the incident log. Nil disables the routes.
 	Incidents IncidentReader
+	// Corroboration reads external feed events for an incident. Nil omits the
+	// section rather than pretending no earlier event existed.
+	Corroboration CorroborationReader
 	// Scopes reads scope health/coverage. Nil disables the route.
 	Scopes ScopeReader
 	// Anomalies reads detector output. Nil disables the route.
@@ -608,9 +616,24 @@ type attributionItem struct {
 }
 
 type incidentDetail struct {
-	Incident    incidentItem      `json:"incident"`
-	Attribution []attributionItem `json:"attribution"`
-	Targets     []string          `json:"targets"`
+	Incident      incidentItem        `json:"incident"`
+	Attribution   []attributionItem   `json:"attribution"`
+	Targets       []string            `json:"targets"`
+	Corroboration []corroborationItem `json:"corroboration"`
+}
+
+// corroborationItem is one external event that overlaps the incident. It is
+// evidence: it never changes the verdict, it tells the reader what else was
+// happening.
+type corroborationItem struct {
+	Feed       string  `json:"feed"`
+	ExternalID string  `json:"external_id"`
+	Kind       string  `json:"kind"`
+	Severity   float64 `json:"severity,omitempty"`
+	Country    string  `json:"country,omitempty"`
+	ASN        int     `json:"asn,omitempty"`
+	StartedAt  string  `json:"started_at"`
+	EndedAt    string  `json:"ended_at,omitempty"`
 }
 
 func toIncidentItem(inc store.Incident) incidentItem {
@@ -684,15 +707,38 @@ func (s *server) handleIncidentByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	detail := incidentDetail{
-		Incident:    toIncidentItem(inc),
-		Attribution: make([]attributionItem, 0, len(attrs)),
-		Targets:     targets,
+		Incident:      toIncidentItem(inc),
+		Attribution:   make([]attributionItem, 0, len(attrs)),
+		Targets:       targets,
+		Corroboration: make([]corroborationItem, 0),
 	}
 	for _, a := range attrs {
 		detail.Attribution = append(detail.Attribution, attributionItem{
 			Rank: a.Rank, Kind: a.Kind, Value: a.Value,
 			Failing: a.Failing, Total: a.Total, Share: a.Share, Score: a.Score,
 		})
+	}
+
+	if s.deps.Corroboration != nil {
+		events, err := s.deps.Corroboration.Corroboration(r.Context(), inc, time.Now().UTC(), 20)
+		if err != nil {
+			// Corroboration is a bonus panel; a failed query must not hide the
+			// incident itself.
+			s.deps.Logger.Warn("corroboration failed",
+				"event", "corroboration_failed", "component", "http",
+				"incident_id", inc.ID, "error", err)
+		}
+		for _, e := range events {
+			item := corroborationItem{
+				Feed: e.Feed, ExternalID: e.ExternalID, Kind: e.Kind,
+				Severity: e.Severity, Country: e.Country, ASN: e.ASN,
+				StartedAt: e.StartedAt.UTC().Format(time.RFC3339),
+			}
+			if !e.EndedAt.IsZero() {
+				item.EndedAt = e.EndedAt.UTC().Format(time.RFC3339)
+			}
+			detail.Corroboration = append(detail.Corroboration, item)
+		}
 	}
 
 	writeData(w, r, detail, nil)

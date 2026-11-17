@@ -356,13 +356,19 @@ The incident plus every ranked attribution candidate, not only the winner — wh
       {"rank": 1, "kind": "sector", "value": "airline", "failing": 5, "total": 6,
        "share": 0.833, "score": 1.5}
     ],
-    "targets": ["svc-united", "svc-delta"]
+    "targets": ["svc-united", "svc-delta"],
+    "corroboration": [
+      {"feed": "ioda", "external_id": "1001", "kind": "outage", "severity": 0.87,
+       "country": "IR", "started_at": "2026-11-17T10:00:00Z"}
+    ]
   },
   "meta": {"request_id": "…"}
 }
 ```
 
 `404` for an unknown id. Attribution is stored at open time and is not recomputed on read, so the incident keeps the evidence that produced it.
+
+`corroboration` lists external feed events that overlap the incident's window (two hours before it opened through its close or now) and match its country or ASN when the scope names one. It is evidence, never a verdict: a matching outage makes the incident more believable, and a matching statuspage incident points at the provider rather than at your path. A sector or global incident has no place to match, so the list is everything in the window, highest severity first. The array is always present; a failed corroboration query is logged and leaves it empty rather than hiding the incident.
 
 ### 6.9 `GET /api/v1/targets` — stable
 

@@ -1629,3 +1629,86 @@ func TestEnrichmentRefreshAndTouch(t *testing.T) {
 		t.Fatalf("unknown target: %v", err)
 	}
 }
+
+func TestCorroborationMatchesScopeAndWindow(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	base := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	inc := store.Incident{
+		ID: "inc-ir", OpenedAt: base, Verdict: "INCIDENT",
+		Scope: "country", ScopeValue: "IR", Headline: "x", Confidence: "high",
+	}
+	if err := s.OpenIncident(ctx, inc, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	events := []store.ExternalEvent{
+		{
+			Feed: "ioda", ExternalID: "ir-overlap", Kind: "outage", Severity: 0.9,
+			Country: "IR", StartedAt: base.Add(-time.Hour), ObservedAt: base,
+		},
+		{
+			Feed: "ioda", ExternalID: "us-overlap", Kind: "outage", Severity: 0.95,
+			Country: "US", StartedAt: base.Add(-time.Hour), ObservedAt: base,
+		},
+		{
+			Feed: "ioda", ExternalID: "ir-old", Kind: "outage", Severity: 0.8,
+			Country: "IR", StartedAt: base.Add(-48 * time.Hour),
+			EndedAt: base.Add(-47 * time.Hour), ObservedAt: base,
+		},
+	}
+	if err := s.UpsertExternalEvents(ctx, events); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.Corroboration(ctx, inc, base.Add(time.Minute), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ExternalID != "ir-overlap" {
+		t.Fatalf("country corroboration = %+v", got)
+	}
+
+	// A sector incident has no country or ASN, so the window is the only
+	// filter and severity orders the result.
+	inc.Scope = "sector"
+	inc.ScopeValue = "airline"
+	got, err = s.Corroboration(ctx, inc, base.Add(time.Minute), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("sector corroboration = %d, want the two overlapping events", len(got))
+	}
+	if got[0].ExternalID != "us-overlap" {
+		t.Fatalf("ordering = %+v, want severity first", got)
+	}
+
+	// A closed incident's window ends at closed_at, so a later event does not
+	// leak in.
+	closed := inc
+	closed.ClosedAt = base.Add(10 * time.Minute)
+	if err := s.CloseIncident(ctx, closed.ID, "cleared", closed.ClosedAt); err != nil {
+		t.Fatal(err)
+	}
+	late := store.ExternalEvent{
+		Feed: "ioda", ExternalID: "late", Kind: "outage", Severity: 1,
+		Country: "IR", StartedAt: base.Add(time.Hour), ObservedAt: base,
+	}
+	if err := s.UpsertExternalEvents(ctx, []store.ExternalEvent{late}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.Corroboration(ctx, closed, base.Add(2*time.Hour), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range got {
+		if e.ExternalID == "late" {
+			t.Fatalf("an event after the close leaked in: %+v", got)
+		}
+	}
+}

@@ -692,17 +692,29 @@ type attributionView struct {
 }
 
 type incidentDetailView struct {
-	ID           string
-	Headline     string
-	Scope        string
-	ScopeValue   string
-	OpenedAt     string
-	Confidence   string
-	Closed       bool
-	ClosedAt     string
-	ClosedReason string
-	Attribution  []attributionView
-	Targets      []string
+	ID                string
+	Headline          string
+	Scope             string
+	ScopeValue        string
+	OpenedAt          string
+	Confidence        string
+	Closed            bool
+	ClosedAt          string
+	ClosedReason      string
+	Attribution       []attributionView
+	Targets           []string
+	Corroboration     []corroborationView
+	CorroborationNote string
+}
+
+// corroborationView is one external event that overlapped the incident.
+type corroborationView struct {
+	Feed      string
+	Kind      string
+	Severity  string
+	Place     string
+	StartedAt string
+	EndedAt   string
 }
 
 func (s *server) handleIncidents(w http.ResponseWriter, r *http.Request) {
@@ -788,6 +800,43 @@ func (s *server) handleIncident(w http.ResponseWriter, r *http.Request) {
 			Share: fmt.Sprintf("%.0f%%", a.Share*100),
 			Score: fmt.Sprintf("%.3f", a.Score),
 		})
+	}
+
+	if s.deps.Corroboration == nil {
+		view.CorroborationNote = "Feed corroboration is not configured on this instance."
+	} else {
+		events, err := s.deps.Corroboration.Corroboration(r.Context(), inc, time.Now().UTC(), 20)
+		switch {
+		case err != nil:
+			// The incident is the page; a failed corroboration query is a
+			// missing panel, not a missing incident.
+			s.deps.Logger.Warn("corroboration failed",
+				"event", "corroboration_failed", "component", "http",
+				"incident_id", inc.ID, "error", err)
+			view.CorroborationNote = "Feed corroboration is temporarily unavailable."
+		case len(events) == 0:
+			view.CorroborationNote = "No feed event overlapped this incident."
+		default:
+			for _, e := range events {
+				row := corroborationView{
+					Feed: e.Feed, Kind: e.Kind,
+					Severity:  fmt.Sprintf("%.2f", e.Severity),
+					StartedAt: e.StartedAt.UTC().Format("2006-01-02 15:04"),
+				}
+				switch {
+				case e.Country != "":
+					row.Place = e.Country
+				case e.ASN > 0:
+					row.Place = fmt.Sprintf("AS%d", e.ASN)
+				default:
+					row.Place = "-"
+				}
+				if !e.EndedAt.IsZero() {
+					row.EndedAt = e.EndedAt.UTC().Format("2006-01-02 15:04")
+				}
+				view.Corroboration = append(view.Corroboration, row)
+			}
+		}
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

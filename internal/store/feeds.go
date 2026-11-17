@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 )
@@ -104,6 +105,13 @@ func (s *Store) ExternalEvents(ctx context.Context, limit int) ([]ExternalEvent,
 	}
 	defer func() { _ = rows.Close() }()
 
+	return collectExternalEvents(rows, "external events")
+}
+
+// collectExternalEvents scans the shared external_event column list. Callers
+// own the query; this helper exists so the column order cannot drift between
+// the general feed reader and the incident corroboration reader.
+func collectExternalEvents(rows *sql.Rows, label string) ([]ExternalEvent, error) {
 	var out []ExternalEvent
 	for rows.Next() {
 		var (
@@ -114,7 +122,7 @@ func (s *Store) ExternalEvents(ctx context.Context, limit int) ([]ExternalEvent,
 		)
 		if err := rows.Scan(&e.ID, &e.Feed, &e.ExternalID, &e.Kind, &e.Severity,
 			&e.Country, &e.ASN, &start, &end, &seen, &e.Payload); err != nil {
-			return nil, fmt.Errorf("store: scan external event: %w", err)
+			return nil, fmt.Errorf("store: scan %s: %w", label, err)
 		}
 		e.StartedAt = time.UnixMilli(start).UTC()
 		if end > 0 {
@@ -124,7 +132,7 @@ func (s *Store) ExternalEvents(ctx context.Context, limit int) ([]ExternalEvent,
 		out = append(out, e)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: external events: %w", err)
+		return nil, fmt.Errorf("store: %s: %w", label, err)
 	}
 	return out, nil
 }
