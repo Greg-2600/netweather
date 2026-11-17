@@ -32,6 +32,10 @@ a { color: var(--accent); }
   padding: 1rem 0;
   border-bottom: 1px solid var(--line);
   margin-bottom: 1.25rem;
+  /* A 390px viewport cannot hold the nav, the version, and the controls on one
+     line, and a fixed row overflows the page. Wrapping is the honest layout:
+     on a wide screen nothing moves. */
+  flex-wrap: wrap;
 }
 
 .spacer { margin-left: auto; }
