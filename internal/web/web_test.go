@@ -4557,6 +4557,15 @@ func TestBoardCollapsesTargetsMarkedUnmeasurable(t *testing.T) {
 	if strings.Contains(page, `data-sector="banking"`) {
 		t.Fatal("the banking sector still holds a permanently unmeasurable target")
 	}
+
+	// The summary counts the same way the section does: unmeasurable once,
+	// not blocked plus unmeasurable.
+	if !strings.Contains(page, `data-testid="count-unmeasurable"`) {
+		t.Fatal("the summary did not count the target as unmeasurable")
+	}
+	if strings.Contains(page, `data-testid="count-blocked"`) {
+		t.Fatal("the summary still counted the target as blocked")
+	}
 }
 
 func TestTargetDrawerSaysYouVersusOfficial(t *testing.T) {

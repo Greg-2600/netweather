@@ -759,9 +759,16 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	targets = board.Order(targets)
 
 	// Counts describe the whole fleet even in focus mode: the summary must not
-	// claim there are no healthy targets just because they are hidden.
+	// claim there are no healthy targets just because they are hidden. A target
+	// the calibration has marked unmeasurable is counted that way even when its
+	// last confirmed state is BLOCKED, so the summary agrees with the quiet
+	// section it is rendered in (DESIGN.md §3.2).
 	counts := make(map[board.State]int)
 	for _, t := range targets {
+		if t.Measurability == "unmeasurable" {
+			counts[board.StateUnmeasurable]++
+			continue
+		}
 		counts[t.State]++
 	}
 
