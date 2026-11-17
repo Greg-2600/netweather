@@ -128,7 +128,7 @@ func recordOne(ctx context.Context, tx *sql.Tx, p Probe) error {
 	up, degraded, down, blocked, unknown := counters(p.State)
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO rollup_5m (
-			target_id, vantage_id, bucket, n, up, degraded, down, blocked, unknown, p50_ms, p95_ms
+			target_id, vantage_id, bucket, n, up, degraded, down, blocked, unknown, ewma50_ms, ewma95_ms
 		) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (target_id, vantage_id, bucket) DO UPDATE SET
 			n        = n + 1,
@@ -137,8 +137,19 @@ func recordOne(ctx context.Context, tx *sql.Tx, p Probe) error {
 			down     = down + excluded.down,
 			blocked  = blocked + excluded.blocked,
 			unknown  = unknown + excluded.unknown,
-			p50_ms   = COALESCE(excluded.p50_ms, p50_ms),
-			p95_ms   = COALESCE(excluded.p95_ms, p95_ms)`,
+			-- SCHEMA.md §6: these are EWMAs, not percentiles. A new sample moves
+			-- the value 30% of the way, so one slow probe cannot rewrite a bucket
+			-- and a sustained shift is still visible within a few probes.
+			ewma50_ms = CASE
+				WHEN excluded.ewma50_ms IS NULL THEN ewma50_ms
+				WHEN ewma50_ms IS NULL THEN excluded.ewma50_ms
+				ELSE CAST(0.3*excluded.ewma50_ms + 0.7*ewma50_ms AS INTEGER)
+			END,
+			ewma95_ms = CASE
+				WHEN excluded.ewma95_ms IS NULL THEN ewma95_ms
+				WHEN ewma95_ms IS NULL THEN excluded.ewma95_ms
+				ELSE CAST(0.3*excluded.ewma95_ms + 0.7*ewma95_ms AS INTEGER)
+			END`,
 		p.TargetID, p.VantageID, ts/300000,
 		up, degraded, down, blocked, unknown,
 		nullInt(p.LatencyMS), nullInt(p.LatencyMS)); err != nil {

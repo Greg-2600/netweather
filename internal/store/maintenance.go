@@ -50,17 +50,19 @@ func (s *Store) Fold(ctx context.Context, now time.Time) (FoldStats, error) {
 func (s *Store) foldHour(ctx context.Context, hour time.Time) (int64, error) {
 	const upsert = `
 		INSERT INTO rollup_1h (
-			target_id, vantage_id, bucket, n, up, degraded, down, blocked, unknown, p50_ms, p95_ms
+			target_id, vantage_id, bucket, n, up, degraded, down, blocked, unknown, ewma50_ms, ewma95_ms
 		)
 		SELECT target_id, vantage_id, ?, SUM(n), SUM(up), SUM(degraded), SUM(down),
-		       SUM(blocked), SUM(unknown), MAX(p50_ms), MAX(p95_ms)
+		       SUM(blocked), SUM(unknown),
+		       CAST(SUM(ewma50_ms * n) / NULLIF(SUM(CASE WHEN ewma50_ms IS NOT NULL THEN n ELSE 0 END), 0) AS INTEGER),
+		       CAST(SUM(ewma95_ms * n) / NULLIF(SUM(CASE WHEN ewma95_ms IS NOT NULL THEN n ELSE 0 END), 0) AS INTEGER)
 		FROM rollup_5m
 		WHERE bucket >= ? AND bucket < ?
 		GROUP BY target_id, vantage_id
 		ON CONFLICT (target_id, vantage_id, bucket) DO UPDATE SET
 			n = excluded.n, up = excluded.up, degraded = excluded.degraded,
 			down = excluded.down, blocked = excluded.blocked, unknown = excluded.unknown,
-			p50_ms = excluded.p50_ms, p95_ms = excluded.p95_ms`
+			ewma50_ms = excluded.ewma50_ms, ewma95_ms = excluded.ewma95_ms`
 
 	from := hour.UnixMilli() / 300000
 	to := hour.Add(time.Hour).UnixMilli() / 300000
@@ -76,17 +78,19 @@ func (s *Store) foldHour(ctx context.Context, hour time.Time) (int64, error) {
 func (s *Store) foldDay(ctx context.Context, day time.Time) (int64, error) {
 	const upsert = `
 		INSERT INTO rollup_1d (
-			target_id, vantage_id, bucket, n, up, degraded, down, blocked, unknown, p50_ms, p95_ms
+			target_id, vantage_id, bucket, n, up, degraded, down, blocked, unknown, ewma50_ms, ewma95_ms
 		)
 		SELECT target_id, vantage_id, ?, SUM(n), SUM(up), SUM(degraded), SUM(down),
-		       SUM(blocked), SUM(unknown), MAX(p50_ms), MAX(p95_ms)
+		       SUM(blocked), SUM(unknown),
+		       CAST(SUM(ewma50_ms * n) / NULLIF(SUM(CASE WHEN ewma50_ms IS NOT NULL THEN n ELSE 0 END), 0) AS INTEGER),
+		       CAST(SUM(ewma95_ms * n) / NULLIF(SUM(CASE WHEN ewma95_ms IS NOT NULL THEN n ELSE 0 END), 0) AS INTEGER)
 		FROM rollup_1h
 		WHERE bucket >= ? AND bucket < ?
 		GROUP BY target_id, vantage_id
 		ON CONFLICT (target_id, vantage_id, bucket) DO UPDATE SET
 			n = excluded.n, up = excluded.up, degraded = excluded.degraded,
 			down = excluded.down, blocked = excluded.blocked, unknown = excluded.unknown,
-			p50_ms = excluded.p50_ms, p95_ms = excluded.p95_ms`
+			ewma50_ms = excluded.ewma50_ms, ewma95_ms = excluded.ewma95_ms`
 
 	from := day.Unix() / 3600
 	to := day.Add(24*time.Hour).Unix() / 3600

@@ -249,8 +249,8 @@ CREATE TABLE rollup_5m (
     down       INTEGER NOT NULL,
     blocked    INTEGER NOT NULL,
     unknown    INTEGER NOT NULL,
-    p50_ms     INTEGER,
-    p95_ms     INTEGER,
+    ewma50_ms  INTEGER,                 -- EWMA, not a percentile
+    ewma95_ms  INTEGER,                 -- EWMA, not a percentile
     PRIMARY KEY (target_id, vantage_id, bucket)
 ) WITHOUT ROWID;
 
@@ -264,8 +264,8 @@ CREATE TABLE rollup_1h (
     down       INTEGER NOT NULL,
     blocked    INTEGER NOT NULL,
     unknown    INTEGER NOT NULL,
-    p50_ms     INTEGER,
-    p95_ms     INTEGER,
+    ewma50_ms  INTEGER,                 -- EWMA, not a percentile
+    ewma95_ms  INTEGER,                 -- EWMA, not a percentile
     PRIMARY KEY (target_id, vantage_id, bucket)
 ) WITHOUT ROWID;
 
@@ -279,8 +279,8 @@ CREATE TABLE rollup_1d (
     down       INTEGER NOT NULL,
     blocked    INTEGER NOT NULL,
     unknown    INTEGER NOT NULL,
-    p50_ms     INTEGER,
-    p95_ms     INTEGER,
+    ewma50_ms  INTEGER,                 -- EWMA, not a percentile
+    ewma95_ms  INTEGER,                 -- EWMA, not a percentile
     PRIMARY KEY (target_id, vantage_id, bucket)
 ) WITHOUT ROWID;
 ```
@@ -290,7 +290,7 @@ CREATE TABLE rollup_1d (
 Per dispatcher tick:
 
 ```sql
-INSERT INTO rollup_5m (target_id, vantage_id, bucket, n, up, degraded, down, blocked, unknown, p50_ms, p95_ms)
+INSERT INTO rollup_5m (target_id, vantage_id, bucket, n, up, degraded, down, blocked, unknown, ewma50_ms, ewma95_ms)
 VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (target_id, vantage_id, bucket) DO UPDATE SET
     n        = n + 1,
@@ -299,8 +299,10 @@ ON CONFLICT (target_id, vantage_id, bucket) DO UPDATE SET
     down     = down + excluded.down,
     blocked  = blocked + excluded.blocked,
     unknown  = unknown + excluded.unknown,
-    p50_ms   = excluded.p50_ms,     -- last sample wins; see §6.2
-    p95_ms   = excluded.p95_ms;
+    ewma50_ms = CASE WHEN ewma50_ms IS NULL THEN excluded.ewma50_ms
+                     ELSE CAST(0.3*excluded.ewma50_ms + 0.7*ewma50_ms AS INTEGER) END,
+    ewma95_ms = CASE WHEN ewma95_ms IS NULL THEN excluded.ewma95_ms
+                     ELSE CAST(0.3*excluded.ewma95_ms + 0.7*ewma95_ms AS INTEGER) END;
 ```
 
 Hourly is folded from 5-minute rows at bucket close; daily from hourly. Neither ever reads `probe`.
@@ -309,10 +311,10 @@ Hourly is folded from 5-minute rows at bucket close; daily from hourly. Neither 
 
 A rollup cannot hold a true p50/p95 without keeping every sample. Two honest options:
 
-- **Store the last sample's latency** (what the SQL above does). Cheap, and correct for the "last 20 probes" drawer view, wrong for a true percentile.
+- **Store a smoothed latency** (what the SQL above does). Cheap, and correct as a trend, wrong as a percentile.
 - **Store a t-digest or a fixed histogram** (16 log-spaced buckets) in a `BLOB`. Correct, ~128 bytes per row.
 
-Decision: `p50_ms`/`p95_ms` are **EWMA of the bucket's samples**, not percentiles, and the column names are `ewma50_ms`/`ewma95_ms` in the migration. Calling an EWMA a p95 is the kind of quiet lie this project is supposed to avoid. If true percentiles are needed for `DEGRADED`, add the histogram in phase 2.
+Decision: the columns are **EWMA of the bucket's samples**, not percentiles, named `ewma50_ms`/`ewma95_ms`. Migration `0009` renamed them and the write path now updates the value with `0.3*new + 0.7*old`, so one slow probe cannot rewrite a bucket and a sustained shift is visible within a few probes. Folding averages the EWMAs weighted by `n`. Calling an EWMA a p95 is the kind of quiet lie this project is supposed to avoid. If true percentiles are needed for `DEGRADED`, add the histogram in phase 2.
 
 ---
 

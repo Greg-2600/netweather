@@ -67,8 +67,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 8 {
-		t.Errorf("schema version = %d, want 8", stats.SchemaVersion)
+	if stats.SchemaVersion != 9 {
+		t.Errorf("schema version = %d, want 9", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -96,7 +96,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 8 {
+	if err != nil || version != 9 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
