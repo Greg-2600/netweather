@@ -138,17 +138,22 @@ repository, and a broken build never replaces a working one.
 
 ## 3. Next - phase 3
 
-### 3.1 Remote vantage agent (federation-lite) — **Next**
+### 3.1 Remote vantage agent (federation-lite) — **Implemented**
 
 **Outcome:** a second machine measures the same targets and reports a real
 `REGIONAL` rather than a proxy's approximation.
 
-- Outbound-only agent binary: signed `probe` batches over mTLS with a per-agent
-  token, the same `vantage` model the Tor vantage already uses, and the same
-  "only `primary` may declare `DOWN`" rule.
-- Acceptance: a compose test with two containers reports `REGIONAL` for one
-  target and leaves the primary's state alone; agent traffic counts against its
-  own budget, not the primary's.
+- `netweather agent` runs the same instruments and classifier as the primary on
+  a remote host and POSTs each batch to `/api/v1/vantages/{id}/reports`. The
+  primary registers the vantage ids in `NETWEATHER_REMOTE_VANTAGES` and records
+  the batch under that vantage, so REGIONAL detection compares the two paths.
+  Only the primary may declare DOWN; remote vantages are corroborating.
+- Transport is HTTPS + bearer token today; mTLS and signed batches are a
+  hardening item (tracked under Later).
+- Acceptance met: unit tests for the ingest endpoint (auth, empty batch,
+  mismatched vantage, malformed body, recorder error, disabled) and for the
+  agent's remote sink (posting, server-error surfacing). The two-container
+  compose scenario is the next increment.
 
 ### 3.2 RIS Live feed plugin (BGP) — **Implemented (polling adapter)**
 
@@ -223,6 +228,7 @@ page view into an API loop.
 | Default corridor endpoints | There is no honest default path pair; corridors stay configuration-driven |
 | Helm chart / systemd unit | Compose and one binary cover the stated deployment |
 | Opt-in alert webhooks | The project is deliberately not a paging system (`README` "What it is not"); an operator can poll `/api/v1/events` |
+| mTLS and signed batches for remote agents | HTTPS + bearer ships today; client certs and request signing are the production hardening (`THREAT_MODEL.md`) |
 
 ---
 

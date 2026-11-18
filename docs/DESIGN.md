@@ -1175,7 +1175,7 @@ The living plan — what is now, next, later, and deliberately not planned — i
 | **0** | Service targets, probe ladder, classifier (incl. per-resolver DNS baseline), SQLite, board + overview, reference/LOCAL, baseline health | It is not noise | Implemented |
 | **1** | Country anchors, ASN enrichment, coverage panel, attribution, world view, corridors, optional RIPE Atlas profile, Atlas feed plugin (read-only) | It sees more than a favicon grid | Implemented. The RIPE Atlas **software-probe profile** ships (`docs/RIPE_ATLAS.md`), and the Atlas **feed plugin** now ships as a read-only adapter (`internal/feeds/atlas`) that reads measurements the operator created and never spends credits |
 | **2** | IODA + Radar plugins, Statuspage corroboration, IHI, drawer depth | It detects large events | Implemented |
-| **3** | RIS Live, cert pinning, multi-instance agent, live IODA overlay | It detects tampering and mass events | Cert pinning, RIS Live (polling adapter), and the IODA overlay (stored events) implemented; remote agents are not. Vantages are first-class (direct and Tor), but a remote agent is a separate deployment the project has not built. |
+| **3** | RIS Live, cert pinning, multi-instance agent, live IODA overlay | It detects tampering and mass events | Cert pinning, RIS Live (polling adapter), the IODA overlay (stored events), and federation-lite remote agents implemented. Vantages are first-class (direct, Tor, remote); an agent runs the same instruments and reports to `/api/v1/vantages/{id}/reports`. mTLS and signed batches are a hardening item. |
 
 Phase 0 is the whole thesis in miniature. If phase 0 is noisy, nothing later saves it.
 
