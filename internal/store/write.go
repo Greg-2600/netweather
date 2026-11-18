@@ -92,6 +92,10 @@ func (s *Store) UpsertTarget(ctx context.Context, t Target) error {
 			status_url = excluded.status_url,
 			tier = excluded.tier,
 			interval_s = excluded.interval_s,
+			-- A load is the documented way back from a runtime disable
+			-- (ACCEPTABLE_USE.md §7, API.md §6.9.1): the row was never deleted,
+			-- so bringing it back is an upsert rather than a new target.
+			enabled = 1,
 			updated_at = excluded.updated_at`,
 		t.ID, t.Host, t.Port, t.Probe, t.Name, t.Class, t.Sector, t.Country,
 		t.StatusURL, t.Tier, t.IntervalS, now, now)
