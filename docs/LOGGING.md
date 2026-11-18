@@ -98,7 +98,7 @@ Example, one line, no shell required:
 | Feeds | `INFO` on poll, `WARN` when stale | poll | feed, items, age, duration |
 | Self-health | `WARN` on failure only | check | check, value, threshold |
 | HTTP | `DEBUG` per request, `WARN` on 4xx/5xx | request | method, route (not full URL), status, duration, request_id |
-| Startup | `INFO` | once | version, commit, config path, listen addr, vantages, target count, schema version, log sinks |
+| Startup | `INFO` | twice | Before wiring: version, commit, and the log sinks and level. At listen: config source, listen address, auth mode, vantages, target count, schema version, database path |
 
 No layer logs the same failure twice. Wrap with `%w`, return, log once at the boundary that decides something.
 

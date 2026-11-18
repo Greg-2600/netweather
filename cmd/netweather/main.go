@@ -591,12 +591,27 @@ func serve(lg *logging.Logger) error {
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
+	// The startup identity is split across two lines by necessity: the first,
+	// before wiring, says which build and sinks are running; this one, when the
+	// socket is about to open, says what it will serve and from where
+	// (LOGGING.md §4).
+	configSource := strings.TrimSpace(os.Getenv("NETWEATHER_CONFIG"))
+	if configSource == "" {
+		configSource = "builtin seed"
+	}
+	vantages := "local"
+	if torAgent != nil {
+		vantages = "local,tor"
+	}
 	lg.Info("listening",
 		"event", "startup",
 		"addr", cfg.Listen,
 		"auth", cfg.AuthMode(),
 		"targets", len(targets),
 		"db", st.Path(),
+		"schema_version", schemaVersion,
+		"config", configSource,
+		"vantages", vantages,
 	)
 
 	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
