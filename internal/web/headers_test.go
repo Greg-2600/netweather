@@ -57,3 +57,37 @@ func TestIconKeepsItsCacheControl(t *testing.T) {
 		t.Fatalf("icon nosniff = %q", got)
 	}
 }
+
+// TestCSPCoversEveryBrowserResponse proves the policy is set by the shared
+// middleware, not only by the page renderers: a static asset and a method
+// refusal are still responses this browser loads (THREAT_MODEL.md T4).
+func TestCSPCoversEveryBrowserResponse(t *testing.T) {
+	t.Parallel()
+
+	const want = "default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	for _, path := range []string{"/static/app.css", "/icon/1.svg", "/"} {
+		resp, err := client.Get(ts.URL + path) //nolint:bodyclose // body() closes it
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = body(t, resp)
+		if got := resp.Header.Get("Content-Security-Policy"); got != want {
+			t.Errorf("%s CSP = %q, want %q", path, got, want)
+		}
+	}
+
+	// A wrong method on a known page still passes through the middleware.
+	resp, err := client.Post(ts.URL+"/", "text/plain", strings.NewReader("x")) //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = body(t, resp)
+	if got := resp.Header.Get("Content-Security-Policy"); got != want {
+		t.Errorf("405 response CSP = %q, want %q", got, want)
+	}
+}

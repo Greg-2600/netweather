@@ -2,6 +2,12 @@ package web
 
 import "net/http"
 
+// contentSecurityPolicy is the browser surface's one policy: own assets only, no
+// inline script or style, no framing, and forms post back to this origin. The
+// templates carry no inline handler or third-party asset, so nothing weaker is
+// needed (THREAT_MODEL.md T4).
+const contentSecurityPolicy = "default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+
 // withSecurityHeaders applies the browser surface's response headers. They are
 // the same posture the API takes (THREAT_MODEL.md T12): no MIME sniffing, no
 // framing, no referrer leakage, and no caching of a page that names the
@@ -19,6 +25,10 @@ func withSecurityHeaders(next http.Handler) http.Handler {
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Cache-Control", "no-store")
 		h.Set("X-Robots-Tag", "noindex, nofollow")
+		// Set here, not only in the page renderers: a static asset, a method
+		// refusal, or a generated icon is still a response this browser loads,
+		// and the policy must not depend on which handler wrote it.
+		h.Set("Content-Security-Policy", contentSecurityPolicy)
 		next.ServeHTTP(w, r)
 	})
 }
