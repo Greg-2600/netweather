@@ -420,18 +420,13 @@ func TestDNSTruncatedRetryFailureIsReported(t *testing.T) {
 
 	// The UDP answer says "truncated", and the TCP path closes without a full
 	// frame: the retry failure must surface as a dns_ class, not as success.
-	tcpLn, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = tcpLn.Close() })
-
-	addr := tcpLn.Addr().(*net.TCPAddr)
-	udpPC, err := net.ListenPacket("udp", addr.String())
-	if err != nil {
-		t.Fatalf("bind udp: %v", err)
-	}
-	t.Cleanup(func() { _ = udpPC.Close() })
+	// The pair is bound through the shared helper because Windows refuses the
+	// UDP/TCP co-bind for some ephemeral ports.
+	udpPC, tcpLn := listenUDPAndTCP(t)
+	t.Cleanup(func() {
+		_ = udpPC.Close()
+		_ = tcpLn.Close()
+	})
 
 	go func() {
 		for {
@@ -458,7 +453,7 @@ func TestDNSTruncatedRetryFailureIsReported(t *testing.T) {
 		}
 	}()
 
-	res := probe.NewDNS(nil).Do(context.Background(), addr.String(), "example.com")
+	res := probe.NewDNS(nil).Do(context.Background(), tcpLn.Addr().String(), "example.com")
 	if !res.Failed() {
 		t.Fatal("a broken TCP retry reported success")
 	}
@@ -498,18 +493,13 @@ func TestDNSRejectsAnUnusableQName(t *testing.T) {
 func TestDNSTruncatedRetryRejectsABadAnswer(t *testing.T) {
 	t.Parallel()
 
-	tcpLn, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = tcpLn.Close() })
-
-	addr := tcpLn.Addr().(*net.TCPAddr)
-	udpPC, err := net.ListenPacket("udp", addr.String())
-	if err != nil {
-		t.Fatalf("bind udp: %v", err)
-	}
-	t.Cleanup(func() { _ = udpPC.Close() })
+	// The shared helper retries the UDP/TCP co-bind and skips on Windows when
+	// the platform refuses it entirely.
+	udpPC, tcpLn := listenUDPAndTCP(t)
+	t.Cleanup(func() {
+		_ = udpPC.Close()
+		_ = tcpLn.Close()
+	})
 
 	go func() {
 		for {
@@ -549,7 +539,7 @@ func TestDNSTruncatedRetryRejectsABadAnswer(t *testing.T) {
 		}
 	}()
 
-	res := probe.NewDNS(nil).Do(context.Background(), addr.String(), "example.com")
+	res := probe.NewDNS(nil).Do(context.Background(), tcpLn.Addr().String(), "example.com")
 	if res.ErrorClass != "dns_error" {
 		t.Fatalf("class = %q, want dns_error (%v)", res.ErrorClass, res.Err)
 	}
