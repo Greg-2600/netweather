@@ -185,6 +185,10 @@ Every environment variable the binary reads, including the ones that exist for a
 | `NETWEATHER_ENRICH` | on | `false` disables ASN, prefix, and CDN learning |
 | `NETWEATHER_PEERINGDB` / `NETWEATHER_PEERINGDB_URL` | on | exchange-membership labels; `false` disables them without disabling enrichment, and `_URL` points at a mirror |
 | `NETWEATHER_FEEDS` | none | comma list of `ioda`, `radar`, `statuspage`, `aws-status`, `gcp-status`, `azure-status`; empty means no external calls |
+| `NETWEATHER_REMOTE_VANTAGES` | none | comma list of vantage ids a primary registers for remote agents; they are corroborating by default |
+| `NETWEATHER_SERVER_URL` | none | primary server base URL for a remote vantage agent (`agent` subcommand) |
+| `NETWEATHER_VANTAGE` | remote | vantage id an agent reports under |
+| `NETWEATHER_AGENT_TOKEN` | none | bearer token an agent presents to the primary |
 | `NETWEATHER_STATUSPAGE_URLS` | none | status pages for the `statuspage` feed; **HTTPS only**, and a plaintext entry is dropped with `event=feed_url_insecure` |
 | `NETWEATHER_ATLAS_KEY` | none | RIPE Atlas API key for the `atlas` feed; optional, public measurements are readable without one. It is read-only: the plugin never creates a measurement |
 | `NETWEATHER_ATLAS_MEASUREMENTS` | none | comma list of RIPE Atlas measurement ids the `atlas` feed reads; required for the feed to run |

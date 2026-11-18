@@ -45,6 +45,14 @@ type TargetControl interface {
 	DisableTarget(ctx context.Context, id string) (bool, error)
 }
 
+// ProbeRecorder stores a batch of probes under one vantage. The remote vantage
+// agent POSTs results here; the primary records them under the agent's vantage
+// id so REGIONAL detection can compare paths (DESIGN.md 7.1). Nil disables
+// the route.
+type ProbeRecorder interface {
+	Record(ctx context.Context, probes []store.Probe) error
+}
+
 // BudgetState reports the direct vantage's daily egress allowance. It is the
 // same hard stop the board banners (ACCEPTABLE_USE.md §4); meta exposes it so
 // an API client can distinguish "quiet" from "stopped by its own budget".
@@ -203,6 +211,9 @@ type Deps struct {
 	// TargetControl stops probing one target at runtime. Nil disables the
 	// action; the abuse-response path must not silently succeed.
 	TargetControl TargetControl
+	// ProbeRecorder stores probe batches from remote vantages. Nil disables
+	// the ingest route.
+	ProbeRecorder ProbeRecorder
 	// Probes reads recent observations for one target. Nil disables the route.
 	Probes ProbeReader
 	// Incidents reads the incident log. Nil disables the routes.
@@ -351,6 +362,7 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	apiMux.HandleFunc("/api/v1/logs", onlyGET(s.handleLogs))
 	apiMux.HandleFunc("/api/v1/targets/", s.handleTargetSubtree)
 	apiMux.HandleFunc("/api/v1/scopes/", onlyGET(s.handleScope))
+	apiMux.HandleFunc("/api/v1/vantages/", s.handleVantageSubtree)
 	apiMux.HandleFunc("/api/v1/anomalies", onlyGET(s.handleAnomalies))
 	apiMux.HandleFunc("/api/v1/coverage", onlyGET(s.handleCoverage))
 	apiMux.HandleFunc("/api/v1/coverage/history", onlyGET(s.handleCoverageHistory))
@@ -793,6 +805,93 @@ func (s *server) handleTargetDisable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, r, map[string]string{"target": id, "state": "disabled"}, nil)
+}
+
+// handleVantageSubtree routes /api/v1/vantages/{id}/... . The only action
+// today is the report ingest endpoint used by remote vantage agents.
+func (s *server) handleVantageSubtree(w http.ResponseWriter, r *http.Request) {
+	rest := strings.TrimPrefix(r.URL.Path, "/api/v1/vantages/")
+	id, suffix, ok := strings.Cut(rest, "/")
+	if id == "" {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such vantage")
+		return
+	}
+	if !ok || suffix == "" {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such endpoint")
+		return
+	}
+	switch suffix {
+	case "reports":
+		s.handleVantageReport(w, r, id)
+	default:
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such endpoint")
+	}
+}
+
+// handleVantageReport accepts a batch of probe results from a remote vantage
+// agent and records them under that vantage's id. It is the federation-lite
+// ingest path: the agent runs the same instruments and classifier as the
+// primary, and the primary's REGIONAL logic compares the two paths. The
+// vantage must already be registered (EnsureVantage at startup or via config);
+// an unknown vantage is rejected rather than silently created, so a typo in
+// an agent token cannot mint a new vantage.
+func (s *server) handleVantageReport(w http.ResponseWriter, r *http.Request, vantage string) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		writeError(w, r, http.StatusMethodNotAllowed, CodeMethodNotAllowed,
+			r.Method+" is not allowed on "+r.URL.Path)
+		return
+	}
+	if s.deps.ProbeRecorder == nil {
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable,
+			"probe recording is not configured")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
+	var batch struct {
+		Probes []store.Probe `json:"probes"`
+	}
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(&batch); err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument,
+			"the request body is not a valid probe batch")
+		return
+	}
+	if len(batch.Probes) == 0 {
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument,
+			"the batch carries no probes")
+		return
+	}
+	for i := range batch.Probes {
+		if batch.Probes[i].VantageID == "" {
+			batch.Probes[i].VantageID = vantage
+		}
+		if batch.Probes[i].VantageID != vantage {
+			writeError(w, r, http.StatusBadRequest, CodeInvalidArgument,
+				"a probe names a different vantage than the path")
+			return
+		}
+		if batch.Probes[i].TargetID == "" {
+			writeError(w, r, http.StatusBadRequest, CodeInvalidArgument,
+				"a probe is missing its target id")
+			return
+		}
+	}
+
+	if err := s.deps.ProbeRecorder.Record(r.Context(), batch.Probes); err != nil {
+		s.deps.Logger.Error("vantage report failed",
+			"event", "vantage_report_failed", "component", "http",
+			"vantage", vantage, "request_id", requestIDFrom(r), "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable,
+			"the probe batch could not be recorded")
+		return
+	}
+
+	writeData(w, r, map[string]any{
+		"vantage":  vantage,
+		"recorded": len(batch.Probes),
+	}, nil)
 }
 
 func (s *server) handleTargetProbes(w http.ResponseWriter, r *http.Request) {

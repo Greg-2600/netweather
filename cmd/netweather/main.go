@@ -111,6 +111,9 @@ func run(args []string, stdout io.Writer) error {
 	case "backup":
 		return backupCommand(args[1:], stdout)
 
+	case "agent":
+		return agentCommand(args[1:], stdout)
+
 	case "serve":
 		lg.Info("starting",
 			"event", "startup",
@@ -225,6 +228,18 @@ func serve(lg *logging.Logger) error {
 
 	if err := st.EnsureVantage(ctx, "local", "direct", "primary"); err != nil {
 		return err
+	}
+	// Remote vantages are registered up front so an agent reporting under one
+	// of their ids is accepted. They are corroborating by default: only the
+	// primary vantage may declare DOWN (DESIGN.md 7.1).
+	for _, id := range splitList(os.Getenv("NETWEATHER_REMOTE_VANTAGES")) {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if err := st.EnsureVantage(ctx, id, "remote", "corroboration"); err != nil {
+			return err
+		}
 	}
 
 	// One INFO line per confirmed state change (LOGGING.md §3, §4). The store
