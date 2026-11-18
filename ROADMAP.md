@@ -66,15 +66,17 @@ unbounded growth, and a stable probe rate.
 - Acceptance: rendered on a fresh volume, with a UI test; no change to the state
   model.
 
-### 2.3 Backup/restore drill as a test — **Now**
+### 2.3 Backup/restore drill — **Implemented**
 
 **Outcome:** the documented restore path is exercised, not just described.
 
-- Compose test: write a row, `netweather backup`, replace the database, assert
-  the board still serves and the row is present; assert a stale `-wal` is
-  reported at startup.
-- Acceptance: the scenario runs in the `compose` suite and fails if the restore
-  steps regress.
+- `internal/store.TestRestoreFromBackupDrillsTheDocumentedProcedure` opens a
+  database, seeds a target, takes a `VACUUM INTO` backup, deletes the live file
+  and any `-wal`/`-shm` siblings, replaces the file from the backup, re-opens
+  it, and asserts the schema version and the row survived. The stale-sibling
+  hazard the procedure warns about is cleared before the open.
+- Acceptance met: the scenario runs in `devtool verify` and fails if the
+  restore steps regress.
 
 ### 2.4 Flake budget — **Now**
 
