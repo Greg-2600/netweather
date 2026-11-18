@@ -1152,7 +1152,7 @@ Full rationale in `THREAT_MODEL.md`, `ACCEPTABLE_USE.md`, and `NETWORKING.md` §
 | Phase | Scope | Proves | Status |
 |---|---|---|---|
 | **0** | Service targets, probe ladder, classifier (incl. per-resolver DNS baseline), SQLite, board + overview, reference/LOCAL, baseline health | It is not noise | Implemented |
-| **1** | Country anchors, ASN enrichment, coverage panel, attribution, world view, corridors, optional RIPE Atlas profile | It sees more than a favicon grid | Implemented except the Atlas profile, which is deliberately not shipped (`ACCEPTABLE_USE.md` §9, `DESIGN.md` §8.6) |
+| **1** | Country anchors, ASN enrichment, coverage panel, attribution, world view, corridors, optional RIPE Atlas profile | It sees more than a favicon grid | Implemented. The RIPE Atlas **software-probe profile** ships (`docs/RIPE_ATLAS.md`); the Atlas **feed plugin** is deliberately not shipped (`ACCEPTABLE_USE.md` §9, `DESIGN.md` §8.6) |
 | **2** | IODA + Radar plugins, Statuspage corroboration, IHI, drawer depth | It detects large events | Implemented |
 | **3** | RIS Live, cert pinning, multi-instance agent | It detects tampering and mass events | Cert pinning implemented; RIS Live and remote agents are not. Vantages are first-class (direct and Tor), but a remote agent is a separate deployment the project has not built. |
 
