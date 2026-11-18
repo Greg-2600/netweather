@@ -108,13 +108,15 @@ func debugEnable(args []string, out io.Writer) error {
 	component := fs.String("component", "", "component to scope")
 	errorClass := fs.String("error-class", "", "error class to scope")
 	level := fs.String("level", "debug", "debug or trace")
-	forDur := fs.Duration("for", 0, "duration, max 1h (required)")
+	forDur := fs.Duration("for", 0, "duration, max 1h")
+	until := fs.String("until", "", "RFC 3339 end time, max 1h away")
 
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("debug enable: %w", err)
 	}
-	if *forDur <= 0 {
-		return errors.New("debug enable: --for is required (for example --for 10m)")
+	ttl, err := debugTTL(*forDur, *until, time.Now())
+	if err != nil {
+		return err
 	}
 
 	payload, err := json.Marshal(map[string]string{
@@ -123,7 +125,7 @@ func debugEnable(args []string, out io.Writer) error {
 		"component":   *component,
 		"error_class": *errorClass,
 		"level":       *level,
-		"ttl":         forDur.String(),
+		"ttl":         ttl.String(),
 	})
 	if err != nil {
 		return err
@@ -157,6 +159,38 @@ func debugEnable(args []string, out io.Writer) error {
 	_, err = fmt.Fprintf(out, "scope %s enabled until %s\n",
 		created.Data.ID, created.Data.ExpiresAt.UTC().Format(time.RFC3339))
 	return err
+}
+
+// debugTTL resolves the one duration debug enable sends. --for takes a
+// duration; --until takes an RFC 3339 instant, which is easier to write when an
+// operator is coordinating with someone else's clock. Exactly one is required,
+// and both end up bounded by the same one-hour ceiling that the API enforces.
+func debugTTL(forDur time.Duration, until string, now time.Time) (time.Duration, error) {
+	until = strings.TrimSpace(until)
+	switch {
+	case forDur > 0 && until != "":
+		return 0, errors.New("debug enable: choose --for or --until, not both")
+	case forDur <= 0 && until == "":
+		return 0, errors.New("debug enable: --for or --until is required (for example --for 10m)")
+	case until == "":
+		if forDur > time.Hour {
+			return 0, errors.New("debug enable: the maximum is 1h")
+		}
+		return forDur, nil
+	}
+
+	end, err := time.Parse(time.RFC3339, until)
+	if err != nil {
+		return 0, fmt.Errorf("debug enable: --until %q is not RFC 3339", until)
+	}
+	ttl := end.Sub(now)
+	if ttl <= 0 {
+		return 0, fmt.Errorf("debug enable: --until %s is in the past", end.UTC().Format(time.RFC3339))
+	}
+	if ttl > time.Hour {
+		return 0, errors.New("debug enable: the maximum is 1h; pick an --until within an hour")
+	}
+	return ttl, nil
 }
 
 func debugStatus(args []string, out io.Writer) error {
