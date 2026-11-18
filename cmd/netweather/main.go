@@ -140,7 +140,7 @@ func run(args []string, stdout io.Writer) error {
 		return serve(lg)
 
 	default:
-		return fmt.Errorf("%w %q (try: serve, version, healthcheck, seed, export, debug, disable, doctor, backup)",
+		return fmt.Errorf("%w %q (try: serve, agent, version, healthcheck, seed, export, debug, disable, doctor, backup)",
 			errUnknownCommand, command)
 	}
 }

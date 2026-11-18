@@ -65,6 +65,7 @@ func agentCommand(args []string, stdout io.Writer) error {
 	token := fs.String("token", os.Getenv("NETWEATHER_AGENT_TOKEN"), "bearer token for the primary")
 	configPath := fs.String("config", os.Getenv("NETWEATHER_CONFIG"), "target config file")
 	interval := fs.Duration("interval", 30*time.Second, "reporting cadence")
+	once := fs.Bool("once", false, "run a single probe pass and exit")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("agent: %w", err)
 	}
@@ -93,6 +94,9 @@ func agentCommand(args []string, stdout io.Writer) error {
 	for {
 		if _, err := ag.Step(ctx); err != nil {
 			fmt.Fprintf(os.Stderr, "agent: step: %v\n", err)
+		}
+		if *once {
+			return nil
 		}
 		select {
 		case <-ctx.Done():

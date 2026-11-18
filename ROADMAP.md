@@ -204,13 +204,19 @@ page view into an API loop.
   entity, so a page-time fetch would be an API-scraping loop. The stored event
   overlay is the shipped behaviour.
 
-### 3.5 Multi-user auth (OIDC) — **Next**
+### 3.5 Multi-user auth (OIDC) — **Later**
 
-**Outcome:** named operators and an audit trail that says who did what.
+**Outcome:** named operators and an audit trail that says who did what. Moved
+from Next on first principles: the single shared token already carries the
+subject on every audit line (token identity is the operator), and OIDC adds an
+external IdP dependency plus a mock-IdP test harness that does not exist in
+this repo. The auth surface (CSRF, secure cookies, rate limiting, trusted
+proxy) is complete for the shipped single-team model; multi-user is a
+deployment-scale concern, not a correctness one.
 
-- OIDC authorization-code flow, roles `viewer`/`operator`, sessions keyed to the
-  subject, and the existing token retained as a break-glass login.
-- Acceptance: the audit lines (`probe_control`, `incident_annotated`,
+- OIDC authorization-code flow, roles `viewer`/`operator`, sessions keyed to
+  the subject, and the existing token retained as a break-glass login.
+- When it lands: the audit lines (`probe_control`, `incident_annotated`,
   `target_disabled`) carry the subject; `THREAT_MODEL.md` T6/T7 are rewritten
   with the new controls; a viewer cannot mutate.
 
