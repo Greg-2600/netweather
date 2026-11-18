@@ -525,7 +525,11 @@ Auth: bearer. Detector output, newest first. An anomaly is an observation relati
 }
 ```
 
-- `kind` is `health_drop` in v1: two consecutive evaluations below `baseline - 3σ` with at least a two-point drop.
+- `kind` is one of three, and each names the evidence rather than guessing at a cause:
+  - `health_drop` — two consecutive evaluations below `baseline - 3σ`, with at least a two-point drop (`DESIGN.md` §7.2).
+  - `coverage_drop` — two consecutive evaluations of the scope's *coverage* below its own baseline. It is advisory: a mass bot-wall rollout and a mass outage look identical in health, and only the coverage line tells them apart.
+  - `health_floor` — two consecutive evaluations below the learning floor for a scope that has no usable baseline yet, so a brand-new deployment is not blind during its first weeks.
+
 - `buckets` is how many consecutive low evaluations produced the event.
 - `incident_id` is absent until an incident links to the anomaly.
 - The detector only evaluates scopes that clear the coverage floors, because running it on an `UNKNOWN` scope would turn a visibility failure into a false incident.

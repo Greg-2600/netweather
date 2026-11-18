@@ -68,7 +68,7 @@ Every log line is structured (JSON in a container, text on a TTY). The fields th
 | `error_class` | failure | Classifier error class (`tcp_refused`, `tls_expired`, `dns_nxdomain`, …) |
 | `http_status` | HTTP | Numeric status actually received |
 | `latency_ms` | probe | Integer milliseconds, stage or total as labelled |
-| `confidence` | probe | `semantic`, `reachability`, `low` |
+| `confidence` | probe | `high`, `medium`, `low` (`CLASSIFIER.md` §9) |
 | `reason` | transition | **The same string stored in `state_change.reason`** |
 | `incident_id` | incident | ULID |
 | `suppressed` | rollup | How many identical lines the limiter suppressed |
@@ -81,7 +81,7 @@ Example, one line, no shell required:
 {"ts":"2026-11-16T03:14:15.123Z","level":"INFO","msg":"state change","event":"state_change","component":"store",
  "target":"chase.com","vantage":"local","tier":2,
  "state_from":"up","state_to":"down","stage":"tls","error_class":"tls_expired",
- "http_status":0,"latency_ms":41,"confidence":"semantic","reason":"certificate expired 2h ago"}
+ "http_status":0,"latency_ms":41,"confidence":"high","reason":"certificate expired 2h ago"}
 ```
 
 ---
