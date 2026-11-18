@@ -266,7 +266,7 @@ These are the properties the security model reduces to. They are listed as testa
 7. The binary refuses to start when: non-loopback + `auth: none` + `allow_public` unset; token file is world-readable; `schema_version` > binary; it is running as UID 0.
 8. Every response carries CSP, `nosniff`, `X-Frame-Options`, and `Referrer-Policy`.
 9. A state-changing request without a CSRF token returns 403.
-10. Login timing does not distinguish unknown from known account — constant-time compare and a fixed floor delay.
+10. Login compares the single token in constant time, so a response time does not reveal how much of it matched. There is no username, hence no account to enumerate; the per-client and process-wide buckets are the brute-force control (T6), not an artificial sleep in the handler.
 11. The shipped `torrc` contains the four client-only directives, and a unit test fails if any is missing; `netweather doctor` proves the SOCKS endpoint answers.
 12. No compose example mounts `/var/run/docker.sock` or publishes anything except `2600`.
 13. The release image has no shell: `docker run --rm image sh` fails.
