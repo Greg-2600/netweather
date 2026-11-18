@@ -393,6 +393,10 @@ type boardView struct {
 	// not configured. It is always shown while Tor is on, because a paused
 	// corroboration source explains why regional evidence went quiet.
 	TorBudget string
+	// ColdStartNote is set when most of the fleet has not been probed yet, so
+	// a fresh install does not read as a quiet or broken monitor. It states
+	// what is happening rather than implying health.
+	ColdStartNote string
 	// Health is the Internet Health Index summary (DESIGN.md §11). OK is false
 	// when nothing could be scored, and the chip then states that instead of
 	// rendering a zero as health.
@@ -895,6 +899,13 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		counts[t.State]++
 	}
 
+	// Cold start: when most of the fleet has not been probed yet, the board
+	// would otherwise look quiet or broken. State it plainly rather than
+	// implying health (DESIGN.md §6.5, roadmap 2.2).
+	totalTargets := len(targets)
+	unknownTargets := counts[board.StateUnknown]
+	coldStart := totalTargets > 0 && unknownTargets*2 >= totalTargets
+
 	focus := false
 	switch r.URL.Query().Get("focus") {
 	case "problems", "problem":
@@ -968,6 +979,9 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		Density:        params.Density,
 		DensityOptions: densityOptions(params.Density, params),
 		Country:        country,
+	}
+	if coldStart {
+		view.ColdStartNote = "First probes are still being scheduled across each target's interval, so most of the board is unknown for the first few minutes. Baselines need about 28 weeks of history before anomaly detection runs; until then the health line stays in learning mode."
 	}
 	if country != "" {
 		clear := params

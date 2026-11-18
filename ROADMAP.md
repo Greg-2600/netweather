@@ -57,13 +57,16 @@ unbounded growth, and a stable probe rate.
 - CI: keep the real-endpoint suite weekly (`.github/workflows/e2e.yml`) and add a
   nightly `verify` run so a flake has a time, not just a colour.
 
-### 2.2 First-run experience — **Now**
+### 2.2 First-run experience — **Implemented**
 
-**Outcome:** a new operator understands why the board is not green yet.
+**Outcome:** a fresh install does not read as calm or broken while its first
+probes are still being scheduled.
 
-- The board already shows `LEARNING n/28`; add a short first-run note when most
-  targets are `UNKNOWN` ("first probes are spread across each interval").
-- Acceptance: rendered on a fresh volume, with a UI test; no change to the state
+- The board renders a `cold-start` banner when at least half of the fleet is
+  still `UNKNOWN`, stating that probes are being spread across each target's
+  interval and that baselines need about 28 weeks of history before anomaly
+  detection runs. It disappears as soon as the fleet is mostly probed.
+- Acceptance met: rendered on a fresh volume, with a UI test; no change to the state
   model.
 
 ### 2.3 Backup/restore drill — **Implemented**
