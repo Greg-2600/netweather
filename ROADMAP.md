@@ -40,9 +40,11 @@ copy as the rollback point.
 
 ---
 
-## 2. Now — release hardening
+## 2. Now - release hardening (complete)
 
-These are the items between "MVP" and "I would leave it running unattended."
+All five items below are implemented and verified on this tree. The section is
+kept as a record of what "release hardening" meant, so a future reader can see
+the bar rather than re-deriving it.
 
 ### 2.1 Soak run — **Implemented (verification)**
 
@@ -98,7 +100,7 @@ probes are still being scheduled.
 - Acceptance met: three consecutive full-suite runs with `-shuffle=on` and
   `-count=1` passed with zero failures (api, web, probe, store, e2e, ui).
 
-### 2.5 Continuous deployment every two hours — **Now**
+### 2.5 Continuous deployment every two hours — **Implemented**
 
 **Outcome:** a fresh build of the working software lands in the running
 container on a fixed cadence, so the running instance never drifts from the
