@@ -71,6 +71,50 @@ func fixedNow() time.Time {
 	return time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
 }
 
+func TestFeedContractRISLive(t *testing.T) {
+	t.Parallel()
+
+	body := fixture(t, "rislive.json")
+	srv := serveBody(t, body)
+
+	r := feeds.NewRISLive(srv.Client(), []int{64500})
+	r.Endpoint = srv.URL + "/data/bgp-updates/data.json"
+	r.Now = fixedNow
+
+	events, err := fetch(t, r)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want 2", len(events))
+	}
+
+	first := events[0]
+	if first.Kind != "bgp_withdrawal" {
+		t.Fatalf("kind = %q, want bgp_withdrawal", first.Kind)
+	}
+	if first.Severity != 1.0 {
+		t.Fatalf("severity = %v, want 1.0", first.Severity)
+	}
+	if first.ASN != 64500 {
+		t.Fatalf("asn = %d, want 64500", first.ASN)
+	}
+	if first.ExternalID == "" || first.StartedAt.IsZero() {
+		t.Fatalf("identity/timeline missing: %+v", first)
+	}
+	if !strings.Contains(first.Payload, `"prefix"`) {
+		t.Fatalf("payload lost the prefix: %s", first.Payload)
+	}
+
+	second := events[1]
+	if second.Kind != "bgp_update" {
+		t.Fatalf("kind = %q, want bgp_update", second.Kind)
+	}
+	if second.Severity != 0 {
+		t.Fatalf("severity = %v, want 0", second.Severity)
+	}
+}
+
 func TestFeedContractAtlas(t *testing.T) {
 	t.Parallel()
 

@@ -2301,6 +2301,45 @@ func buildFeedPollers(st *store.Store, lg *logging.Logger) []*feeds.Poller {
 				Sink:   st,
 				Every:  10 * time.Minute,
 			})
+		case "ris-live", "ris":
+			raw := strings.TrimSpace(os.Getenv("NETWEATHER_RIS_ASNS"))
+			if raw == "" {
+				lg.Warn("ris-live feed requested without NETWEATHER_RIS_ASNS",
+					"event", "feed_not_configured", "component", "feeds", "feed", "ris-live")
+				continue
+			}
+			var asns []int
+			for _, part := range splitList(raw) {
+				n, err := strconv.Atoi(strings.TrimSpace(part))
+				if err != nil || n <= 0 {
+					lg.Warn("ris-live ASN is not a positive integer; skipping",
+						"event", "feed_not_configured", "component", "feeds",
+						"feed", "ris-live", "value", part)
+					continue
+				}
+				asns = append(asns, n)
+			}
+			if len(asns) == 0 {
+				lg.Warn("ris-live feed has no usable ASNs; skipping",
+					"event", "feed_not_configured", "component", "feeds", "feed", "ris-live")
+				continue
+			}
+			ris := feeds.NewRISLive(client, asns)
+			if endpoint := strings.TrimSpace(os.Getenv("NETWEATHER_RIS_URL")); endpoint != "" {
+				if feedURLIsHTTPS(endpoint) {
+					ris.Endpoint = endpoint
+				} else {
+					lg.Warn("feed URL override is not HTTPS; keeping the compiled endpoint",
+						"event", "feed_url_insecure", "component", "feeds",
+						"feed", "ris-live", "url", endpoint)
+				}
+			}
+			out = append(out, &feeds.Poller{
+				Feed:   "ris-live",
+				Source: ris,
+				Sink:   st,
+				Every:  10 * time.Minute,
+			})
 		}
 	}
 	return out

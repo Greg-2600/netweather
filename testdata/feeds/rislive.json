@@ -1,0 +1,10 @@
+{
+  "data": {
+    "updates": [
+      {"timestamp": 1731844800, "type": "W",
+       "attrs": {"target_prefix": "198.51.100.0/24", "as_path": [64496, 64500]}},
+      {"timestamp": 1731844860, "type": "A",
+       "attrs": {"target_prefix": "198.51.100.0/24", "as_path": [64496, 64501]}}
+    ]
+  }
+}

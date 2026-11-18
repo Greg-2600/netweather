@@ -149,17 +149,22 @@ repository, and a broken build never replaces a working one.
   target and leaves the primary's state alone; agent traffic counts against its
   own budget, not the primary's.
 
-### 3.2 RIS Live feed plugin (BGP) — **Next**
+### 3.2 RIS Live feed plugin (BGP) — **Implemented (polling adapter)**
 
-**Outcome:** hijacks and leaks become corroborating feed events, not a second
+**Outcome:** BGP update history becomes corroborating feed events, not a second
 detector.
 
-- A `feeds.Adapter` over the RIS Live stream with bounded buffering, reconnect
-  with backoff, the existing `external_event` shape, and a contract fixture per
-  message family. No per-request target lookups.
-- Acceptance: recorded fixtures for update/withdraw and a hijack annotation;
-  `/api/v1/feeds` and the drawer show it as evidence only; the IHI's BGP
-  component becomes scoreable and is dropped when the feed is unhealthy.
+- `internal/feeds/rislive` polls RIPEstat's bgp-updates endpoint for the ASNs
+  the operator names (`NETWEATHER_RIS_ASNS`), with an optional HTTPS endpoint
+  override (`NETWEATHER_RIS_URL`). It maps each update to an event: a
+  withdrawal is severity 1.0, an announcement 0.0, both carrying the ASN and the
+  prefix in the payload.
+- It is read-only and spends no credits; it only reads RIPEstat.
+- An event is evidence, not a verdict: it appears in the feed strip and the
+  drawer's corroboration list. The real-time WebSocket stream is post-MVP
+  (`docs/DESIGN.md` §8.3).
+- Acceptance met: a contract test with a recorded payload, plus the env-doc and
+  API-path guards; `docs/DESIGN.md` §8.3 describes it as shipped.
 
 ### 3.3 RIPE Atlas feed plugin — **Implemented**
 

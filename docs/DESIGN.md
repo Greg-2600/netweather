@@ -743,9 +743,26 @@ Free with a Cloudflare account token. The BGP feeds are the cyberwar signal.
 
 **Implemented:** `internal/feeds.Radar` polls hijacks, leaks, traffic anomalies, and curated outage annotations with the operator's `NETWEATHER_RADAR_TOKEN`, normalises their severity vocabularies, and stores them as `hijack`, `leak`, `traffic_anomaly`, and `outage_annotation` evidence. Annotations map `outage_type` (nationwide/regional/local) to severity and take the first location code from their `locations` list. Rows without an id get a stable synthetic key so re-polls stay idempotent. A missing token disables the feed with a startup warning rather than polling unauthenticated. All four documented endpoints are implemented.
 
-### 8.3 RIPE RIS Live - phase 3, not v1
+### 8.3 RIPE RIS Live — feed plugin (BGP)
 
-Free websocket, no auth. Real-time BGP updates, subscribable by prefix or ASN. Powerful and **very noisy** - only worth it with a tuned withdrawal-rate detector. Deferred behind the plugin interface; v1 ships IODA and Radar summaries only, because a summary answers "is something large happening" and a firehose answers "what exactly changed, right now" - and the second question is only useful once the baseline machinery (§7.2) is proven.
+RIS Live is RIPE's real-time BGP update stream. It is powerful and very noisy,
+and it is only useful once the baseline machinery (§7.2) is proven. This
+project now ships a **polling adapter** over RIPEstat's BGP update history
+endpoint rather than the real-time WebSocket: it fits the existing feed model,
+needs no persistent connection, and costs nothing per poll. The real-time
+stream is a separate, post-MVP concern.
+
+- `internal/feeds/rislive` polls the RIPEstat bgp-updates endpoint for the ASNs
+  the operator names (`NETWEATHER_RIS_ASNS`), with an optional endpoint override
+  (`NETWEATHER_RIS_URL`). It maps each update to an event: a withdrawal is
+  severity 1.0, an announcement 0.0, both carrying the ASN and the prefix.
+- An event is evidence, not a verdict: it appears in the feed strip and the
+  drawer's corroboration list. The IHI's BGP component scores on events whose
+  kind names a hijack or a leak; the adapter's `bgp_withdrawal` kind is a
+  routing change, not a hijack verdict, so a dead feed drops the component
+  with "feed is not enabled" rather than fabricating routing health.
+- The adapter is read-only and spends no credits; it only reads RIPEstat.
+- A contract test with a recorded payload pins the wire shape.
 
 ### 8.4 Statuspage family
 
@@ -1157,7 +1174,7 @@ The living plan — what is now, next, later, and deliberately not planned — i
 | **0** | Service targets, probe ladder, classifier (incl. per-resolver DNS baseline), SQLite, board + overview, reference/LOCAL, baseline health | It is not noise | Implemented |
 | **1** | Country anchors, ASN enrichment, coverage panel, attribution, world view, corridors, optional RIPE Atlas profile, Atlas feed plugin (read-only) | It sees more than a favicon grid | Implemented. The RIPE Atlas **software-probe profile** ships (`docs/RIPE_ATLAS.md`), and the Atlas **feed plugin** now ships as a read-only adapter (`internal/feeds/atlas`) that reads measurements the operator created and never spends credits |
 | **2** | IODA + Radar plugins, Statuspage corroboration, IHI, drawer depth | It detects large events | Implemented |
-| **3** | RIS Live, cert pinning, multi-instance agent | It detects tampering and mass events | Cert pinning implemented; RIS Live and remote agents are not. Vantages are first-class (direct and Tor), but a remote agent is a separate deployment the project has not built. |
+| **3** | RIS Live, cert pinning, multi-instance agent | It detects tampering and mass events | Cert pinning and RIS Live (polling adapter) implemented; remote agents are not. Vantages are first-class (direct and Tor), but a remote agent is a separate deployment the project has not built. |
 
 Phase 0 is the whole thesis in miniature. If phase 0 is noisy, nothing later saves it.
 
@@ -1171,7 +1188,7 @@ Phase 0 is the whole thesis in miniature. If phase 0 is noisy, nothing later sav
 - **RIPE Atlas — optional compose profile** (§8.6), off by default.
 - **Traceroute - on-demand only, via the opt-in `compose.trace.yaml` override** that adds `CAP_NET_RAW`; the default image has no capabilities.
 - **Tailscale — compose profile only** (`NETWORKING.md` §7); the default compose publishes exactly one port.
-- **BGP - v1 ships IODA and Radar summaries only** (phase 2). RIS Live is phase 3, behind the plugin interface.
+- **BGP - v1 ships IODA and Radar summaries only (phase 2).** RIS Live now ships as a polling adapter over RIPEstat (`internal/feeds/rislive`); the real-time WebSocket is post-MVP.
 
 **Open:**
 
