@@ -146,16 +146,22 @@ detector.
   `/api/v1/feeds` and the drawer show it as evidence only; the IHI's BGP
   component becomes scoreable and is dropped when the feed is unhealthy.
 
-### 3.3 RIPE Atlas feed plugin — **Next**
+### 3.3 RIPE Atlas feed plugin — **Implemented**
 
 **Outcome:** operator-created measurements can be attached as evidence where a
 target id is known; never guessed.
 
-- Read-only client with an operator key, credit-aware (no new measurement
-  without an explicit request), and a strict "no target mapping, no row".
-- Acceptance: an Atlas result appears in the drawer's corroboration for a
-  mapped target and is absent for an unmapped one; `ACCEPTABLE_USE.md` §9 and
-  `docs/RIPE_ATLAS.md` are updated to say the plugin now ships.
+- `internal/feeds/atlas` is a read-only adapter over the RIPE Atlas results API.
+  It reads the measurement ids the operator names (`NETWEATHER_ATLAS_MEASUREMENTS`),
+  with an optional operator key (`NETWEATHER_ATLAS_KEY`) for private measurements
+  and an optional endpoint override (`NETWEATHER_ATLAS_URL`). It reads only the
+  results endpoint, which costs no credits, and never creates a measurement.
+- An Atlas result carries no target id, so it appears as evidence in the feed
+  strip and the drawer's corroboration list rather than as a verdict about one
+  of this monitor's targets.
+- Acceptance met: a contract test with a recorded payload, plus the env-doc and
+  API-path guards; `ACCEPTABLE_USE.md` §9 and `docs/RIPE_ATLAS.md` describe it
+  as shipped.
 
 ### 3.4 Live per-country IODA overlay — **Next**
 

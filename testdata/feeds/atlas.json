@@ -1,0 +1,6 @@
+[
+  {"from": 12345, "prb_id": 12345, "timestamp": 1731844800, "msm_id": 98765432,
+   "dst_addr": "198.51.100.9", "result": [{"rtt": 12.3}, {"rtt": 11.9}, {"err": "timeout"}]},
+  {"from": 67890, "prb_id": 67890, "timestamp": 1731844800, "msm_id": 98765432,
+   "dst_addr": "198.51.100.9", "result": [{"rtt": 40.1}, {"rtt": 39.8}, {"rtt": 41.0}]}
+]

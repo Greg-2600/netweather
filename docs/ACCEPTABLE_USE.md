@@ -209,7 +209,15 @@ Only the primary vantage may declare `DOWN`. **Implemented by construction:** To
 
 The optional `ripe-atlas` profile runs RIPE's software probe. That probe generates its own measurements for RIPE's network, from the operator's IP, under RIPE's terms - not netweather's target list and not netweather's rate limits. It is a separate trust domain and a separate agreement. Turning it on does not change anything in §2 or §3; turning it off does not affect probing.
 
-The `atlas` feed plugin is specified and deliberately not shipped: an Atlas result is a measurement from RIPE's probes, not an outage verdict about one of this monitor's targets, and it carries no target id to map onto. Corridors do not depend on it (they are configuration-driven). If it is added, it stays read-mostly: it reads measurements the operator created (or public anchor data) with the operator's API key, and it spends credits only when asked.
+The `atlas` feed plugin now ships as a read-only adapter (`internal/feeds/atlas`):
+it polls the results of the measurement ids the operator names
+(`NETWEATHER_ATLAS_MEASUREMENTS`), with an optional operator key
+(`NETWEATHER_ATLAS_KEY`) for private measurements. It reads only the results
+endpoint, which costs no credits, and never creates a measurement. An Atlas
+result is a measurement from RIPE's probes, not an outage verdict about one
+of this monitor's targets, and it carries no target id to map onto, so it
+appears as evidence in the feed strip and corroboration lists rather than as
+a verdict. Corridors do not depend on it (they are configuration-driven).
 
 ---
 

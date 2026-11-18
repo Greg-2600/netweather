@@ -2262,6 +2262,45 @@ func buildFeedPollers(st *store.Store, lg *logging.Logger) []*feeds.Poller {
 				Sink:   st,
 				Every:  5 * time.Minute,
 			})
+		case "atlas":
+			raw := strings.TrimSpace(os.Getenv("NETWEATHER_ATLAS_MEASUREMENTS"))
+			if raw == "" {
+				lg.Warn("atlas feed requested without NETWEATHER_ATLAS_MEASUREMENTS",
+					"event", "feed_not_configured", "component", "feeds", "feed", "atlas")
+				continue
+			}
+			var measurements []int
+			for _, part := range splitList(raw) {
+				n, err := strconv.Atoi(strings.TrimSpace(part))
+				if err != nil || n <= 0 {
+					lg.Warn("atlas measurement id is not a positive integer; skipping",
+						"event", "feed_not_configured", "component", "feeds",
+						"feed", "atlas", "value", part)
+					continue
+				}
+				measurements = append(measurements, n)
+			}
+			if len(measurements) == 0 {
+				lg.Warn("atlas feed has no usable measurement ids; skipping",
+					"event", "feed_not_configured", "component", "feeds", "feed", "atlas")
+				continue
+			}
+			atlas := feeds.NewAtlas(client, strings.TrimSpace(os.Getenv("NETWEATHER_ATLAS_KEY")), measurements)
+			if endpoint := strings.TrimSpace(os.Getenv("NETWEATHER_ATLAS_URL")); endpoint != "" {
+				if feedURLIsHTTPS(endpoint) {
+					atlas.Endpoint = endpoint
+				} else {
+					lg.Warn("feed URL override is not HTTPS; keeping the compiled endpoint",
+						"event", "feed_url_insecure", "component", "feeds",
+						"feed", "atlas", "url", endpoint)
+				}
+			}
+			out = append(out, &feeds.Poller{
+				Feed:   "atlas",
+				Source: atlas,
+				Sink:   st,
+				Every:  10 * time.Minute,
+			})
 		}
 	}
 	return out

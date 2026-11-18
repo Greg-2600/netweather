@@ -71,6 +71,50 @@ func fixedNow() time.Time {
 	return time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
 }
 
+func TestFeedContractAtlas(t *testing.T) {
+	t.Parallel()
+
+	body := fixture(t, "atlas.json")
+	srv := serveBody(t, body)
+
+	a := feeds.NewAtlas(srv.Client(), "test-key", []int{98765432})
+	a.Endpoint = srv.URL + "/api/v2/measurements"
+	a.Now = fixedNow
+
+	events, err := fetch(t, a)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want 2", len(events))
+	}
+
+	first := events[0]
+	if first.Kind != "atlas_measurement" {
+		t.Fatalf("kind = %q, want atlas_measurement", first.Kind)
+	}
+	if first.ExternalID == "" {
+		t.Fatal("ExternalID missing")
+	}
+	if first.Severity < 0.3 || first.Severity > 0.4 {
+		t.Fatalf("severity (loss) = %v, want ~0.333", first.Severity)
+	}
+	if first.StartedAt.IsZero() {
+		t.Fatal("StartedAt missing")
+	}
+	if !strings.Contains(first.Payload, `"msm_id"`) {
+		t.Fatalf("payload lost the measurement id: %s", first.Payload)
+	}
+	if !strings.Contains(first.Payload, `"rtt_ms"`) {
+		t.Fatalf("payload lost the rtt: %s", first.Payload)
+	}
+
+	second := events[1]
+	if second.Severity != 0 {
+		t.Fatalf("severity = %v, want 0 (no loss)", second.Severity)
+	}
+}
+
 func TestFeedContractIODA(t *testing.T) {
 	t.Parallel()
 

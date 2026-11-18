@@ -32,10 +32,13 @@ stating plainly rather than leaving it in a compose comment:
   host's real address, which is why the profile declares them explicitly.
 
 Nothing about the monitor's target list, credentials, logs or database is sent
-to RIPE by this profile. The reverse is also true: netweather does not ingest
-Atlas results. The `atlas` feed plugin is specified and deliberately not
-shipped (`ACCEPTABLE_USE.md` §9): an Atlas measurement carries no target id for
-this monitor to map onto, and guessing one would turn evidence into a verdict.
+to RIPE by this profile. The reverse is also true: netweather never *verdicts*
+from an Atlas result. The `atlas` feed plugin now ships as a read-only adapter
+(`internal/feeds/atlas`): it reads measurements the operator created (or public
+anchor data) with the operator's API key, and it spends credits only when the
+operator creates a measurement, never on a timer. An Atlas result carries no
+target id, so it appears as evidence in the feed strip and the drawer's
+corroboration list rather than as a verdict about one of this monitor's targets.
 
 ## Scope
 
