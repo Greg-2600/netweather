@@ -1,0 +1,13 @@
+# 429 is the origin refusing the client, not an outage.
+# expect: blocked
+# confidence: high
+# reason-contains: rate limited (429)
+--- request
+GET / HTTP/1.1
+Host: example.com
+--- response
+HTTP/1.1 429 Too Many Requests
+retry-after: 120
+content-type: text/plain
+
+slow down

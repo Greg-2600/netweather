@@ -1,0 +1,14 @@
+# A challenge header is the WAF talking: challenge wins over the status code.
+# Two independent signatures (the header and the body marker) raise confidence.
+# expect: blocked
+# confidence: high
+# reason-contains: challenge
+--- request
+GET / HTTP/1.1
+Host: example.com
+--- response
+HTTP/1.1 403 Forbidden
+cf-mitigated: challenge
+content-type: text/html
+
+<html><body>Checking your browser before accessing.</body></html>

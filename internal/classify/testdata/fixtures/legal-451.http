@@ -1,0 +1,12 @@
+# 451 is a legal block: reachable, served, and deliberately unavailable here.
+# expect: blocked
+# confidence: high
+# reason-contains: 451
+--- request
+GET / HTTP/1.1
+Host: example.com
+--- response
+HTTP/1.1 451 Unavailable For Legal Reasons
+content-type: text/html
+
+unavailable for legal reasons

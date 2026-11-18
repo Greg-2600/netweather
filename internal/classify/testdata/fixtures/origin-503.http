@@ -1,0 +1,12 @@
+# An origin 5xx is a real outage.
+# expect: down
+# confidence: high
+# reason-contains: origin 503
+--- request
+GET / HTTP/1.1
+Host: example.com
+--- response
+HTTP/1.1 503 Service Unavailable
+content-type: text/plain
+
+upstream unavailable

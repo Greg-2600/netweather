@@ -1,0 +1,12 @@
+# A plain 403 with no challenge signature is still a bot wall, not an outage.
+# expect: blocked
+# confidence: high
+# reason-contains: forbidden (403)
+--- request
+GET / HTTP/1.1
+Host: example.com
+--- response
+HTTP/1.1 403 Forbidden
+content-type: text/html
+
+Access to this resource is denied.

@@ -1,0 +1,12 @@
+# A plain 200 with no content assertion proves reachability only.
+# expect: up_reachability
+# confidence: low
+--- request
+GET / HTTP/1.1
+Host: example.com
+--- response
+HTTP/1.1 200 OK
+content-type: text/html
+content-length: 22
+
+<html><body>hi</body></html>

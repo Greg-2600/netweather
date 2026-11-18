@@ -519,59 +519,42 @@ These are prohibited, with reasons. Each one has caused a real false-alarm epide
 
 ## 13. Golden fixtures
 
-The classifier test suite is a directory of recorded responses plus expected outcomes. No network access in CI.
+The suite has two halves, and both run offline in CI. The decision table lives in
+`internal/classify` as one case per rule, so the expected value sits beside the
+input. A recorded file is used where the *wire shape* is the thing under test:
+`internal/classify/testdata/fixtures/` holds raw HTTP responses and transport
+error classes, and `fixtures_test.go` parses the status line, headers, and body
+into the classifier's input before asserting the documented outcome.
 
 ```
-testdata/
-  001-plain-200-semantic-pass.http
-  002-plain-200-no-semantic.http
-  003-cf-challenge-403.http
-  004-cf-challenge-503.http
-  005-cf-1020-waf.http
-  006-akamai-reference-403.http
-  007-imperva-incident-403.http
-  008-datadome-redirect-302.http
-  009-perimeterx-px-captcha.http
-  010-aws-waf-challenge.http
-  011-origin-502.http
-  012-cf-520-origin.http
-  013-rate-limit-429.http
-  014-legal-451.http
-  015-linkedin-999.http
-  016-not-found-404.http
-  017-head-405.http
-  018-js-shell-200.http
-  019-empty-spa-200.http
-  020-semantic-mismatch.http
-  021-redirect-loop.http
-  022-tls-cert-expired.txt
-  023-tls-issuer-unexpected.txt
-  024-dns-nxdomain-doh-agrees.txt
-  025-dns-nxdomain-doh-disagrees.txt
-  026-tcp-refused.txt
-  027-tls-reset-after-hello.txt
-  028-retry-after-429.txt
-  029-503-without-challenge.http
-  030-multi-hop-challenge-in-chain.http
-  031-icmp-timeout-anchor.txt
-  032-icmp-partial-loss-corridor.txt
-  033-ntp-offset-warning.txt
-  034-traceroute-star-hops.txt
-  035-tor-exit-blocked.txt
-  036-vantage-disagreement-regional.txt
-  037-tor-dns-leak-detected.txt
-  038-geodns-edge-rotation-not-divergence.txt
-  039-dns-anomaly-single-strong-signal.txt
-  040-tamper-two-independent-signals.txt
-  041-learning-mode-no-incident.txt
+internal/classify/testdata/fixtures/
+  cf-challenge-403.http
+  forbidden-403.http
+  js-shell-200.http
+  legal-451.http
+  origin-404.http
+  origin-503.http
+  plain-200-reachability.http
+  plain-200-semantic-pass.http
+  rate-limit-429.http
+  semantic-mismatch-200.http
 ```
 
-Each fixture is a small file:
+The set is deliberately representative rather than a transcript of every rule:
+each file pins one branch (challenge, plain block, rate limit, legal block,
+origin error, configuration error, reachability-only, semantic pass, semantic
+mismatch, JS shell). The other rules are table cases, where a raw file would only
+repeat the same struct literal with more punctuation. Captured third-party
+payloads are the one other file-based set, under `testdata/feeds/`, because a
+feed's shape is not ours to construct.
+
+Each fixture is a small file with a metadata preamble and an optional request
+transcript that keeps it readable as a report excerpt:
 
 ```http
-# expect: BLOCKED
-# confidence: medium
-# reason: cloudflare challenge (header)
+# expect: blocked
+# confidence: high
+# reason-contains: challenge
 --- request
 GET / HTTP/1.1
 Host: example.com
@@ -580,10 +563,19 @@ HTTP/1.1 403 Forbidden
 cf-mitigated: challenge
 content-type: text/html
 
-<html>...
+<html>Checking your browser before accessing.</html>
 ```
 
-Adding a WAF signature without a fixture is not allowed to merge. That rule is what keeps the classifier honest over time.
+`expect` and `confidence` are required and use the wire names (`up`, `down`,
+`blocked`, …; `high`, `medium`, `low`). `reason-contains` and `body-contains` are
+optional: the first asserts part of the stored reason, the second supplies the
+target's content contract so the semantic branch is exercised. A transport
+fixture is the same file with `# error-class: dns_nxdomain` instead of a response
+section.
+
+Adding a WAF signature without a test case is not allowed to merge: a table row
+when the decision is the thing under test, a fixture when the raw shape is. That
+rule is what keeps the classifier honest over time.
 
 ---
 
@@ -591,7 +583,7 @@ Adding a WAF signature without a fixture is not allowed to merge. That rule is w
 
 Classifier changes are behaviour changes and need:
 
-1. A new or updated fixture in `testdata/`
+1. A new or updated case in the decision table (`internal/classify`), or a fixture under `internal/classify/testdata/fixtures/` when the raw wire shape is what changed
 2. A note in `CHANGELOG.md` under "Classifier"
 3. A re-run of the corpus against 7 days of recorded production probes, with the diff in state counts shown in the PR
 

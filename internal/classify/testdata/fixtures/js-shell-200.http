@@ -1,0 +1,12 @@
+# A client-rendered shell has no assessable content: reachability, low confidence.
+# expect: up_reachability
+# confidence: low
+# reason-contains: no assessable content
+--- request
+GET / HTTP/1.1
+Host: example.com
+--- response
+HTTP/1.1 200 OK
+content-type: text/html
+
+<html><body><div id="app"></div><noscript>Enable JavaScript to continue</noscript></body></html>

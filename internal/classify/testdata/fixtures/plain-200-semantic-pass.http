@@ -1,0 +1,13 @@
+# The body marker the operator asked for is present.
+# expect: up
+# confidence: high
+# reason-contains: semantic ok
+# body-contains: welcome
+--- request
+GET / HTTP/1.1
+Host: example.com
+--- response
+HTTP/1.1 200 OK
+content-type: text/html
+
+<html><body>welcome to the service</body></html>

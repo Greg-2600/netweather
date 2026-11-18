@@ -1,0 +1,12 @@
+# A 404 on the probe path is this monitor's own mistake, not an outage.
+# expect: config_error
+# confidence: high
+# reason-contains: 404
+--- request
+GET /does-not-exist HTTP/1.1
+Host: example.com
+--- response
+HTTP/1.1 404 Not Found
+content-type: text/html
+
+not found
