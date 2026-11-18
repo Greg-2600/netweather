@@ -3,6 +3,7 @@ package probe_test
 import (
 	"crypto/tls"
 	"testing"
+	"time"
 
 	"github.com/Greg-2600/netweather/internal/probe"
 )
@@ -31,8 +32,12 @@ func TestTransportCapsPerHostConcurrency(t *testing.T) {
 	if tr.TLSClientConfig == nil || tr.TLSClientConfig.MinVersion != tls.VersionTLS12 {
 		t.Errorf("TLS minimum version is not TLS 1.2")
 	}
-	if tr.ResponseHeaderTimeout == 0 || tr.TLSHandshakeTimeout == 0 {
-		t.Error("the per-stage timeouts are unset")
+	// Exact per-stage values, because ACCEPTABLE_USE.md §3 publishes them.
+	if tr.TLSHandshakeTimeout != 5*time.Second {
+		t.Errorf("TLSHandshakeTimeout = %v, want 5s", tr.TLSHandshakeTimeout)
+	}
+	if tr.ResponseHeaderTimeout != 10*time.Second {
+		t.Errorf("ResponseHeaderTimeout = %v, want 10s", tr.ResponseHeaderTimeout)
 	}
 }
 

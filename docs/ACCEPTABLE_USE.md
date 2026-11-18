@@ -69,14 +69,14 @@ These are the limits a reviewer should check first. Each is enforced at the stat
 |---|---|---|
 | Minimum interval per host | 30s | Scheduler, clamped after jitter; config cannot go lower |
 | Per-host concurrency | 1 | Per-registrable-domain semaphore |
-| Global request ceiling | 20 req/s default | Token bucket in the dialer |
+| Global request ceiling | 20 req/s default | Agent step pacing: one probe at a time, spaced by `1/rate`; the transport adds no second limiter |
 | Outbound ports | 80, 443, 53, 123, 853 | Config load **and** dial time |
 | Inbound ports | 2600 only | Single listener; startup assertion |
 | Methods | GET, HEAD | Request builder; no generic method parameter |
 | Max targets | 2000 | Config/seed validation, reject not truncate |
 | Max redirects | 5 | Redirect policy |
 | Max body read | 32 KB | `io.LimitReader` + decompression cap |
-| Per-stage deadline | DNS 3s, TCP 5s, TLS 5s, TTFB 5s, total 15s | Dialer and probe contexts |
+| Per-stage deadline | DNS 5s, TCP connect 5s, TLS handshake 5s, TTFB 10s, total 15s | Instrument contexts and transport timeouts |
 | Traceroute | ≤10 runs/hour, on demand only | Rate limiter, no scheduler path |
 | Tor vantage | ≤25 targets, ≥2s spacing, daily MB budget | Vantage policy |
 | Daily egress budget | 2 GB default, hard stop | Byte counter in the dialer. **Implemented:** `NETWEATHER_DAILY_MB` (default 2048, `0` disables) wraps the direct vantage's dialer, so every probe and self-check counts; once spent, the agent stops until UTC midnight and the board carries a banner naming the limit |
