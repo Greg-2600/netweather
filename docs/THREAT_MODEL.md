@@ -257,7 +257,7 @@ Residual: encryption at rest is the host's responsibility. The document says so 
 
 These are the properties the security model reduces to. They are listed as testable statements because a threat model that cannot fail a build is a mood board.
 
-1. No outbound connection is created outside the `Dialer` — enforced by a `forbidigo`/`depguard` rule banning `net.Dial*` outside `internal/netx`.
+1. No direct `net.Dial*` call exists outside `internal/netx` — `TestOutboundDialsGoThroughNetx` scans production files and fails on one. Callers that need a connection take a dial function, and production passes the guarded dialer. The linter does not enforce this rule; the test does.
 2. `Dialer` rejects every address in the private-range table, including IPv4-mapped IPv6 — table-driven test with ~40 cases.
 3. `Dialer` connects to the validated IP, and the `Host`/SNI observed by the peer equals the configured name — test against a local TLS server.
 4. A redirect to a private address, a new port, or a non-HTTP scheme fails closed — recorded-response fixtures.
