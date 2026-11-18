@@ -2212,13 +2212,15 @@ func (s *server) handleIncidentAnnotate(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		s.deps.Logger.Error("annotation failed",
-			"event", "annotation_failed", "component", "http", "incident_id", id, "error", err)
+			"event", "annotation_failed", "component", "http",
+			"incident_id", id, "request_id", requestIDFrom(r), "error", err)
 		http.Error(w, "annotation unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
 	s.deps.Logger.Info("incident annotated",
-		"event", "incident_annotated", "component", "http", "incident_id", id)
+		"event", "incident_annotated", "component", "http",
+		"incident_id", id, "request_id", requestIDFrom(r))
 
 	// #nosec G710 -- fixed prefix plus an id validated to contain no slash.
 	http.Redirect(w, r, "/incidents/"+id, http.StatusSeeOther)
