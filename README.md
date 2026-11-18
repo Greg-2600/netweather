@@ -188,7 +188,7 @@ Every environment variable the binary reads, including the ones that exist for a
 | `NETWEATHER_RADAR_TOKEN` | none | Cloudflare Radar API token; the `radar` feed is skipped with a warning without it |
 | `NETWEATHER_IODA_URL`, `NETWEATHER_RADAR_URL`, `NETWEATHER_AWS_STATUS_URL`, `NETWEATHER_GCP_STATUS_URL`, `NETWEATHER_AZURE_STATUS_URL` | upstream defaults | endpoint overrides for a mirror or a test; **HTTPS only**, and a plaintext override is ignored with `event=feed_url_insecure` |
 | `NETWEATHER_TOR` | off | enables the Tor corroboration vantage |
-| `NETWEATHER_TOR_SOCKS` | `tor:9050` | SOCKS5 entry point; `socks5h` only |
+| `NETWEATHER_TOR_SOCKS` | `127.0.0.1:9050` | SOCKS5 entry point; `socks5h` only, so the proxy resolves names. The shipped compose profile sets `tor:9050`, the sidecar's service name |
 | `NETWEATHER_TOR_MAX` | `25` | maximum Tor targets |
 | `NETWEATHER_TOR_DAILY_MB` | `50` | Tor daily volume budget; `0` disables it |
 | `NETWEATHER_TOR_EXIT_COUNTRY` | none | two-letter code; the exit is verified through the proxy and a mismatch refuses to start |

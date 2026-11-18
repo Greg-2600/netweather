@@ -33,10 +33,12 @@ services:
       # NETWEATHER_CONFIG: /config/targets.yaml
       #
       # Tor is a separate profile (compose --profile tor) and off by default.
-      # Enable both lines together: the sidecar is useless without the client,
-      # and the client fails loudly when the sidecar is missing.
+      # The sidecar is useless without the client, and the client fails loudly
+      # when the sidecar is missing. The socks endpoint names the service
+      # because the sidecar is another container; it is inert until
+      # NETWEATHER_TOR is true.
       # NETWEATHER_TOR: "true"
-      # NETWEATHER_TOR_SOCKS: tor:9050
+      NETWEATHER_TOR_SOCKS: tor:9050
       # Daily volume budget for the tor vantage. Counted on the SOCKS
       # connection; 0 disables it.
       # NETWEATHER_TOR_DAILY_MB: "50"
