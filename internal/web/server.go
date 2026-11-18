@@ -278,7 +278,8 @@ func (s *server) setPaused(w http.ResponseWriter, r *http.Request, paused bool) 
 	}
 
 	s.deps.Logger.Info("probe control",
-		"event", "probe_control", "component", "http", "paused", paused)
+		"event", "probe_control", "component", "http",
+		"request_id", requestIDFrom(r), "paused", paused)
 
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
