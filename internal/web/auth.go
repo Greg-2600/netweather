@@ -32,21 +32,19 @@ const (
 // derived from the UI token, so rotating the token invalidates every session
 // without a session store.
 type authenticator struct {
-	token  string
-	key    []byte
-	secure bool
-	limit  *logging.Limiter
+	token string
+	key   []byte
+	limit *logging.Limiter
 	// global caps the whole process, so a distributed attempt against many
 	// source addresses cannot spend the per-client allowance indefinitely.
 	global *logging.Limiter
 }
 
-func newAuthenticator(token string, secure bool) *authenticator {
+func newAuthenticator(token string) *authenticator {
 	sum := sha256.Sum256([]byte("netweather/session/" + token))
 	return &authenticator{
-		token:  token,
-		key:    sum[:],
-		secure: secure,
+		token: token,
+		key:   sum[:],
 		// Five login attempts per minute per client; enough for a typo, not
 		// enough to be interesting.
 		limit: logging.NewLimiter(time.Minute, 5),
@@ -149,41 +147,52 @@ func randomToken() string {
 	return hex.EncodeToString(b[:])
 }
 
-func (a *authenticator) setSessionCookie(w http.ResponseWriter, value string, now time.Time) {
-	// #nosec G124 -- Secure follows the deployment's TLS posture; HttpOnly and
-	// SameSite are always set, and the cookie never carries the token itself.
+// secureCookie decides the cookie's Secure attribute for one request. The
+// documented rule (NETWORKING.md §7.1) is Secure whenever the browser's
+// effective scheme is HTTPS, including a TLS-terminating proxy that sets
+// X-Forwarded-Proto and is trusted. NETWEATHER_UI_SECURE_COOKIES=true forces it
+// even when the request looks plaintext, which is the operator's explicit
+// choice and will break login over HTTP.
+func (s *server) secureCookie(r *http.Request) bool {
+	return s.deps.SecureCookies || !s.insecure(r)
+}
+
+func (a *authenticator) setSessionCookie(w http.ResponseWriter, value string, now time.Time, secure bool) {
+	// #nosec G124 -- Secure follows the request's TLS posture and the operator
+	// override; HttpOnly and SameSite are always set, and the cookie never
+	// carries the token itself.
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    value,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   a.secure,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 		Expires:  now.Add(sessionIdleTTL),
 	})
 }
 
-func (a *authenticator) clearSessionCookie(w http.ResponseWriter) {
+func (a *authenticator) clearSessionCookie(w http.ResponseWriter, secure bool) {
 	// #nosec G124 -- same rationale as setSessionCookie.
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   a.secure,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})
 }
 
-func (a *authenticator) setCSRFCookie(w http.ResponseWriter, value string, now time.Time) {
+func (a *authenticator) setCSRFCookie(w http.ResponseWriter, value string, now time.Time, secure bool) {
 	// #nosec G124 -- CSRF token, not a credential; HttpOnly and SameSite are set.
 	http.SetCookie(w, &http.Cookie{
 		Name:     csrfCookieName,
 		Value:    value,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   a.secure,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 		Expires:  now.Add(csrfTTL),
 	})
@@ -242,7 +251,7 @@ func (s *server) requireSession(next http.Handler) http.Handler {
 		}
 		now := s.now()
 		if now.Sub(claims.expires.Add(-sessionIdleTTL)) >= sessionRefreshAfter {
-			s.auth.setSessionCookie(w, s.auth.issueSession(now, claims.issued), now)
+			s.auth.setSessionCookie(w, s.auth.issueSession(now, claims.issued), now, s.secureCookie(r))
 		}
 		next.ServeHTTP(w, r)
 	})

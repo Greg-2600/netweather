@@ -10,7 +10,7 @@ import (
 func TestSessionClaimsEnforceIdleAndAbsoluteLifetimes(t *testing.T) {
 	t.Parallel()
 
-	a := newAuthenticator("test-token-0123456789", false)
+	a := newAuthenticator("test-token-0123456789")
 	login := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
 	cookie := a.issueSession(login, login)
 
@@ -28,7 +28,7 @@ func TestSessionClaimsEnforceIdleAndAbsoluteLifetimes(t *testing.T) {
 func TestSessionClaimsKeepTheAbsoluteCapAcrossRefresh(t *testing.T) {
 	t.Parallel()
 
-	a := newAuthenticator("test-token-0123456789", false)
+	a := newAuthenticator("test-token-0123456789")
 	login := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
 
 	// A refresh six days in keeps issued=login and extends the idle deadline,
@@ -45,7 +45,7 @@ func TestSessionClaimsKeepTheAbsoluteCapAcrossRefresh(t *testing.T) {
 func TestSessionClaimsRejectTamperingAndOldPayloads(t *testing.T) {
 	t.Parallel()
 
-	a := newAuthenticator("test-token-0123456789", false)
+	a := newAuthenticator("test-token-0123456789")
 	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
 
 	cookie := a.issueSession(now, now)

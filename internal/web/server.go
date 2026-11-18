@@ -51,7 +51,7 @@ func New(deps Deps) (http.Handler, error) {
 
 	s := &server{
 		deps:    deps,
-		auth:    newAuthenticator(deps.Token, deps.SecureCookies),
+		auth:    newAuthenticator(deps.Token),
 		tmpl:    tmpl,
 		now:     time.Now,
 		streams: deps.StreamLimit,
@@ -172,7 +172,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		csrf := randomToken()
-		s.auth.setCSRFCookie(w, csrf, now)
+		s.auth.setCSRFCookie(w, csrf, now, s.secureCookie(r))
 		s.renderLogin(w, r, http.StatusOK, loginView{
 			CSRF: csrf,
 			Next: safeNext(r.URL.Query().Get("next")),
@@ -200,7 +200,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 		if !s.auth.csrfMatches(r, r.PostFormValue("csrf")) {
 			csrf := randomToken()
-			s.auth.setCSRFCookie(w, csrf, now)
+			s.auth.setCSRFCookie(w, csrf, now, s.secureCookie(r))
 			s.renderLogin(w, r, http.StatusForbidden,
 				loginView{Error: "Session expired. Try again.", CSRF: csrf, Next: next})
 			return
@@ -215,7 +215,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		s.auth.setSessionCookie(w, s.auth.issueSession(now, now), now)
+		s.auth.setSessionCookie(w, s.auth.issueSession(now, now), now, s.secureCookie(r))
 		s.deps.Logger.Info("login ok", "event", "login_ok", "component", "http", "client", s.clientIP(r))
 		// #nosec G710 -- next is the output of safeNext, which admits only a
 		// same-origin path; the taint analyzer cannot see through that helper.
@@ -247,7 +247,7 @@ func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	s.auth.clearSessionCookie(w)
+	s.auth.clearSessionCookie(w, s.secureCookie(r))
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
