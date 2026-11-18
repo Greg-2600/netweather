@@ -84,6 +84,8 @@ func openPool(ctx context.Context, path string, writer bool) (*sql.DB, error) {
 		"_pragma=foreign_keys(ON)",
 		"_pragma=temp_store(MEMORY)",
 		"_pragma=cache_size(-16000)",
+		"_pragma=mmap_size(268435456)",
+		"_pragma=wal_autocheckpoint(1000)",
 	}
 	if writer {
 		pragmas = append(pragmas, "_pragma=auto_vacuum(INCREMENTAL)")
