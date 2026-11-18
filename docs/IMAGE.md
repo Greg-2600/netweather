@@ -196,7 +196,7 @@ services:
       NETWEATHER_TRACE_ENABLED: "true"
 ```
 
-`CAP_NET_RAW` is a meaningful privilege - it permits arbitrary raw packet construction. It is enabled only by merging `compose.trace.yaml`, which also flips `NETWEATHER_TRACE_ENABLED`; the default compose keeps `cap_drop: ALL` literally true. Traceroute stays on-demand regardless: there is no schedule that can reach it.
+`CAP_NET_RAW` is a meaningful privilege - it permits arbitrary raw packet construction. It is enabled only by merging `compose.trace.yaml`, which also flips `NETWEATHER_TRACE_ENABLED`; the default compose keeps `cap_drop: ALL` literally true. Traceroute stays on-demand regardless: there is no schedule that can reach it, and the API and the target drawer share one ten-per-hour governor.
 
 Either way: if neither is available, `icmp` reports the socket error as an unavailable instrument (never as `DOWN`), `trace` is disabled with a visible reason, and **the container still starts**. There is no silent `tcpping` substitution: it would change what the anchor measures.
 

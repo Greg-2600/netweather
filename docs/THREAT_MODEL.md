@@ -179,7 +179,7 @@ This is the highest-severity area, because a mistake here turns the operator's I
 | T26 | Using the tool as a load generator | Global 20 req/s default, per-host 1 concurrent, 30s floor, kill switch (`netweather pause`) | Enforced |
 | T27 | Amplification via DNS/NTP | DNS: normal recursive queries to configured resolvers only. NTP: fixed pool allowlist, single client request, no `monlist`, no broadcast | Enforced |
 | T28 | ICMP as a covert channel or scan | Echo request only, unprivileged datagram ICMP where possible, never to private ranges, never the sole up/down signal | Enforced |
-| T29 | Traceroute abuse | On-demand only, ≤10/hour globally, no private ranges, never scheduled | Enforced |
+| T29 | Traceroute abuse | On-demand only, ≤10/hour globally, no private ranges, never scheduled. The API and the dashboard spend from one governor, so the ceiling is per instance; both resolve through the guarded dialer, so a private destination is refused; no schedule can reach it. | Enforced |
 | T30 | Proxy chaining hides the source of abuse | Never chain proxies; a target has exactly one vantage; SOCKS5 is `socks5h` only, so DNS happens at the proxy | Enforced |
 | T31 | Environment proxy vars reroute traffic | `http.Transport.Proxy = nil` explicitly; `HTTP_PROXY` is not honored | Enforced |
 | T32 | Feed URL as an SSRF vector | Feed endpoints are compiled-in constants; a user-supplied feed URL is opt-in, must be HTTPS, and goes through the same dialer. A plaintext URL is dropped (or an override ignored) with `event=feed_url_insecure`, and every redirect is re-checked so a chain cannot downgrade to HTTP. | Enforced |
