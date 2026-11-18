@@ -16,7 +16,7 @@ import (
 
 // DefaultDoHMaxBytes bounds one JSON answer. A DNS response with an A record is
 // a few hundred bytes; 64 KiB is generous and still refuses a page.
-const DefaultDoHMaxBytes = 64 << 10
+const DefaultDoHMaxBytes = 32 << 10
 
 // DoH is the DNS-over-HTTPS instrument from DESIGN.md §5.1: one HTTPS GET to a
 // fixed JSON endpoint asking for one A record. It answers "does this name
