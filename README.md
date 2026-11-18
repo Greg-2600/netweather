@@ -193,6 +193,27 @@ Every environment variable the binary reads, including the ones that exist for a
 | `NETWEATHER_TOR_DAILY_MB` | `50` | Tor daily volume budget; `0` disables it |
 | `NETWEATHER_TOR_EXIT_COUNTRY` | none | two-letter code; the exit is verified through the proxy and a mismatch refuses to start |
 
+## Operations
+
+**Backup.** The release image has no shell, so the binary is the backup tool:
+
+```sh
+docker compose exec netweather /netweather backup -o /data/backup.db
+docker compose cp netweather:/data/backup.db ./backup.db
+```
+
+`VACUUM INTO` writes a consistent, compact copy while the service runs; the file is `0600`, and an existing destination is refused rather than overwritten.
+
+**Upgrade.** Pull the new digest and restart. Migrations run in a transaction, and before a pending one the binary writes a rollback point beside the database as `netweather.db.pre-migration-v<from>-<UTC timestamp>.db`. A database written by a newer binary refuses to open instead of silently dropping columns.
+
+**Restore.** Stop the service, replace `/data/netweather.db`, delete any `-wal`/`-shm` siblings (they belong to the file you just replaced), and start. Startup logs `event=db_wal_present` if it finds a WAL, because it cannot tell a crashed one from a stale one.
+
+**Logs and support.** `docker compose logs` carries everything at the configured level; `/diagnostics` (behind auth) shows the ring, drops, and active debug scopes; `netweather debug bundle -o bundle.tar.gz` collects the build identity, redacted config, ring, self-checks, and the failing targets' last probes. Enable verbose output for one target rather than globally:
+
+```sh
+docker compose exec netweather /netweather debug enable --target chase.com --level trace --for 10m
+```
+
 ## Safety posture
 
 This tool sends periodic requests to third-party sites. That is dual-use, so the limits are enforced in code rather than documented and hoped for:
