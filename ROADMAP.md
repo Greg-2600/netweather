@@ -99,9 +99,18 @@ repository, and a broken build never replaces a working one.
   Docker; `--no-build` reuses the current image.
 - `scripts/install-schedule.ps1` registers a Windows Task Scheduler job that
   runs the deploy script every two hours; cron is the same job on Linux/macOS.
-- Acceptance: a dry run exits 0 and prints the build and run commands; a real
-  run leaves `/healthz` answering and the container on the new image; a broken
-  build leaves the previous image running and exits non-zero.
+- `scripts/install-schedule.ps1` registers a Windows Task Scheduler job that runs
+  the deploy every two hours; on Linux/macOS the same cadence is one cron line.
+  The job runs from the repository root and falls back to an interactive logon
+  when elevation is unavailable, so a non-admin user still gets a working
+  schedule (runs while logged in; re-run as Administrator for runs while logged
+  out).
+- Acceptance: a dry run exits 0 and prints the build and run commands; a real run
+  leaves `/healthz` answering and the container on the new image; a broken build
+  leaves the previous image running and exits non-zero. **Verified on this host:**
+  the task `netweather-deploy` is `Ready`, trigger `PT2H`, next run
+  2026-11-17 22:00, and a real deploy rebuilt the image, swapped the
+  container, and exited 0 with `/healthz` returning 200.
 - The two-hour cadence is deliberately short: the build is reproducible
   (`devtool repro`) and the container starts in seconds, so a fresh image is
   cheap; a broken one is caught by the health gate before it serves traffic.
