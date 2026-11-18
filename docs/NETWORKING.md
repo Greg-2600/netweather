@@ -344,6 +344,7 @@ Then assert the things only a container can break. The suite is `internal/e2e/co
 | `dns probes the configured resolver and refuses private ones` | `1.1.1.1:53` reaches `UP_REACHABILITY`; `127.0.0.11`, `172.17.0.1`, and `169.254.169.254` are `UNMEASURABLE`, so there is no silent fallback to the host resolver and the SSRF policy is not mistaken for an outage |
 | `tor is reachable by service name, not on loopback` | `tor.nw:9050` answers from the app's network after a readiness wait, `127.0.0.1:9050` does not, and `docker port` shows no published 9050 |
 | `port 53 blocked is unmeasurable, not down` | on an `--internal` network the `port53` self-check fails and the DNS target becomes `UNMEASURABLE` |
+| `backup produces a usable copy` | the live container runs `/netweather backup` and a helper container opens the copy with `sqlite3` and runs `PRAGMA integrity_check`; the release image has no shell, so the binary is the only tool available |
 
 The SSRF scenario is the one worth writing first: it is the only test that proves the guard list matches the *actual* container topology rather than the RFC list. A probe black-holed by a low MTU cannot be asserted here for the same SSRF reason (the only reachable endpoint is a private address), so the gate is covered by unit tests instead; `QUALITY.md` §5.5 states both.
 

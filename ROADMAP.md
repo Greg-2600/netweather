@@ -75,8 +75,9 @@ probes are still being scheduled.
   still `UNKNOWN`, stating that probes are being spread across each target's
   interval and that baselines need about 28 weeks of history before anomaly
   detection runs. It disappears as soon as the fleet is mostly probed.
-- Acceptance met: rendered on a fresh volume, with a UI test; no change to the state
-  model.
+- `TestColdStartBannerReflectsTheFleetState` pins the show/hide behaviour.
+- Acceptance met: rendered on a fresh volume, with a UI test; no change to the
+  state model.
 
 ### 2.3 Backup/restore drill — **Implemented**
 
@@ -87,8 +88,13 @@ probes are still being scheduled.
   and any `-wal`/`-shm` siblings, replaces the file from the backup, re-opens
   it, and asserts the schema version and the row survived. The stale-sibling
   hazard the procedure warns about is cleared before the open.
-- Acceptance met: the scenario runs in `devtool verify` and fails if the
-  restore steps regress.
+- The compose suite adds a `backup produces a usable copy` scenario: the live
+  container runs `/netweather backup`, and a helper container opens the copy
+  with `sqlite3` and runs `PRAGMA integrity_check`. This is the only honest
+  test of the documented restore path, because the release image has no shell
+  and the binary is the only tool available inside it.
+- Acceptance met: both scenarios run in `devtool verify`/`devtool compose` and
+  fail if the restore steps regress.
 
 ### 2.4 Flake budget — **Implemented**
 
@@ -113,13 +119,10 @@ repository, and a broken build never replaces a working one.
   leaving the instance down. `--dry-run` prints every command without touching
   Docker; `--no-build` reuses the current image.
 - `scripts/install-schedule.ps1` registers a Windows Task Scheduler job that
-  runs the deploy script every two hours; cron is the same job on Linux/macOS.
-- `scripts/install-schedule.ps1` registers a Windows Task Scheduler job that runs
-  the deploy every two hours; on Linux/macOS the same cadence is one cron line.
-  The job runs from the repository root and falls back to an interactive logon
-  when elevation is unavailable, so a non-admin user still gets a working
-  schedule (runs while logged in; re-run as Administrator for runs while logged
-  out).
+  runs the deploy every two hours; cron is the same job on Linux/macOS. The job
+  runs from the repository root and falls back to an interactive logon when
+  elevation is unavailable, so a non-admin user still gets a working schedule
+  (runs while logged in; re-run as Administrator for runs while logged out).
 - Acceptance: a dry run exits 0 and prints the build and run commands; a real run
   leaves `/healthz` answering and the container on the new image; a broken build
   leaves the previous image running and exits non-zero. **Verified on this host:**
@@ -131,6 +134,8 @@ repository, and a broken build never replaces a working one.
   cheap; a broken one is caught by the health gate before it serves traffic.
 
 ---
+
+## 3. Next - phase 3
 
 ### 3.1 Remote vantage agent (federation-lite) — **Next**
 

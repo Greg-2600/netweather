@@ -518,4 +518,44 @@ targets:
 		t.Fatalf("the port53 self-check never failed on an internal network: %+v",
 			composeSelfChecksInNetwork(t, composeInternal, composeAppDNS))
 	})
+
+	t.Run("backup produces a usable copy", func(t *testing.T) {
+		// The documented restore path starts with a VACUUM INTO copy taken
+		// while the service is live. This scenario proves that step works in
+		// the real image, which has no shell and therefore no sqlite3 binary
+		// to fall back on: the binary is the only tool available.
+		dest := "/data/compose-backup.db"
+		// Clear any stale copy from a previous run; the backup refuses to
+		// overwrite, which is the documented contract.
+		_, _ = dockerMaybe(t, "exec", composeApp, "rm", "-f", dest)
+		out, err := dockerMaybe(t, "exec", composeApp, "/netweather", "backup", "-o", dest)
+		if err != nil {
+			t.Fatalf("backup: %v\n%s", err, out)
+		}
+		if !strings.Contains(out, "backup written to") {
+			t.Fatalf("backup output = %q", out)
+		}
+
+		// The copy is a real SQLite database: open it from a helper container
+		// that has the sqlite3 client, since the release image does not.
+		helper := "nw-compose-backup-check"
+		docker(t, "rm", "-f", helper)
+		defer func() { _, _ = dockerMaybe(t, "rm", "-f", helper) }()
+		args := []string{
+			"run", "--rm", "--name", helper,
+			"--network", composeNet,
+			"--mount", "type=volume,source=" + composeVolume + ",target=/data",
+			"alpine:3.20",
+			"sh", "-c",
+			"apk add --no-cache sqlite >/dev/null 2>&1; " +
+				"test -s /data/compose-backup.db && " +
+				"sqlite3 /data/compose-backup.db 'PRAGMA integrity_check;' | grep -qx ok",
+		}
+		if out, err := dockerMaybe(t, args...); err != nil {
+			t.Fatalf("backup is not a usable database: %v\n%s", err, out)
+		}
+
+		// Clean up so the next run starts fresh.
+		_, _ = dockerMaybe(t, "exec", composeApp, "rm", "-f", dest)
+	})
 }
