@@ -95,7 +95,7 @@ func composeConfig(t *testing.T, body string) string {
 
 func composeCleanup(t *testing.T) {
 	t.Helper()
-	for _, name := range []string{composeApp, composeAppDNS, composeTor} {
+	for _, name := range []string{composeApp, composeAppDNS, composeTor, "nw-agent-primary"} {
 		_, _ = dockerMaybe(t, "rm", "-f", name)
 	}
 	_, _ = dockerMaybe(t, "volume", "rm", "-f", composeVolume)
@@ -557,5 +557,63 @@ targets:
 
 		// Clean up so the next run starts fresh.
 		_, _ = dockerMaybe(t, "exec", composeApp, "rm", "-f", dest)
+	})
+	t.Run("remote agent reports a vantage", func(t *testing.T) {
+		// The agent runs the same instruments on a second container and
+		// reports each batch to the primary under a corroborating vantage.
+		// This is the end-to-end proof that federation-lite works across
+		// the container boundary, not just in a unit test.
+		agentConfig := `
+version: 1
+targets:
+  - id: example
+    name: Example
+    host: example.com
+    port: 443
+    probe: http
+    class: service
+    tier: 2
+    interval_s: 300
+`
+		agentConfigFile := filepath.Join(t.TempDir(), "agent.yaml")
+		if err := os.WriteFile(agentConfigFile, []byte(agentConfig), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		// Start the primary with the remote vantage enabled. composeRunApp
+		// does not set NETWEATHER_REMOTE_VANTAGES, so run the container
+		// directly with that env added.
+		args := []string{
+			"run", "-d", "--name", "nw-agent-primary", "--network", composeNet,
+			"--read-only", "--tmpfs", "/tmp",
+			"--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
+			"-e", "NETWEATHER_UI_TOKEN=" + composeToken,
+			"-e", "NETWEATHER_SEED=none",
+			"-e", "NETWEATHER_CONFIG=/config/targets.yaml",
+			"-e", "NETWEATHER_REMOTE_VANTAGES=remote",
+			"--mount", "type=bind,source=" + agentConfigFile + ",target=/config/targets.yaml,readonly",
+			"--mount", "type=volume,source=" + composeVolume + ",target=/data",
+			composeImage,
+		}
+		docker(t, args...)
+		composeWaitHealthInNetwork(t, composeNet, "nw-agent-primary")
+
+		// Run the agent once against the primary.
+		docker(t, "run", "--rm", "--network", composeNet,
+			"--mount", "type=bind,source="+agentConfigFile+",target=/config/targets.yaml,readonly",
+			composeImage,
+			"agent", "--server", "http://nw-agent-primary:2600",
+			"--vantage", "remote", "--token", composeToken,
+			"--config", "/config/targets.yaml", "--once")
+
+		// Give the primary a moment to record the batch.
+		time.Sleep(2 * time.Second)
+
+		// The remote vantage should now appear for the example target.
+		body := composeGetInNetwork(t, composeNet, "nw-agent-primary",
+			"/api/v1/targets/example/vantages")
+		if !strings.Contains(string(body), `"remote"`) {
+			t.Fatalf("remote vantage did not report: %s", string(body))
+		}
 	})
 }

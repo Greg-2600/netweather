@@ -496,3 +496,21 @@ func TestStateShapesDifferByMoreThanColour(t *testing.T) {
 		t.Errorf("down tile has no compact pattern: %q", str("downPattern"))
 	}
 }
+
+func TestFeedsPageRenders(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.login(t)
+
+	expect := playwright.NewPlaywrightAssertions(5000)
+
+	if _, err := h.page.Goto(h.baseURL + "/feeds"); err != nil {
+		t.Fatalf("goto /feeds: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator("h1")).ToHaveText("Feeds"); err != nil {
+		t.Fatalf("heading = %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="feeds-summary"]`)).ToBeVisible(); err != nil {
+		t.Fatalf("summary not visible: %v", err)
+	}
+}

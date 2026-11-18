@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Feeds · netweather</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  {{template "insecure" .}}
+  <header class="bar">
+    <a class="brand" href="/">netweather</a>
+    <a class="nav" href="/">Board</a>
+    <a class="nav" href="/world">World</a>
+    <a class="nav" href="/corridors">Corridors</a>
+    <a class="nav" href="/coverage">Coverage</a>
+    <a class="nav" href="/incidents">Incidents</a>
+    <a class="nav" href="/feeds">Feeds</a>
+  </header>
+
+  <main>
+    <h1 class="page-title">Feeds</h1>
+    <p class="muted" data-testid="feeds-summary">
+      External corroboration sources. A feed is evidence, not a verdict: it
+      never declares an outage on its own. A stale feed is a stated gap, not a
+      quiet "no known event".
+    </p>
+
+    {{if .Feeds}}
+    <table class="probes" data-testid="feed-list">
+      <thead>
+        <tr><th>Feed</th><th>Last OK</th><th>Next poll</th><th>Failures</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {{range .Feeds}}
+        <tr data-testid="feed-row" data-stale="{{.Stale}}">
+          <td class="mono">{{.Feed}}</td>
+          <td class="mono">{{if .LastOKAt}}{{.LastOKAt}}{{else}}never{{end}}</td>
+          <td class="mono">{{if .NextPollAt}}{{.NextPollAt}}{{else}}n/a{{end}}</td>
+          <td>{{.ConsecutiveFailures}}</td>
+          <td>{{if .Stale}}stale{{else if .LastErr}}error{{else}}ok{{end}}
+            {{if .LastErr}}<span class="muted small" data-testid="feed-error">{{.LastErr}}</span>{{end}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="muted" data-testid="no-feeds">
+      No feeds are configured. The core monitor works with zero feeds; enable
+      them with NETWEATHER_FEEDS.
+    </p>
+    {{end}}
+  </main>
+</body>
+</html>

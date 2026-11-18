@@ -75,6 +75,7 @@ func New(deps Deps) (http.Handler, error) {
 	mux.HandleFunc("/coverage", s.requireSession(http.HandlerFunc(s.handleCoverage)).ServeHTTP)
 	mux.HandleFunc("/world", s.requireSession(http.HandlerFunc(s.handleWorld)).ServeHTTP)
 	mux.HandleFunc("/corridors", s.requireSession(http.HandlerFunc(s.handleCorridors)).ServeHTTP)
+	mux.HandleFunc("/feeds", s.requireSession(http.HandlerFunc(s.handleFeeds)).ServeHTTP)
 	mux.HandleFunc("/ihi", s.requireSession(http.HandlerFunc(s.handleIHI)).ServeHTTP)
 	mux.HandleFunc("/diagnostics", s.requireSession(http.HandlerFunc(s.handleDiagnostics)).ServeHTTP)
 	mux.HandleFunc("/icon/", s.requireSession(http.HandlerFunc(s.handleIcon)).ServeHTTP)
@@ -2274,6 +2275,23 @@ type staleRow struct {
 	Age       string
 }
 
+type feedStateView struct {
+	Feed                string
+	LastOKAt            string
+	NextPollAt          string
+	LastErr             string
+	ConsecutiveFailures int
+	Stale               bool
+}
+
+type feedsView struct {
+	Insecure bool
+	NoAuth   bool
+	Version  string
+	CSRF     string
+	Feeds    []feedStateView
+}
+
 type coverageView struct {
 	// Insecure marks a plaintext browser connection so the page can say so
 	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
@@ -2877,6 +2895,55 @@ func (s *server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 
 // scopeSelector renders the selectors a scope names. A scope always names at
 // least one; "everything" is not expressible (LOGGING.md §6).
+// handleFeeds renders the feed health page. It is the UI counterpart of
+// /api/v1/feeds: every feed's last poll, staleness, and consecutive failures,
+// plus the most recent external events. A missing reader states that feeds are
+// not configured rather than implying health.
+func (s *server) handleFeeds(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var states []store.FeedState
+	if s.deps.Feeds != nil {
+		got, err := s.deps.Feeds.FeedStates(r.Context())
+		if err != nil {
+			s.deps.Logger.Error("feed states failed", "event", "feed_states_failed", "component", "http", "error", err)
+			http.Error(w, "feeds unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		states = got
+	}
+
+	now := time.Now().UTC()
+	staleAfter := 30 * time.Minute
+	rows := make([]feedStateView, 0, len(states))
+	for _, st := range states {
+		row := feedStateView{Feed: st.Feed, LastErr: st.LastErr, ConsecutiveFailures: st.ConsecutiveFailures}
+		if !st.LastOKAt.IsZero() {
+			row.LastOKAt = st.LastOKAt.UTC().Format(time.RFC3339)
+			row.Stale = now.Sub(st.LastOKAt) > staleAfter
+		} else {
+			row.Stale = true
+		}
+		if !st.NextPollAt.IsZero() {
+			row.NextPollAt = st.NextPollAt.UTC().Format(time.RFC3339)
+		}
+		rows = append(rows, row)
+	}
+
+	csrf, _ := s.auth.csrfFrom(r)
+	view := feedsView{
+		Insecure: s.insecure(r),
+		NoAuth:   s.auth.disabled(),
+		Version:  s.deps.Version,
+		CSRF:     csrf,
+		Feeds:    rows,
+	}
+	_ = s.tmpl.ExecuteTemplate(w, "feeds.html", view)
+}
+
 func scopeSelector(scope logging.Scope) string {
 	parts := make([]string, 0, 4)
 	if scope.Target != "" {
