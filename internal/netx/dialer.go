@@ -3,10 +3,13 @@ package netx
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"strconv"
 	"time"
+
+	"github.com/Greg-2600/netweather/internal/logging"
 )
 
 // Resolver is the subset of *net.Resolver netx needs. It is an interface so a
@@ -58,7 +61,14 @@ func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.
 		return nil, &BlockedPortError{Port: port}
 	}
 
+	// TRACE per stage is the wire detail LOGGING.md §4 promises: at most one
+	// dns line per dial, and one tcp line per address actually attempted. It
+	// costs nothing at the normal level because slog checks Enabled first.
+	log := logging.FromContext(ctx)
+
+	resolveStart := time.Now()
 	addrs, err := d.resolve(ctx, host)
+	traceStage(ctx, log, "dns", resolveStart, "host", host, "addrs", len(addrs), "error", err)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +93,9 @@ func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.
 			continue
 		}
 
+		connectStart := time.Now()
 		conn, err := dial(ctx, network, net.JoinHostPort(addr.Unmap().String(), portText))
+		traceStage(ctx, log, "tcp", connectStart, "addr", addr.Unmap().String(), "error", err)
 		if err == nil {
 			return conn, nil
 		}
@@ -139,4 +151,22 @@ func (d *Dialer) resolve(ctx context.Context, host string) ([]netip.Addr, error)
 		return nil, fmt.Errorf("netx: resolve %q: %w", host, err)
 	}
 	return addrs, nil
+}
+
+// traceStage emits one TRACE line for a dial stage. The record carries no body
+// and no credential; the target and vantage come from the context logger the
+// agent attached, so a scope can select it (LOGGING.md §4, §5).
+func traceStage(ctx context.Context, log *slog.Logger, stage string, start time.Time, args ...any) {
+	if log == nil || !log.Enabled(ctx, logging.LevelTrace) {
+		return
+	}
+	fields := make([]any, 0, len(args)+8)
+	fields = append(fields,
+		"event", "probe_stage",
+		"component", "probe",
+		"stage", stage,
+		"duration_ms", time.Since(start).Milliseconds(),
+	)
+	fields = append(fields, args...)
+	log.Log(ctx, logging.LevelTrace, "probe stage", fields...)
 }

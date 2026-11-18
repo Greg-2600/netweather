@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/netx"
 )
 
@@ -268,6 +269,7 @@ func (h *HTTP) Do(ctx context.Context, target string) Result {
 	res.Header = resp.Header
 	res.Body = body
 	res.FinalURL = resp.Request.URL.String()
+	traceHTTP(ctx, start, target, res)
 
 	// HEAD is often rejected by servers that answer GET. The spec says retry
 	// once with GET, then treat 405 as a config error (CLASSIFIER.md §5.2).
@@ -277,6 +279,26 @@ func (h *HTTP) Do(ctx context.Context, target string) Result {
 		return retry.Do(ctx, target)
 	}
 	return res
+}
+
+// traceHTTP emits the HTTP stage at TRACE: status, size, and the class, never
+// the body (LOGGING.md §4). The target and vantage come from the context logger
+// the agent attached, so a debug scope can select one target.
+func traceHTTP(ctx context.Context, start time.Time, target string, res Result) {
+	log := logging.FromContext(ctx)
+	if log == nil || !log.Enabled(ctx, logging.LevelTrace) {
+		return
+	}
+	log.Log(ctx, logging.LevelTrace, "probe stage",
+		"event", "probe_stage",
+		"component", "probe",
+		"stage", "http",
+		"url", target,
+		"status", res.Status,
+		"bytes", len(res.Body),
+		"duration_ms", time.Since(start).Milliseconds(),
+		"error_class", res.ErrorClass,
+	)
 }
 
 // ClassifyError maps a Go transport error to the stable class strings the

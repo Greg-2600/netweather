@@ -56,7 +56,7 @@ Every log line is structured (JSON in a container, text on a TTY). The fields th
 | `ts` | always | UTC, RFC 3339 with milliseconds, sortable |
 | `level` | always | `TRACE`/`DEBUG`/`INFO`/`WARN`/`ERROR` |
 | `msg` | always | Short, stable, lower-case. Not a sentence with interpolated values |
-| `event` | always | Machine key: `startup`, `state_change`, `incident_open`, `probe`, `feed_poll`, `self_check`, `config_reload`, `log_dropped` |
+| `event` | always | Machine key: `startup`, `state_change`, `incident_open`, `probe`, `probe_stage`, `feed_poll`, `self_check`, `config_reload`, `log_dropped` |
 | `component` | always | `scheduler`, `classify`, `netx`, `store`, `http`, `feed`, `selfhealth`, `logging` |
 | `trace_id` | probe / request | 16 hex chars; joins a log line to a stored probe row and an HTTP request. A `state_change` line carries none: the transition is keyed by `target`, `vantage`, and `ts` |
 | `target` | target-scoped | Registrable host |
@@ -91,7 +91,7 @@ Example, one line, no shell required:
 | Layer | Level | One line per | Must include |
 |---|---|---|---|
 | Scheduler | `DEBUG` | probe submission | target, tier, vantage, due_at, trace_id |
-| Instrument | `TRACE` | stage | stage, duration, outcome, and no body |
+| Instrument | `TRACE`, one `probe_stage` line per stage | stage | `stage` (`dns`, `tcp`, `http`), duration, outcome. Never a body. The line carries the `target`/`vantage` the agent attached to the context, so a scope can select it. The dialer emits `dns` after resolution and `tcp` per address attempted; the HTTP instrument emits `http` with the status and byte count. Nothing is emitted at the normal level: each line checks `Enabled` first |
 | Classifier | `INFO` on a confirmed transition (`component=store`), `DEBUG` per probe (`component=agent`) | probe | state, stage, error_class, confidence, reason. The transition line is written after `store.Record` commits, so a rolled-back batch leaves no line claiming a change |
 | Attribution | `INFO` | incident | winner, score, share, runner-up |
 | Store | — | — | The store does not log: it returns wrapped errors, and the boundary that decides something logs once (see below). Query durations are not instrumented. |

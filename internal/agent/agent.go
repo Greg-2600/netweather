@@ -21,6 +21,7 @@ import (
 
 	"github.com/Greg-2600/netweather/internal/classify"
 	"github.com/Greg-2600/netweather/internal/dnsdiv"
+	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/probe"
 	"github.com/Greg-2600/netweather/internal/schedule"
 	"github.com/Greg-2600/netweather/internal/state"
@@ -366,7 +367,12 @@ func (a *Agent) Step(ctx context.Context) (int, error) {
 		}
 		a.markProbe(now)
 
-		res := a.Runner.Run(ctx, t)
+		// The instruments read a context logger for their TRACE stage lines
+		// (LOGGING.md §4). Attaching it here is what gives those lines the
+		// target and vantage a debug scope selects on.
+		probeCtx := logging.WithLogger(ctx, a.logger().With(
+			"target", t.Host, "vantage", t.Vantage))
+		res := a.Runner.Run(probeCtx, t)
 		release()
 
 		if a.Pins != nil && t.Instrument == "tls" && res.CertIssuer != "" {
