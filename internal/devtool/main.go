@@ -60,6 +60,7 @@ var coverageThresholds = map[string]float64{
 	"/internal/schedule":     85,
 	"/internal/seed":         85,
 	"/internal/selfcheck":    85,
+	"/internal/tracebudget":  85,
 	"/internal/startup":      75,
 	"/internal/state":        90,
 	"/internal/store":        80,
