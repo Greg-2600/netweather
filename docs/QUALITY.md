@@ -202,12 +202,14 @@ Table-driven, `t.Parallel()`, no network, no disk, no sleep.
 
 | Package | What is tested |
 |---|---|
-| `internal/classify` | Every rule in `CLASSIFIER.md` — one case per row, plus golden fixtures |
-| `internal/probe` | The ladder: which stage failed, with a fake dialer |
+| `internal/classify` | Every rule in `CLASSIFIER.md` — one case per row, with the expected value beside the input |
+| `internal/probe` | The ladder: which stage failed, with a fake dialer; the transport's per-host cap and TLS floor |
 | `internal/schedule` | Tiering, jitter bounds, per-host semaphore, backoff, missed ticks (fake clock) |
 | `internal/correlate` | LOCAL, REGIONAL, attribution scoring, anomaly thresholds (fixture datasets) |
-| `internal/config` | TXT/YAML parsing, sector inference from paths, validation errors |
-| `internal/store` | Migrations, retention pruning, rollup math |
+| `internal/config` | TXT/YAML parsing, sector inference from paths, validation errors, reload-state clearing |
+| `internal/calendar` | Strict date and region parsing, the absent-file case, and the exclusion's reach |
+| `internal/store` | Migrations, pre-migration backup, retention pruning, rollup math, provenance and re-enable |
+| `internal/tracebudget` | The fixed window, its reset, a zero limit, and the retry hint |
 
 Stable serialized forms are pinned rather than golden-filed: JSON API responses are asserted field by field in `internal/api` (envelope, error codes, pagination shape), pages are pinned by their `data-testid` contract and the Playwright suite, and classifier decisions are one table row per `CLASSIFIER.md` rule, kept in code so the expected value sits beside the input. Feed payloads are the one captured-file set (`testdata/feeds/`), because a third party's shape is the thing under test.
 
