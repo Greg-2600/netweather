@@ -35,3 +35,17 @@ func TestTransportCapsPerHostConcurrency(t *testing.T) {
 		t.Error("the per-stage timeouts are unset")
 	}
 }
+
+// TestTransportIgnoresProxyEnvironment pins THREAT_MODEL.md invariant 6: even
+// with the proxy variables set, the transport has no proxy, so a probe cannot
+// be silently rerouted through an environment-supplied hop.
+func TestTransportIgnoresProxyEnvironment(t *testing.T) {
+	// No t.Parallel: it sets environment variables.
+	t.Setenv("HTTP_PROXY", "http://proxy.example:8080")
+	t.Setenv("HTTPS_PROXY", "http://proxy.example:8080")
+	t.Setenv("ALL_PROXY", "socks5://proxy.example:1080")
+
+	if tr := probe.TransportForDial(nil); tr.Proxy != nil {
+		t.Fatal("Proxy is set from the environment; probes would be rerouted")
+	}
+}
