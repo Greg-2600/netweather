@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -142,6 +143,10 @@ func TestRunUnknownCommandIsAnError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unknown command") {
 		t.Fatalf("error %q does not name the problem", err)
+	}
+	// main turns this sentinel into exit 2, the documented usage code.
+	if !errors.Is(err, errUnknownCommand) {
+		t.Fatalf("error %q is not marked as a usage error", err)
 	}
 }
 

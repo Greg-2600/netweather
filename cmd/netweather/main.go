@@ -56,9 +56,18 @@ import (
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "netweather:", err)
+		// Usage errors are 2, runtime failures are 1: a wrapper can tell "you
+		// invoked it wrong" from "it ran and failed" (API.md §9).
+		if errors.Is(err, errUnknownCommand) {
+			os.Exit(2)
+		}
 		os.Exit(1)
 	}
 }
+
+// errUnknownCommand marks a usage error rather than a runtime failure, so main
+// can exit 2 without string matching.
+var errUnknownCommand = errors.New("unknown command")
 
 // run is separated from main so every branch is testable without spawning a process.
 func run(args []string, stdout io.Writer) error {
@@ -128,7 +137,8 @@ func run(args []string, stdout io.Writer) error {
 		return serve(lg)
 
 	default:
-		return fmt.Errorf("unknown command %q (try: serve, version, healthcheck, seed, export, debug, disable, doctor, backup)", command)
+		return fmt.Errorf("%w %q (try: serve, version, healthcheck, seed, export, debug, disable, doctor, backup)",
+			errUnknownCommand, command)
 	}
 }
 
