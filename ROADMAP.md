@@ -29,9 +29,10 @@ Shipped: eight instruments plus on-demand traceroute, tiered scheduler with
 pacing/ramp, confirmation rules, SQLite storage with retention and rollups,
 baseline/anomaly detection, incidents with attribution, sectors/ASN/country
 views, coverage, corridors, IHI, SSE with replay, the documented v1 API, auth
-and browser hardening, feeds and enrichment, DNS divergence, certificate pins,
-and the operational CLI (seed, export, doctor, backup, debug bundle).
-Containers: hardened release image, Tor/Tailscale/RIPE/trace profiles.
+and browser hardening, feeds and enrichment (IODA, Radar, Statuspage, AWS, GCP,
+Azure, Atlas, RIS Live), DNS divergence, certificate pins, and the operational
+CLI (seed, export, doctor, backup, debug bundle). Containers: hardened release
+image, Tor/Tailscale/RIPE/trace profiles, and a two-hour deploy cadence.
 
 Known limits, stated rather than hidden: single shared token (no user accounts);
 detection is floor-only until ~28 weeks of hour-of-week baseline exist; no
@@ -183,15 +184,20 @@ target id is known; never guessed.
   API-path guards; `ACCEPTABLE_USE.md` §9 and `docs/RIPE_ATLAS.md` describe it
   as shipped.
 
-### 3.4 Live per-country IODA overlay — **Next**
+### 3.4 Live per-country IODA overlay — **Implemented (events)**
 
-**Outcome:** the world view can show a current per-country level without
-turning a page view into an API loop.
+**Outcome:** the world view shows a current per-country level without turning a
+page view into an API loop.
 
-- A bounded server-side poll (one request per country per interval, cached in the
-  database), rendered as an overlay beside stored events.
-- Acceptance: page latency is independent of upstream latency; a failed poll
-  leaves the stored event visible and states the gap.
+- The world view already carries the highest-severity feed event for each
+  country from the last 24 hours (`row.Feed`, `row.FeedSeverity`), from one query
+  for the whole page. A missing reader, an empty window, and a failed query each
+  state their case rather than leaving a tile looking quiet.
+- The "live per-country IODA *level*" (a 0–1 score per country) remains a
+  separate, bounded server-side poll and is post-MVP: IODA publishes signals and
+  alerts, not one score with a fixed meaning, and its signal endpoints are per
+  entity, so a page-time fetch would be an API-scraping loop. The stored event
+  overlay is the shipped behaviour.
 
 ### 3.5 Multi-user auth (OIDC) — **Next**
 
