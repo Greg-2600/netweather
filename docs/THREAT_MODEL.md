@@ -259,8 +259,8 @@ These are the properties the security model reduces to. They are listed as testa
 
 1. No direct `net.Dial*` call exists outside `internal/netx` — `TestOutboundDialsGoThroughNetx` scans production files and fails on one. Callers that need a connection take a dial function, and production passes the guarded dialer. The linter does not enforce this rule; the test does.
 2. `Dialer` rejects every address in the private-range table, including IPv4-mapped IPv6 — table-driven test with ~40 cases.
-3. `Dialer` connects to the validated IP, and the `Host`/SNI observed by the peer equals the configured name — test against a local TLS server.
-4. A redirect to a private address, a new port, or a non-HTTP scheme fails closed — recorded-response fixtures.
+3. `Dialer` connects to the validated IP (`TestDialDialsTheValidatedIPNotTheHostname`), and the HTTP instrument keeps SNI equal to the configured name while the dial goes elsewhere (`TestTransportPreservesSNIWhenTheDialGoesElsewhere`).
+4. A redirect to a private address, a blocked port, or a non-HTTP scheme fails closed — `TestRedirectToABlockedDestinationFailsClosed` drives each hop through a dial function that refuses it, and the client itself refuses the scheme.
 5. Outbound port allowlist is applied at config load and at dial time, and `22` fails both.
 6. `http.Transport.Proxy` is nil even with `HTTP_PROXY` set in the environment.
 7. The binary refuses to start when: non-loopback + `auth: none` + `allow_public` unset; token file is world-readable; `schema_version` > binary; it is running as UID 0.
