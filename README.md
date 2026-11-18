@@ -150,7 +150,7 @@ Container networking is not an afterthought here: Docker's bridge defaults, embe
 
 ## Configuration
 
-Targets come from `NETWEATHER_CONFIG=/config/targets.yaml` (see [`config/targets.example.yaml`](config/targets.example.yaml)), or the ten shipped defaults when it is unset. The same variable may point at a **directory** laid out as `netweather.yaml`, `sites/<sector>/*.txt`, `overrides/*.yaml`, and `corridors.yaml` (`docs/DESIGN.md` §13.2); a sector is the file's path, so a large list needs no per-line tagging. `NETWEATHER_SEED=none` starts with an empty board. State lives in `NETWEATHER_DATA` (default `./data`). Config validation is strict: an unknown field, a blocked port, or an interval under 30s refuses to start.
+Targets come from `NETWEATHER_CONFIG=/config/targets.yaml` (see [`config/targets.example.yaml`](config/targets.example.yaml)), or the fourteen shipped defaults when it is unset. The same variable may point at a **directory** laid out as `netweather.yaml`, `sites/<sector>/*.txt`, `overrides/*.yaml`, and `corridors.yaml` (`docs/DESIGN.md` §13.2); a sector is the file's path, so a large list needs no per-line tagging. `NETWEATHER_SEED=none` starts with an empty board. State lives in `NETWEATHER_DATA` (default `./data`). Config validation is strict: an unknown field, a blocked port, or an interval under 30s refuses to start.
 
 Every environment variable the binary reads, including the ones that exist for a mirror or a test:
 
@@ -206,7 +206,7 @@ This tool sends periodic requests to third-party sites. That is dual-use, so the
 - Tor vantages: off by default, ≤25 targets, ≥2s spacing, daily bandwidth budget
 - No telemetry, ever
 
-At the full 750-target fleet this is ~430k probes/day and ~0.7 GB/day, dominated by TLS handshakes. The default install is ~10 targets and ~15 MB/day. Details and the arithmetic: [`docs/ACCEPTABLE_USE.md`](docs/ACCEPTABLE_USE.md) §4.
+At the full 750-target fleet this is ~430k probes/day and ~0.7 GB/day, dominated by TLS handshakes. The default install is 14 targets and roughly 50 MB/day at the shipped intervals. Details and the arithmetic: [`docs/ACCEPTABLE_USE.md`](docs/ACCEPTABLE_USE.md) §4.
 
 ---
 

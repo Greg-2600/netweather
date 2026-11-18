@@ -109,7 +109,7 @@ Bandwidth is dominated by TLS handshakes, not by bodies:
 | HTTP/TLS probes (~119k × ~6 KB) | ~700 MB/day |
 | **Total at full scale** | **~0.7 GB/day ≈ 20 GB/month** |
 
-At the shipped default of ~10 targets this is ~15 MB/day. The fleet number is the honest cost of 750 independent measurements and is worth knowing before seeding a metered VPS.
+At the shipped 14 targets this is roughly 50 MB/day, dominated by the 30-second reference target and the three criticals; the rest of the list is on the 300-second tier. The fleet number is the honest cost of 750 independent measurements and is worth knowing before seeding a metered VPS.
 
 Two mitigations are built in:
 

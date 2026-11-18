@@ -1065,7 +1065,7 @@ networks:
 - ~20 MB image, ~80 MB RSS at 750 targets
 - Multi-arch: linux/amd64, linux/arm64
 - Egress only; no inbound required except the UI port (2600)
-- **Ships with ~10 targets.** `netweather seed` generates sector/country lists for users who want scale
+- **Ships with 14 targets.** `netweather seed` generates sector/country lists for users who want scale
 
 Base image, hardening, capabilities, and supply chain: see [`IMAGE.md`](IMAGE.md). Network topology, MTU, DNS, SSRF reachability, port choice, and access posture: see [`NETWORKING.md`](NETWORKING.md).
 
@@ -1173,7 +1173,7 @@ Phase 0 is the whole thesis in miniature. If phase 0 is noisy, nothing later sav
 **Open:**
 
 1. **Federation.** Tor vantages (§5.7) provide a cheap second path today; true multi-operator federation (a public map) is post-v1 and off by default — the privacy cost is real, and a federated instance leaks its target list to its peers.
-2. **Default seed.** Ship 10 targets, or ship a `seed` command that pulls from public lists? Currently: both.
+2. **Default seed.** Ship a small curated list, or ship a `seed` command that pulls from public lists? Currently: both — 14 curated targets, plus the generator for operators who want scale.
 3. **Corridor endpoints.** With the Atlas profile available, Atlas anchors become the default when it is on; country NS hosts remain the self-contained fallback. Which is authoritative when both exist?
 4. **`DEGRADED` thresholds.** Latency-based degradation needs a per-target EWMA baseline; exact multiplier (3× p50? 2× p95?) needs real data before it is codified.
 5. **Dashboard exposure.** Resolved in `NETWORKING.md` §7.1: bind `0.0.0.0:2600`, require auth, and put it on the tailnet via the optional sidecar profile when it should not be on the LAN at all.
