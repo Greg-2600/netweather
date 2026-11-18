@@ -72,3 +72,23 @@ func TestNewTraceIDIsHexAndUnique(t *testing.T) {
 		seen[id] = struct{}{}
 	}
 }
+
+func TestRequestIDContextRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	if id := logging.RequestIDFrom(context.Background()); id != "" {
+		t.Fatalf("background has a request id: %q", id)
+	}
+
+	ctx := logging.WithRequestID(context.Background(), "9f2c1a7b4e8d0356")
+	if id := logging.RequestIDFrom(ctx); id != "9f2c1a7b4e8d0356" {
+		t.Fatalf("request id = %q", id)
+	}
+
+	// An empty id is not stored, so a caller cannot erase an outer id by
+	// passing an empty value in an inner wrapper.
+	ctx = logging.WithRequestID(ctx, "")
+	if id := logging.RequestIDFrom(ctx); id != "9f2c1a7b4e8d0356" {
+		t.Fatalf("an empty id replaced the outer one: %q", id)
+	}
+}

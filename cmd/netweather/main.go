@@ -505,7 +505,8 @@ func serve(lg *logging.Logger) error {
 		changes.Notify()
 		lg.Warn("target disabled at runtime",
 			"event", "target_disabled", "component", "api",
-			"target_id", id, "removed_from_agent", removed)
+			"target_id", id, "removed_from_agent", removed,
+			"request_id", logging.RequestIDFrom(ctx))
 		return true, nil
 	}
 

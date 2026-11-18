@@ -35,7 +35,12 @@ func withRequestID(next http.Handler) http.Handler {
 			id = logging.NewTraceID()
 		}
 		w.Header().Set("X-Request-Id", id)
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), requestIDKey, id)))
+		ctx := context.WithValue(r.Context(), requestIDKey, id)
+		// A runtime action (disable, trace) is invoked from this handler but
+		// logs where the work happens; the shared context carries the id so the
+		// audit line can name the request (API.md §6.9.1).
+		ctx = logging.WithRequestID(ctx, id)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

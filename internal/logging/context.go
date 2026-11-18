@@ -11,6 +11,24 @@ import (
 
 type loggerKey struct{}
 
+type requestIDKey struct{}
+
+// WithRequestID stores the request id in ctx, so a runtime action called from a
+// handler can name the request that caused it without the handler having to
+// thread an extra argument through the interface.
+func WithRequestID(ctx context.Context, id string) context.Context {
+	if id == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, requestIDKey{}, id)
+}
+
+// RequestIDFrom returns the request id stored by WithRequestID, or "".
+func RequestIDFrom(ctx context.Context) string {
+	id, _ := ctx.Value(requestIDKey{}).(string)
+	return id
+}
+
 // WithLogger stores a logger in ctx. Handlers and probe workers read it with
 // FromContext so every line inherits request_id / target / vantage.
 func WithLogger(ctx context.Context, l *slog.Logger) context.Context {

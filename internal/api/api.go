@@ -782,7 +782,8 @@ func (s *server) handleTargetDisable(w http.ResponseWriter, r *http.Request) {
 	found, err := s.deps.TargetControl.DisableTarget(r.Context(), id)
 	if err != nil {
 		s.deps.Logger.Error("target disable failed",
-			"event", "target_disable_failed", "component", "http", "target_id", id, "error", err)
+			"event", "target_disable_failed", "component", "http",
+			"target_id", id, "request_id", requestIDFrom(r), "error", err)
 		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable, "target could not be disabled")
 		return
 	}
