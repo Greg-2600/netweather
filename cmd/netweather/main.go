@@ -237,7 +237,7 @@ func serve(lg *logging.Logger) error {
 		if id == "" {
 			continue
 		}
-		if err := st.EnsureVantage(ctx, id, "remote", "corroboration"); err != nil {
+		if err := st.EnsureVantage(ctx, id, "socks5", "corroboration"); err != nil {
 			return err
 		}
 	}
