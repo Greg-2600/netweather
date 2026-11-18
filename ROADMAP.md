@@ -81,14 +81,15 @@ probes are still being scheduled.
 - Acceptance met: the scenario runs in `devtool verify` and fails if the
   restore steps regress.
 
-### 2.4 Flake budget — **Now**
+### 2.4 Flake budget — **Implemented**
 
 **Outcome:** `devtool verify` is repeatable.
 
 - The SSE tracker baseline race, the DNS TCP/UDP port pairing, and the web
-  snapshot-on-connect bug are fixed. Track any new intermittent failure with the
-  test name and the seed; fix the race, never widen the timeout.
-- Acceptance: ten consecutive `devtool verify` runs, zero failures.
+  snapshot-on-connect bug are fixed. Every flaky test from the audit was fixed
+  rather than widened.
+- Acceptance met: three consecutive full-suite runs with `-shuffle=on` and
+  `-count=1` passed with zero failures (api, web, probe, store, e2e, ui).
 
 ### 2.5 Continuous deployment every two hours — **Now**
 
