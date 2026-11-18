@@ -263,7 +263,7 @@ These are the properties the security model reduces to. They are listed as testa
 4. A redirect to a private address, a blocked port, or a non-HTTP scheme fails closed — `TestRedirectToABlockedDestinationFailsClosed` drives each hop through a dial function that refuses it, and the client itself refuses the scheme.
 5. Outbound port allowlist is applied at config load and at dial time, and `22` fails both.
 6. `http.Transport.Proxy` is nil even with `HTTP_PROXY` set in the environment.
-7. The binary refuses to start when: non-loopback + `auth: none` + `allow_public` unset; token file is world-readable; `schema_version` > binary; it is running as UID 0.
+7. The binary refuses to start when: non-loopback + `auth: none` + `allow_public` unset; token file is world-readable; `schema_version` is newer than the binary (`TestOpenRefusesANewerSchema`); it is running as UID 0.
 8. Every response carries CSP, `nosniff`, `X-Frame-Options`, and `Referrer-Policy`.
 9. A state-changing request without a CSRF token returns 403.
 10. Login compares the single token in constant time, so a response time does not reveal how much of it matched. There is no username, hence no account to enumerate; the per-client and process-wide buckets are the brute-force control (T6), not an artificial sleep in the handler.
