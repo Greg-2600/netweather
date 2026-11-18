@@ -150,18 +150,32 @@ func TestDNSRetriesATruncatedAnswerOverTCP(t *testing.T) {
 	t.Parallel()
 
 	// DNS over TCP uses the same port, so the TCP listener is created first and
-	// the UDP socket is bound to its port.
-	tcpLn, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	// the UDP socket is bound to its port. Windows keeps separate ephemeral
+	// ranges for TCP and UDP and excludes some ranges entirely, so a port TCP
+	// hands out can be unbindable for UDP; retry the pair rather than failing
+	// the suite on the first choice.
+	var (
+		tcpLn net.Listener
+		udpPC net.PacketConn
+	)
+	for attempt := 0; attempt < 20; attempt++ {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		addr := ln.Addr().(*net.TCPAddr)
+		pc, err := net.ListenPacket("udp", addr.String())
+		if err != nil {
+			_ = ln.Close()
+			continue
+		}
+		tcpLn, udpPC = ln, pc
+		break
+	}
+	if tcpLn == nil || udpPC == nil {
+		t.Fatal("could not bind a TCP/UDP pair on one loopback port after 20 attempts")
 	}
 	t.Cleanup(func() { _ = tcpLn.Close() })
-
-	addr := tcpLn.Addr().(*net.TCPAddr)
-	udpPC, err := net.ListenPacket("udp", addr.String())
-	if err != nil {
-		t.Fatalf("bind udp to the tcp port: %v", err)
-	}
 	t.Cleanup(func() { _ = udpPC.Close() })
 
 	go func() {
@@ -200,7 +214,7 @@ func TestDNSRetriesATruncatedAnswerOverTCP(t *testing.T) {
 		}
 	}()
 
-	res := probe.NewDNS(nil).Do(context.Background(), addr.String(), "example.com")
+	res := probe.NewDNS(nil).Do(context.Background(), tcpLn.Addr().String(), "example.com")
 	if res.Failed() {
 		t.Fatalf("truncated retry failed: %s: %v", res.ErrorClass, res.Err)
 	}
