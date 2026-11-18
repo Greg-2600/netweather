@@ -53,6 +53,7 @@ The through-line: `censor_sensor` asked *"can I reach it?"*, `global_packet_thro
 | [`docs/API.md`](docs/API.md) | `/api/v1` contract: envelope, error codes, auth, pagination, SSE, implemented vs specified endpoints, CLI contract |
 | [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) | Assets, adversaries, trust boundaries, SSRF and exposure threats, supply chain, invariants, residual risk, operator runbook |
 | [`docs/ACCEPTABLE_USE.md`](docs/ACCEPTABLE_USE.md) | Wire-level behaviour, hard limits, volume math, target selection, prohibited uses, abuse handling, Tor policy |
+| [`docs/RIPE_ATLAS.md`](docs/RIPE_ATLAS.md) | The optional RIPE Atlas profile: what the daemon is, what RIPE sees, and why netweather never reads from it |
 
 ---
 

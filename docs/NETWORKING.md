@@ -411,14 +411,16 @@ services:
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
 
-  # Optional RIPE Atlas software probe. RIPE's daemon, not ours. See DESIGN.md §8.6.
-  # It needs host networking and raw sockets per RIPE's instructions, which is exactly
-  # why it is a profile and why netweather never talks to it.
+  # Optional RIPE Atlas software probe (docs/RIPE_ATLAS.md). RIPE's daemon, not
+  # ours: host networking and raw sockets are what it needs to measure from the
+  # host address. Off by default, and netweather never reads from it.
   ripe-atlas:
-    image: ghcr.io/ripe-atlas/probe:latest    # verify the tag against RIPE's docs
+    image: ghcr.io/ripe-atlas/ripe-atlas-probe:latest   # verify the tag against RIPE's docs
     profiles: ["ripe-atlas"]
     network_mode: host
+    cap_drop: [ALL]
     cap_add: [NET_RAW, NET_ADMIN]
+    security_opt: ["no-new-privileges:true"]
     volumes:
       - ./data/ripe-atlas:/var/atlas-probe
     restart: unless-stopped

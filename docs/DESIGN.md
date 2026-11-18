@@ -784,7 +784,7 @@ Ships as an **optional compose profile** (`ripe-atlas`), not a default service:
 - **Implemented:** the `ripe-atlas` profile in `compose.yaml` and `NETWORKING.md`. Nothing in netweather reads from it; turning the profile on or off changes no probe, feed, or page.
 - **Specified, deliberately not implemented:** the `atlas` feed plugin. It would read the RIPE Atlas API with an operator key and consume measurements the operator created. It is left out rather than faked because an Atlas result is a measurement from RIPE's probes, not an outage verdict about one of this monitor's targets: it carries no target id, and mapping it onto a target would be a guess. Corridors do not depend on it — they are configuration-driven (§9), so the fallback is the shipped behavior, not a degraded one. If it lands, it stays read-mostly: credits are the operator's and finite, so it never spends them on a timer.
 
-A probe sidecar is a second host relationship: RIPE sees the operator's IP and uptime. That is stated in the profile's README and in `THREAT_MODEL.md` §5.7, not buried in a compose file.
+A probe sidecar is a second host relationship: RIPE sees the operator's IP and uptime. That is stated in [`docs/RIPE_ATLAS.md`](RIPE_ATLAS.md) and in `THREAT_MODEL.md` §5.7, not buried in a compose file.
 
 ### 8.7 Degradation contract
 
