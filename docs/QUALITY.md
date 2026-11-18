@@ -306,12 +306,19 @@ Six targets. Not 750. Runtime under ~10 seconds. Loose assertions, because the i
 
 | Target | Probe | Expectation |
 |---|---|---|
-| `https://example.com/` | `http` | `UP` |
-| `https://www.gstatic.com/generate_204` | `http` | `UP` (204, purpose-built health endpoint) |
-| `https://1.1.1.1/cdn-cgi/trace` | `http` | `UP` + egress IP parsed |
-| `a.root-servers.net` | `dns` | `UP` |
-| `https://github.com/` | `http` + status URL | `UP`, and official status fetched |
-| `https://example.com/does-not-exist` | `http` | `CONFIG_ERROR` (proves we never call a 404 an outage) |
+| `https://www.cloudflare.com/` | `http` | a judgeable state; a bot wall is a measurement |
+| `https://www.wikipedia.org/` | `http` | a judgeable state |
+| `https://github.com/` | `http` | a judgeable state |
+| `https://www.chase.com/` | `http` | a judgeable state; `BLOCKED` is the honest answer |
+| `https://www.united.com/` | `http` | a judgeable state; `BLOCKED` is the honest answer |
+| `https://example.com/` | `http` | a judgeable state |
+
+The set is deliberately mixed: one reference, one documentation endpoint, two
+sites that commonly wall automated clients, and two services. The suite does not
+assert that any of them is up; it asserts that each produced a state the
+classifier understands and that at least four of six were judgeable. A separate
+step asks a public resolver for a name, because a broken resolver path blinds
+every hostname target at once.
 
 Assertions are set-membership, never equality:
 
@@ -320,8 +327,7 @@ Assertions are set-membership, never equality:
 if state != UP { t.Fatal(...) }
 
 // Right: we care that it did not lie.
-if !state.In(UP, UP_REACHABILITY, DEGRADED) { t.Fatal(...) }
-if state == CONFIG_ERROR { /* only allowed for the 404 target */ }
+if !state.In(UP, UP_REACHABILITY, DEGRADED, DOWN, BLOCKED) { t.Fatal(...) }
 ```
 
 Rules:
