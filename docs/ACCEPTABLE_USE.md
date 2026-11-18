@@ -114,7 +114,7 @@ At the shipped 14 targets this is roughly 50 MB/day, dominated by the 30-second 
 Two mitigations are built in:
 
 - The reference tier should use a cheap instrument (`tcpping` or `dns`) rather than `http` where the target allows it. Twenty targets every 30 seconds is 57k handshakes a day for a signal that a SYN-ACK answers just as well.
-- `probe.daily_mb_budget` stops probing at the limit and shows a banner. Raising it is a deliberate act.
+- `NETWEATHER_DAILY_MB` stops probing at the limit and shows a banner. Raising it is a deliberate act.
 
 Per host, the ceiling is one request every 30 seconds — 2,880 per day in the pathological case where an operator pins a host at tier 0. No target in the default list is treated that way; tier 0 is the reference set, not the interesting set.
 
