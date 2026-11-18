@@ -1926,6 +1926,11 @@ const (
 	// ten-minute floor is a few hundred KB a day, so 50 MB is generous headroom
 	// rather than a target.
 	torDailyMBDefault = 50
+	// torProbeTimeout bounds one Tor probe end to end. Exits are slow and
+	// variable, so a direct-probe ceiling would produce false DOWN states; the
+	// probe loop is sequential, so an unbounded circuit would also stall every
+	// other target (DESIGN.md §5.7).
+	torProbeTimeout = 30 * time.Second
 )
 
 // newTorAgent builds the optional corroboration vantage. It returns nil when
@@ -2075,7 +2080,7 @@ func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg
 		TLS:  probe.NewTLSWithDial(torDial),
 		TCP:  probe.NewTCPWithDial(torDial),
 	}
-	ag := agent.New(selected, runner, st)
+	ag := agent.New(selected, timeoutRunner{inner: runner, timeout: torProbeTimeout}, st)
 	ag.Logger = lg.Logger
 	ag.Pace = torPace
 	ag.Suspend = budget.Exhausted

@@ -377,7 +377,7 @@ Hard constraints, all enforced in code:
 | **Never `primary`** | Tor cannot be a health authority |
 | **Target cap (default 25)** | 750 probes through exits is abusive to exit operators |
 | **Rate cap (default 1 probe / 2s)** | "Slowly" is a correctness requirement here, not politeness |
-| **Long timeouts (15–30s)** | Default 8s fails on slow circuits and produces false `DOWN` |
+| **Long timeouts (15–30s)** | Default 8s fails on slow circuits and produces false `DOWN`. The Tor runner bounds each probe at 30s, and the sequential loop means an unbounded circuit would stall every later target |
 | **Daily bandwidth budget, hard stop** | Prevents a runaway loop from becoming an incident |
 | **`IsolateSOCKSAuth` on the SOCKS port** | Separate circuits by SOCKS credentials without touching the control port. Tor accepts arbitrary credentials as an isolation key; the shipped sidecar enables the flag. The env surface configures one Tor vantage, so per-vantage credentials are a protocol capability here, not a shipped setting |
 | **`MaxCircuitDirtiness` 3600s** | Comparable measurements across time: the same circuit does not rotate mid-incident |
