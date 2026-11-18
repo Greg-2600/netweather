@@ -81,7 +81,7 @@ func New(deps Deps) (http.Handler, error) {
 	mux.HandleFunc("/pause", s.requireSession(http.HandlerFunc(s.handlePause)).ServeHTTP)
 	mux.HandleFunc("/resume", s.requireSession(http.HandlerFunc(s.handleResume)).ServeHTTP)
 	mux.Handle("/", s.requireSession(http.HandlerFunc(s.handleBoard)))
-	return withRequestID(withSecurityHeaders(mux)), nil
+	return withRequestID(withAccessLog(deps.Logger, withSecurityHeaders(mux))), nil
 }
 
 // --- login -----------------------------------------------------------------

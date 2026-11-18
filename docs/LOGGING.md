@@ -97,7 +97,7 @@ Example, one line, no shell required:
 | Store | `WARN` | slow query (> 100 ms) or write retry | query shape, duration |
 | Feeds | `INFO` on poll, `WARN` when stale | poll | feed, items, age, duration |
 | Self-health | `WARN` on failure only | check | check, value, threshold |
-| HTTP | `DEBUG` per request, `WARN` on 4xx/5xx | request | method, route (not full URL), status, duration, request_id |
+| HTTP | `DEBUG` per request on both the API and the UI, `WARN` on 5xx | request | method, route (not full URL), status, bytes, duration, request_id |
 | Startup | `INFO` | twice | Before wiring: version, commit, and the log sinks and level. At listen: config source, listen address, auth mode, vantages, target count, schema version, database path |
 
 No layer logs the same failure twice. Wrap with `%w`, return, log once at the boundary that decides something.
