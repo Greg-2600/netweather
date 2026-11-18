@@ -1149,6 +1149,9 @@ Full rationale in `THREAT_MODEL.md`, `ACCEPTABLE_USE.md`, and `NETWORKING.md` §
 
 ## 15. Roadmap
 
+The living plan — what is now, next, later, and deliberately not planned — is
+[`ROADMAP.md`](../ROADMAP.md). This table is the phase record.
+
 | Phase | Scope | Proves | Status |
 |---|---|---|---|
 | **0** | Service targets, probe ladder, classifier (incl. per-resolver DNS baseline), SQLite, board + overview, reference/LOCAL, baseline health | It is not noise | Implemented |

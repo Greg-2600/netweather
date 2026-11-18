@@ -54,6 +54,7 @@ The through-line: `censor_sensor` asked *"can I reach it?"*, `global_packet_thro
 | [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) | Assets, adversaries, trust boundaries, SSRF and exposure threats, supply chain, invariants, residual risk, operator runbook |
 | [`docs/ACCEPTABLE_USE.md`](docs/ACCEPTABLE_USE.md) | Wire-level behaviour, hard limits, volume math, target selection, prohibited uses, abuse handling, Tor policy |
 | [`docs/RIPE_ATLAS.md`](docs/RIPE_ATLAS.md) | The optional RIPE Atlas profile: what the daemon is, what RIPE sees, and why netweather never reads from it |
+| [`ROADMAP.md`](ROADMAP.md) | Where the project is now, what is next, what is deliberately not planned, and how work is accepted |
 
 ---
 
