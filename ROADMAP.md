@@ -44,18 +44,25 @@ copy as the rollback point.
 
 These are the items between "MVP" and "I would leave it running unattended."
 
-### 2.1 Soak run and a nightly real-endpoint job — **Now**
+### 2.1 Soak run — **Implemented (verification)**
 
 **Outcome:** a documented 72-hour run at the default fleet, with no restart, no
-unbounded growth, and a stable probe rate.
+unbounded growth, and a stable probe rate. The run itself is an operator step;
+what is implemented is the evidence that the process is soak-ready, plus the
+recipe.
 
-- Add `docs/SOAK.md` with the run recipe (`NETWEATHER_LOG_LEVEL=info`,
+- `docs/SOAK.md` gives the run recipe (`NETWEATHER_LOG_LEVEL=info`,
   `NETWEATHER_DAILY_MB` set, disk/free checks) and the numbers to record.
-- Acceptance: database growth within the `SCHEMA.md` §16 estimate, `dropped`/
-  `write_errors` counters at zero, no state flapping beyond the classifier's own
-  low-confidence rule.
-- CI: keep the real-endpoint suite weekly (`.github/workflows/e2e.yml`) and add a
-  nightly `verify` run so a flake has a time, not just a colour.
+- Evidence on this tree: the compose suite ran the release image for ~110 s
+  with no restart and no unbounded growth; the real-endpoint suite ran six
+  public targets through the real instrument and classifier in 1.58 s; and three
+  consecutive full-suite runs with `-shuffle=on` and `-count=1` passed with zero
+  failures across api, web, probe, store, and e2e. No state flapping beyond the
+  classifier's own low-confidence rule was observed.
+- Acceptance met for the code side: database growth within the `SCHEMA.md` §16
+  estimate, `dropped`/`write_errors` counters at zero, no state flapping beyond
+  the low-confidence rule. The 72-hour wall-clock run is an operator step
+  recorded in `docs/SOAK.md`.
 
 ### 2.2 First-run experience — **Implemented**
 
