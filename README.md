@@ -215,6 +215,18 @@ docker compose cp netweather:/data/backup.db ./backup.db
 docker compose exec netweather /netweather debug enable --target chase.com --level trace --for 10m
 ```
 
+## Continuous deployment
+
+`scripts/deploy.ps1` (Windows) and `scripts/deploy.sh` (Linux/macOS) build the release image, seed the token secret into a named volume at mode `0600`, replace the running container only after the new one answers `/healthz`, and roll back to the previous image on a health failure. Nothing is overwritten while the build is broken.
+
+```sh
+./scripts/deploy.ps1            # Windows
+./scripts/deploy.sh             # Linux/macOS
+./scripts/deploy.sh --dry-run   # print the commands, touch nothing
+```
+
+`scripts/install-schedule.ps1` registers a Windows Task Scheduler job that runs the deploy every two hours; on Linux/macOS the same cadence is one cron line (`0 */2 * * * /path/to/netweather/scripts/deploy.sh`). The build is reproducible (`go run ./internal/devtool repro`), so a scheduled rebuild is cheap, and the health gate means a broken build never replaces a working instance.
+
 ## Safety posture
 
 This tool sends periodic requests to third-party sites. That is dual-use, so the limits are enforced in code rather than documented and hoped for:

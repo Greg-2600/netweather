@@ -85,9 +85,28 @@ unbounded growth, and a stable probe rate.
   test name and the seed; fix the race, never widen the timeout.
 - Acceptance: ten consecutive `devtool verify` runs, zero failures.
 
----
+### 2.5 Continuous deployment every two hours — **Now**
 
-## 3. Next — phase 3
+**Outcome:** a fresh build of the working software lands in the running
+container on a fixed cadence, so the running instance never drifts from the
+repository, and a broken build never replaces a working one.
+
+- `scripts/deploy.ps1` (Windows) and `scripts/deploy.sh` (POSIX) build the
+  release image, seed the secret volume at mode 0600, stop the previous
+  instance, start the new one, and gate on `/healthz` for up to 30 seconds.
+  A failing health check rolls back to the previous image tag instead of
+  leaving the instance down. `--dry-run` prints every command without touching
+  Docker; `--no-build` reuses the current image.
+- `scripts/install-schedule.ps1` registers a Windows Task Scheduler job that
+  runs the deploy script every two hours; cron is the same job on Linux/macOS.
+- Acceptance: a dry run exits 0 and prints the build and run commands; a real
+  run leaves `/healthz` answering and the container on the new image; a broken
+  build leaves the previous image running and exits non-zero.
+- The two-hour cadence is deliberately short: the build is reproducible
+  (`devtool repro`) and the container starts in seconds, so a fresh image is
+  cheap; a broken one is caught by the health gate before it serves traffic.
+
+---
 
 ### 3.1 Remote vantage agent (federation-lite) — **Next**
 
