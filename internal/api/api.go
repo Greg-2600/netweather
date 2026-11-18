@@ -462,9 +462,47 @@ type egressInfo struct {
 	Exhausted  bool  `json:"exhausted"`
 }
 
-// capabilities is the runtime truth. A client should feature-detect here rather
-// than assume an endpoint from docs/API.md exists.
-var capabilities = []string{"health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "annotations", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace", "corridors", "ihi", "target_control"}
+// capabilitiesFor is the runtime truth: a client should feature-detect here
+// rather than assume an endpoint from docs/API.md exists. A surface is listed
+// only when its reader is wired, so a target drawer or CLI can tell a disabled
+// action from a failed one. Trace is listed only when the operator opted in,
+// because the endpoint answers 503 without that opt-in.
+func (s *server) capabilitiesFor() []string {
+	d := s.deps
+	caps := make([]string, 0, 24)
+
+	add := func(enabled bool, name string) {
+		if enabled {
+			caps = append(caps, name)
+		}
+	}
+
+	// health, meta, and the UI are always present.
+	add(true, "health")
+	add(true, "meta")
+	add(d.Ring != nil, "logs")
+	add(d.Source != nil, "board")
+	add(d.Targets != nil, "targets")
+	add(d.Control != nil, "control")
+	add(d.Probes != nil, "probes")
+	add(d.Probes != nil, "series")
+	add(d.Incidents != nil, "incidents")
+	add(d.Annotator != nil, "annotations")
+	add(d.Scopes != nil, "scopes")
+	add(d.Anomalies != nil, "anomalies")
+	add(d.Coverage != nil, "coverage")
+	add(d.SelfChecks != nil, "selfcheck")
+	add(d.Exporter != nil, "export")
+	add(d.Source != nil, "events")
+	add(d.Feeds != nil, "feeds")
+	add(d.Debug != nil, "debug")
+	add(d.CoverageHistory != nil, "coverage_history")
+	add(d.TraceEnabled && d.Tracer != nil && d.Resolver != nil, "trace")
+	add(d.Corridors != nil, "corridors")
+	add(d.IHI != nil, "ihi")
+	add(d.TargetControl != nil, "target_control")
+	return caps
+}
 
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	info := ringInfo{}
@@ -492,7 +530,7 @@ func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		Auth:          auth,
 		SchemaVersion: s.deps.SchemaVersion,
 		Egress:        egress,
-		Capabilities:  capabilities,
+		Capabilities:  s.capabilitiesFor(),
 		Ring:          info,
 	}, nil)
 }

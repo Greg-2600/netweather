@@ -211,7 +211,7 @@ Auth: bearer.
 }
 ```
 
-`capabilities` is the runtime truth: a client should feature-detect here rather than assume an endpoint exists. `auth` is `bearer` or `none` (loopback development only). `schema_version` is the applied migration number, absent when it cannot be read; it is what a support bundle needs and cannot get from a remote CLI otherwise. `egress` is the direct vantage's daily byte budget (`ACCEPTABLE_USE.md` §4): `used_bytes`, `limit_bytes`, and `exhausted`; it is absent when the budget is disabled, and `exhausted: true` means probing has stopped until 00:00 UTC, so an empty board is a budget stop rather than silence.
+`capabilities` is the runtime truth: a client should feature-detect here rather than assume an endpoint exists. A surface is listed only when its reader is wired, so `trace` appears only with `NETWEATHER_TRACE_ENABLED=true` and a tracer, and `target_control` only when the runtime target control is configured. `auth` is `bearer` or `none` (loopback development only). `schema_version` is the applied migration number, absent when it cannot be read; it is what a support bundle needs and cannot get from a remote CLI otherwise. `egress` is the direct vantage's daily byte budget (`ACCEPTABLE_USE.md` §4): `used_bytes`, `limit_bytes`, and `exhausted`; it is absent when the budget is disabled, and `exhausted: true` means probing has stopped until 00:00 UTC, so an empty board is a budget stop rather than silence.
 
 No target data appears here. That is deliberate: `/meta` is the one endpoint a monitoring system may poll, and it must not become a target-list leak.
 
