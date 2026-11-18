@@ -94,7 +94,7 @@ Example, one line, no shell required:
 | Instrument | `TRACE` | stage | stage, duration, outcome, and no body |
 | Classifier | `INFO` on transition, `DEBUG` otherwise | probe | state, stage, error_class, confidence, reason |
 | Attribution | `INFO` | incident | winner, score, share, runner-up |
-| Store | `WARN` | slow query (> 100 ms) or write retry | query shape, duration |
+| Store | — | — | The store does not log: it returns wrapped errors, and the boundary that decides something logs once (see below). Query durations are not instrumented. |
 | Feeds | `INFO` on poll, `WARN` when stale | poll | feed, items, age, duration |
 | Self-health | `WARN` on failure only | check | check, value, threshold |
 | HTTP | `DEBUG` per request on both the API and the UI, `WARN` on 5xx | request | method, route (not full URL), status, bytes, duration, request_id |
