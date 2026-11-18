@@ -76,7 +76,7 @@ The through-line: `censor_sensor` asked *"can I reach it?"*, `global_packet_thro
 
 **Vantages** — `direct` (your connection) and optional `socks5` (Tor, with exit-country pinning). Only the primary vantage may declare `DOWN`.
 
-**External intelligence** — IODA, Cloudflare Radar, RIPE RIS, Statuspage family. All optional; the core works with zero feeds.
+**External intelligence** — IODA, Cloudflare Radar, the Statuspage family (including the AWS/GCP/Azure status feeds). All optional; the core works with zero feeds. RIPE RIS Live is designed but not built (`docs/DESIGN.md` §8.3).
 
 **Stack** - Go, SQLite (pure Go), server-rendered HTML + SSE. One binary. No JS build step, no framework. Browser tests use Playwright.
 
