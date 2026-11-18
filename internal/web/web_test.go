@@ -628,8 +628,8 @@ func TestLoginRejectsMissingCSRF(t *testing.T) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.StatusCode)
 	}
 }
 
@@ -2030,8 +2030,8 @@ func TestPauseRequiresCSRF(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = body(t, resp)
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.StatusCode)
 	}
 	if control.Paused() {
 		t.Fatal("a CSRF-less request paused probing")
@@ -2279,7 +2279,7 @@ func TestIncidentAnnotationRejectsBadRequests(t *testing.T) {
 	client, _ := newClient(t)
 	login(t, ts, client, testToken)
 
-	// A wrong CSRF token is a 400, not a write.
+	// A wrong CSRF token is a 403, not a write.
 	badForm := url.Values{
 		"csrf":       {"wrong"},
 		"annotation": {"x"},
@@ -2289,8 +2289,8 @@ func TestIncidentAnnotationRejectsBadRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = body(t, resp)
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("bad csrf status = %d, want 400", resp.StatusCode)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("bad csrf status = %d, want 403", resp.StatusCode)
 	}
 
 	// Empty annotations are refused with a valid CSRF token.

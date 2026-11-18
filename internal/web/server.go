@@ -201,7 +201,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		if !s.auth.csrfMatches(r, r.PostFormValue("csrf")) {
 			csrf := randomToken()
 			s.auth.setCSRFCookie(w, csrf, now)
-			s.renderLogin(w, r, http.StatusBadRequest,
+			s.renderLogin(w, r, http.StatusForbidden,
 				loginView{Error: "Session expired. Try again.", CSRF: csrf, Next: next})
 			return
 		}
@@ -244,7 +244,7 @@ func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil || !s.auth.csrfMatches(r, r.PostFormValue("csrf")) {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	s.auth.clearSessionCookie(w)
@@ -267,7 +267,7 @@ func (s *server) setPaused(w http.ResponseWriter, r *http.Request, paused bool) 
 		return
 	}
 	if err := r.ParseForm(); err != nil || !s.auth.csrfMatches(r, r.PostFormValue("csrf")) {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -2188,7 +2188,7 @@ func (s *server) handleIncidentAnnotate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := r.ParseForm(); err != nil || !s.auth.csrfMatches(r, r.PostFormValue("csrf")) {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 

@@ -54,7 +54,7 @@ func (s *server) handleTraceAction(w http.ResponseWriter, r *http.Request) {
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxActionBody)
 	if err := r.ParseForm(); err != nil || !s.auth.csrfMatches(r, r.PostFormValue("csrf")) {
-		s.renderError(w, r, http.StatusBadRequest,
+		s.renderError(w, r, http.StatusForbidden,
 			"The request could not be verified. Reload the target page and try again.")
 		return
 	}

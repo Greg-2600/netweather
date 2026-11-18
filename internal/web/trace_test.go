@@ -184,8 +184,8 @@ func TestTargetTraceActionRequiresCSRF(t *testing.T) {
 
 	ts := serverWithTrace(t, true, &fakeWebTracer{}, &fakeWebResolver{}, tracebudget.New(1, time.Hour))
 	code, page := tracePost(t, ts, "wrong-token")
-	if code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", code)
+	if code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", code)
 	}
 	if !strings.Contains(page, `data-testid="error-page"`) {
 		t.Fatalf("a bad CSRF token did not render the generic page:\n%s", page)
