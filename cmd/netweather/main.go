@@ -509,6 +509,7 @@ func serve(lg *logging.Logger) error {
 			"request_id", logging.RequestIDFrom(ctx))
 		return true, nil
 	}
+	webDeps.TargetControl = web.TargetControlFunc(disableTarget)
 
 	apiDeps := api.Deps{
 		Logger:          lg.Logger,

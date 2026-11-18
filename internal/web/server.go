@@ -1566,6 +1566,11 @@ type targetView struct {
 	// reason in the trace page instead of a button that cannot work.
 	CSRF         string
 	TraceEnabled bool
+	// TargetControl is the abuse-response path from ACCEPTABLE_USE.md §7: the
+	// row and its history stay, the scheduler drops the target on the next
+	// tick, and a config reload can bring it back. It is offered only when the
+	// runtime control is wired.
+	DisableEnabled bool
 	// Sources is where this row came from and the hash of that payload
 	// (THREAT_MODEL.md T35). SourcesNote states a failed or empty read; both
 	// empty means the panel is omitted.
@@ -1673,10 +1678,15 @@ func toProbeView(row store.ProbeRow) probeView {
 }
 
 func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
-	// The trace action is a POST under the same subtree. It has its own method
-	// and CSRF checks, so it must be dispatched before the page's GET guard.
+	// The trace and disable actions are POSTs under the same subtree. They
+	// have their own method and CSRF checks, so they must be dispatched before
+	// the page's GET guard.
 	if strings.HasSuffix(r.URL.Path, "/trace") {
 		s.handleTraceAction(w, r)
+		return
+	}
+	if strings.HasSuffix(r.URL.Path, "/disable") {
+		s.handleTargetDisable(w, r)
 		return
 	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -1702,6 +1712,7 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 
 		view := targetView{Tile: toTile(t), Insecure: s.insecure(r)}
 		view.CSRF, _ = s.auth.csrfFrom(r)
+		view.DisableEnabled = s.deps.TargetControl != nil
 		view.TraceEnabled = s.deps.TraceEnabled && s.deps.Tracer != nil &&
 			s.deps.Resolver != nil && s.deps.TraceBudget != nil
 		vantage := s.deps.Vantage

@@ -133,6 +133,18 @@
       {{end}}
       {{end}}
 
+      {{if .DisableEnabled}}
+      <h2 class="section-title">Disable target</h2>
+      <p class="muted small">Stops probing this target without deleting its row
+        or history. The abuse-response path from <code>ACCEPTABLE_USE.md</code>
+        §7: the live scheduler drops it on the next tick, and a later config
+        reload can bring it back.</p>
+      <form method="post" action="/targets/{{.Tile.ID}}/disable">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button type="submit" data-testid="disable-action">Disable this target</button>
+      </form>
+      {{end}}
+
       <h2 class="section-title">Recent probes</h2>
       {{if .Probes}}
       <table class="probes" data-testid="probe-history">

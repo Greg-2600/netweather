@@ -64,6 +64,11 @@ type Deps struct {
 	// Vantages supplies every vantage's state for a target, so the drawer can
 	// show a regional disagreement rather than calling it global.
 	Vantages VantageStates
+	// TargetControl stops probing one target at runtime. It is the abuse-response
+	// path from ACCEPTABLE_USE.md §7: the row and its history stay, the scheduler
+	// drops the target on the next tick, and a config reload can bring it back.
+	// Nil disables the action with a stated reason rather than a silent success.
+	TargetControl TargetControl
 	// Provenance supplies where a target came from, so the drawer can show the
 	// seed or config payload that produced it (THREAT_MODEL.md T35). Nil omits
 	// the panel rather than implying the target has no source.
@@ -240,6 +245,21 @@ type VantageStates interface {
 // T35). Nil omits the panel.
 type ProvenanceReader interface {
 	TargetSources(ctx context.Context, targetID string) ([]store.TargetSource, error)
+}
+
+// TargetControl stops probing one target at runtime. probe netx/agent satisfy
+// it through the closure in cmd/netweather. Nil disables the action with a
+// stated reason rather than a silent success.
+type TargetControl interface {
+	DisableTarget(ctx context.Context, id string) (bool, error)
+}
+
+// TargetControlFunc adapts a plain function to TargetControl, the way
+// http.HandlerFunc adapts a function to http.Handler.
+type TargetControlFunc func(ctx context.Context, id string) (bool, error)
+
+func (f TargetControlFunc) DisableTarget(ctx context.Context, id string) (bool, error) {
+	return f(ctx, id)
 }
 
 // Tracer runs one on-demand traceroute. probe.Trace satisfies it.
