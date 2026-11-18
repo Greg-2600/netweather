@@ -822,3 +822,21 @@ targets:
 		}
 	}
 }
+
+func TestParseRejectsCustomYAMLTags(t *testing.T) {
+	t.Parallel()
+
+	// THREAT_MODEL.md T38: no custom tags. A file that tries to pull in another
+	// document with a tag must be an error, not a silently ignored field.
+	body := "version: 1\ntargets:\n  - !include chase.yaml\n"
+	if _, err := config.Parse([]byte(body)); err == nil {
+		t.Fatal("a custom YAML tag was accepted")
+	}
+
+	// The same tag on a mapping is refused too, so the check is not about the
+	// scalar shape alone.
+	body = "version: 1\ntargets:\n  - !merge {host: example.com}\n"
+	if _, err := config.Parse([]byte(body)); err == nil {
+		t.Fatal("a custom tag on a mapping was accepted")
+	}
+}
