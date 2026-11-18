@@ -9,7 +9,11 @@ BridgeRelay 0
 PublishServerDescriptor 0
 
 # The app reaches this over the compose egress network; nothing is published.
-SocksPort 0.0.0.0:9050
+# IsolateSOCKSAuth makes a SOCKS username/password a circuit-isolation key, so
+# two clients that present different credentials do not share circuits. Tor
+# accepts arbitrary credentials for isolation; it is not an access control
+# (DESIGN.md 5.7).
+SocksPort 0.0.0.0:9050 IsolateSOCKSAuth
 
 # The release image runs read-only with a tmpfs at /tmp, and tor needs a
 # writable data directory it owns.
@@ -19,3 +23,8 @@ DataDirectory /tmp/tor
 # from those lines.
 Log notice stdout
 SafeLogging 1
+
+# Keep an exit circuit for at least an hour: measurements taken minutes apart
+# from the same circuit are comparable, and a different exit mid-incident would
+# look like a path change (DESIGN.md 5.7).
+MaxCircuitDirtiness 3600

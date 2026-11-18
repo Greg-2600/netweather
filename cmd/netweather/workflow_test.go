@@ -206,7 +206,8 @@ func TestTorSidecarIsBakedIn(t *testing.T) {
 	for _, want := range []string{
 		"ClientOnly 1", "ExitPolicy reject *:*",
 		"BridgeRelay 0", "PublishServerDescriptor 0",
-		"SocksPort 0.0.0.0:9050",
+		"SocksPort 0.0.0.0:9050 IsolateSOCKSAuth",
+		"MaxCircuitDirtiness 3600",
 	} {
 		if !strings.Contains(string(torrc), want) {
 			t.Errorf("torrc is missing %q", want)
