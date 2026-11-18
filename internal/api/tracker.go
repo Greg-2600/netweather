@@ -14,7 +14,11 @@ import (
 // gap would otherwise be recorded twice (snapshot plus delta) at worst; the
 // other order loses it entirely, and a duplicate state is harmless because
 // clients upsert by target.
-func (s *server) trackEvents(ctx context.Context) {
+//
+// ready is closed once the baseline exists. New waits for it, so the server
+// never serves a client while the tracker has no baseline: a change before the
+// baseline would be folded into it and never appear as a delta.
+func (s *server) trackEvents(ctx context.Context, ready chan<- struct{}) {
 	boardCh, cancelBoard := s.deps.Watcher.Subscribe()
 	defer cancelBoard()
 
@@ -29,6 +33,7 @@ func (s *server) trackEvents(ctx context.Context) {
 	if snap, err := s.streamSnapshot(ctx); err == nil {
 		last = snap
 	}
+	close(ready)
 
 	for {
 		select {

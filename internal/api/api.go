@@ -328,12 +328,17 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 
 	// The tracker owns the replay ring: it records deltas whether or not a
 	// client is connected, which is what makes Last-Event-ID a real resume.
+	// Its baseline is built synchronously: a client that connects before the
+	// first snapshot could otherwise see a change folded into the baseline and
+	// never delivered as a delta.
 	if deps.Watcher != nil {
 		runCtx := deps.RunContext
 		if runCtx == nil {
 			runCtx = context.Background()
 		}
-		go s.trackEvents(runCtx)
+		ready := make(chan struct{})
+		go s.trackEvents(runCtx, ready)
+		<-ready
 	}
 
 	apiMux := http.NewServeMux()
