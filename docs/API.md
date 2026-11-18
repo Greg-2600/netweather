@@ -250,7 +250,7 @@ Auth: bearer. Reads the in-memory ring, not the file sink. Redaction already hap
 }
 ```
 
-Sorted oldest → newest. The ring holds minutes, not days; for history use `GET /api/v1/targets/{id}/probes` once it exists.
+Sorted oldest → newest. The ring holds minutes, not days; for a longer window use `GET /api/v1/targets/{id}/probes` (§6.6) or `/series` (§6.10).
 
 ### 6.4 `GET /api/v1/board` — stable
 
