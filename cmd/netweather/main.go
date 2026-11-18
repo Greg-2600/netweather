@@ -227,6 +227,28 @@ func serve(lg *logging.Logger) error {
 		return err
 	}
 
+	// One INFO line per confirmed state change (LOGGING.md §3, §4). The store
+	// returns the transition after the batch commits rather than logging from
+	// inside its transaction: a rolled-back batch must not leave a line claiming
+	// a change, and the store stays a pure data layer.
+	st.OnTransition = func(t store.Transition) {
+		lg.Info("state change",
+			"event", "state_change",
+			"component", "store",
+			"target", t.Host,
+			"vantage", t.VantageID,
+			"tier", t.Tier,
+			"state_from", string(t.From),
+			"state_to", string(t.To),
+			"stage", t.Stage,
+			"error_class", t.ErrorClass,
+			"http_status", t.HTTPStatus,
+			"latency_ms", t.LatencyMS,
+			"confidence", t.Confidence,
+			"reason", t.Reason,
+		)
+	}
+
 	// The atypical-day calendar is local and static (DESIGN.md §7.2). Every
 	// listed date is marked once at startup: a future date costs no delete
 	// now and is skipped when it arrives, and a past date loses the samples

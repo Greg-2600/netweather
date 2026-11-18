@@ -58,7 +58,7 @@ Every log line is structured (JSON in a container, text on a TTY). The fields th
 | `msg` | always | Short, stable, lower-case. Not a sentence with interpolated values |
 | `event` | always | Machine key: `startup`, `state_change`, `incident_open`, `probe`, `feed_poll`, `self_check`, `config_reload`, `log_dropped` |
 | `component` | always | `scheduler`, `classify`, `netx`, `store`, `http`, `feed`, `selfhealth`, `logging` |
-| `trace_id` | probe / request | 16 hex chars; joins a log line to a stored probe row and an HTTP request |
+| `trace_id` | probe / request | 16 hex chars; joins a log line to a stored probe row and an HTTP request. A `state_change` line carries none: the transition is keyed by `target`, `vantage`, and `ts` |
 | `target` | target-scoped | Registrable host |
 | `vantage` | target-scoped | `local`, `tor-de`, … |
 | `tier` | probe | 0–3 |
@@ -78,10 +78,10 @@ The `reason` invariant is load-bearing: the drawer and the log must not tell two
 Example, one line, no shell required:
 
 ```json
-{"ts":"2026-11-16T03:14:15.123Z","level":"INFO","msg":"state change","event":"state_change","component":"classify",
- "trace_id":"9f2c1a7b4e8d0356","target":"chase.com","vantage":"local","tier":2,
- "state_from":"UP","state_to":"DOWN","stage":"tls","error_class":"tls_expired",
- "latency_ms":41,"confidence":"semantic","reason":"certificate expired 2h ago"}
+{"ts":"2026-11-16T03:14:15.123Z","level":"INFO","msg":"state change","event":"state_change","component":"store",
+ "target":"chase.com","vantage":"local","tier":2,
+ "state_from":"up","state_to":"down","stage":"tls","error_class":"tls_expired",
+ "http_status":0,"latency_ms":41,"confidence":"semantic","reason":"certificate expired 2h ago"}
 ```
 
 ---
@@ -92,7 +92,7 @@ Example, one line, no shell required:
 |---|---|---|---|
 | Scheduler | `DEBUG` | probe submission | target, tier, vantage, due_at, trace_id |
 | Instrument | `TRACE` | stage | stage, duration, outcome, and no body |
-| Classifier | `INFO` on transition, `DEBUG` otherwise | probe | state, stage, error_class, confidence, reason |
+| Classifier | `INFO` on a confirmed transition (`component=store`), `DEBUG` per probe (`component=agent`) | probe | state, stage, error_class, confidence, reason. The transition line is written after `store.Record` commits, so a rolled-back batch leaves no line claiming a change |
 | Attribution | `INFO` | incident | winner, score, share, runner-up |
 | Store | — | — | The store does not log: it returns wrapped errors, and the boundary that decides something logs once (see below). Query durations are not instrumented. |
 | Feeds | `INFO` on poll, `WARN` when stale | poll | feed, items, age, duration |

@@ -30,6 +30,12 @@ type Store struct {
 	path   string
 	writer *sql.DB
 	reader *sql.DB
+
+	// OnTransition, when set, is called after a batch commits for each confirmed
+	// state change. The store itself does not log (LOGGING.md §4): the process
+	// boundary decides what a transition means and logs once. It is set at
+	// startup and read by the single writer path, so it needs no lock.
+	OnTransition func(Transition)
 }
 
 // Open creates or opens the database at path, applies pragmas, and migrates.

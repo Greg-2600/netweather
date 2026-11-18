@@ -105,6 +105,25 @@ func (s *Store) UpsertTarget(ctx context.Context, t Target) error {
 	return nil
 }
 
+// Transition is one confirmed state change, returned to the caller after the
+// batch commits. The store does not log it: the process boundary decides what a
+// transition means and writes the one INFO line (LOGGING.md §3, §4).
+type Transition struct {
+	TargetID   string
+	VantageID  string
+	Host       string
+	Tier       int
+	TS         time.Time
+	From       state.State
+	To         state.State
+	Stage      string
+	ErrorClass string
+	HTTPStatus int
+	LatencyMS  int
+	Confidence string
+	Reason     string
+}
+
 // Record persists a batch in one transaction: probe rows, the latest state per
 // (target, vantage), accepted transitions, and the 5-minute rollup increment.
 func (s *Store) Record(ctx context.Context, probes []Probe) error {
@@ -118,19 +137,32 @@ func (s *Store) Record(ctx context.Context, probes []Probe) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	var transitions []Transition
 	for _, p := range probes {
-		if err := recordOne(ctx, tx, p); err != nil {
+		transition, err := recordOne(ctx, tx, p)
+		if err != nil {
 			return err
+		}
+		if transition != nil {
+			transitions = append(transitions, *transition)
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("store: commit: %w", err)
 	}
+
+	// After the commit, so a subscriber never sees a transition that failed to
+	// persist. The callback is expected to be quick (a log write).
+	if s.OnTransition != nil {
+		for _, transition := range transitions {
+			s.OnTransition(transition)
+		}
+	}
 	return nil
 }
 
-func recordOne(ctx context.Context, tx *sql.Tx, p Probe) error {
+func recordOne(ctx context.Context, tx *sql.Tx, p Probe) (*Transition, error) {
 	ts := p.TS.UnixMilli()
 	detail := sanitizeDetail(p.Detail)
 
@@ -147,7 +179,7 @@ func recordOne(ctx context.Context, tx *sql.Tx, p Probe) error {
 		confidenceOrDefault(p.Confidence), detail,
 		p.CertIssuer, certExpiry(p.CertNotAfter))
 	if err != nil {
-		return fmt.Errorf("store: probe %s: %w", p.TargetID, err)
+		return nil, fmt.Errorf("store: probe %s: %w", p.TargetID, err)
 	}
 	probeID, _ := res.LastInsertId()
 
@@ -179,13 +211,17 @@ func recordOne(ctx context.Context, tx *sql.Tx, p Probe) error {
 		p.TargetID, p.VantageID, ts/300000,
 		up, degraded, down, blocked, unknown,
 		nullInt(p.LatencyMS), nullInt(p.LatencyMS)); err != nil {
-		return fmt.Errorf("store: rollup %s: %w", p.TargetID, err)
+		return nil, fmt.Errorf("store: rollup %s: %w", p.TargetID, err)
 	}
 
-	if err := recordState(ctx, tx, p, ts, detail); err != nil {
-		return err
+	transition, err := recordState(ctx, tx, p, ts, detail)
+	if err != nil {
+		return nil, err
 	}
-	return applyFlapConfidence(ctx, tx, p, ts, probeID)
+	if err := applyFlapConfidence(ctx, tx, p, ts, probeID); err != nil {
+		return nil, err
+	}
+	return transition, nil
 }
 
 // flapTransitions and flapWindow are CLASSIFIER.md §9: a target that has
@@ -220,9 +256,11 @@ func applyFlapConfidence(ctx context.Context, tx *sql.Tx, p Probe, ts, probeID i
 	return nil
 }
 
-func recordState(ctx context.Context, tx *sql.Tx, p Probe, ts int64, detail string) error {
+func recordState(ctx context.Context, tx *sql.Tx, p Probe, ts int64, detail string) (*Transition, error) {
 	var (
 		class       string
+		host        string
+		tier        int
 		prevState   string
 		prevSince   int64
 		failStreak  int
@@ -231,13 +269,13 @@ func recordState(ctx context.Context, tx *sql.Tx, p Probe, ts int64, detail stri
 	)
 
 	err := tx.QueryRowContext(ctx, `
-		SELECT COALESCE(t.class, ''), ts.state, ts.since, ts.fail_streak, ts.ok_streak,
-		       COALESCE(ts.last_error, '')
+		SELECT COALESCE(t.class, ''), t.host, t.tier, ts.state, ts.since,
+		       ts.fail_streak, ts.ok_streak, COALESCE(ts.last_error, '')
 		FROM target_state ts
 		JOIN target t ON t.id = ts.target_id
 		WHERE ts.target_id = ? AND ts.vantage_id = ?`,
 		p.TargetID, p.VantageID).
-		Scan(&class, &prevState, &prevSince, &failStreak, &okStreak, &prevLastErr)
+		Scan(&class, &host, &tier, &prevState, &prevSince, &failStreak, &okStreak, &prevLastErr)
 
 	// The confirmation rules need the last three observations: the reference
 	// class confirms DOWN on two failures out of three, and BLOCKED needs the
@@ -296,12 +334,14 @@ func recordState(ctx context.Context, tx *sql.Tx, p Probe, ts int64, detail stri
 			) VALUES (?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''))`,
 			p.TargetID, p.VantageID, next, ts, decision.FailStreak, decision.OKStreak, ts, lastError)
 		if err != nil {
-			return fmt.Errorf("store: initial state %s: %w", p.TargetID, err)
+			return nil, fmt.Errorf("store: initial state %s: %w", p.TargetID, err)
 		}
-		return nil
+		// Adopting the first observation is not a transition (DESIGN.md §7.4),
+		// so there is nothing for the caller to log.
+		return nil, nil
 
 	case err != nil:
-		return fmt.Errorf("store: read state %s: %w", p.TargetID, err)
+		return nil, fmt.Errorf("store: read state %s: %w", p.TargetID, err)
 	}
 
 	changed := prevState != next
@@ -320,11 +360,11 @@ func recordState(ctx context.Context, tx *sql.Tx, p Probe, ts int64, detail stri
 		WHERE target_id = ? AND vantage_id = ?`,
 		next, since, prevForRow, decision.FailStreak, decision.OKStreak, ts, lastError,
 		p.TargetID, p.VantageID); err != nil {
-		return fmt.Errorf("store: update state %s: %w", p.TargetID, err)
+		return nil, fmt.Errorf("store: update state %s: %w", p.TargetID, err)
 	}
 
 	if !changed {
-		return nil
+		return nil, nil
 	}
 
 	reason := strings.TrimSpace(p.Reason)
@@ -340,9 +380,24 @@ func recordState(ctx context.Context, tx *sql.Tx, p Probe, ts int64, detail stri
 			target_id, vantage_id, ts, from_state, to_state, reason
 		) VALUES (?, ?, ?, ?, ?, ?)`,
 		p.TargetID, p.VantageID, ts, prevState, next, reason); err != nil {
-		return fmt.Errorf("store: state change %s: %w", p.TargetID, err)
+		return nil, fmt.Errorf("store: state change %s: %w", p.TargetID, err)
 	}
-	return nil
+
+	return &Transition{
+		TargetID:   p.TargetID,
+		VantageID:  p.VantageID,
+		Host:       host,
+		Tier:       tier,
+		TS:         time.UnixMilli(ts).UTC(),
+		From:       state.State(prevState),
+		To:         decision.State,
+		Stage:      p.Stage,
+		ErrorClass: p.ErrorClass,
+		HTTPStatus: p.HTTPStatus,
+		LatencyMS:  p.LatencyMS,
+		Confidence: p.Confidence,
+		Reason:     reason,
+	}, nil
 }
 
 // observation is the part of a stored probe the confirmation rules read.
