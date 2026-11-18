@@ -832,11 +832,12 @@ At 750 targets, ~5 probes/s, ~430k probes/day:
 | `rollup_1h` | ~17,500 | ~60 | ~32 MB at 30d |
 | `rollup_1d` | 750 | ~60 | ~16 MB at 1y |
 | `state_change` | ~200 | ~80 | ~5 MB at 1y |
+| `scope_sample` | ~1,900 | ~70 | ~140 MB at 28 weeks (the hour-of-week window) |
 | `self_check` | ~1,300 | ~60 | ~2 MB at 30d |
 | `external_event` | < 200 | ~1 KB | ~18 MB at 90d |
 | `coverage_snapshot` | 750 | ~60 | ~16 MB at 1y |
 
-Steady state ≈ **340 MB**, with a hard ceiling well under 1 GB. If a deployment exceeds that, the first suspect is a rollup job recomputing instead of incrementing (§6.1).
+Steady state ≈ **480 MB**, with a hard ceiling well under 1 GB. If a deployment exceeds that, the first suspect is a rollup job recomputing instead of incrementing (§6.1). The scope samples are the largest single addition over the raw-probe estimate: 28 weeks of hourly health per scope is what the baseline reads, so the window is policy rather than an accident.
 
 The row counts follow from `DESIGN.md` §6.1: tier 0 at 30s, tiers 1 and 3 at 120s, tier 2 at a 450s midpoint. If an operator shortens intervals, storage scales linearly and the ceiling arrives sooner — which is why the interval floor is enforced in code rather than trusted to config.
 
