@@ -644,8 +644,8 @@ func serve(lg *logging.Logger) error {
 	return nil
 }
 
-// loadTargets prefers NETWEATHER_CONFIG, then the shipped seed list. Only the
-// HTTP instrument exists so far; a config that asks for another probe fails
+// loadTargets prefers NETWEATHER_CONFIG, then the shipped seed list. Each
+// instrument has its own branch; a probe this build does not dispatch fails
 // loudly instead of silently dropping targets.
 func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 	path := os.Getenv("NETWEATHER_CONFIG")
