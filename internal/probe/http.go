@@ -147,6 +147,7 @@ func TransportForDial(dial DialFunc) *http.Transport {
 		DialContext:           dial,
 		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
 		ForceAttemptHTTP2:     true,
+		MaxConnsPerHost:       1,
 		MaxIdleConns:          4,
 		MaxIdleConnsPerHost:   1,
 		IdleConnTimeout:       30 * time.Second,
