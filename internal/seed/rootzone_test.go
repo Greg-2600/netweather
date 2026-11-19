@@ -57,6 +57,32 @@ xn--p1ai.		172800	IN	NS	ns1.nic.xn--p1ai.
 	}
 }
 
+func TestCountryAnchorNamesAreExpanded(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		"np":          "Nepal ccTLD",
+		"uz":          "Uzbekistan ccTLD",
+		"gb":          "United Kingdom ccTLD",
+		"kp":          "North Korea ccTLD",
+		"xn--wgbh1c":  "Egypt (مصر) ccTLD",
+		"xn--1qqw23a": "Foshan (佛山) ccTLD",
+		"zz":          "ZZ ccTLD", // newly delegated labels fall back to the code
+	}
+	for tld, want := range cases {
+		if got := seed.CountryAnchorName(tld); got != want {
+			t.Errorf("CountryAnchorName(%q) = %q, want %q", tld, got, want)
+		}
+	}
+
+	// The seed itself uses the expanded names, not the opaque two-letter codes.
+	zone := "np.\t172800\tIN\tNS\tns1.nic.np.\n"
+	got := seed.ParseCountryAnchors(zone)
+	if len(got) != 1 || got[0].Name != "Nepal ccTLD" {
+		t.Fatalf("seed name = %+v, want Nepal ccTLD", got)
+	}
+}
+
 func TestParseCountryAnchorsSkipsNonCountries(t *testing.T) {
 	t.Parallel()
 

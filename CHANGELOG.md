@@ -46,7 +46,10 @@ changed between two images without it.
   worst targets ranked by severity × duration; each row links to the detail.
   Tile colour is a diverging green→amber→red scale, labels are gated on box
   size (compact ticker / full name / colour-only with a full tooltip) so names
-  are never cut off, and clicking a tile opens its target detail.
+  are never cut off, and clicking a tile opens its target detail. ccTLD anchors
+  now carry expanded names from CLDR and IANA ("NP ccTLD" is "Nepal ccTLD",
+  "UZ ccTLD" is "Uzbekistan ccTLD"; IDN labels show their English country name
+  and Unicode form), so codes are understandable at a glance on every page.
 - An early field-trial deployment: `scripts/gen_fieldtrial_targets.py` builds a
   749-target config from the IANA root zone (399 ccTLD anchors, 100 network
   anchors, 240 real public services, 10 references); `compose.fieldtrial.yaml`

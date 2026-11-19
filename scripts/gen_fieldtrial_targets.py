@@ -24,7 +24,9 @@ which migration 0024 made storable.
 from __future__ import annotations
 
 import collections
+import json
 import os
+import pathlib
 import re
 import sys
 
@@ -32,6 +34,15 @@ ROOT_ZONE = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("ROOT_ZONE")
 OUT = sys.argv[2] if len(sys.argv) > 2 else "config/fieldtrial-targets.yaml"
 if not ROOT_ZONE:
     sys.exit("usage: gen_fieldtrial_targets.py ROOT_ZONE [OUTPUT]")
+
+# Human-readable ccTLD names (CLDR for two-letter codes, IANA root DB for IDNs).
+# Shared with internal/seed/cctld_names.go so a regeneration keeps the same names.
+REPO = pathlib.Path(__file__).resolve().parent.parent
+NAMES = json.loads((REPO / "internal/seed/cctld_names.json").read_text(encoding="utf-8"))
+
+
+def country_name(tld: str) -> str:
+    return NAMES.get(tld.lower(), tld.upper()) + " ccTLD"
 
 # ---------------------------------------------------------------- root zone ---
 
@@ -388,7 +399,7 @@ counts = collections.Counter()
 for tld in sorted(chosen_ns):
     ns = chosen_ns[tld]
     w(f"  - id: cctld-{tld}")
-    w(f"    name: {y(tld.upper() + ' ccTLD')}")
+    w(f"    name: {y(country_name(tld))}")
     w(f"    host: {y(ns)}")
     w("    port: 53")
     w("    probe: dns")

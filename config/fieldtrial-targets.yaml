@@ -4,7 +4,7 @@
 version: 1
 targets:
   - id: cctld-ac
-    name: "AC ccTLD"
+    name: "Ascension Island ccTLD"
     host: "a0.nic.ac"
     port: 53
     probe: dns
@@ -14,7 +14,7 @@ targets:
     country: "AC"
     tier: 3
   - id: cctld-ad
-    name: "AD ccTLD"
+    name: "Andorra ccTLD"
     host: "ad.ns.nic.es"
     port: 53
     probe: dns
@@ -24,7 +24,7 @@ targets:
     country: "AD"
     tier: 3
   - id: cctld-ae
-    name: "AE ccTLD"
+    name: "United Arab Emirates ccTLD"
     host: "ns1.aedns.ae"
     port: 53
     probe: dns
@@ -34,7 +34,7 @@ targets:
     country: "AE"
     tier: 3
   - id: cctld-af
-    name: "AF ccTLD"
+    name: "Afghanistan ccTLD"
     host: "ns.anycast.nic.af"
     port: 53
     probe: dns
@@ -44,7 +44,7 @@ targets:
     country: "AF"
     tier: 3
   - id: cctld-ag
-    name: "AG ccTLD"
+    name: "Antigua & Barbuda ccTLD"
     host: "a0.cctld.afilias-nst.info"
     port: 53
     probe: dns
@@ -54,7 +54,7 @@ targets:
     country: "AG"
     tier: 3
   - id: cctld-ai
-    name: "AI ccTLD"
+    name: "Anguilla ccTLD"
     host: "v0n0.nic.ai"
     port: 53
     probe: dns
@@ -64,7 +64,7 @@ targets:
     country: "AI"
     tier: 3
   - id: cctld-al
-    name: "AL ccTLD"
+    name: "Albania ccTLD"
     host: "munnari.oz.au"
     port: 53
     probe: dns
@@ -74,7 +74,7 @@ targets:
     country: "AL"
     tier: 3
   - id: cctld-am
-    name: "AM ccTLD"
+    name: "Armenia ccTLD"
     host: "fork.sth.dnsnode.net"
     port: 53
     probe: dns
@@ -84,7 +84,7 @@ targets:
     country: "AM"
     tier: 3
   - id: cctld-ao
-    name: "AO ccTLD"
+    name: "Angola ccTLD"
     host: "a.ns.ao"
     port: 53
     probe: dns
@@ -94,7 +94,7 @@ targets:
     country: "AO"
     tier: 3
   - id: cctld-aq
-    name: "AQ ccTLD"
+    name: "Antarctica ccTLD"
     host: "fork.sth.dnsnode.net"
     port: 53
     probe: dns
@@ -104,7 +104,7 @@ targets:
     country: "AQ"
     tier: 3
   - id: cctld-ar
-    name: "AR ccTLD"
+    name: "Argentina ccTLD"
     host: "a.lactld.org"
     port: 53
     probe: dns
@@ -114,7 +114,7 @@ targets:
     country: "AR"
     tier: 3
   - id: cctld-as
-    name: "AS ccTLD"
+    name: "American Samoa ccTLD"
     host: "ns1.asnic.biz"
     port: 53
     probe: dns
@@ -124,7 +124,7 @@ targets:
     country: "AS"
     tier: 3
   - id: cctld-at
-    name: "AT ccTLD"
+    name: "Austria ccTLD"
     host: "d.ns.at"
     port: 53
     probe: dns
@@ -134,7 +134,7 @@ targets:
     country: "AT"
     tier: 3
   - id: cctld-au
-    name: "AU ccTLD"
+    name: "Australia ccTLD"
     host: "a.au"
     port: 53
     probe: dns
@@ -144,7 +144,7 @@ targets:
     country: "AU"
     tier: 3
   - id: cctld-aw
-    name: "AW ccTLD"
+    name: "Aruba ccTLD"
     host: "aw01.setarnet.aw"
     port: 53
     probe: dns
@@ -154,7 +154,7 @@ targets:
     country: "AW"
     tier: 3
   - id: cctld-ax
-    name: "AX ccTLD"
+    name: "Åland Islands ccTLD"
     host: "ns1.aland.net"
     port: 53
     probe: dns
@@ -164,7 +164,7 @@ targets:
     country: "AX"
     tier: 3
   - id: cctld-az
-    name: "AZ ccTLD"
+    name: "Azerbaijan ccTLD"
     host: "az.hostmaster.ua"
     port: 53
     probe: dns
@@ -174,7 +174,7 @@ targets:
     country: "AZ"
     tier: 3
   - id: cctld-ba
-    name: "BA ccTLD"
+    name: "Bosnia & Herzegovina ccTLD"
     host: "bosna.utic.net.ba"
     port: 53
     probe: dns
@@ -184,7 +184,7 @@ targets:
     country: "BA"
     tier: 3
   - id: cctld-bb
-    name: "BB ccTLD"
+    name: "Barbados ccTLD"
     host: "ns1.nic.bb"
     port: 53
     probe: dns
@@ -194,7 +194,7 @@ targets:
     country: "BB"
     tier: 3
   - id: cctld-bd
-    name: "BD ccTLD"
+    name: "Bangladesh ccTLD"
     host: "bd-ns.anycast.pch.net"
     port: 53
     probe: dns
@@ -204,7 +204,7 @@ targets:
     country: "BD"
     tier: 3
   - id: cctld-be
-    name: "BE ccTLD"
+    name: "Belgium ccTLD"
     host: "a.nsset.be"
     port: 53
     probe: dns
@@ -214,7 +214,7 @@ targets:
     country: "BE"
     tier: 3
   - id: cctld-bf
-    name: "BF ccTLD"
+    name: "Burkina Faso ccTLD"
     host: "a.registre.bf"
     port: 53
     probe: dns
@@ -224,7 +224,7 @@ targets:
     country: "BF"
     tier: 3
   - id: cctld-bg
-    name: "BG ccTLD"
+    name: "Bulgaria ccTLD"
     host: "a.nic.bg"
     port: 53
     probe: dns
@@ -234,7 +234,7 @@ targets:
     country: "BG"
     tier: 3
   - id: cctld-bh
-    name: "BH ccTLD"
+    name: "Bahrain ccTLD"
     host: "ns01.trs-dns.com"
     port: 53
     probe: dns
@@ -244,7 +244,7 @@ targets:
     country: "BH"
     tier: 3
   - id: cctld-bi
-    name: "BI ccTLD"
+    name: "Burundi ccTLD"
     host: "anyns.nic.bi"
     port: 53
     probe: dns
@@ -254,7 +254,7 @@ targets:
     country: "BI"
     tier: 3
   - id: cctld-bj
-    name: "BJ ccTLD"
+    name: "Benin ccTLD"
     host: "ns-bj.afrinic.net"
     port: 53
     probe: dns
@@ -264,7 +264,7 @@ targets:
     country: "BJ"
     tier: 3
   - id: cctld-bm
-    name: "BM ccTLD"
+    name: "Bermuda ccTLD"
     host: "a0.bm.afilias-nst.info"
     port: 53
     probe: dns
@@ -274,7 +274,7 @@ targets:
     country: "BM"
     tier: 3
   - id: cctld-bn
-    name: "BN ccTLD"
+    name: "Brunei ccTLD"
     host: "bn-ns.anycast.pch.net"
     port: 53
     probe: dns
@@ -284,7 +284,7 @@ targets:
     country: "BN"
     tier: 3
   - id: cctld-bo
-    name: "BO ccTLD"
+    name: "Bolivia ccTLD"
     host: "anycast.ns.nic.bo"
     port: 53
     probe: dns
@@ -294,7 +294,7 @@ targets:
     country: "BO"
     tier: 3
   - id: cctld-br
-    name: "BR ccTLD"
+    name: "Brazil ccTLD"
     host: "a.dns.br"
     port: 53
     probe: dns
@@ -304,7 +304,7 @@ targets:
     country: "BR"
     tier: 3
   - id: cctld-bs
-    name: "BS ccTLD"
+    name: "Bahamas ccTLD"
     host: "anyns.dns.bs"
     port: 53
     probe: dns
@@ -314,7 +314,7 @@ targets:
     country: "BS"
     tier: 3
   - id: cctld-bt
-    name: "BT ccTLD"
+    name: "Bhutan ccTLD"
     host: "auth00.ns.uu.net"
     port: 53
     probe: dns
@@ -324,7 +324,7 @@ targets:
     country: "BT"
     tier: 3
   - id: cctld-bv
-    name: "BV ccTLD"
+    name: "Bouvet Island ccTLD"
     host: "a.nic.bv"
     port: 53
     probe: dns
@@ -334,7 +334,7 @@ targets:
     country: "BV"
     tier: 3
   - id: cctld-bw
-    name: "BW ccTLD"
+    name: "Botswana ccTLD"
     host: "dns1.nic.net.bw"
     port: 53
     probe: dns
@@ -344,7 +344,7 @@ targets:
     country: "BW"
     tier: 3
   - id: cctld-by
-    name: "BY ccTLD"
+    name: "Belarus ccTLD"
     host: "dns1.tld.becloudby.com"
     port: 53
     probe: dns
@@ -354,7 +354,7 @@ targets:
     country: "BY"
     tier: 3
   - id: cctld-bz
-    name: "BZ ccTLD"
+    name: "Belize ccTLD"
     host: "a0.cctld.afilias-nst.info"
     port: 53
     probe: dns
@@ -364,7 +364,7 @@ targets:
     country: "BZ"
     tier: 3
   - id: cctld-ca
-    name: "CA ccTLD"
+    name: "Canada ccTLD"
     host: "any.ca-servers.ca"
     port: 53
     probe: dns
@@ -374,7 +374,7 @@ targets:
     country: "CA"
     tier: 3
   - id: cctld-cc
-    name: "CC ccTLD"
+    name: "Cocos (Keeling) Islands ccTLD"
     host: "ac1.nstld.com"
     port: 53
     probe: dns
@@ -384,7 +384,7 @@ targets:
     country: "CC"
     tier: 3
   - id: cctld-cd
-    name: "CD ccTLD"
+    name: "Congo - Kinshasa ccTLD"
     host: "gransy-anycast1.nic.cd"
     port: 53
     probe: dns
@@ -394,7 +394,7 @@ targets:
     country: "CD"
     tier: 3
   - id: cctld-cf
-    name: "CF ccTLD"
+    name: "Central African Republic ccTLD"
     host: "a.ns.cf"
     port: 53
     probe: dns
@@ -404,7 +404,7 @@ targets:
     country: "CF"
     tier: 3
   - id: cctld-cg
-    name: "CG ccTLD"
+    name: "Congo - Brazzaville ccTLD"
     host: "c.nic.cg"
     port: 53
     probe: dns
@@ -414,7 +414,7 @@ targets:
     country: "CG"
     tier: 3
   - id: cctld-ch
-    name: "CH ccTLD"
+    name: "Switzerland ccTLD"
     host: "a.nic.ch"
     port: 53
     probe: dns
@@ -424,7 +424,7 @@ targets:
     country: "CH"
     tier: 3
   - id: cctld-ci
-    name: "CI ccTLD"
+    name: "Côte d’Ivoire ccTLD"
     host: "any.nic.ci"
     port: 53
     probe: dns
@@ -434,7 +434,7 @@ targets:
     country: "CI"
     tier: 3
   - id: cctld-ck
-    name: "CK ccTLD"
+    name: "Cook Islands ccTLD"
     host: "circa.mcs.vuw.ac.nz"
     port: 53
     probe: dns
@@ -444,7 +444,7 @@ targets:
     country: "CK"
     tier: 3
   - id: cctld-cl
-    name: "CL ccTLD"
+    name: "Chile ccTLD"
     host: "a.nic.cl"
     port: 53
     probe: dns
@@ -454,7 +454,7 @@ targets:
     country: "CL"
     tier: 3
   - id: cctld-cm
-    name: "CM ccTLD"
+    name: "Cameroon ccTLD"
     host: "auth02.ns.uu.net"
     port: 53
     probe: dns
@@ -464,7 +464,7 @@ targets:
     country: "CM"
     tier: 3
   - id: cctld-cn
-    name: "CN ccTLD"
+    name: "China ccTLD"
     host: "a.dns.cn"
     port: 53
     probe: dns
@@ -474,7 +474,7 @@ targets:
     country: "CN"
     tier: 3
   - id: cctld-co
-    name: "CO ccTLD"
+    name: "Colombia ccTLD"
     host: "a.registrydns.co"
     port: 53
     probe: dns
@@ -484,7 +484,7 @@ targets:
     country: "CO"
     tier: 3
   - id: cctld-cr
-    name: "CR ccTLD"
+    name: "Costa Rica ccTLD"
     host: "a.lactld.org"
     port: 53
     probe: dns
@@ -494,7 +494,7 @@ targets:
     country: "CR"
     tier: 3
   - id: cctld-cu
-    name: "CU ccTLD"
+    name: "Cuba ccTLD"
     host: "cu.cctld.authdns.ripe.net"
     port: 53
     probe: dns
@@ -504,7 +504,7 @@ targets:
     country: "CU"
     tier: 3
   - id: cctld-cv
-    name: "CV ccTLD"
+    name: "Cape Verde ccTLD"
     host: "anyc.dnsnode.net"
     port: 53
     probe: dns
@@ -514,7 +514,7 @@ targets:
     country: "CV"
     tier: 3
   - id: cctld-cw
-    name: "CW ccTLD"
+    name: "Curaçao ccTLD"
     host: "cw.cctld.authdns.ripe.net"
     port: 53
     probe: dns
@@ -524,7 +524,7 @@ targets:
     country: "CW"
     tier: 3
   - id: cctld-cx
-    name: "CX ccTLD"
+    name: "Christmas Island ccTLD"
     host: "ns.anycast.nic.cx"
     port: 53
     probe: dns
@@ -534,7 +534,7 @@ targets:
     country: "CX"
     tier: 3
   - id: cctld-cy
-    name: "CY ccTLD"
+    name: "Cyprus ccTLD"
     host: "cy-ns.anycast.pch.net"
     port: 53
     probe: dns
@@ -544,7 +544,7 @@ targets:
     country: "CY"
     tier: 3
   - id: cctld-cz
-    name: "CZ ccTLD"
+    name: "Czechia ccTLD"
     host: "a.ns.nic.cz"
     port: 53
     probe: dns
@@ -554,7 +554,7 @@ targets:
     country: "CZ"
     tier: 3
   - id: cctld-de
-    name: "DE ccTLD"
+    name: "Germany ccTLD"
     host: "a.nic.de"
     port: 53
     probe: dns
@@ -564,7 +564,7 @@ targets:
     country: "DE"
     tier: 3
   - id: cctld-dj
-    name: "DJ ccTLD"
+    name: "Djibouti ccTLD"
     host: "ns1.djibtelecom.dj"
     port: 53
     probe: dns
@@ -574,7 +574,7 @@ targets:
     country: "DJ"
     tier: 3
   - id: cctld-dk
-    name: "DK ccTLD"
+    name: "Denmark ccTLD"
     host: "b.nic.dk"
     port: 53
     probe: dns
@@ -584,7 +584,7 @@ targets:
     country: "DK"
     tier: 3
   - id: cctld-dm
-    name: "DM ccTLD"
+    name: "Dominica ccTLD"
     host: "ns.blacknightsolutions.com"
     port: 53
     probe: dns
@@ -594,7 +594,7 @@ targets:
     country: "DM"
     tier: 3
   - id: cctld-do
-    name: "DO ccTLD"
+    name: "Dominican Republic ccTLD"
     host: "a.lactld.org"
     port: 53
     probe: dns
@@ -604,7 +604,7 @@ targets:
     country: "DO"
     tier: 3
   - id: cctld-dz
-    name: "DZ ccTLD"
+    name: "Algeria ccTLD"
     host: "ns-dz.afrinic.net"
     port: 53
     probe: dns
@@ -614,7 +614,7 @@ targets:
     country: "DZ"
     tier: 3
   - id: cctld-ec
-    name: "EC ccTLD"
+    name: "Ecuador ccTLD"
     host: "a.lactld.org"
     port: 53
     probe: dns
@@ -624,7 +624,7 @@ targets:
     country: "EC"
     tier: 3
   - id: cctld-ee
-    name: "EE ccTLD"
+    name: "Estonia ccTLD"
     host: "b.tld.ee"
     port: 53
     probe: dns
@@ -634,7 +634,7 @@ targets:
     country: "EE"
     tier: 3
   - id: cctld-eg
-    name: "EG ccTLD"
+    name: "Egypt ccTLD"
     host: "dns-eg.univie.ac.at"
     port: 53
     probe: dns
@@ -644,7 +644,7 @@ targets:
     country: "EG"
     tier: 3
   - id: cctld-er
-    name: "ER ccTLD"
+    name: "Eritrea ccTLD"
     host: "er.cctld.authdns.ripe.net"
     port: 53
     probe: dns
@@ -654,7 +654,7 @@ targets:
     country: "ER"
     tier: 3
   - id: cctld-es
-    name: "ES ccTLD"
+    name: "Spain ccTLD"
     host: "a.nic.es"
     port: 53
     probe: dns
@@ -664,7 +664,7 @@ targets:
     country: "ES"
     tier: 3
   - id: cctld-et
-    name: "ET ccTLD"
+    name: "Ethiopia ccTLD"
     host: "a.nic.et"
     port: 53
     probe: dns
@@ -674,7 +674,7 @@ targets:
     country: "ET"
     tier: 3
   - id: cctld-eu
-    name: "EU ccTLD"
+    name: "European Union ccTLD"
     host: "be.dns.eu"
     port: 53
     probe: dns
@@ -684,7 +684,7 @@ targets:
     country: "EU"
     tier: 3
   - id: cctld-fi
-    name: "FI ccTLD"
+    name: "Finland ccTLD"
     host: "a.fi"
     port: 53
     probe: dns
@@ -694,7 +694,7 @@ targets:
     country: "FI"
     tier: 3
   - id: cctld-fj
-    name: "FJ ccTLD"
+    name: "Fiji ccTLD"
     host: "ns1.fj"
     port: 53
     probe: dns
@@ -704,7 +704,7 @@ targets:
     country: "FJ"
     tier: 3
   - id: cctld-fk
-    name: "FK ccTLD"
+    name: "Falkland Islands ccTLD"
     host: "ns1.horizon.net.fk"
     port: 53
     probe: dns
@@ -714,7 +714,7 @@ targets:
     country: "FK"
     tier: 3
   - id: cctld-fm
-    name: "FM ccTLD"
+    name: "Micronesia ccTLD"
     host: "a.nic.fm"
     port: 53
     probe: dns
@@ -724,7 +724,7 @@ targets:
     country: "FM"
     tier: 3
   - id: cctld-fo
-    name: "FO ccTLD"
+    name: "Faroe Islands ccTLD"
     host: "a.nic.fo"
     port: 53
     probe: dns
@@ -734,7 +734,7 @@ targets:
     country: "FO"
     tier: 3
   - id: cctld-fr
-    name: "FR ccTLD"
+    name: "France ccTLD"
     host: "d.nic.fr"
     port: 53
     probe: dns
@@ -744,7 +744,7 @@ targets:
     country: "FR"
     tier: 3
   - id: cctld-ga
-    name: "GA ccTLD"
+    name: "Gabon ccTLD"
     host: "d.nic.fr"
     port: 53
     probe: dns
@@ -754,7 +754,7 @@ targets:
     country: "GA"
     tier: 3
   - id: cctld-gb
-    name: "GB ccTLD"
+    name: "United Kingdom ccTLD"
     host: "ns.uu.net"
     port: 53
     probe: dns
@@ -764,7 +764,7 @@ targets:
     country: "GB"
     tier: 3
   - id: cctld-gd
-    name: "GD ccTLD"
+    name: "Grenada ccTLD"
     host: "a.nic.gd"
     port: 53
     probe: dns
@@ -774,7 +774,7 @@ targets:
     country: "GD"
     tier: 3
   - id: cctld-ge
-    name: "GE ccTLD"
+    name: "Georgia ccTLD"
     host: "ns1.nic.ge"
     port: 53
     probe: dns
@@ -784,7 +784,7 @@ targets:
     country: "GE"
     tier: 3
   - id: cctld-gf
-    name: "GF ccTLD"
+    name: "French Guiana ccTLD"
     host: "ns1-fr.mediaserv.net"
     port: 53
     probe: dns
@@ -794,7 +794,7 @@ targets:
     country: "GF"
     tier: 3
   - id: cctld-gg
-    name: "GG ccTLD"
+    name: "Guernsey ccTLD"
     host: "c.ci-servers.org"
     port: 53
     probe: dns
@@ -804,7 +804,7 @@ targets:
     country: "GG"
     tier: 3
   - id: cctld-gh
-    name: "GH ccTLD"
+    name: "Ghana ccTLD"
     host: "ns.dns.br"
     port: 53
     probe: dns
@@ -814,7 +814,7 @@ targets:
     country: "GH"
     tier: 3
   - id: cctld-gi
-    name: "GI ccTLD"
+    name: "Gibraltar ccTLD"
     host: "a0.cctld.afilias-nst.info"
     port: 53
     probe: dns
@@ -824,7 +824,7 @@ targets:
     country: "GI"
     tier: 3
   - id: cctld-gl
-    name: "GL ccTLD"
+    name: "Greenland ccTLD"
     host: "a.nic.gl"
     port: 53
     probe: dns
@@ -834,7 +834,7 @@ targets:
     country: "GL"
     tier: 3
   - id: cctld-gm
-    name: "GM ccTLD"
+    name: "Gambia ccTLD"
     host: "ns-gm.afrinic.net"
     port: 53
     probe: dns
@@ -844,7 +844,7 @@ targets:
     country: "GM"
     tier: 3
   - id: cctld-gn
-    name: "GN ccTLD"
+    name: "Guinea ccTLD"
     host: "fork.sth.dnsnode.net"
     port: 53
     probe: dns
@@ -854,7 +854,7 @@ targets:
     country: "GN"
     tier: 3
   - id: cctld-gp
-    name: "GP ccTLD"
+    name: "Guadeloupe ccTLD"
     host: "a.lactld.org"
     port: 53
     probe: dns
@@ -864,7 +864,7 @@ targets:
     country: "GP"
     tier: 3
   - id: cctld-gq
-    name: "GQ ccTLD"
+    name: "Equatorial Guinea ccTLD"
     host: "a.ns.gq"
     port: 53
     probe: dns
@@ -874,7 +874,7 @@ targets:
     country: "GQ"
     tier: 3
   - id: cctld-gr
-    name: "GR ccTLD"
+    name: "Greece ccTLD"
     host: "estia.ics.forth.gr"
     port: 53
     probe: dns
@@ -884,7 +884,7 @@ targets:
     country: "GR"
     tier: 3
   - id: cctld-gs
-    name: "GS ccTLD"
+    name: "South Georgia & South Sandwich Islands ccTLD"
     host: "ns.anycast.nic.gs"
     port: 53
     probe: dns
@@ -894,7 +894,7 @@ targets:
     country: "GS"
     tier: 3
   - id: cctld-gt
-    name: "GT ccTLD"
+    name: "Guatemala ccTLD"
     host: "a.lactld.org"
     port: 53
     probe: dns
@@ -904,7 +904,7 @@ targets:
     country: "GT"
     tier: 3
   - id: cctld-gu
-    name: "GU ccTLD"
+    name: "Guam ccTLD"
     host: "gold.uog.edu"
     port: 53
     probe: dns
@@ -914,7 +914,7 @@ targets:
     country: "GU"
     tier: 3
   - id: cctld-gw
-    name: "GW ccTLD"
+    name: "Guinea-Bissau ccTLD"
     host: "gw01.dns.pt"
     port: 53
     probe: dns
@@ -924,7 +924,7 @@ targets:
     country: "GW"
     tier: 3
   - id: cctld-gy
-    name: "GY ccTLD"
+    name: "Guyana ccTLD"
     host: "a.lactld.org"
     port: 53
     probe: dns
@@ -934,7 +934,7 @@ targets:
     country: "GY"
     tier: 3
   - id: cctld-hk
-    name: "HK ccTLD"
+    name: "Hong Kong SAR China ccTLD"
     host: "c.hkirc.net.hk"
     port: 53
     probe: dns
@@ -944,7 +944,7 @@ targets:
     country: "HK"
     tier: 3
   - id: cctld-hm
-    name: "HM ccTLD"
+    name: "Heard & McDonald Islands ccTLD"
     host: "ns1.registry.hm"
     port: 53
     probe: dns
@@ -954,7 +954,7 @@ targets:
     country: "HM"
     tier: 3
   - id: cctld-hn
-    name: "HN ccTLD"
+    name: "Honduras ccTLD"
     host: "a.lactld.org"
     port: 53
     probe: dns
@@ -964,7 +964,7 @@ targets:
     country: "HN"
     tier: 3
   - id: cctld-hr
-    name: "HR ccTLD"
+    name: "Croatia ccTLD"
     host: "hr-ns-1.carnet.hr"
     port: 53
     probe: dns
@@ -974,7 +974,7 @@ targets:
     country: "HR"
     tier: 3
   - id: cctld-ht
-    name: "HT ccTLD"
+    name: "Haiti ccTLD"
     host: "a.lactld.org"
     port: 53
     probe: dns
@@ -984,7 +984,7 @@ targets:
     country: "HT"
     tier: 3
   - id: cctld-hu
-    name: "HU ccTLD"
+    name: "Hungary ccTLD"
     host: "a.hu"
     port: 53
     probe: dns
@@ -994,7 +994,7 @@ targets:
     country: "HU"
     tier: 3
   - id: cctld-id
-    name: "ID ccTLD"
+    name: "Indonesia ccTLD"
     host: "b.dns.id"
     port: 53
     probe: dns
@@ -1004,7 +1004,7 @@ targets:
     country: "ID"
     tier: 3
   - id: cctld-ie
-    name: "IE ccTLD"
+    name: "Ireland ccTLD"
     host: "a.ns.ie"
     port: 53
     probe: dns
@@ -1014,7 +1014,7 @@ targets:
     country: "IE"
     tier: 3
   - id: cctld-il
-    name: "IL ccTLD"
+    name: "Israel ccTLD"
     host: "ilns.ilan.net.il"
     port: 53
     probe: dns
@@ -1024,7 +1024,7 @@ targets:
     country: "IL"
     tier: 3
   - id: cctld-im
-    name: "IM ccTLD"
+    name: "Isle of Man ccTLD"
     host: "barney.advsys.co.uk"
     port: 53
     probe: dns
@@ -1034,7 +1034,7 @@ targets:
     country: "IM"
     tier: 3
   - id: cctld-in
-    name: "IN ccTLD"
+    name: "India ccTLD"
     host: "ns1.registry.in"
     port: 53
     probe: dns
@@ -1044,7 +1044,7 @@ targets:
     country: "IN"
     tier: 3
   - id: cctld-io
-    name: "IO ccTLD"
+    name: "British Indian Ocean Territory ccTLD"
     host: "a0.nic.io"
     port: 53
     probe: dns
@@ -1054,7 +1054,7 @@ targets:
     country: "IO"
     tier: 3
   - id: cctld-iq
-    name: "IQ ccTLD"
+    name: "Iraq ccTLD"
     host: "ns.cmc.iq"
     port: 53
     probe: dns
@@ -1064,7 +1064,7 @@ targets:
     country: "IQ"
     tier: 3
   - id: cctld-ir
-    name: "IR ccTLD"
+    name: "Iran ccTLD"
     host: "a.nic.ir"
     port: 53
     probe: dns
@@ -1074,7 +1074,7 @@ targets:
     country: "IR"
     tier: 3
   - id: cctld-is
-    name: "IS ccTLD"
+    name: "Iceland ccTLD"
     host: "a.nic.is"
     port: 53
     probe: dns
@@ -1084,7 +1084,7 @@ targets:
     country: "IS"
     tier: 3
   - id: cctld-it
-    name: "IT ccTLD"
+    name: "Italy ccTLD"
     host: "a.dns.it"
     port: 53
     probe: dns
@@ -1094,7 +1094,7 @@ targets:
     country: "IT"
     tier: 3
   - id: cctld-je
-    name: "JE ccTLD"
+    name: "Jersey ccTLD"
     host: "c.ci-servers.org"
     port: 53
     probe: dns
@@ -1104,7 +1104,7 @@ targets:
     country: "JE"
     tier: 3
   - id: cctld-jm
-    name: "JM ccTLD"
+    name: "Jamaica ccTLD"
     host: "jm.cctld.authdns.ripe.net"
     port: 53
     probe: dns
@@ -1114,7 +1114,7 @@ targets:
     country: "JM"
     tier: 3
   - id: cctld-jo
-    name: "JO ccTLD"
+    name: "Jordan ccTLD"
     host: "a.cctld-servers.net.jo"
     port: 53
     probe: dns
@@ -1124,7 +1124,7 @@ targets:
     country: "JO"
     tier: 3
   - id: cctld-jp
-    name: "JP ccTLD"
+    name: "Japan ccTLD"
     host: "a.dns.jp"
     port: 53
     probe: dns
@@ -1134,7 +1134,7 @@ targets:
     country: "JP"
     tier: 3
   - id: cctld-ke
-    name: "KE ccTLD"
+    name: "Kenya ccTLD"
     host: "kenic.anycastdns.cz"
     port: 53
     probe: dns
@@ -1144,7 +1144,7 @@ targets:
     country: "KE"
     tier: 3
   - id: cctld-kg
-    name: "KG ccTLD"
+    name: "Kyrgyzstan ccTLD"
     host: "kg.cctld.authdns.ripe.net"
     port: 53
     probe: dns
@@ -1154,7 +1154,7 @@ targets:
     country: "KG"
     tier: 3
   - id: cctld-kh
-    name: "KH ccTLD"
+    name: "Cambodia ccTLD"
     host: "dns1.online.com.kh"
     port: 53
     probe: dns
@@ -1164,7 +1164,7 @@ targets:
     country: "KH"
     tier: 3
   - id: cctld-ki
-    name: "KI ccTLD"
+    name: "Kiribati ccTLD"
     host: "anycastdns1.nic.ki"
     port: 53
     probe: dns
@@ -1174,7 +1174,7 @@ targets:
     country: "KI"
     tier: 3
   - id: cctld-km
-    name: "KM ccTLD"
+    name: "Comoros ccTLD"
     host: "dns1.nic.km"
     port: 53
     probe: dns
@@ -1184,7 +1184,7 @@ targets:
     country: "KM"
     tier: 3
   - id: cctld-kn
-    name: "KN ccTLD"
+    name: "St. Kitts & Nevis ccTLD"
     host: "ns1.anycastdns.cz"
     port: 53
     probe: dns
@@ -1194,7 +1194,7 @@ targets:
     country: "KN"
     tier: 3
   - id: cctld-kp
-    name: "KP ccTLD"
+    name: "North Korea ccTLD"
     host: "ns1.kptc.kp"
     port: 53
     probe: dns
@@ -1204,7 +1204,7 @@ targets:
     country: "KP"
     tier: 3
   - id: cctld-kr
-    name: "KR ccTLD"
+    name: "South Korea ccTLD"
     host: "b.dns.kr"
     port: 53
     probe: dns
@@ -1214,7 +1214,7 @@ targets:
     country: "KR"
     tier: 3
   - id: cctld-kw
-    name: "KW ccTLD"
+    name: "Kuwait ccTLD"
     host: "a.nic.kw"
     port: 53
     probe: dns
@@ -1224,7 +1224,7 @@ targets:
     country: "KW"
     tier: 3
   - id: cctld-ky
-    name: "KY ccTLD"
+    name: "Cayman Islands ccTLD"
     host: "ns01.trs-dns.com"
     port: 53
     probe: dns
@@ -1234,7 +1234,7 @@ targets:
     country: "KY"
     tier: 3
   - id: cctld-kz
-    name: "KZ ccTLD"
+    name: "Kazakhstan ccTLD"
     host: "ns.nic.kz"
     port: 53
     probe: dns
@@ -1244,7 +1244,7 @@ targets:
     country: "KZ"
     tier: 3
   - id: cctld-la
-    name: "LA ccTLD"
+    name: "Laos ccTLD"
     host: "ns01.trs-dns.com"
     port: 53
     probe: dns
@@ -1254,7 +1254,7 @@ targets:
     country: "LA"
     tier: 3
   - id: cctld-lb
-    name: "LB ccTLD"
+    name: "Lebanon ccTLD"
     host: "b.ns.lb"
     port: 53
     probe: dns
@@ -1264,7 +1264,7 @@ targets:
     country: "LB"
     tier: 3
   - id: cctld-lc
-    name: "LC ccTLD"
+    name: "St. Lucia ccTLD"
     host: "a0.cctld.afilias-nst.info"
     port: 53
     probe: dns
@@ -1274,7 +1274,7 @@ targets:
     country: "LC"
     tier: 3
   - id: cctld-li
-    name: "LI ccTLD"
+    name: "Liechtenstein ccTLD"
     host: "a.nic.li"
     port: 53
     probe: dns
@@ -1284,7 +1284,7 @@ targets:
     country: "LI"
     tier: 3
   - id: cctld-lk
-    name: "LK ccTLD"
+    name: "Sri Lanka ccTLD"
     host: "d.nic.lk"
     port: 53
     probe: dns
@@ -1294,7 +1294,7 @@ targets:
     country: "LK"
     tier: 3
   - id: cctld-lr
-    name: "LR ccTLD"
+    name: "Liberia ccTLD"
     host: "fork.sth.dnsnode.net"
     port: 53
     probe: dns
@@ -1304,7 +1304,7 @@ targets:
     country: "LR"
     tier: 3
   - id: cctld-ls
-    name: "LS ccTLD"
+    name: "Lesotho ccTLD"
     host: "ls-ns.anycast.pch.net"
     port: 53
     probe: dns
@@ -1314,7 +1314,7 @@ targets:
     country: "LS"
     tier: 3
   - id: cctld-lt
-    name: "LT ccTLD"
+    name: "Lithuania ccTLD"
     host: "a.tld.lt"
     port: 53
     probe: dns
@@ -1324,7 +1324,7 @@ targets:
     country: "LT"
     tier: 3
   - id: cctld-lu
-    name: "LU ccTLD"
+    name: "Luxembourg ccTLD"
     host: "1.ns.lu"
     port: 53
     probe: dns
@@ -1334,7 +1334,7 @@ targets:
     country: "LU"
     tier: 3
   - id: cctld-lv
-    name: "LV ccTLD"
+    name: "Latvia ccTLD"
     host: "a.nic.lv"
     port: 53
     probe: dns
@@ -1344,7 +1344,7 @@ targets:
     country: "LV"
     tier: 3
   - id: cctld-ly
-    name: "LY ccTLD"
+    name: "Libya ccTLD"
     host: "dns.lttnet.net"
     port: 53
     probe: dns
@@ -1354,7 +1354,7 @@ targets:
     country: "LY"
     tier: 3
   - id: cctld-ma
-    name: "MA ccTLD"
+    name: "Morocco ccTLD"
     host: "a.tld.ma"
     port: 53
     probe: dns
@@ -1364,7 +1364,7 @@ targets:
     country: "MA"
     tier: 3
   - id: cctld-mc
-    name: "MC ccTLD"
+    name: "Monaco ccTLD"
     host: "mc.cctld.authdns.ripe.net"
     port: 53
     probe: dns
@@ -1374,7 +1374,7 @@ targets:
     country: "MC"
     tier: 3
   - id: cctld-md
-    name: "MD ccTLD"
+    name: "Moldova ccTLD"
     host: "nsa.tld.md"
     port: 53
     probe: dns
@@ -1384,7 +1384,7 @@ targets:
     country: "MD"
     tier: 3
   - id: cctld-me
-    name: "ME ccTLD"
+    name: "Montenegro ccTLD"
     host: "a0.nic.me"
     port: 53
     probe: dns
@@ -1394,7 +1394,7 @@ targets:
     country: "ME"
     tier: 3
   - id: cctld-mg
-    name: "MG ccTLD"
+    name: "Madagascar ccTLD"
     host: "dns-tld.ird.fr"
     port: 53
     probe: dns
@@ -1404,7 +1404,7 @@ targets:
     country: "MG"
     tier: 3
   - id: cctld-mh
-    name: "MH ccTLD"
+    name: "Marshall Islands ccTLD"
     host: "ns.amarshallinc.com"
     port: 53
     probe: dns
@@ -1414,7 +1414,7 @@ targets:
     country: "MH"
     tier: 3
   - id: cctld-mk
-    name: "MK ccTLD"
+    name: "Macedonia ccTLD"
     host: "b.dns.si"
     port: 53
     probe: dns
@@ -1424,7 +1424,7 @@ targets:
     country: "MK"
     tier: 3
   - id: cctld-ml
-    name: "ML ccTLD"
+    name: "Mali ccTLD"
     host: "a.nic.ml"
     port: 53
     probe: dns
@@ -1434,7 +1434,7 @@ targets:
     country: "ML"
     tier: 3
   - id: cctld-mm
-    name: "MM ccTLD"
+    name: "Myanmar (Burma) ccTLD"
     host: "a.nic.net.mm"
     port: 53
     probe: dns
@@ -1444,7 +1444,7 @@ targets:
     country: "MM"
     tier: 3
   - id: cctld-mn
-    name: "MN ccTLD"
+    name: "Mongolia ccTLD"
     host: "a0.cctld.afilias-nst.info"
     port: 53
     probe: dns
@@ -1454,7 +1454,7 @@ targets:
     country: "MN"
     tier: 3
   - id: cctld-mo
-    name: "MO ccTLD"
+    name: "Macau SAR China ccTLD"
     host: "a.monic.mo"
     port: 53
     probe: dns
@@ -1464,7 +1464,7 @@ targets:
     country: "MO"
     tier: 3
   - id: cctld-mp
-    name: "MP ccTLD"
+    name: "Northern Mariana Islands ccTLD"
     host: "ns1.nic.mp"
     port: 53
     probe: dns
@@ -1474,7 +1474,7 @@ targets:
     country: "MP"
     tier: 3
   - id: cctld-mq
-    name: "MQ ccTLD"
+    name: "Martinique ccTLD"
     host: "ns1-fr.mediaserv.net"
     port: 53
     probe: dns
@@ -1484,7 +1484,7 @@ targets:
     country: "MQ"
     tier: 3
   - id: cctld-mr
-    name: "MR ccTLD"
+    name: "Mauritania ccTLD"
     host: "ns-mr.afrinic.net"
     port: 53
     probe: dns
@@ -1494,7 +1494,7 @@ targets:
     country: "MR"
     tier: 3
   - id: cctld-ms
-    name: "MS ccTLD"
+    name: "Montserrat ccTLD"
     host: "a.lactld.org"
     port: 53
     probe: dns
@@ -1504,7 +1504,7 @@ targets:
     country: "MS"
     tier: 3
   - id: cctld-mt
-    name: "MT ccTLD"
+    name: "Malta ccTLD"
     host: "a.ns.mt"
     port: 53
     probe: dns
@@ -1514,7 +1514,7 @@ targets:
     country: "MT"
     tier: 3
   - id: cctld-mu
-    name: "MU ccTLD"
+    name: "Mauritius ccTLD"
     host: "v0n0.tld.mu"
     port: 53
     probe: dns
@@ -1524,7 +1524,7 @@ targets:
     country: "MU"
     tier: 3
   - id: cctld-mv
-    name: "MV ccTLD"
+    name: "Maldives ccTLD"
     host: "baraveli.ns.mv"
     port: 53
     probe: dns
@@ -1534,7 +1534,7 @@ targets:
     country: "MV"
     tier: 3
   - id: cctld-mw
-    name: "MW ccTLD"
+    name: "Malawi ccTLD"
     host: "chambo.sdnp.org.mw"
     port: 53
     probe: dns
@@ -1544,7 +1544,7 @@ targets:
     country: "MW"
     tier: 3
   - id: cctld-mx
-    name: "MX ccTLD"
+    name: "Mexico ccTLD"
     host: "c.mx-ns.mx"
     port: 53
     probe: dns
@@ -1554,7 +1554,7 @@ targets:
     country: "MX"
     tier: 3
   - id: cctld-my
-    name: "MY ccTLD"
+    name: "Malaysia ccTLD"
     host: "a.mynic.centralnic-dns.com"
     port: 53
     probe: dns
@@ -1564,7 +1564,7 @@ targets:
     country: "MY"
     tier: 3
   - id: cctld-mz
-    name: "MZ ccTLD"
+    name: "Mozambique ccTLD"
     host: "anyns.uem.mz"
     port: 53
     probe: dns
@@ -1574,7 +1574,7 @@ targets:
     country: "MZ"
     tier: 3
   - id: cctld-na
-    name: "NA ccTLD"
+    name: "Namibia ccTLD"
     host: "anyc2.irondns.net"
     port: 53
     probe: dns
@@ -1584,7 +1584,7 @@ targets:
     country: "NA"
     tier: 3
   - id: cctld-nc
-    name: "NC ccTLD"
+    name: "New Caledonia ccTLD"
     host: "any-ns1.nc"
     port: 53
     probe: dns
@@ -1594,7 +1594,7 @@ targets:
     country: "NC"
     tier: 3
   - id: cctld-ne
-    name: "NE ccTLD"
+    name: "Niger ccTLD"
     host: "bow.rain.fr"
     port: 53
     probe: dns
@@ -1604,7 +1604,7 @@ targets:
     country: "NE"
     tier: 3
   - id: cctld-nf
-    name: "NF ccTLD"
+    name: "Norfolk Island ccTLD"
     host: "ns.anycast.nic.nf"
     port: 53
     probe: dns
@@ -1614,7 +1614,7 @@ targets:
     country: "NF"
     tier: 3
   - id: cctld-ng
-    name: "NG ccTLD"
+    name: "Nigeria ccTLD"
     host: "ns2.nic.net.ng"
     port: 53
     probe: dns
@@ -1624,7 +1624,7 @@ targets:
     country: "NG"
     tier: 3
   - id: cctld-ni
-    name: "NI ccTLD"
+    name: "Nicaragua ccTLD"
     host: "dns-ext.nic.cr"
     port: 53
     probe: dns
@@ -1634,7 +1634,7 @@ targets:
     country: "NI"
     tier: 3
   - id: cctld-nl
-    name: "NL ccTLD"
+    name: "Netherlands ccTLD"
     host: "ns1.dns.nl"
     port: 53
     probe: dns
@@ -1644,7 +1644,7 @@ targets:
     country: "NL"
     tier: 3
   - id: cctld-no
-    name: "NO ccTLD"
+    name: "Norway ccTLD"
     host: "i.nic.no"
     port: 53
     probe: dns
@@ -1654,7 +1654,7 @@ targets:
     country: "NO"
     tier: 3
   - id: cctld-np
-    name: "NP ccTLD"
+    name: "Nepal ccTLD"
     host: "np-ns.npix.net.np"
     port: 53
     probe: dns
@@ -1664,7 +1664,7 @@ targets:
     country: "NP"
     tier: 3
   - id: cctld-nr
-    name: "NR ccTLD"
+    name: "Nauru ccTLD"
     host: "ns0.cenpac.net.nr"
     port: 53
     probe: dns
@@ -1674,7 +1674,7 @@ targets:
     country: "NR"
     tier: 3
   - id: cctld-nu
-    name: "NU ccTLD"
+    name: "Niue ccTLD"
     host: "a.ns.nu"
     port: 53
     probe: dns
@@ -1684,7 +1684,7 @@ targets:
     country: "NU"
     tier: 3
   - id: cctld-nz
-    name: "NZ ccTLD"
+    name: "New Zealand ccTLD"
     host: "ns1.dns.net.nz"
     port: 53
     probe: dns
@@ -1694,7 +1694,7 @@ targets:
     country: "NZ"
     tier: 3
   - id: cctld-om
-    name: "OM ccTLD"
+    name: "Oman ccTLD"
     host: "cctld.alpha.aridns.net.au"
     port: 53
     probe: dns
@@ -1704,7 +1704,7 @@ targets:
     country: "OM"
     tier: 3
   - id: cctld-pa
-    name: "PA ccTLD"
+    name: "Panama ccTLD"
     host: "a.lactld.org"
     port: 53
     probe: dns
@@ -1714,7 +1714,7 @@ targets:
     country: "PA"
     tier: 3
   - id: cctld-pe
-    name: "PE ccTLD"
+    name: "Peru ccTLD"
     host: "a.lactld.org"
     port: 53
     probe: dns
@@ -1724,7 +1724,7 @@ targets:
     country: "PE"
     tier: 3
   - id: cctld-pf
-    name: "PF ccTLD"
+    name: "French Polynesia ccTLD"
     host: "ns03.pf"
     port: 53
     probe: dns
@@ -1734,7 +1734,7 @@ targets:
     country: "PF"
     tier: 3
   - id: cctld-pg
-    name: "PG ccTLD"
+    name: "Papua New Guinea ccTLD"
     host: "dns.pch.pg"
     port: 53
     probe: dns
@@ -1744,7 +1744,7 @@ targets:
     country: "PG"
     tier: 3
   - id: cctld-ph
-    name: "PH ccTLD"
+    name: "Philippines ccTLD"
     host: "1.ns.ph"
     port: 53
     probe: dns
@@ -1754,7 +1754,7 @@ targets:
     country: "PH"
     tier: 3
   - id: cctld-pk
-    name: "PK ccTLD"
+    name: "Pakistan ccTLD"
     host: "root-c1.pknic.pk"
     port: 53
     probe: dns
@@ -1764,7 +1764,7 @@ targets:
     country: "PK"
     tier: 3
   - id: cctld-pl
-    name: "PL ccTLD"
+    name: "Poland ccTLD"
     host: "a-dns.pl"
     port: 53
     probe: dns
@@ -1774,7 +1774,7 @@ targets:
     country: "PL"
     tier: 3
   - id: cctld-pm
-    name: "PM ccTLD"
+    name: "St. Pierre & Miquelon ccTLD"
     host: "d.nic.fr"
     port: 53
     probe: dns
@@ -1784,7 +1784,7 @@ targets:
     country: "PM"
     tier: 3
   - id: cctld-pn
-    name: "PN ccTLD"
+    name: "Pitcairn Islands ccTLD"
     host: "dns1.nic.pn"
     port: 53
     probe: dns
@@ -1794,7 +1794,7 @@ targets:
     country: "PN"
     tier: 3
   - id: cctld-pr
-    name: "PR ccTLD"
+    name: "Puerto Rico ccTLD"
     host: "a.lactld.org"
     port: 53
     probe: dns
@@ -1804,7 +1804,7 @@ targets:
     country: "PR"
     tier: 3
   - id: cctld-ps
-    name: "PS ccTLD"
+    name: "Palestinian Territories ccTLD"
     host: "bilal.pnina.ps"
     port: 53
     probe: dns
@@ -1814,7 +1814,7 @@ targets:
     country: "PS"
     tier: 3
   - id: cctld-pt
-    name: "PT ccTLD"
+    name: "Portugal ccTLD"
     host: "a.dns.pt"
     port: 53
     probe: dns
@@ -1824,7 +1824,7 @@ targets:
     country: "PT"
     tier: 3
   - id: cctld-pw
-    name: "PW ccTLD"
+    name: "Palau ccTLD"
     host: "ns01.trs-dns.com"
     port: 53
     probe: dns
@@ -1834,7 +1834,7 @@ targets:
     country: "PW"
     tier: 3
   - id: cctld-py
-    name: "PY ccTLD"
+    name: "Paraguay ccTLD"
     host: "b.dns.py"
     port: 53
     probe: dns
@@ -1844,7 +1844,7 @@ targets:
     country: "PY"
     tier: 3
   - id: cctld-qa
-    name: "QA ccTLD"
+    name: "Qatar ccTLD"
     host: "a.registry.qa"
     port: 53
     probe: dns
@@ -1854,7 +1854,7 @@ targets:
     country: "QA"
     tier: 3
   - id: cctld-re
-    name: "RE ccTLD"
+    name: "Réunion ccTLD"
     host: "d.nic.fr"
     port: 53
     probe: dns
@@ -1864,7 +1864,7 @@ targets:
     country: "RE"
     tier: 3
   - id: cctld-ro
-    name: "RO ccTLD"
+    name: "Romania ccTLD"
     host: "dns-at.rotld.ro"
     port: 53
     probe: dns
@@ -1874,7 +1874,7 @@ targets:
     country: "RO"
     tier: 3
   - id: cctld-rs
-    name: "RS ccTLD"
+    name: "Serbia ccTLD"
     host: "a.nic.rs"
     port: 53
     probe: dns
@@ -1884,7 +1884,7 @@ targets:
     country: "RS"
     tier: 3
   - id: cctld-ru
-    name: "RU ccTLD"
+    name: "Russia ccTLD"
     host: "a.dns.ripn.net"
     port: 53
     probe: dns
@@ -1894,7 +1894,7 @@ targets:
     country: "RU"
     tier: 3
   - id: cctld-rw
-    name: "RW ccTLD"
+    name: "Rwanda ccTLD"
     host: "dnsnode.ricta.org.rw"
     port: 53
     probe: dns
@@ -1904,7 +1904,7 @@ targets:
     country: "RW"
     tier: 3
   - id: cctld-sa
-    name: "SA ccTLD"
+    name: "Saudi Arabia ccTLD"
     host: "c1.dns.sa"
     port: 53
     probe: dns
@@ -1914,7 +1914,7 @@ targets:
     country: "SA"
     tier: 3
   - id: cctld-sb
-    name: "SB ccTLD"
+    name: "Solomon Islands ccTLD"
     host: "ns1.anycastdns.cz"
     port: 53
     probe: dns
@@ -1924,7 +1924,7 @@ targets:
     country: "SB"
     tier: 3
   - id: cctld-sc
-    name: "SC ccTLD"
+    name: "Seychelles ccTLD"
     host: "a0.cctld.afilias-nst.info"
     port: 53
     probe: dns
@@ -1934,7 +1934,7 @@ targets:
     country: "SC"
     tier: 3
   - id: cctld-sd
-    name: "SD ccTLD"
+    name: "Sudan ccTLD"
     host: "ans1.canar.sd"
     port: 53
     probe: dns
@@ -1944,7 +1944,7 @@ targets:
     country: "SD"
     tier: 3
   - id: cctld-se
-    name: "SE ccTLD"
+    name: "Sweden ccTLD"
     host: "a.ns.se"
     port: 53
     probe: dns
@@ -1954,7 +1954,7 @@ targets:
     country: "SE"
     tier: 3
   - id: cctld-sg
-    name: "SG ccTLD"
+    name: "Singapore ccTLD"
     host: "dsany2.sgnic.sg"
     port: 53
     probe: dns
@@ -1964,7 +1964,7 @@ targets:
     country: "SG"
     tier: 3
   - id: cctld-sh
-    name: "SH ccTLD"
+    name: "St. Helena ccTLD"
     host: "a0.nic.sh"
     port: 53
     probe: dns
@@ -1974,7 +1974,7 @@ targets:
     country: "SH"
     tier: 3
   - id: cctld-si
-    name: "SI ccTLD"
+    name: "Slovenia ccTLD"
     host: "b.dns.si"
     port: 53
     probe: dns
@@ -1984,7 +1984,7 @@ targets:
     country: "SI"
     tier: 3
   - id: cctld-sj
-    name: "SJ ccTLD"
+    name: "Svalbard & Jan Mayen ccTLD"
     host: "nac.no"
     port: 53
     probe: dns
@@ -1994,7 +1994,7 @@ targets:
     country: "SJ"
     tier: 3
   - id: cctld-sk
-    name: "SK ccTLD"
+    name: "Slovakia ccTLD"
     host: "e.tld.sk"
     port: 53
     probe: dns
@@ -2004,7 +2004,7 @@ targets:
     country: "SK"
     tier: 3
   - id: cctld-sl
-    name: "SL ccTLD"
+    name: "Sierra Leone ccTLD"
     host: "ns1.neoip.com"
     port: 53
     probe: dns
@@ -2014,7 +2014,7 @@ targets:
     country: "SL"
     tier: 3
   - id: cctld-sm
-    name: "SM ccTLD"
+    name: "San Marino ccTLD"
     host: "dns.intelcom.sm"
     port: 53
     probe: dns
@@ -2024,7 +2024,7 @@ targets:
     country: "SM"
     tier: 3
   - id: cctld-sn
-    name: "SN ccTLD"
+    name: "Senegal ccTLD"
     host: "dns-tld.ird.fr"
     port: 53
     probe: dns
@@ -2034,7 +2034,7 @@ targets:
     country: "SN"
     tier: 3
   - id: cctld-so
-    name: "SO ccTLD"
+    name: "Somalia ccTLD"
     host: "d.nic.so"
     port: 53
     probe: dns
@@ -2044,7 +2044,7 @@ targets:
     country: "SO"
     tier: 3
   - id: cctld-sr
-    name: "SR ccTLD"
+    name: "Suriname ccTLD"
     host: "ns1.nic.sr"
     port: 53
     probe: dns
@@ -2054,7 +2054,7 @@ targets:
     country: "SR"
     tier: 3
   - id: cctld-ss
-    name: "SS ccTLD"
+    name: "South Sudan ccTLD"
     host: "ns-ss.afrinic.net"
     port: 53
     probe: dns
@@ -2064,7 +2064,7 @@ targets:
     country: "SS"
     tier: 3
   - id: cctld-st
-    name: "ST ccTLD"
+    name: "São Tomé & Príncipe ccTLD"
     host: "dns-st.bahnhof.net"
     port: 53
     probe: dns
@@ -2074,7 +2074,7 @@ targets:
     country: "ST"
     tier: 3
   - id: cctld-su
-    name: "SU ccTLD"
+    name: "Soviet Union ccTLD"
     host: "a.dns.ripn.net"
     port: 53
     probe: dns
@@ -2084,7 +2084,7 @@ targets:
     country: "SU"
     tier: 3
   - id: cctld-sv
-    name: "SV ccTLD"
+    name: "El Salvador ccTLD"
     host: "a.lactld.org"
     port: 53
     probe: dns
@@ -2094,7 +2094,7 @@ targets:
     country: "SV"
     tier: 3
   - id: cctld-sx
-    name: "SX ccTLD"
+    name: "Sint Maarten ccTLD"
     host: "ns1.ns.sx"
     port: 53
     probe: dns
@@ -2104,7 +2104,7 @@ targets:
     country: "SX"
     tier: 3
   - id: cctld-sy
-    name: "SY ccTLD"
+    name: "Syria ccTLD"
     host: "ns1.tld.sy"
     port: 53
     probe: dns
@@ -2114,7 +2114,7 @@ targets:
     country: "SY"
     tier: 3
   - id: cctld-sz
-    name: "SZ ccTLD"
+    name: "Swaziland ccTLD"
     host: "ns1.sispa.org.sz"
     port: 53
     probe: dns
@@ -2124,7 +2124,7 @@ targets:
     country: "SZ"
     tier: 3
   - id: cctld-tc
-    name: "TC ccTLD"
+    name: "Turks & Caicos Islands ccTLD"
     host: "root1.zone.tc"
     port: 53
     probe: dns
@@ -2134,7 +2134,7 @@ targets:
     country: "TC"
     tier: 3
   - id: cctld-td
-    name: "TD ccTLD"
+    name: "Chad ccTLD"
     host: "anycastdns1.nic.td"
     port: 53
     probe: dns
@@ -2144,7 +2144,7 @@ targets:
     country: "TD"
     tier: 3
   - id: cctld-tf
-    name: "TF ccTLD"
+    name: "French Southern Territories ccTLD"
     host: "d.nic.fr"
     port: 53
     probe: dns
@@ -2154,7 +2154,7 @@ targets:
     country: "TF"
     tier: 3
   - id: cctld-tg
-    name: "TG ccTLD"
+    name: "Togo ccTLD"
     host: "ns1.admin.net"
     port: 53
     probe: dns
@@ -2164,7 +2164,7 @@ targets:
     country: "TG"
     tier: 3
   - id: cctld-th
-    name: "TH ccTLD"
+    name: "Thailand ccTLD"
     host: "a.thains.co.th"
     port: 53
     probe: dns
@@ -2174,7 +2174,7 @@ targets:
     country: "TH"
     tier: 3
   - id: cctld-tj
-    name: "TJ ccTLD"
+    name: "Tajikistan ccTLD"
     host: "ns1.nic.tj"
     port: 53
     probe: dns
@@ -2184,7 +2184,7 @@ targets:
     country: "TJ"
     tier: 3
   - id: cctld-tk
-    name: "TK ccTLD"
+    name: "Tokelau ccTLD"
     host: "a.ns.tk"
     port: 53
     probe: dns
@@ -2194,7 +2194,7 @@ targets:
     country: "TK"
     tier: 3
   - id: cctld-tl
-    name: "TL ccTLD"
+    name: "Timor-Leste ccTLD"
     host: "ns.anycast.nic.tl"
     port: 53
     probe: dns
@@ -2204,7 +2204,7 @@ targets:
     country: "TL"
     tier: 3
   - id: cctld-tm
-    name: "TM ccTLD"
+    name: "Turkmenistan ccTLD"
     host: "ns-a1.tm"
     port: 53
     probe: dns
@@ -2214,7 +2214,7 @@ targets:
     country: "TM"
     tier: 3
   - id: cctld-tn
-    name: "TN ccTLD"
+    name: "Tunisia ccTLD"
     host: "ns-tn.afrinic.net"
     port: 53
     probe: dns
@@ -2224,7 +2224,7 @@ targets:
     country: "TN"
     tier: 3
   - id: cctld-to
-    name: "TO ccTLD"
+    name: "Tonga ccTLD"
     host: "ns01.trs-dns.com"
     port: 53
     probe: dns
@@ -2234,7 +2234,7 @@ targets:
     country: "TO"
     tier: 3
   - id: cctld-tr
-    name: "TR ccTLD"
+    name: "Turkey ccTLD"
     host: "ns43.ns.tr"
     port: 53
     probe: dns
@@ -2244,7 +2244,7 @@ targets:
     country: "TR"
     tier: 3
   - id: cctld-tt
-    name: "TT ccTLD"
+    name: "Trinidad & Tobago ccTLD"
     host: "a.lactld.org"
     port: 53
     probe: dns
@@ -2254,7 +2254,7 @@ targets:
     country: "TT"
     tier: 3
   - id: cctld-tv
-    name: "TV ccTLD"
+    name: "Tuvalu ccTLD"
     host: "a.nic.tv"
     port: 53
     probe: dns
@@ -2264,7 +2264,7 @@ targets:
     country: "TV"
     tier: 3
   - id: cctld-tw
-    name: "TW ccTLD"
+    name: "Taiwan ccTLD"
     host: "a.dns.tw"
     port: 53
     probe: dns
@@ -2274,7 +2274,7 @@ targets:
     country: "TW"
     tier: 3
   - id: cctld-tz
-    name: "TZ ccTLD"
+    name: "Tanzania ccTLD"
     host: "fork.sth.dnsnode.net"
     port: 53
     probe: dns
@@ -2284,7 +2284,7 @@ targets:
     country: "TZ"
     tier: 3
   - id: cctld-ua
-    name: "UA ccTLD"
+    name: "Ukraine ccTLD"
     host: "bg.ns.ua"
     port: 53
     probe: dns
@@ -2294,7 +2294,7 @@ targets:
     country: "UA"
     tier: 3
   - id: cctld-ug
-    name: "UG ccTLD"
+    name: "Uganda ccTLD"
     host: "anycast.eahd.or.ug"
     port: 53
     probe: dns
@@ -2304,7 +2304,7 @@ targets:
     country: "UG"
     tier: 3
   - id: cctld-uk
-    name: "UK ccTLD"
+    name: "United Kingdom ccTLD"
     host: "dns1.nic.uk"
     port: 53
     probe: dns
@@ -2314,7 +2314,7 @@ targets:
     country: "UK"
     tier: 3
   - id: cctld-us
-    name: "US ccTLD"
+    name: "United States ccTLD"
     host: "b.cctld.us"
     port: 53
     probe: dns
@@ -2324,7 +2324,7 @@ targets:
     country: "US"
     tier: 3
   - id: cctld-uy
-    name: "UY ccTLD"
+    name: "Uruguay ccTLD"
     host: "a.lactld.org"
     port: 53
     probe: dns
@@ -2334,7 +2334,7 @@ targets:
     country: "UY"
     tier: 3
   - id: cctld-uz
-    name: "UZ ccTLD"
+    name: "Uzbekistan ccTLD"
     host: "ns1.uz"
     port: 53
     probe: dns
@@ -2344,7 +2344,7 @@ targets:
     country: "UZ"
     tier: 3
   - id: cctld-va
-    name: "VA ccTLD"
+    name: "Vatican City ccTLD"
     host: "a.nic.va"
     port: 53
     probe: dns
@@ -2354,7 +2354,7 @@ targets:
     country: "VA"
     tier: 3
   - id: cctld-vc
-    name: "VC ccTLD"
+    name: "St. Vincent & Grenadines ccTLD"
     host: "a0.cctld.afilias-nst.info"
     port: 53
     probe: dns
@@ -2364,7 +2364,7 @@ targets:
     country: "VC"
     tier: 3
   - id: cctld-ve
-    name: "VE ccTLD"
+    name: "Venezuela ccTLD"
     host: "a.lactld.org"
     port: 53
     probe: dns
@@ -2374,7 +2374,7 @@ targets:
     country: "VE"
     tier: 3
   - id: cctld-vg
-    name: "VG ccTLD"
+    name: "British Virgin Islands ccTLD"
     host: "a.nic.vg"
     port: 53
     probe: dns
@@ -2384,7 +2384,7 @@ targets:
     country: "VG"
     tier: 3
   - id: cctld-vi
-    name: "VI ccTLD"
+    name: "U.S. Virgin Islands ccTLD"
     host: "ns3.nic.vi"
     port: 53
     probe: dns
@@ -2394,7 +2394,7 @@ targets:
     country: "VI"
     tier: 3
   - id: cctld-vn
-    name: "VN ccTLD"
+    name: "Vietnam ccTLD"
     host: "a.dns-servers.vn"
     port: 53
     probe: dns
@@ -2404,7 +2404,7 @@ targets:
     country: "VN"
     tier: 3
   - id: cctld-vu
-    name: "VU ccTLD"
+    name: "Vanuatu ccTLD"
     host: "a.tldns.vu"
     port: 53
     probe: dns
@@ -2414,7 +2414,7 @@ targets:
     country: "VU"
     tier: 3
   - id: cctld-wf
-    name: "WF ccTLD"
+    name: "Wallis & Futuna ccTLD"
     host: "d.nic.fr"
     port: 53
     probe: dns
@@ -2424,7 +2424,7 @@ targets:
     country: "WF"
     tier: 3
   - id: cctld-ws
-    name: "WS ccTLD"
+    name: "Samoa ccTLD"
     host: "a.dns.ws"
     port: 53
     probe: dns
@@ -2434,7 +2434,7 @@ targets:
     country: "WS"
     tier: 3
   - id: cctld-xn--11b4c3d
-    name: "XN--11B4C3D ccTLD"
+    name: "Com (कॉम) ccTLD"
     host: "ac1.nstld.com"
     port: 53
     probe: dns
@@ -2444,7 +2444,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--1ck2e1b
-    name: "XN--1CK2E1B ccTLD"
+    name: "Sale (セール) ccTLD"
     host: "v0n0.nic.xn--1ck2e1b"
     port: 53
     probe: dns
@@ -2454,7 +2454,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--1qqw23a
-    name: "XN--1QQW23A ccTLD"
+    name: "Foshan (佛山) ccTLD"
     host: "ta.ngtld.cn"
     port: 53
     probe: dns
@@ -2464,7 +2464,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--2scrj9c
-    name: "XN--2SCRJ9C ccTLD"
+    name: "India (ಭಾರತ) ccTLD"
     host: "ns1.registry.in"
     port: 53
     probe: dns
@@ -2474,7 +2474,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--30rr7y
-    name: "XN--30RR7Y ccTLD"
+    name: "Charity (慈善) ccTLD"
     host: "a.zdnscloud.cn"
     port: 53
     probe: dns
@@ -2484,7 +2484,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--3bst00m
-    name: "XN--3BST00M ccTLD"
+    name: "Group (集团) ccTLD"
     host: "a.zdnscloud.cn"
     port: 53
     probe: dns
@@ -2494,7 +2494,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--3ds443g
-    name: "XN--3DS443G ccTLD"
+    name: "Online (在线) ccTLD"
     host: "ns1.teleinfo.cn"
     port: 53
     probe: dns
@@ -2504,7 +2504,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--3e0b707e
-    name: "XN--3E0B707E ccTLD"
+    name: "South Korea (한국) ccTLD"
     host: "b.dns.kr"
     port: 53
     probe: dns
@@ -2514,7 +2514,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--3hcrj9c
-    name: "XN--3HCRJ9C ccTLD"
+    name: "India (ଭାରତ) ccTLD"
     host: "ns1.registry.in"
     port: 53
     probe: dns
@@ -2524,7 +2524,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--3pxu8k
-    name: "XN--3PXU8K ccTLD"
+    name: "Diankan (点看) ccTLD"
     host: "ac1.nstld.com"
     port: 53
     probe: dns
@@ -2534,7 +2534,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--42c2d9a
-    name: "XN--42C2D9A ccTLD"
+    name: "Khom (คอม) ccTLD"
     host: "ac1.nstld.com"
     port: 53
     probe: dns
@@ -2544,7 +2544,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--45br5cyl
-    name: "XN--45BR5CYL ccTLD"
+    name: "India (ভাৰত) ccTLD"
     host: "ns1.registry.in"
     port: 53
     probe: dns
@@ -2554,7 +2554,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--45brj9c
-    name: "XN--45BRJ9C ccTLD"
+    name: "India (ভারত) ccTLD"
     host: "ns1.registry.in"
     port: 53
     probe: dns
@@ -2564,7 +2564,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--45q11c
-    name: "XN--45Q11C ccTLD"
+    name: "Gossip (八卦) ccTLD"
     host: "a.zdnscloud.cn"
     port: 53
     probe: dns
@@ -2574,7 +2574,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--4dbrk0ce
-    name: "XN--4DBRK0CE ccTLD"
+    name: "Israel (ישראל) ccTLD"
     host: "ilns.ilan.net.il"
     port: 53
     probe: dns
@@ -2584,7 +2584,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--4gbrim
-    name: "XN--4GBRIM ccTLD"
+    name: "Site (موقع) ccTLD"
     host: "a.nic.xn--4gbrim"
     port: 53
     probe: dns
@@ -2594,7 +2594,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--54b7fta0cc
-    name: "XN--54B7FTA0CC ccTLD"
+    name: "Bangladesh (বাংলা) ccTLD"
     host: "bayanno.btcl.net.bd"
     port: 53
     probe: dns
@@ -2604,7 +2604,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--55qw42g
-    name: "XN--55QW42G ccTLD"
+    name: "Public interest (公益) ccTLD"
     host: "ta.ngtld.cn"
     port: 53
     probe: dns
@@ -2614,7 +2614,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--55qx5d
-    name: "XN--55QX5D ccTLD"
+    name: "Business organization (公司) ccTLD"
     host: "a.ngtld.cn"
     port: 53
     probe: dns
@@ -2624,7 +2624,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--5su34j936bgsg
-    name: "XN--5SU34J936BGSG ccTLD"
+    name: "Shangri-La (香格里拉) ccTLD"
     host: "v0n0.nic.xn--5su34j936bgsg"
     port: 53
     probe: dns
@@ -2634,7 +2634,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--5tzm5g
-    name: "XN--5TZM5G ccTLD"
+    name: "Website (网站) ccTLD"
     host: "a0.nic.xn--5tzm5g"
     port: 53
     probe: dns
@@ -2644,7 +2644,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--6frz82g
-    name: "XN--6FRZ82G ccTLD"
+    name: "Mobile (移动) ccTLD"
     host: "a0.nic.xn--6frz82g"
     port: 53
     probe: dns
@@ -2654,7 +2654,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--6qq986b3xl
-    name: "XN--6QQ986B3XL ccTLD"
+    name: "I love you (我爱你) ccTLD"
     host: "a.zdnscloud.cn"
     port: 53
     probe: dns
@@ -2664,7 +2664,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--80adxhks
-    name: "XN--80ADXHKS ccTLD"
+    name: "Moscow (москва) ccTLD"
     host: "a.dns.flexireg.ru"
     port: 53
     probe: dns
@@ -2674,7 +2674,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--80ao21a
-    name: "XN--80AO21A ccTLD"
+    name: "Kazakhstan (қаз) ccTLD"
     host: "ns.nic.kz"
     port: 53
     probe: dns
@@ -2684,7 +2684,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--80aqecdr1a
-    name: "XN--80AQECDR1A ccTLD"
+    name: "Catholic (католик) ccTLD"
     host: "a.nic.xn--80aqecdr1a"
     port: 53
     probe: dns
@@ -2694,7 +2694,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--80asehdb
-    name: "XN--80ASEHDB ccTLD"
+    name: "Online (онлайн) ccTLD"
     host: "anycast10.irondns.net"
     port: 53
     probe: dns
@@ -2704,7 +2704,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--80aswg
-    name: "XN--80ASWG ccTLD"
+    name: "Site (сайт) ccTLD"
     host: "anycast10.irondns.net"
     port: 53
     probe: dns
@@ -2714,7 +2714,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--8y0a063a
-    name: "XN--8Y0A063A ccTLD"
+    name: "Unicom (联通) ccTLD"
     host: "a.zdnscloud.cn"
     port: 53
     probe: dns
@@ -2724,7 +2724,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--90a3ac
-    name: "XN--90A3AC ccTLD"
+    name: "Serbia (срб) ccTLD"
     host: "a.nic.rs"
     port: 53
     probe: dns
@@ -2734,7 +2734,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--90ae
-    name: "XN--90AE ccTLD"
+    name: "Bulgaria (бг) ccTLD"
     host: "a.nic.bg"
     port: 53
     probe: dns
@@ -2744,7 +2744,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--90ais
-    name: "XN--90AIS ccTLD"
+    name: "Belarus (бел) ccTLD"
     host: "dns1.tld.becloudby.com"
     port: 53
     probe: dns
@@ -2754,7 +2754,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--9dbq2a
-    name: "XN--9DBQ2A ccTLD"
+    name: "Qom (קום) ccTLD"
     host: "ac1.nstld.com"
     port: 53
     probe: dns
@@ -2764,7 +2764,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--9et52u
-    name: "XN--9ET52U ccTLD"
+    name: "Vogue (时尚) ccTLD"
     host: "a.zdnscloud.cn"
     port: 53
     probe: dns
@@ -2774,7 +2774,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--9krt00a
-    name: "XN--9KRT00A ccTLD"
+    name: "Weibo (微博) ccTLD"
     host: "ta.ngtld.cn"
     port: 53
     probe: dns
@@ -2784,7 +2784,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--b4w605ferd
-    name: "XN--B4W605FERD ccTLD"
+    name: "Temasek (淡马锡) ccTLD"
     host: "a0.nic.xn--b4w605ferd"
     port: 53
     probe: dns
@@ -2794,7 +2794,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--bck1b9a5dre4c
-    name: "XN--BCK1B9A5DRE4C ccTLD"
+    name: "Fashion (ファッション) ccTLD"
     host: "v0n0.nic.xn--bck1b9a5dre4c"
     port: 53
     probe: dns
@@ -2804,7 +2804,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--c1avg
-    name: "XN--C1AVG ccTLD"
+    name: "Org (орг) ccTLD"
     host: "a0.nic.xn--c1avg"
     port: 53
     probe: dns
@@ -2814,7 +2814,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--c2br7g
-    name: "XN--C2BR7G ccTLD"
+    name: "Neta (नेट) ccTLD"
     host: "ac1.nstld.com"
     port: 53
     probe: dns
@@ -2824,7 +2824,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--cck2b3b
-    name: "XN--CCK2B3B ccTLD"
+    name: "Store (ストア) ccTLD"
     host: "v0n0.nic.xn--cck2b3b"
     port: 53
     probe: dns
@@ -2834,7 +2834,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--cckwcxetd
-    name: "XN--CCKWCXETD ccTLD"
+    name: "Amazon (アマゾン) ccTLD"
     host: "dns1.nic.xn--cckwcxetd"
     port: 53
     probe: dns
@@ -2844,7 +2844,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--cg4bki
-    name: "XN--CG4BKI ccTLD"
+    name: "Samsung (삼성) ccTLD"
     host: "n1-a1.aka-ns.net"
     port: 53
     probe: dns
@@ -2854,7 +2854,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--clchc0ea0b2g2a9gcd
-    name: "XN--CLCHC0EA0B2G2A9GCD ccTLD"
+    name: "Singapore (சிங்கப்பூர்) ccTLD"
     host: "dsany2.sgnic.sg"
     port: 53
     probe: dns
@@ -2864,7 +2864,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--czr694b
-    name: "XN--CZR694B ccTLD"
+    name: "Trademark (商标) ccTLD"
     host: "a.zdnscloud.cn"
     port: 53
     probe: dns
@@ -2874,7 +2874,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--czrs0t
-    name: "XN--CZRS0T ccTLD"
+    name: "Shop (商店) ccTLD"
     host: "v0n0.nic.xn--czrs0t"
     port: 53
     probe: dns
@@ -2884,7 +2884,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--czru2d
-    name: "XN--CZRU2D ccTLD"
+    name: "Mall (商城) ccTLD"
     host: "a.zdnscloud.cn"
     port: 53
     probe: dns
@@ -2894,7 +2894,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--d1acj3b
-    name: "XN--D1ACJ3B ccTLD"
+    name: "Kids (дети) ccTLD"
     host: "a.dns.ripn.net"
     port: 53
     probe: dns
@@ -2904,7 +2904,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--d1alf
-    name: "XN--D1ALF ccTLD"
+    name: "Macedonia (мкд) ccTLD"
     host: "b.dns.si"
     port: 53
     probe: dns
@@ -2914,7 +2914,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--e1a4c
-    name: "XN--E1A4C ccTLD"
+    name: "European Union (ею) ccTLD"
     host: "be.dns.eu"
     port: 53
     probe: dns
@@ -2924,7 +2924,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--eckvdtc9d
-    name: "XN--ECKVDTC9D ccTLD"
+    name: "Point (ポイント) ccTLD"
     host: "v0n0.nic.xn--eckvdtc9d"
     port: 53
     probe: dns
@@ -2934,7 +2934,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--efvy88h
-    name: "XN--EFVY88H ccTLD"
+    name: "News (新闻) ccTLD"
     host: "a.zdnscloud.cn"
     port: 53
     probe: dns
@@ -2944,7 +2944,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--fct429k
-    name: "XN--FCT429K ccTLD"
+    name: "Consumer electronics (家電) ccTLD"
     host: "v0n0.nic.xn--fct429k"
     port: 53
     probe: dns
@@ -2954,7 +2954,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--fhbei
-    name: "XN--FHBEI ccTLD"
+    name: "Kom (كوم) ccTLD"
     host: "ac1.nstld.com"
     port: 53
     probe: dns
@@ -2964,7 +2964,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--fiq228c5hs
-    name: "XN--FIQ228C5HS ccTLD"
+    name: "Website (中文网) ccTLD"
     host: "ns1.teleinfo.cn"
     port: 53
     probe: dns
@@ -2974,7 +2974,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--fiq64b
-    name: "XN--FIQ64B ccTLD"
+    name: "CITIC (中信) ccTLD"
     host: "a.zdnscloud.cn"
     port: 53
     probe: dns
@@ -2984,7 +2984,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--fiqs8s
-    name: "XN--FIQS8S ccTLD"
+    name: "China (中国) ccTLD"
     host: "h.dns.cn"
     port: 53
     probe: dns
@@ -2994,7 +2994,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--fiqz9s
-    name: "XN--FIQZ9S ccTLD"
+    name: "China (中國) ccTLD"
     host: "h.dns.cn"
     port: 53
     probe: dns
@@ -3004,7 +3004,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--fjq720a
-    name: "XN--FJQ720A ccTLD"
+    name: "Entertainment (娱乐) ccTLD"
     host: "v0n0.nic.xn--fjq720a"
     port: 53
     probe: dns
@@ -3014,7 +3014,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--flw351e
-    name: "XN--FLW351E ccTLD"
+    name: "Google (谷歌) ccTLD"
     host: "ns-tld1.charlestonroadregistry.com"
     port: 53
     probe: dns
@@ -3024,7 +3024,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--fpcrj9c3d
-    name: "XN--FPCRJ9C3D ccTLD"
+    name: "India (భారత్) ccTLD"
     host: "ns1.registry.in"
     port: 53
     probe: dns
@@ -3034,7 +3034,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--fzc2c9e2c
-    name: "XN--FZC2C9E2C ccTLD"
+    name: "Sri Lanka (ලංකා) ccTLD"
     host: "lk.communitydns.net"
     port: 53
     probe: dns
@@ -3044,7 +3044,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--fzys8d69uvgm
-    name: "XN--FZYS8D69UVGM ccTLD"
+    name: "PCCW (電訊盈科) ccTLD"
     host: "a0.nic.xn--fzys8d69uvgm"
     port: 53
     probe: dns
@@ -3054,7 +3054,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--g2xx48c
-    name: "XN--G2XX48C ccTLD"
+    name: "Shopping (购物) ccTLD"
     host: "a.nic.xn--g2xx48c"
     port: 53
     probe: dns
@@ -3064,7 +3064,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--gckr3f0f
-    name: "XN--GCKR3F0F ccTLD"
+    name: "Cloud (クラウド) ccTLD"
     host: "v0n0.nic.xn--gckr3f0f"
     port: 53
     probe: dns
@@ -3074,7 +3074,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--gecrj9c
-    name: "XN--GECRJ9C ccTLD"
+    name: "India (ભારત) ccTLD"
     host: "ns1.registry.in"
     port: 53
     probe: dns
@@ -3084,7 +3084,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--gk3at1e
-    name: "XN--GK3AT1E ccTLD"
+    name: "Online shopping (通販) ccTLD"
     host: "v0n0.nic.xn--gk3at1e"
     port: 53
     probe: dns
@@ -3094,7 +3094,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--h2breg3eve
-    name: "XN--H2BREG3EVE ccTLD"
+    name: "India (भारतम्) ccTLD"
     host: "ns1.registry.in"
     port: 53
     probe: dns
@@ -3104,7 +3104,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--h2brj9c
-    name: "XN--H2BRJ9C ccTLD"
+    name: "India (भारत) ccTLD"
     host: "ns1.registry.in"
     port: 53
     probe: dns
@@ -3114,7 +3114,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--h2brj9c8c
-    name: "XN--H2BRJ9C8C ccTLD"
+    name: "India (भारोत) ccTLD"
     host: "ns1.registry.in"
     port: 53
     probe: dns
@@ -3124,7 +3124,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--hxt814e
-    name: "XN--HXT814E ccTLD"
+    name: "Web store (网店) ccTLD"
     host: "a.zdnscloud.cn"
     port: 53
     probe: dns
@@ -3134,7 +3134,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--i1b6b1a6a2e
-    name: "XN--I1B6B1A6A2E ccTLD"
+    name: "Organization (संगठन) ccTLD"
     host: "a0.nic.xn--i1b6b1a6a2e"
     port: 53
     probe: dns
@@ -3144,7 +3144,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--imr513n
-    name: "XN--IMR513N ccTLD"
+    name: "Restaurant (餐厅) ccTLD"
     host: "a.zdnscloud.cn"
     port: 53
     probe: dns
@@ -3154,7 +3154,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--io0a7i
-    name: "XN--IO0A7I ccTLD"
+    name: "Network (网络) ccTLD"
     host: "a.ngtld.cn"
     port: 53
     probe: dns
@@ -3164,7 +3164,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--j1aef
-    name: "XN--J1AEF ccTLD"
+    name: "Kom (ком) ccTLD"
     host: "ac1.nstld.com"
     port: 53
     probe: dns
@@ -3174,7 +3174,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--j1amh
-    name: "XN--J1AMH ccTLD"
+    name: "Ukraine (укр) ccTLD"
     host: "dns.tci.net.ua"
     port: 53
     probe: dns
@@ -3184,7 +3184,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--j6w193g
-    name: "XN--J6W193G ccTLD"
+    name: "Hong Kong SAR China (香港) ccTLD"
     host: "c.hkirc.net.hk"
     port: 53
     probe: dns
@@ -3194,7 +3194,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--jlq480n2rg
-    name: "XN--JLQ480N2RG ccTLD"
+    name: "Amazon (亚马逊) ccTLD"
     host: "dns1.nic.xn--jlq480n2rg"
     port: 53
     probe: dns
@@ -3204,7 +3204,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--jvr189m
-    name: "XN--JVR189M ccTLD"
+    name: "Food (食品) ccTLD"
     host: "v0n0.nic.xn--jvr189m"
     port: 53
     probe: dns
@@ -3214,7 +3214,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--kcrx77d1x4a
-    name: "XN--KCRX77D1X4A ccTLD"
+    name: "Philips (飞利浦) ccTLD"
     host: "a.nic.xn--kcrx77d1x4a"
     port: 53
     probe: dns
@@ -3224,7 +3224,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--kprw13d
-    name: "XN--KPRW13D ccTLD"
+    name: "Taiwan (台湾) ccTLD"
     host: "anytld.apnic.net"
     port: 53
     probe: dns
@@ -3234,7 +3234,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--kpry57d
-    name: "XN--KPRY57D ccTLD"
+    name: "Taiwan (台灣) ccTLD"
     host: "anytld.apnic.net"
     port: 53
     probe: dns
@@ -3244,7 +3244,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--kput3i
-    name: "XN--KPUT3I ccTLD"
+    name: "Cell phone (手机) ccTLD"
     host: "ns1.teleinfo.cn"
     port: 53
     probe: dns
@@ -3254,7 +3254,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--l1acc
-    name: "XN--L1ACC ccTLD"
+    name: "Mongolia (мон) ccTLD"
     host: "ns10.dns.mn"
     port: 53
     probe: dns
@@ -3264,7 +3264,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--lgbbat1ad8j
-    name: "XN--LGBBAT1AD8J ccTLD"
+    name: "Algeria (الجزائر) ccTLD"
     host: "idn1.nic.dz"
     port: 53
     probe: dns
@@ -3274,7 +3274,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgb9awbf
-    name: "XN--MGB9AWBF ccTLD"
+    name: "Oman (عمان) ccTLD"
     host: "cctld.alpha.aridns.net.au"
     port: 53
     probe: dns
@@ -3284,7 +3284,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgba3a3ejt
-    name: "XN--MGBA3A3EJT ccTLD"
+    name: "Aramco (ارامكو) ccTLD"
     host: "a.nic.xn--mgba3a3ejt"
     port: 53
     probe: dns
@@ -3294,7 +3294,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgba3a4f16a
-    name: "XN--MGBA3A4F16A ccTLD"
+    name: "Iran (ایران) ccTLD"
     host: "a.nic.ir"
     port: 53
     probe: dns
@@ -3304,7 +3304,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgba7c0bbn0a
-    name: "XN--MGBA7C0BBN0A ccTLD"
+    name: "Olayan (العليان) ccTLD"
     host: "a.nic.xn--mgba7c0bbn0a"
     port: 53
     probe: dns
@@ -3314,7 +3314,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgbaam7a8h
-    name: "XN--MGBAAM7A8H ccTLD"
+    name: "United Arab Emirates (امارات) ccTLD"
     host: "ns1.aedns.ae"
     port: 53
     probe: dns
@@ -3324,7 +3324,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgbab2bd
-    name: "XN--MGBAB2BD ccTLD"
+    name: "Bazaar (بازار) ccTLD"
     host: "anycast10.irondns.net"
     port: 53
     probe: dns
@@ -3334,7 +3334,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgbah1a3hjkrd
-    name: "XN--MGBAH1A3HJKRD ccTLD"
+    name: "Mauritania (موريتانيا) ccTLD"
     host: "ns-mr.afrinic.net"
     port: 53
     probe: dns
@@ -3344,7 +3344,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgbai9azgqp6j
-    name: "XN--MGBAI9AZGQP6J ccTLD"
+    name: "Pakistan (پاکستان) ccTLD"
     host: "ns1.ntc.org.pk"
     port: 53
     probe: dns
@@ -3354,7 +3354,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgbayh7gpa
-    name: "XN--MGBAYH7GPA ccTLD"
+    name: "Jordan (الاردن) ccTLD"
     host: "a.cctld-servers.net.jo"
     port: 53
     probe: dns
@@ -3364,7 +3364,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgbbh1a
-    name: "XN--MGBBH1A ccTLD"
+    name: "India (بارت) ccTLD"
     host: "ns1.registry.in"
     port: 53
     probe: dns
@@ -3374,7 +3374,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgbbh1a71e
-    name: "XN--MGBBH1A71E ccTLD"
+    name: "India (بھارت) ccTLD"
     host: "ns1.registry.in"
     port: 53
     probe: dns
@@ -3384,7 +3384,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgbc0a9azcg
-    name: "XN--MGBC0A9AZCG ccTLD"
+    name: "Morocco (المغرب) ccTLD"
     host: "a.tld.ma"
     port: 53
     probe: dns
@@ -3394,7 +3394,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgbca7dzdo
-    name: "XN--MGBCA7DZDO ccTLD"
+    name: "Abu Dhabi (ابوظبي) ccTLD"
     host: "gtld.alpha.aridns.net.au"
     port: 53
     probe: dns
@@ -3404,7 +3404,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgbcpq6gpa1a
-    name: "XN--MGBCPQ6GPA1A ccTLD"
+    name: "Bahrain (البحرين) ccTLD"
     host: "ns01.trs-dns.com"
     port: 53
     probe: dns
@@ -3414,7 +3414,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgberp4a5d4ar
-    name: "XN--MGBERP4A5D4AR ccTLD"
+    name: "Saudi Arabia (السعودية) ccTLD"
     host: "c1.dns.sa"
     port: 53
     probe: dns
@@ -3424,7 +3424,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgbgu82a
-    name: "XN--MGBGU82A ccTLD"
+    name: "India (ڀارت) ccTLD"
     host: "ns1.registry.in"
     port: 53
     probe: dns
@@ -3434,7 +3434,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgbi4ecexp
-    name: "XN--MGBI4ECEXP ccTLD"
+    name: "Catholic (كاثوليك) ccTLD"
     host: "a.nic.xn--mgbi4ecexp"
     port: 53
     probe: dns
@@ -3444,7 +3444,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgbpl2fh
-    name: "XN--MGBPL2FH ccTLD"
+    name: "Sudan (سودان) ccTLD"
     host: "ans1.sis.sd"
     port: 53
     probe: dns
@@ -3454,7 +3454,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgbt3dhd
-    name: "XN--MGBT3DHD ccTLD"
+    name: "Comrade (همراه) ccTLD"
     host: "dns1.emdns.uk"
     port: 53
     probe: dns
@@ -3464,7 +3464,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgbtx2b
-    name: "XN--MGBTX2B ccTLD"
+    name: "Iraq (عراق) ccTLD"
     host: "ns.cmc.iq"
     port: 53
     probe: dns
@@ -3474,7 +3474,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mgbx4cd0ab
-    name: "XN--MGBX4CD0AB ccTLD"
+    name: "Malaysia (مليسيا) ccTLD"
     host: "a.mynic.centralnic-dns.com"
     port: 53
     probe: dns
@@ -3484,7 +3484,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mix891f
-    name: "XN--MIX891F ccTLD"
+    name: "Macau SAR China (澳門) ccTLD"
     host: "a.monic.mo"
     port: 53
     probe: dns
@@ -3494,7 +3494,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mk1bu44c
-    name: "XN--MK1BU44C ccTLD"
+    name: "Dotkeom (닷컴) ccTLD"
     host: "ac1.nstld.com"
     port: 53
     probe: dns
@@ -3504,7 +3504,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--mxtq1m
-    name: "XN--MXTQ1M ccTLD"
+    name: "Government (政府) ccTLD"
     host: "a.nic.xn--mxtq1m"
     port: 53
     probe: dns
@@ -3514,7 +3514,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--ngbc5azd
-    name: "XN--NGBC5AZD ccTLD"
+    name: "Web (شبكة) ccTLD"
     host: "a.nic.xn--ngbc5azd"
     port: 53
     probe: dns
@@ -3524,7 +3524,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--ngbe9e0a
-    name: "XN--NGBE9E0A ccTLD"
+    name: "Home (بيتك) ccTLD"
     host: "ns01.trs-dns.com"
     port: 53
     probe: dns
@@ -3534,7 +3534,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--ngbrx
-    name: "XN--NGBRX ccTLD"
+    name: "Arab (عرب) ccTLD"
     host: "gtld.alpha.aridns.net.au"
     port: 53
     probe: dns
@@ -3544,7 +3544,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--node
-    name: "XN--NODE ccTLD"
+    name: "Georgia (გე) ccTLD"
     host: "xn--node.ns.anycast.pch.net"
     port: 53
     probe: dns
@@ -3554,7 +3554,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--nqv7f
-    name: "XN--NQV7F ccTLD"
+    name: "Organization (机构) ccTLD"
     host: "a0.nic.xn--nqv7f"
     port: 53
     probe: dns
@@ -3564,7 +3564,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--nqv7fs00ema
-    name: "XN--NQV7FS00EMA ccTLD"
+    name: "Organization (组织机构) ccTLD"
     host: "a0.nic.xn--nqv7fs00ema"
     port: 53
     probe: dns
@@ -3574,7 +3574,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--nyqy26a
-    name: "XN--NYQY26A ccTLD"
+    name: "Healthy (健康) ccTLD"
     host: "ns1.teleinfo.cn"
     port: 53
     probe: dns
@@ -3584,7 +3584,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--o3cw4h
-    name: "XN--O3CW4H ccTLD"
+    name: "Thailand (ไทย) ccTLD"
     host: "a.thains.co.th"
     port: 53
     probe: dns
@@ -3594,7 +3594,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--ogbpf8fl
-    name: "XN--OGBPF8FL ccTLD"
+    name: "Syria (سورية) ccTLD"
     host: "ns1.tld.sy"
     port: 53
     probe: dns
@@ -3604,7 +3604,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--otu796d
-    name: "XN--OTU796D ccTLD"
+    name: "Recruitment (招聘) ccTLD"
     host: "a.zdnscloud.cn"
     port: 53
     probe: dns
@@ -3614,7 +3614,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--p1acf
-    name: "XN--P1ACF ccTLD"
+    name: "Russian (рус) ccTLD"
     host: "ns1.anycastdns.cz"
     port: 53
     probe: dns
@@ -3624,7 +3624,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--p1ai
-    name: "XN--P1AI ccTLD"
+    name: "Russia (рф) ccTLD"
     host: "a.dns.ripn.net"
     port: 53
     probe: dns
@@ -3634,7 +3634,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--pgbs0dh
-    name: "XN--PGBS0DH ccTLD"
+    name: "Tunisia (تونس) ccTLD"
     host: "ns-tn.afrinic.net"
     port: 53
     probe: dns
@@ -3644,7 +3644,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--pssy2u
-    name: "XN--PSSY2U ccTLD"
+    name: "Dana (大拿) ccTLD"
     host: "ac1.nstld.com"
     port: 53
     probe: dns
@@ -3654,7 +3654,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--q7ce6a
-    name: "XN--Q7CE6A ccTLD"
+    name: "Laos (ລາວ) ccTLD"
     host: "ns01.trs-dns.com"
     port: 53
     probe: dns
@@ -3664,7 +3664,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--q9jyb4c
-    name: "XN--Q9JYB4C ccTLD"
+    name: "Everyone (みんな) ccTLD"
     host: "ns-tld1.charlestonroadregistry.com"
     port: 53
     probe: dns
@@ -3674,7 +3674,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--qcka1pmc
-    name: "XN--QCKA1PMC ccTLD"
+    name: "Google (グーグル) ccTLD"
     host: "ns-tld1.charlestonroadregistry.com"
     port: 53
     probe: dns
@@ -3684,7 +3684,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--qxa6a
-    name: "XN--QXA6A ccTLD"
+    name: "European Union (ευ) ccTLD"
     host: "be.dns.eu"
     port: 53
     probe: dns
@@ -3694,7 +3694,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--qxam
-    name: "XN--QXAM ccTLD"
+    name: "Greece (ελ) ccTLD"
     host: "estia.ics.forth.gr"
     port: 53
     probe: dns
@@ -3704,7 +3704,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--rhqv96g
-    name: "XN--RHQV96G ccTLD"
+    name: "World (世界) ccTLD"
     host: "ns1.teleinfo.cn"
     port: 53
     probe: dns
@@ -3714,7 +3714,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--rovu88b
-    name: "XN--ROVU88B ccTLD"
+    name: "Book (書籍) ccTLD"
     host: "v0n0.nic.xn--rovu88b"
     port: 53
     probe: dns
@@ -3724,7 +3724,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--rvc1e0am3e
-    name: "XN--RVC1E0AM3E ccTLD"
+    name: "India (ഭാരതം) ccTLD"
     host: "ns1.registry.in"
     port: 53
     probe: dns
@@ -3734,7 +3734,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--s9brj9c
-    name: "XN--S9BRJ9C ccTLD"
+    name: "India (ਭਾਰਤ) ccTLD"
     host: "ns1.registry.in"
     port: 53
     probe: dns
@@ -3744,7 +3744,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--ses554g
-    name: "XN--SES554G ccTLD"
+    name: "Network address (网址) ccTLD"
     host: "a.zdnscloud.cn"
     port: 53
     probe: dns
@@ -3754,7 +3754,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--t60b56a
-    name: "XN--T60B56A ccTLD"
+    name: "Datnet (닷넷) ccTLD"
     host: "ac1.nstld.com"
     port: 53
     probe: dns
@@ -3764,7 +3764,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--tckwe
-    name: "XN--TCKWE ccTLD"
+    name: "Komu (コム) ccTLD"
     host: "ac1.nstld.com"
     port: 53
     probe: dns
@@ -3774,7 +3774,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--tiq49xqyj
-    name: "XN--TIQ49XQYJ ccTLD"
+    name: "Catholic (天主教) ccTLD"
     host: "a.nic.xn--tiq49xqyj"
     port: 53
     probe: dns
@@ -3784,7 +3784,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--unup4y
-    name: "XN--UNUP4Y ccTLD"
+    name: "Game (游戏) ccTLD"
     host: "v0n0.nic.xn--unup4y"
     port: 53
     probe: dns
@@ -3794,7 +3794,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--vermgensberater-ctb
-    name: "XN--VERMGENSBERATER-CTB ccTLD"
+    name: "Financial advisor (vermögensberater) ccTLD"
     host: "a.nic.xn--vermgensberater-ctb"
     port: 53
     probe: dns
@@ -3804,7 +3804,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--vermgensberatung-pwb
-    name: "XN--VERMGENSBERATUNG-PWB ccTLD"
+    name: "Financial advice (vermögensberatung) ccTLD"
     host: "a.nic.xn--vermgensberatung-pwb"
     port: 53
     probe: dns
@@ -3814,7 +3814,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--vhquv
-    name: "XN--VHQUV ccTLD"
+    name: "Enterprise (企业) ccTLD"
     host: "v0n0.nic.xn--vhquv"
     port: 53
     probe: dns
@@ -3824,7 +3824,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--vuq861b
-    name: "XN--VUQ861B ccTLD"
+    name: "Information (信息) ccTLD"
     host: "ns1.teleinfo.cn"
     port: 53
     probe: dns
@@ -3834,7 +3834,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--w4r85el8fhu5dnra
-    name: "XN--W4R85EL8FHU5DNRA ccTLD"
+    name: "Kerry Hotels (嘉里大酒店) ccTLD"
     host: "v0n0.nic.xn--w4r85el8fhu5dnra"
     port: 53
     probe: dns
@@ -3844,7 +3844,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--w4rs40l
-    name: "XN--W4RS40L ccTLD"
+    name: "Kerry (嘉里) ccTLD"
     host: "v0n0.nic.xn--w4rs40l"
     port: 53
     probe: dns
@@ -3854,7 +3854,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--wgbh1c
-    name: "XN--WGBH1C ccTLD"
+    name: "Egypt (مصر) ccTLD"
     host: "ns1.dotmasr.eg"
     port: 53
     probe: dns
@@ -3864,7 +3864,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--wgbl6a
-    name: "XN--WGBL6A ccTLD"
+    name: "Qatar (قطر) ccTLD"
     host: "a.registry.qa"
     port: 53
     probe: dns
@@ -3874,7 +3874,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--xhq521b
-    name: "XN--XHQ521B ccTLD"
+    name: "Guangdong (广东) ccTLD"
     host: "ta.ngtld.cn"
     port: 53
     probe: dns
@@ -3884,7 +3884,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--xkc2al3hye2a
-    name: "XN--XKC2AL3HYE2A ccTLD"
+    name: "Sri Lanka (இலங்கை) ccTLD"
     host: "h.nic.lk"
     port: 53
     probe: dns
@@ -3894,7 +3894,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--xkc2dl3a5ee0h
-    name: "XN--XKC2DL3A5EE0H ccTLD"
+    name: "India (இந்தியா) ccTLD"
     host: "ns1.registry.in"
     port: 53
     probe: dns
@@ -3904,7 +3904,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--y9a3aq
-    name: "XN--Y9A3AQ ccTLD"
+    name: "Armenia (հայ) ccTLD"
     host: "fork.sth.dnsnode.net"
     port: 53
     probe: dns
@@ -3914,7 +3914,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--yfro4i67o
-    name: "XN--YFRO4I67O ccTLD"
+    name: "Singapore (新加坡) ccTLD"
     host: "dsany2.sgnic.sg"
     port: 53
     probe: dns
@@ -3924,7 +3924,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--ygbi2ammx
-    name: "XN--YGBI2AMMX ccTLD"
+    name: "Palestinian Territories (فلسطين) ccTLD"
     host: "dns1.gov.ps"
     port: 53
     probe: dns
@@ -3934,7 +3934,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-xn--zfr164b
-    name: "XN--ZFR164B ccTLD"
+    name: "Government affairs (政务) ccTLD"
     host: "ta.ngtld.cn"
     port: 53
     probe: dns
@@ -3944,7 +3944,7 @@ targets:
     country: "XN"
     tier: 3
   - id: cctld-ye
-    name: "YE ccTLD"
+    name: "Yemen ccTLD"
     host: "d.tld.ye"
     port: 53
     probe: dns
@@ -3954,7 +3954,7 @@ targets:
     country: "YE"
     tier: 3
   - id: cctld-yt
-    name: "YT ccTLD"
+    name: "Mayotte ccTLD"
     host: "d.nic.fr"
     port: 53
     probe: dns
@@ -3964,7 +3964,7 @@ targets:
     country: "YT"
     tier: 3
   - id: cctld-za
-    name: "ZA ccTLD"
+    name: "South Africa ccTLD"
     host: "nsza.is.co.za"
     port: 53
     probe: dns
@@ -3974,7 +3974,7 @@ targets:
     country: "ZA"
     tier: 3
   - id: cctld-zm
-    name: "ZM ccTLD"
+    name: "Zambia ccTLD"
     host: "gransy.nic.zm"
     port: 53
     probe: dns
@@ -3984,7 +3984,7 @@ targets:
     country: "ZM"
     tier: 3
   - id: cctld-zw
-    name: "ZW ccTLD"
+    name: "Zimbabwe ccTLD"
     host: "ns1.liquidtelecom.net"
     port: 53
     probe: dns

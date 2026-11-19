@@ -77,7 +77,7 @@ func ParseCountryAnchors(body string) []Entry {
 	for _, tld := range tlds {
 		out = append(out, Entry{
 			ID:     "cctld-" + tld,
-			Name:   strings.ToUpper(tld) + " ccTLD",
+			Name:   CountryAnchorName(tld),
 			Host:   chosen[tld],
 			Port:   53,
 			Probe:  "dns",

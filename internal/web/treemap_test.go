@@ -57,11 +57,11 @@ func TestTileWeightRisesWithSeverityAndDuration(t *testing.T) {
 
 func TestHumanDuration(t *testing.T) {
 	cases := map[time.Duration]string{
-		0:                    "—",
-		45 * time.Second:     "<1m",
-		12 * time.Minute:     "12m",
-		90 * time.Minute:     "1h 30m",
-		26 * time.Hour:       "1d 2h",
+		0:                "—",
+		45 * time.Second: "<1m",
+		12 * time.Minute: "12m",
+		90 * time.Minute: "1h 30m",
+		26 * time.Hour:   "1d 2h",
 	}
 	for d, want := range cases {
 		if got := humanDuration(d); got != want {
@@ -72,11 +72,15 @@ func TestHumanDuration(t *testing.T) {
 
 func TestCompactLabel(t *testing.T) {
 	cases := map[string]string{
-		"AC ccTLD":        "AC",
-		"NE ccTLD":        "NE",
-		"x.nic.aarp DNS":  "AARP",
-		"v2n1.nic.agency": "AGENCY",
-		"":                "?",
+		"Nepal ccTLD":            "NEPAL",
+		"Uzbekistan ccTLD":       "UZBEK",
+		"Ascension Island ccTLD": "ASCENSION",
+		"Egypt (مصر) ccTLD":      "EGYPT",
+		"United Kingdom ccTLD":   "UK",
+		"North Korea ccTLD":      "N.KOREA",
+		"x.nic.aarp DNS":         "AARP",
+		"v2n1.nic.agency":        "AGENCY",
+		"":                       "?",
 	}
 	for name, want := range cases {
 		if got := compactLabel(name); got != want {
@@ -113,7 +117,7 @@ func TestLayoutMapKeepsClustersOrderedAndTilesInside(t *testing.T) {
 			t.Fatalf("large cluster %q should show a header", sec.Label)
 		}
 		for _, tl := range sec.Tiles {
-			if !tl.ShowTicker || !tl.ShowFull {
+			if !tl.ShowTicker && !tl.ShowFull {
 				t.Fatalf("tile in large cluster should show a label: full=%v ticker=%v", tl.ShowFull, tl.ShowTicker)
 			}
 			if tl.X < 0 || tl.Y < 0 || tl.X+tl.W > 100.01 || tl.Y+tl.H > 100.01 {

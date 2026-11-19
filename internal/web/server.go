@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/ihi"
@@ -3044,7 +3045,7 @@ func (s *server) handleFeeds(w http.ResponseWriter, r *http.Request) {
 		row := feedEventView{
 			Feed: e.Feed, ExternalID: e.ExternalID, Kind: e.Kind,
 			Severity: e.Severity, Country: e.Country, ASN: e.ASN,
-			StartedAt: e.StartedAt.UTC().Format(time.RFC3339),
+			StartedAt:  e.StartedAt.UTC().Format(time.RFC3339),
 			ObservedAt: e.ObservedAt.UTC().Format(time.RFC3339),
 		}
 		if !e.EndedAt.IsZero() {
@@ -3321,13 +3322,41 @@ func humanDuration(d time.Duration) string {
 	return fmt.Sprintf("%dd %dh", h/24, h%24)
 }
 
-// compactLabel makes a short, ticker-like label for small tiles; the full name
-// stays in the tooltip. Domain-like names use their longest label ("aarp" from
-// "x.nic.aarp"), which is more recognisable than the first character.
+// tickerAliases keep multi-word names that would otherwise all read "UNITED"
+// recognisable on a small tile. The full expanded name is always in the tooltip
+// and in the Worst-right-now panel.
+var tickerAliases = map[string]string{
+	"United Kingdom":          "UK",
+	"United States":           "US",
+	"United Arab Emirates":    "UAE",
+	"North Korea":             "N.KOREA",
+	"South Korea":             "S.KOREA",
+	"Congo - Brazzaville":     "CONGO-B",
+	"Congo - Kinshasa":        "CONGO-K",
+	"Hong Kong SAR China":     "HONG KONG",
+	"Macau SAR China":         "MACAU",
+	"Palestinian Territories": "PALESTINE",
+	"Uzbekistan":              "UZBEK",
+	"Kazakhstan":              "KAZAKH",
+	"Madagascar":              "MADAGASCAR",
+}
+
+// compactLabel makes a short, readable ticker for small tiles. ccTLD names are
+// expanded ("NP ccTLD" is stored as "Nepal ccTLD"), so the ticker is built from
+// the country name rather than the opaque two-letter code. IDN names carry the
+// Unicode form in parentheses ("Egypt (مصر)"); only the English part is used
+// here. The full name stays in the tooltip. Domain-like names use their longest
+// label ("aarp" from "x.nic.aarp"), which is more recognisable than a letter.
 func compactLabel(name string) string {
 	s := strings.TrimSpace(name)
 	for _, suffix := range []string{" ccTLD", " DNS", " HTTP", " anchor"} {
 		s = strings.TrimSuffix(s, suffix)
+	}
+	if i := strings.Index(s, " ("); i > 0 {
+		s = strings.TrimSpace(s[:i])
+	}
+	if alias, ok := tickerAliases[s]; ok {
+		return alias
 	}
 	fields := strings.Fields(s)
 	if len(fields) == 0 {
@@ -3344,9 +3373,12 @@ func compactLabel(name string) string {
 		}
 		tok = best
 	}
-	tok = strings.ToUpper(strings.Trim(tok, ".-_/"))
-	if len(tok) > 6 {
-		tok = tok[:6]
+	if len(fields) > 1 && utf8.RuneCountInString(tok)+1+utf8.RuneCountInString(fields[1]) <= 10 {
+		tok += " " + strings.Trim(fields[1], "&.-")
+	}
+	tok = strings.ToUpper(strings.Trim(tok, ".-_/& "))
+	if utf8.RuneCountInString(tok) > 10 {
+		tok = string([]rune(tok)[:10])
 	}
 	if tok == "" {
 		return "?"
@@ -3365,6 +3397,34 @@ func tileDetail(t board.Target) string {
 // out in aspect-correct units keeps boxes near-square instead of stretched into
 // slivers where a name cannot fit.
 const mapAspect = 2.8
+
+// mapWidthPx / mapHeightPx are conservative estimates of the rendered treemap
+// used only to decide which label fits; the layout itself stays percentage-based.
+// Gating on estimated pixels rather than on a fraction of the parent block
+// avoids showing a full name in a 20px tile just because that tile is 40% of a
+// tiny cluster. Under-estimating is deliberate: a colour-only cell with a full
+// tooltip is better than an ellipsised name.
+const (
+	mapWidthPx  = 900.0
+	mapHeightPx = 480.0
+)
+
+// textWidthPx crudely measures a label at the tile font sizes. Non-Latin
+// glyphs are wider, so this errs on the side of the shorter ticker label.
+func textWidthPx(s string) float64 {
+	w := 0.0
+	for _, r := range s {
+		switch {
+		case r == ' ':
+			w += 4
+		case r > 127:
+			w += 11
+		default:
+			w += 7
+		}
+	}
+	return w
+}
 
 func layoutMap(sectors []*mapSector) {
 	layoutW, layoutH := 100.0*mapAspect, 100.0
@@ -3386,11 +3446,14 @@ func layoutMap(sectors []*mapSector) {
 		for _, tl := range sec.Tiles {
 			tl.X, tl.W = tl.X/tw*100, tl.W/tw*100
 			tl.Y, tl.H = tl.Y/th*100, tl.H/th*100
-			// Gate text on rendered size: a box too small for a label becomes
-			// colour-only, with the full name and detail in its tooltip.
-			tl.ShowFull = tl.W >= 9 && tl.H >= 7
-			tl.ShowTicker = tl.W >= 3.5 && tl.H >= 4
-			tl.ShowSub = tl.W >= 7 && tl.H >= 9
+			// Estimate the tile's real pixel box, then show the longest label
+			// that fits without ellipsis. A box too small for any text stays a
+			// colour-only heat-map cell with the full detail in its tooltip.
+			pxW := tl.W / 100 * sec.W / 100 * mapWidthPx
+			pxH := tl.H / 100 * sec.H / 100 * mapHeightPx
+			tl.ShowFull = pxW >= textWidthPx(tl.Label)+12 && pxH >= 34
+			tl.ShowTicker = !tl.ShowFull && pxW >= textWidthPx(tl.Ticker)+10 && pxH >= 18
+			tl.ShowSub = tl.ShowFull && pxW >= 80 && pxH >= 52
 		}
 	}
 }
