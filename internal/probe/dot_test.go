@@ -65,7 +65,7 @@ func TestDoTQuery(t *testing.T) {
 					return
 				}
 				resp := dnsmessage.Message{
-					Header: dnsmessage.Header{ID: msg.ID, Response: true, RecursionAvailable: true},
+					Header:    dnsmessage.Header{ID: msg.ID, Response: true, RecursionAvailable: true},
 					Questions: msg.Questions,
 					Answers: []dnsmessage.Resource{{
 						Header: dnsmessage.ResourceHeader{Name: msg.Questions[0].Name, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET, TTL: 60},

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,11 +18,11 @@ import (
 type fakeFetcher struct {
 	events []feeds.Event
 	err    error
-	calls  int
+	calls  atomic.Int64
 }
 
 func (f *fakeFetcher) Fetch(context.Context) ([]feeds.Event, error) {
-	f.calls++
+	f.calls.Add(1)
 	return f.events, f.err
 }
 
@@ -166,7 +167,7 @@ func TestLoopPollsImmediatelyAndStops(t *testing.T) {
 	}()
 
 	deadline := time.After(2 * time.Second)
-	for src.calls == 0 {
+	for src.calls.Load() == 0 {
 		select {
 		case <-deadline:
 			t.Fatal("loop did not poll immediately")

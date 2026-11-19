@@ -9,6 +9,13 @@ import (
 	"testing"
 )
 
+func powershellBinary() (string, error) {
+	if runtime.GOOS == "windows" {
+		return exec.LookPath("powershell.exe")
+	}
+	return exec.LookPath("pwsh")
+}
+
 // TestDeployDryRunPrintsThePipeline pins the contract a scheduled run depends on:
 // the script must print what it would do and touch nothing, so a cron job can
 // be exercised without Docker and without risking the running container.
@@ -21,8 +28,18 @@ func TestDeployDryRunPrintsThePipeline(t *testing.T) {
 	}
 	script := filepath.Join(root, "scripts", "deploy.ps1")
 
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
-		"-File", script, "-DryRun")
+	// Windows ships powershell.exe; CI's Ubuntu runners ship pwsh. Either can
+	// run this script in dry-run mode, so use whichever is installed.
+	ps, err := powershellBinary()
+	if err != nil {
+		t.Skip("PowerShell is not installed; deploy.ps1 is exercised where it is available")
+	}
+	args := []string{"-NoProfile"}
+	if runtime.GOOS == "windows" {
+		args = append(args, "-ExecutionPolicy", "Bypass")
+	}
+	args = append(args, "-File", script, "-DryRun")
+	cmd := exec.Command(ps, args...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out

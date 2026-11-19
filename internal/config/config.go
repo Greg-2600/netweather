@@ -83,8 +83,8 @@ type Target struct {
 	ICMPAnchor bool   `yaml:"icmp_anchor"`
 	// Family is the IP family for DNS/DoH/DoT queries and address handling:
 	// 4 (default) or 6. HTTP/TCP/TLS targets dial the host as given.
-	Family     int    `yaml:"family"`
-	Expect     Expect `yaml:"expect"`
+	Family int    `yaml:"family"`
+	Expect Expect `yaml:"expect"`
 }
 
 // Expect is the semantic contract, mirroring classify.Expected.

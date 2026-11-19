@@ -28,11 +28,11 @@ const RISLiveWSFeed = "ris-live-ws"
 const DefaultRISLiveWSURL = "wss://ris-live.ripe.net/v1/ws/?client=netweather"
 
 const (
-	defaultWSFlushEvery = 10 * time.Second
+	defaultWSFlushEvery  = 10 * time.Second
 	defaultWSDialBackoff = time.Second
-	defaultWSMaxBackoff = time.Minute
-	defaultWSReadBuffer = 1 << 20
-	defaultWSBatchSize = 128
+	defaultWSMaxBackoff  = time.Minute
+	defaultWSReadBuffer  = 1 << 20
+	defaultWSBatchSize   = 128
 )
 
 // WSConn is the narrow part of a WebSocket connection the stream needs. Both
@@ -53,11 +53,11 @@ type WSConn interface {
 // the poller still works when a WebSocket cannot traverse a network, and the
 // stream is opt-in because it holds a persistent connection to a third party.
 type RISLiveWS struct {
-	URL   string
-	ASNs  []int
-	Sink  Sink
+	URL    string
+	ASNs   []int
+	Sink   Sink
 	Dialer *netx.Dialer
-	Now   func() time.Time
+	Now    func() time.Time
 
 	// Dial is an optional seam for tests. When nil, the stream dials through
 	// netx so this path obeys the same egress policy as every other probe.
@@ -80,11 +80,11 @@ func NewRISLiveWS(sink Sink, asns []int) *RISLiveWS {
 	cp := make([]int, len(asns))
 	copy(cp, asns)
 	return &RISLiveWS{
-		URL:   DefaultRISLiveWSURL,
-		ASNs:  cp,
-		Sink:  sink,
+		URL:    DefaultRISLiveWSURL,
+		ASNs:   cp,
+		Sink:   sink,
 		Dialer: netx.New(),
-		Now:   time.Now,
+		Now:    time.Now,
 	}
 }
 
@@ -338,10 +338,10 @@ func (r *RISLiveWS) parseFrame(frame []byte) (store.ExternalEvent, bool) {
 	})
 
 	return store.ExternalEvent{
-		Feed: RISLiveWSFeed,
+		Feed:       RISLiveWSFeed,
 		ExternalID: fmt.Sprintf("risws:%s:%s", msg.Host, msg.ID),
-		Kind: kind, Severity: severity,
-		ASN: asnForMessage(msg.Path, r.ASNs, msg.PeerASN),
+		Kind:       kind, Severity: severity,
+		ASN:       asnForMessage(msg.Path, r.ASNs, msg.PeerASN),
 		StartedAt: started, ObservedAt: r.now(),
 		Payload: capPayload(string(payload), 8<<10),
 	}, true

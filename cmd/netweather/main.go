@@ -38,7 +38,6 @@ import (
 	"github.com/Greg-2600/netweather/internal/feeds"
 	"github.com/Greg-2600/netweather/internal/ihi"
 	"github.com/Greg-2600/netweather/internal/incidents"
-	"github.com/Greg-2600/netweather/internal/webhook"
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/metrics"
 	"github.com/Greg-2600/netweather/internal/netx"
@@ -52,6 +51,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/verdict"
 	"github.com/Greg-2600/netweather/internal/version"
 	"github.com/Greg-2600/netweather/internal/web"
+	"github.com/Greg-2600/netweather/internal/webhook"
 )
 
 func main() {

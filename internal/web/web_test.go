@@ -748,8 +748,8 @@ func TestBoardFocusWithNothingToShow(t *testing.T) {
 }
 
 type fakeFeedHealth struct {
-	states  []store.FeedState
-	events  []store.ExternalEvent
+	states    []store.FeedState
+	events    []store.ExternalEvent
 	statesErr error
 	eventsErr error
 }
@@ -2624,7 +2624,8 @@ func TestWorldShowsTheFeedOverlay(t *testing.T) {
 }
 
 func newServerWithWorldFeeds(t *testing.T, token string, m *board.Memory,
-	events web.CountryEvents, levels web.CountryLevels) *httptest.Server {
+	events web.CountryEvents, levels web.CountryLevels,
+) *httptest.Server {
 	t.Helper()
 
 	h, err := web.New(web.Deps{

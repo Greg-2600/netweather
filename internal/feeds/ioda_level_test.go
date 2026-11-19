@@ -198,7 +198,7 @@ func TestLevelPollerRecordsFailure(t *testing.T) {
 
 	sink := &fakeLevelSink{}
 	p := &feeds.LevelPoller{
-		Feed: "ioda-level",
+		Feed:   "ioda-level",
 		Source: &fakeLevelFetcher{err: errors.New("summary unavailable")},
 		Sink:   sink,
 	}

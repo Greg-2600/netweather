@@ -51,9 +51,9 @@ type mapSector struct {
 	Order int
 	// ShowHead reports whether the block is large enough to carry a header.
 	// Tiny blocks spend every pixel on tiles instead of an unreadable label.
-	ShowHead bool
+	ShowHead   bool
 	X, Y, W, H float64
-	Tiles []*mapTile
+	Tiles      []*mapTile
 }
 
 type sqItem struct {

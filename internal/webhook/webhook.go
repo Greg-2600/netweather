@@ -19,10 +19,10 @@ import (
 
 // Notifier posts incident open/close events to a URL.
 type Notifier struct {
-	URL     string
-	Secret  string
-	Client  *http.Client
-	Logger  *slog.Logger
+	URL    string
+	Secret string
+	Client *http.Client
+	Logger *slog.Logger
 }
 
 // New builds a Notifier. A nil or empty URL disables delivery.

@@ -80,6 +80,10 @@ type Internet struct {
 
 	clockLn  net.Listener
 	egressLn net.Listener
+
+	// serverMu guards servers: the HTTPS serve goroutine and the control
+	// endpoint goroutines append to it while Close may be reading it.
+	serverMu sync.Mutex
 	servers  []*http.Server
 
 	mu       sync.Mutex
@@ -219,7 +223,9 @@ func (i *Internet) listen() error {
 // serveEndpoint starts a plain-HTTP listener for one control endpoint.
 func (i *Internet) serveEndpoint(ln net.Listener, handler http.HandlerFunc) {
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
+	i.serverMu.Lock()
 	i.servers = append(i.servers, srv)
+	i.serverMu.Unlock()
 	go func() { _ = srv.Serve(ln) }()
 }
 
@@ -316,7 +322,9 @@ func (i *Internet) serveHTTPS() {
 		Handler:           http.HandlerFunc(i.handleHTTPS),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+	i.serverMu.Lock()
 	i.servers = append(i.servers, srv)
+	i.serverMu.Unlock()
 	_ = srv.Serve(i.httpsLn)
 }
 
@@ -358,7 +366,10 @@ func (i *Internet) handleHTTPS(w http.ResponseWriter, r *http.Request) {
 // Close stops every listener and server. It is safe to call twice.
 func (i *Internet) Close() error {
 	i.closeOnce.Do(func() {
-		for _, srv := range i.servers {
+		i.serverMu.Lock()
+		servers := append([]*http.Server(nil), i.servers...)
+		i.serverMu.Unlock()
+		for _, srv := range servers {
 			_ = srv.Close()
 		}
 		for _, c := range []interface{ Close() error }{i.dnsConn, i.httpsLn, i.socksLn, i.clockLn, i.egressLn} {

@@ -28,7 +28,7 @@ type remoteSink struct {
 	server         string
 	vantage        string
 	token          string
-	signingSecret   string
+	signingSecret  string
 	clientCertPath string
 	clientKeyPath  string
 	client         *http.Client

@@ -38,10 +38,10 @@ type Probe struct {
 
 // Target is the persisted materialisation of a config entry.
 type Target struct {
-	ID      string
-	Host    string
-	Port    int
-	Probe   string
+	ID    string
+	Host  string
+	Port  int
+	Probe string
 	// Query is the DNS question for dns/doh/dot targets. It is part of the
 	// natural key so ccTLD anchors asking different questions of one server
 	// can coexist (migration 0024).

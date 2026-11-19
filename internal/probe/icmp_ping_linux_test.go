@@ -34,6 +34,12 @@ func TestPingSocketReachesLoopback(t *testing.T) {
 	if got.ErrorClass == "icmp_unavailable" {
 		t.Skipf("no ICMP socket on this host: %v", got.Err)
 	}
+	if got.ErrorClass == "icmp_unreachable" {
+		// The socket opened but the kernel refused the echo. Loopback can never
+		// be genuinely unreachable, so this is a sandbox restriction (for
+		// example a ping_group_range that permits open() but not send()).
+		t.Skipf("kernel refused the loopback ICMP echo: %v", got.Err)
+	}
 	if got.Replied != 1 {
 		t.Fatalf("loopback echo = %+v, want one reply", got)
 	}

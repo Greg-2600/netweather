@@ -30,8 +30,8 @@ const IODALevelSource = "ioda-summary"
 // The upstream accepts a larger limit, but an early field trial reads a small,
 // stable snapshot; a bounded poll is the whole point of this feed.
 const (
-	MinIODALevelLimit = 1
-	MaxIODALevelLimit = 100
+	MinIODALevelLimit     = 1
+	MaxIODALevelLimit     = 100
 	DefaultIODALevelLimit = 25
 )
 
