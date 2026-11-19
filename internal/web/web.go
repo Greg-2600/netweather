@@ -50,6 +50,9 @@ type Deps struct {
 	Provider ProviderStatus
 	// CountryEvents supplies the world-view feed overlay.
 	CountryEvents CountryEvents
+	// CountryLevels supplies the bounded per-country level snapshot. Nil leaves
+	// tiles without a level badge rather than inventing one.
+	CountryLevels CountryLevels
 	// Corridors supplies the corridor page. Nil shows a note, not an empty page.
 	Corridors CorridorStatus
 	// Health computes the Internet Health Index for the board chip and the
@@ -180,11 +183,13 @@ type Corroboration interface {
 	Corroboration(ctx context.Context, inc store.Incident, now time.Time, limit int) ([]store.ExternalEvent, error)
 }
 
-// FeedHealth supplies feed health for the board's staleness strip. A feed that
-// has stopped answering must be visible on the board, not only in the API
-// (DESIGN.md P5).
+// FeedHealth supplies feed health for the board's staleness strip and the feed
+// health page. A feed that has stopped answering must be visible on the board,
+// not only in the API (DESIGN.md P5). ExternalEvents supplies the recent
+// corroborating events so the feeds page can show evidence, not only status.
 type FeedHealth interface {
 	FeedStates(ctx context.Context) ([]store.FeedState, error)
+	ExternalEvents(ctx context.Context, limit int) ([]store.ExternalEvent, error)
 }
 
 // TargetCorroboration supplies feed events for a target's country or ASN. Nil
@@ -205,6 +210,13 @@ type ProviderStatus interface {
 // Nil means the tiles render without an overlay rather than with a fake one.
 type CountryEvents interface {
 	RecentCountryEvents(ctx context.Context, since time.Time) (map[string]store.ExternalEvent, error)
+}
+
+// CountryLevels supplies the bounded, server-side per-country level snapshot
+// written by the ioda-level feed (DESIGN.md §10.3). The page reads one stored
+// map; it never calls the upstream once per country.
+type CountryLevels interface {
+	CountryLevels(ctx context.Context) (map[string]store.CountryLevel, error)
 }
 
 // CorridorStatus supplies the corridor page: each corridor's latest sample,

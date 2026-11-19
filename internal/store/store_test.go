@@ -68,8 +68,8 @@ func TestStatsProveThePragmas(t *testing.T) {
 	if !stats.ForeignKeys {
 		t.Error("foreign_keys is off")
 	}
-	if stats.SchemaVersion != 23 {
-		t.Errorf("schema version = %d, want 23", stats.SchemaVersion)
+	if stats.SchemaVersion != 25 {
+		t.Errorf("schema version = %d, want 25", stats.SchemaVersion)
 	}
 	if stats.Path != path {
 		t.Errorf("path = %q", stats.Path)
@@ -97,7 +97,7 @@ func TestReopenIsIdempotent(t *testing.T) {
 	defer func() { _ = second.Close() }()
 
 	version, err := second.SchemaVersion(ctx)
-	if err != nil || version != 23 {
+	if err != nil || version != 25 {
 		t.Fatalf("version = %d, err = %v", version, err)
 	}
 }
@@ -370,6 +370,34 @@ func TestUpsertTargetUpdatesExisting(t *testing.T) {
 	}
 	if rows[0].Name != "Chase Bank" || rows[0].Tier != 1 {
 		t.Fatalf("row = %+v", rows[0])
+	}
+}
+
+func TestUpsertTargetDistinguishesDNSQuestions(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	ctx := context.Background()
+	base := store.Target{
+		Host: "fork.sth.dnsnode.net", Port: 53, Probe: "dns",
+		Class: "country", Tier: 3, IntervalS: 120,
+	}
+	uk := base
+	uk.ID, uk.Name, uk.Query = "cctld-uk", "UK ccTLD", "uk"
+	de := base
+	de.ID, de.Name, de.Query = "cctld-de", "DE ccTLD", "de"
+	if err := s.UpsertTarget(ctx, uk); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertTarget(ctx, de); err != nil {
+		t.Fatalf("second ccTLD anchor was rejected: %v", err)
+	}
+	ids, err := s.TargetIDs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("target ids = %v, want two anchors", ids)
 	}
 }
 

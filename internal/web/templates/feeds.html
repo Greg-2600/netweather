@@ -17,6 +17,7 @@
     <a class="nav" href="/coverage">Coverage</a>
     <a class="nav" href="/incidents">Incidents</a>
     <a class="nav" href="/feeds">Feeds</a>
+    <a class="nav" href="/map">Map</a>
   </header>
 
   <main>
@@ -49,6 +50,33 @@
     <p class="muted" data-testid="no-feeds">
       No feeds are configured. The core monitor works with zero feeds; enable
       them with NETWEATHER_FEEDS.
+    </p>
+    {{end}}
+
+    {{if .Events}}
+    <h2 class="page-title">Recent external events</h2>
+    <table class="probes" data-testid="event-list">
+      <thead>
+        <tr><th>Feed</th><th>Kind</th><th>Severity</th><th>Country</th><th>ASN</th><th>Started</th><th>Ended</th><th>Observed</th></tr>
+      </thead>
+      <tbody>
+        {{range .Events}}
+        <tr data-testid="event-row">
+          <td class="mono">{{.Feed}}</td>
+          <td>{{.Kind}}</td>
+          <td>{{printf "%.2f" .Severity}}</td>
+          <td>{{if .Country}}{{.Country}}{{else}}-{{end}}</td>
+          <td>{{if .ASN}}{{.ASN}}{{else}}-{{end}}</td>
+          <td class="mono">{{.StartedAt}}</td>
+          <td class="mono">{{if .EndedAt}}{{.EndedAt}}{{else}}ongoing{{end}}</td>
+          <td class="mono">{{.ObservedAt}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="muted" data-testid="no-events">
+      No recent external events.
     </p>
     {{end}}
   </main>

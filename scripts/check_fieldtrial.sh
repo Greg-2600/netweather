@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# scripts/check_fieldtrial.sh
+#
+# Verifies the field trial after a deploy, or soaks it for a while. Every check
+# reads the running instance; nothing here invents a healthy answer.
+#
+#   ./scripts/check_fieldtrial.sh                  # one pass
+#   CYCLES=12 SLEEP=300 ./scripts/check_fieldtrial.sh   # soak for ~1 hour
+#
+# Token resolution (first match wins): NETWEATHER_UI_TOKEN, TOKEN_FILE, then the
+# nw-fieldtrial-secret Docker volume written by deploy_fieldtrial.sh.
+#   EXPECTED_TARGETS=749 EXPECTED_CORRIDORS=10 BASE_URL=http://localhost:2600  (overridable)
+
+set -uo pipefail
+
+cd "$(dirname "$0")/.."
+
+BASE_URL="${BASE_URL:-http://localhost:2600}"
+EXPECTED_TARGETS="${EXPECTED_TARGETS:-749}"
+EXPECTED_CORRIDORS="${EXPECTED_CORRIDORS:-10}"
+SECRET="${SECRET:-nw-fieldtrial-secret}"
+CYCLES="${CYCLES:-1}"
+SLEEP="${SLEEP:-60}"
+TOKEN_FILE="${TOKEN_FILE:-}"
+
+failures=0
+check() {
+    local name="$1" ok="$2" detail="${3:-}"
+    if [ "$ok" = "0" ]; then
+        printf 'PASS  %-28s %s\n' "$name" "$detail"
+    else
+        printf 'FAIL  %-28s %s\n' "$name" "$detail"
+        failures=$((failures + 1))
+    fi
+}
+
+TOKEN="${NETWEATHER_UI_TOKEN:-}"
+if [ -z "$TOKEN" ] && [ -n "$TOKEN_FILE" ] && [ -f "$TOKEN_FILE" ]; then
+    TOKEN="$(tr -d '\r\n' < "$TOKEN_FILE")"
+fi
+if [ -z "$TOKEN" ]; then
+    TOKEN="$(docker run --rm -v "${SECRET}:/s:ro" alpine:3.20 cat /s/ui_token 2>/dev/null || true)"
+fi
+
+api() {
+    curl -fsS --max-time 10 -H "Authorization: Bearer ${TOKEN}" "$BASE_URL$1" 2>/dev/null
+}
+
+# The UI uses a session cookie, not a bearer token. Log in once per cycle and
+# reuse the jar for every page: logging in separately for /map, /corridors and /
+# would trip the login rate limiter on a short check.
+ui_login() {
+    local jar="$1" page csrf
+    page="$(curl -fsS --max-time 10 -c "$jar" "$BASE_URL/login" 2>/dev/null)" || return 1
+    csrf="$(printf '%s' "$page" | grep -oE 'name="csrf" value="[^"]+"' | head -1 \
+        | sed -E 's/.*value="([^"]+)".*/\1/')"
+    [ -n "$csrf" ] || return 1
+    curl -fsS --max-time 10 -b "$jar" -c "$jar" -o /dev/null -X POST \
+        --data-urlencode "csrf=$csrf" --data-urlencode "token=$TOKEN" \
+        --data-urlencode "next=/" "$BASE_URL/login" 2>/dev/null
+}
+
+ui_page() {
+    curl -fsS --max-time 10 -b "$1" "$BASE_URL$2" 2>/dev/null
+}
+
+pass() {
+    local cycle=1
+    while [ "$cycle" -le "$CYCLES" ]; do
+        echo "==> field-trial check $cycle/$CYCLES ($(date -u +%FT%TZ))"
+        failures=0
+
+        # 1. Liveness.
+        health_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$BASE_URL/healthz" 2>/dev/null || true)"
+        check "/healthz" "$([ "$health_code" = "200" ] && echo 0 || echo 1)" "HTTP $health_code"
+
+        # 2. Fleet size. Count target ids in the authenticated API response.
+        targets="$(api /api/v1/targets)"
+        target_count="$(printf '%s' "$targets" | grep -oE '"id"[[:space:]]*:' | wc -l | tr -d ' ')"
+        check "target fleet" "$([ "$target_count" = "$EXPECTED_TARGETS" ] && echo 0 || echo 1)" \
+            "$target_count targets (want $EXPECTED_TARGETS)"
+
+        # 3. Auth actually gates the API; an anonymous read must not be a 200.
+        anon_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$BASE_URL/api/v1/targets" 2>/dev/null || true)"
+        check "API auth" "$([ "$anon_code" != "200" ] && echo 0 || echo 1)" "anonymous HTTP $anon_code"
+
+        # One authenticated UI session per cycle, shared by every page read.
+        jar="$(mktemp)"
+        if ! ui_login "$jar"; then echo "WARN  UI login failed; page checks may be empty"; fi
+
+        # 4. The treemap still renders the whole fleet (session-authenticated).
+        rendered_map="$(ui_page "$jar" /map || true)"
+        tiles="$(printf '%s' "$rendered_map" | grep -o 'data-testid="map-tile"' | wc -l | tr -d ' ')"
+        check "/map tiles" "$([ "$tiles" = "$EXPECTED_TARGETS" ] && echo 0 || echo 1)" "$tiles tiles"
+
+        # 4b. Corridors are operator-supplied; confirm the configured pairs are
+        #     actually sampled and rendered rather than leaving an empty page.
+        rendered_corridors="$(ui_page "$jar" /corridors || true)"
+        corridor_rows="$(printf '%s' "$rendered_corridors" | grep -o 'data-testid="corridor-row"' | wc -l | tr -d ' ')"
+        check "/corridors rows" "$([ "$corridor_rows" = "$EXPECTED_CORRIDORS" ] && echo 0 || echo 1)" \
+            "$corridor_rows rows (want $EXPECTED_CORRIDORS)"
+
+        # 5. Bounded IODA feed has a recorded success and no repeated failures.
+        feeds="$(api /api/v1/feeds)"
+        if printf '%s' "$feeds" | grep -q '"feed":"ioda-level"'; then
+            level_line="$(printf '%s' "$feeds" | tr '}' '\n' | grep '"feed":"ioda-level"' | head -1)"
+            if printf '%s' "$level_line" | grep -q '"last_ok_at"'; then
+                check "ioda-level feed" 0 "success recorded"
+            else
+                check "ioda-level feed" 1 "configured, no success yet: $level_line"
+            fi
+        else
+            check "ioda-level feed" 1 "not present in /api/v1/feeds"
+        fi
+
+        # 6. Tor vantage came up. Prefer the doctor's live SOCKS probe; fall
+        #    back to the startup event in the API log when docker is not
+        #    reachable from this shell (e.g. a Git Bash client on Windows).
+        doctor="$(docker compose --profile tor -f compose.yaml -f compose.fieldtrial.yaml \
+            exec -T netweather /netweather doctor 2>/dev/null || true)"
+        if printf '%s' "$doctor" | grep -qE 'tor socks \(optional\).*ok'; then
+            check "tor vantage" 0 "$(printf '%s' "$doctor" | grep -E 'tor socks \(optional\)' | head -1 | tr -s ' ')"
+        elif [ "$(printf '%s' "$(ui_page "$jar" / || true)" | grep -c 'data-testid="tor-budget"')" -gt 0 ]; then
+            check "tor vantage" 0 "board shows the Tor budget (doctor unavailable here)"
+        else
+            check "tor vantage" 1 "no Tor evidence from doctor or the board"
+        fi
+        rm -f "$jar"
+
+        if [ "$failures" -ne 0 ]; then
+            echo "==> $failures check(s) failed"
+            return 1
+        fi
+        echo "==> all checks passed"
+        [ "$cycle" -lt "$CYCLES" ] && sleep "$SLEEP"
+        cycle=$((cycle + 1))
+    done
+    return 0
+}
+
+pass

@@ -1,0 +1,21 @@
+image:
+  repository: netweather
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 2600
+
+env:
+  NETWEATHER_TOKEN: "change-me"
+  NETWEATHER_DATA: /data
+
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+
+resources: {}

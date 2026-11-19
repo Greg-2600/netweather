@@ -1,0 +1,16 @@
+[Unit]
+Description=netweather internet weather station
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=netweather
+Group=netweather
+EnvironmentFile=/etc/netweather/env
+ExecStart=/usr/local/bin/netweather
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

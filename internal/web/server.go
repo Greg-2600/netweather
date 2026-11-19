@@ -76,6 +76,7 @@ func New(deps Deps) (http.Handler, error) {
 	mux.HandleFunc("/world", s.requireSession(http.HandlerFunc(s.handleWorld)).ServeHTTP)
 	mux.HandleFunc("/corridors", s.requireSession(http.HandlerFunc(s.handleCorridors)).ServeHTTP)
 	mux.HandleFunc("/feeds", s.requireSession(http.HandlerFunc(s.handleFeeds)).ServeHTTP)
+	mux.HandleFunc("/map", s.requireSession(http.HandlerFunc(s.handleMap)).ServeHTTP)
 	mux.HandleFunc("/ihi", s.requireSession(http.HandlerFunc(s.handleIHI)).ServeHTTP)
 	mux.HandleFunc("/diagnostics", s.requireSession(http.HandlerFunc(s.handleDiagnostics)).ServeHTTP)
 	mux.HandleFunc("/icon/", s.requireSession(http.HandlerFunc(s.handleIcon)).ServeHTTP)
@@ -2284,12 +2285,51 @@ type feedStateView struct {
 	Stale               bool
 }
 
+type feedEventView struct {
+	Feed       string
+	ExternalID string
+	Kind       string
+	Severity   float64
+	Country    string
+	ASN        int
+	StartedAt  string
+	EndedAt    string
+	ObservedAt string
+}
+
 type feedsView struct {
 	Insecure bool
 	NoAuth   bool
 	Version  string
 	CSRF     string
 	Feeds    []feedStateView
+	Events   []feedEventView
+}
+
+type mapView struct {
+	Insecure bool
+	NoAuth   bool
+	Version  string
+	CSRF     string
+	By       string
+	Tiles    []*mapTile
+	Sectors  []*mapSector
+	Health   *healthSummary
+}
+
+// healthSummary is the at-a-glance answer to "how healthy is the internet?",
+// with the worst offenders surfaced in urgency order.
+type healthSummary struct {
+	Total       int
+	Healthy     int
+	HealthyPct  int
+	Down        int
+	Blocked     int
+	Impaired    int
+	NoData      int
+	LongestDown time.Duration
+	Longest     string
+	Top         []*mapTile
 }
 
 type coverageView struct {
@@ -2484,6 +2524,10 @@ type worldView struct {
 	// OverlayNote explains a missing or failed feed overlay, so an empty tile
 	// is not mistaken for "no known event".
 	OverlayNote string
+	// LevelNote explains a missing or failed bounded level snapshot. It is kept
+	// separate from OverlayNote: an event overlay can be healthy while the level
+	// feed is not, and the page must not silence either fact.
+	LevelNote string
 }
 
 // countryView is one country tile. State is carried as text and glyph as well
@@ -2506,6 +2550,12 @@ type countryView struct {
 	// country-wide verdict.
 	Feed         string
 	FeedSeverity string
+	// FeedLevel is the bounded per-country level from the ioda-level feed,
+	// shown beside the raw score and source. It is relative evidence, not a
+	// country-wide verdict.
+	FeedLevel    string
+	FeedLevelSrc string
+	FeedLevelRaw string
 }
 
 // flagFor maps an ISO-3166-1 alpha-2 code to its regional-indicator pair. An
@@ -2579,6 +2629,26 @@ func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// The bounded level snapshot is read once, like the event overlay. An empty
+	// or failed level feed is stated separately so a quiet tile is never mistaken
+	// for "no current level".
+	levels := map[string]store.CountryLevel{}
+	if s.deps.CountryLevels == nil {
+		view.LevelNote = "Bounded country level is not configured on this instance."
+	} else {
+		stored, err := s.deps.CountryLevels.CountryLevels(r.Context())
+		switch {
+		case err != nil:
+			s.deps.Logger.Warn("world level snapshot failed",
+				"event", "world_level_failed", "component", "http", "error", err)
+			view.LevelNote = "Bounded country level is temporarily unavailable."
+		case len(stored) == 0:
+			view.LevelNote = "No country level snapshot has been stored yet."
+		default:
+			levels = stored
+		}
+	}
+
 	for code, members := range byCountry {
 		counts := make(map[board.State]int)
 		worst := board.StateUp
@@ -2619,6 +2689,11 @@ func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
 			row.Feed = event.Feed + " " + event.Kind
 			row.FeedSeverity = fmt.Sprintf("%.2f", event.Severity)
 		}
+		if level, ok := levels[code]; ok {
+			row.FeedLevel = fmt.Sprintf("%.2f", level.Level)
+			row.FeedLevelSrc = level.Source
+			row.FeedLevelRaw = formatCountryScore(level.Score)
+		}
 		view.Countries = append(view.Countries, row)
 	}
 
@@ -2637,6 +2712,22 @@ func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "world.html", view)
+}
+
+// formatCountryScore keeps IODA's unbounded magnitude legible on a small tile.
+// The raw value is not a percentage, so it is shown with a magnitude suffix
+// beside the normalised relative level rather than as a fake 0-1 fraction.
+func formatCountryScore(v float64) string {
+	switch {
+	case v >= 1e9:
+		return fmt.Sprintf("%.1fB", v/1e9)
+	case v >= 1e6:
+		return fmt.Sprintf("%.1fM", v/1e6)
+	case v >= 1e3:
+		return fmt.Sprintf("%.1fK", v/1e3)
+	default:
+		return fmt.Sprintf("%.0f", v)
+	}
 }
 
 // worstStateFromClass reverses the CSS class a country tile carries. It keeps
@@ -2893,12 +2984,6 @@ func (s *server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 	_ = s.tmpl.ExecuteTemplate(w, "diagnostics.html", view)
 }
 
-// scopeSelector renders the selectors a scope names. A scope always names at
-// least one; "everything" is not expressible (LOGGING.md §6).
-// handleFeeds renders the feed health page. It is the UI counterpart of
-// /api/v1/feeds: every feed's last poll, staleness, and consecutive failures,
-// plus the most recent external events. A missing reader states that feeds are
-// not configured rather than implying health.
 func (s *server) handleFeeds(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
@@ -2906,6 +2991,7 @@ func (s *server) handleFeeds(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var states []store.FeedState
+	var events []store.ExternalEvent
 	if s.deps.Feeds != nil {
 		got, err := s.deps.Feeds.FeedStates(r.Context())
 		if err != nil {
@@ -2914,6 +3000,26 @@ func (s *server) handleFeeds(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		states = got
+
+		limit := 50
+		if v := r.URL.Query().Get("limit"); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n <= 0 {
+				http.Error(w, "invalid limit", http.StatusBadRequest)
+				return
+			}
+			if n > 200 {
+				n = 200
+			}
+			limit = n
+		}
+		ev, err := s.deps.Feeds.ExternalEvents(r.Context(), limit)
+		if err != nil {
+			s.deps.Logger.Error("external events failed", "event", "feed_events_failed", "component", "http", "error", err)
+			http.Error(w, "feeds unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		events = ev
 	}
 
 	now := time.Now().UTC()
@@ -2933,6 +3039,20 @@ func (s *server) handleFeeds(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, row)
 	}
 
+	eventRows := make([]feedEventView, 0, len(events))
+	for _, e := range events {
+		row := feedEventView{
+			Feed: e.Feed, ExternalID: e.ExternalID, Kind: e.Kind,
+			Severity: e.Severity, Country: e.Country, ASN: e.ASN,
+			StartedAt: e.StartedAt.UTC().Format(time.RFC3339),
+			ObservedAt: e.ObservedAt.UTC().Format(time.RFC3339),
+		}
+		if !e.EndedAt.IsZero() {
+			row.EndedAt = e.EndedAt.UTC().Format(time.RFC3339)
+		}
+		eventRows = append(eventRows, row)
+	}
+
 	csrf, _ := s.auth.csrfFrom(r)
 	view := feedsView{
 		Insecure: s.insecure(r),
@@ -2940,10 +3060,405 @@ func (s *server) handleFeeds(w http.ResponseWriter, r *http.Request) {
 		Version:  s.deps.Version,
 		CSRF:     csrf,
 		Feeds:    rows,
+		Events:   eventRows,
 	}
 	_ = s.tmpl.ExecuteTemplate(w, "feeds.html", view)
 }
 
+func (s *server) handleMap(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	by := r.URL.Query().Get("by")
+	switch by {
+	case "health", "sector", "country", "asn":
+	default:
+		by = "health"
+	}
+
+	if s.deps.Source == nil {
+		http.Error(w, "map unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	targets, err := s.deps.Source.Snapshot(r.Context())
+	if err != nil {
+		s.deps.Logger.Error("map snapshot failed", "event", "map_snapshot_failed", "component", "http", "error", err)
+		http.Error(w, "map unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	now := time.Now()
+	groups := map[string]*mapSector{}
+	var order []string
+	health := &healthSummary{}
+	var attention []*mapTile
+	for _, t := range targets {
+		d := time.Duration(0)
+		if !t.Since.IsZero() && t.Since.Before(now) {
+			d = now.Sub(t.Since)
+		}
+
+		key := ""
+		switch by {
+		case "health":
+			key = healthClusterKey(t.State, d)
+		case "country":
+			key = t.Country
+		case "asn":
+			if t.ASName != "" {
+				key = t.ASName
+			} else if t.ASN != 0 {
+				key = fmt.Sprintf("AS%d", t.ASN)
+			}
+		default:
+			key = t.Sector
+		}
+		if key == "" {
+			key = "unknown"
+		}
+
+		sec, ok := groups[key]
+		if !ok {
+			label := key
+			if def, found := healthClusterByKey[key]; by == "health" && found {
+				label = def.Label
+			}
+			sec = &mapSector{Label: label}
+			groups[key] = sec
+			order = append(order, key)
+		}
+
+		weight := tileWeight(t.State, d)
+		tile := &mapTile{
+			Label: t.Name, Ticker: compactLabel(t.Name), Target: t.ID,
+			State: string(t.State), Group: sec.Label, Color: tileStateColor(t.State),
+			Detail: tileDetail(t), Duration: humanDuration(d), DurationS: d.Seconds(),
+			Weight: weight,
+		}
+		switch t.State {
+		case board.StateUp, board.StateUpReachability:
+			tile.Up = 1
+			health.Healthy++
+		case board.StateDown:
+			tile.Down = 1
+			health.Down++
+			if d > health.LongestDown {
+				health.LongestDown = d
+			}
+		case board.StateBlocked:
+			health.Blocked++
+		case board.StateDegraded, board.StateConfigError:
+			health.Impaired++
+		default:
+			health.NoData++
+		}
+		// Everything that is not healthy is a candidate for the front panel.
+		if tile.Up == 0 {
+			attention = append(attention, tile)
+		}
+		sec.Count++
+		sec.Area += float64(weight)
+		sec.Tiles = append(sec.Tiles, tile)
+	}
+
+	health.Total = len(targets)
+	if health.Total > 0 {
+		health.HealthyPct = int(math.Round(float64(health.Healthy) / float64(health.Total) * 100))
+	}
+	health.Longest = humanDuration(health.LongestDown)
+	sort.Slice(attention, func(i, j int) bool {
+		if attention[i].Weight != attention[j].Weight {
+			return attention[i].Weight > attention[j].Weight
+		}
+		if attention[i].DurationS != attention[j].DurationS {
+			return attention[i].DurationS > attention[j].DurationS
+		}
+		return attention[i].Label < attention[j].Label
+	})
+	if len(attention) > healthTopN {
+		attention = attention[:healthTopN]
+	}
+	health.Top = attention
+
+	// Give each cluster its colour and, in health mode, its urgency order.
+	sectors := make([]*mapSector, 0, len(order))
+	for _, key := range order {
+		sec := groups[key]
+		up, down := 0, 0
+		for _, tl := range sec.Tiles {
+			up += tl.Up
+			down += tl.Down
+		}
+		sec.Up, sec.Down = up, down
+		if by == "health" {
+			if def, found := healthClusterByKey[key]; found {
+				sec.Order, sec.Color = def.Order, def.Color
+			}
+		} else {
+			score := 0.0
+			if sec.Count > 0 {
+				score = (float64(up) - float64(down)) / float64(sec.Count)
+			}
+			sec.Color = healthColor(score, sec.Count)
+		}
+		sectors = append(sectors, sec)
+	}
+	layoutMap(sectors)
+
+	// A flat view is kept for callers/tests that just want the whole tile set.
+	var flat []*mapTile
+	for _, sec := range sectors {
+		flat = append(flat, sec.Tiles...)
+	}
+
+	csrf, _ := s.auth.csrfFrom(r)
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+	view := mapView{
+		Insecure: s.insecure(r),
+		NoAuth:   s.auth.disabled(),
+		Version:  s.deps.Version,
+		CSRF:     csrf,
+		By:       by,
+		Tiles:    flat,
+		Sectors:  sectors,
+		Health:   health,
+	}
+	_ = s.tmpl.ExecuteTemplate(w, "map.html", view)
+}
+
+const healthTopN = 8
+
+const longOutage = 30 * time.Minute
+
+// healthClusterDef is one band of the health-clustered map. Lower Order is
+// packed first so a reader sees the worst news before the healthy majority.
+type healthClusterDef struct {
+	Label string
+	Color string
+	Order int
+}
+
+var healthClusterByKey = map[string]healthClusterDef{
+	"outages-long":   {Label: "Long-running outages", Color: "#8f1d1d", Order: 0},
+	"outages-recent": {Label: "Recent outages", Color: "#b12525", Order: 1},
+	"blocked":        {Label: "Blocked / filtered", Color: "#c2661a", Order: 2},
+	"impaired":       {Label: "Degraded / config errors", Color: "#b1b125", Order: 3},
+	"no-data":        {Label: "No data yet", Color: "#7d8590", Order: 4},
+	"healthy":        {Label: "Healthy", Color: "#25b125", Order: 5},
+}
+
+func healthClusterKey(st board.State, d time.Duration) string {
+	switch st {
+	case board.StateDown:
+		if d >= longOutage {
+			return "outages-long"
+		}
+		return "outages-recent"
+	case board.StateBlocked:
+		return "blocked"
+	case board.StateDegraded, board.StateConfigError:
+		return "impaired"
+	case board.StateUnknown, board.StateUnmeasurable:
+		return "no-data"
+	default:
+		return "healthy"
+	}
+}
+
+// tileWeight is the area a target gets on the map. Severity sets the base and
+// time spent in a bad state multiplies it, so a long outage is unmistakable
+// rather than one tile among hundreds. Capped so one target cannot swallow the
+// whole map.
+func tileWeight(st board.State, d time.Duration) int {
+	if d < 0 {
+		d = 0
+	}
+	base := 8 - board.SeverityRank(st)
+	if base < 1 {
+		base = 1
+	}
+	mult := 1.0
+	switch st {
+	case board.StateDown:
+		mult = 1 + d.Minutes()/30 // doubles every half hour
+		if mult > 8 {
+			mult = 8
+		}
+	case board.StateDegraded, board.StateBlocked:
+		mult = 1 + d.Minutes()/120
+		if mult > 3 {
+			mult = 3
+		}
+	}
+	w := int(float64(base)*mult + 0.5)
+	if w < 1 {
+		w = 1
+	}
+	if w > 64 {
+		w = 64
+	}
+	return w
+}
+
+func humanDuration(d time.Duration) string {
+	if d <= 0 {
+		return "—"
+	}
+	m := int(d.Minutes())
+	if m < 1 {
+		return "<1m"
+	}
+	if m < 60 {
+		return fmt.Sprintf("%dm", m)
+	}
+	h := m / 60
+	if h < 24 {
+		return fmt.Sprintf("%dh %02dm", h, m%60)
+	}
+	return fmt.Sprintf("%dd %dh", h/24, h%24)
+}
+
+// compactLabel makes a short, ticker-like label for small tiles; the full name
+// stays in the tooltip. Domain-like names use their longest label ("aarp" from
+// "x.nic.aarp"), which is more recognisable than the first character.
+func compactLabel(name string) string {
+	s := strings.TrimSpace(name)
+	for _, suffix := range []string{" ccTLD", " DNS", " HTTP", " anchor"} {
+		s = strings.TrimSuffix(s, suffix)
+	}
+	fields := strings.Fields(s)
+	if len(fields) == 0 {
+		return "?"
+	}
+	tok := fields[0]
+	if strings.Contains(tok, ".") {
+		best := ""
+		for _, part := range strings.Split(tok, ".") {
+			part = strings.Trim(part, "-_")
+			if len(part) > len(best) {
+				best = part
+			}
+		}
+		tok = best
+	}
+	tok = strings.ToUpper(strings.Trim(tok, ".-_/"))
+	if len(tok) > 6 {
+		tok = tok[:6]
+	}
+	if tok == "" {
+		return "?"
+	}
+	return tok
+}
+
+func tileDetail(t board.Target) string {
+	if t.ErrorClass != "" {
+		return t.ErrorClass
+	}
+	return string(t.State)
+}
+
+// mapAspect approximates the treemap's pixel width/height on a desktop. Laying
+// out in aspect-correct units keeps boxes near-square instead of stretched into
+// slivers where a name cannot fit.
+const mapAspect = 2.8
+
+func layoutMap(sectors []*mapSector) {
+	layoutW, layoutH := 100.0*mapAspect, 100.0
+	layoutSectors(sectors, layoutW, layoutH)
+	for _, sec := range sectors {
+		// Normalise the cluster back into percentages for the template.
+		sec.X, sec.W = sec.X/layoutW*100, sec.W/layoutW*100
+		sec.Y, sec.H = sec.Y/layoutH*100, sec.H/layoutH*100
+		// A header needs ~22px; only reserve one when the block can spare it.
+		sec.ShowHead = sec.W >= 7 && sec.H >= 8
+
+		// Pack tiles in aspect-correct units for this block, then convert to
+		// percentages of the block for the template.
+		tw, th := sec.W*mapAspect, sec.H
+		if tw <= 0 || th <= 0 {
+			continue
+		}
+		layoutTiles(sec.Tiles, 0, 0, tw, th)
+		for _, tl := range sec.Tiles {
+			tl.X, tl.W = tl.X/tw*100, tl.W/tw*100
+			tl.Y, tl.H = tl.Y/th*100, tl.H/th*100
+			// Gate text on rendered size: a box too small for a label becomes
+			// colour-only, with the full name and detail in its tooltip.
+			tl.ShowFull = tl.W >= 9 && tl.H >= 7
+			tl.ShowTicker = tl.W >= 3.5 && tl.H >= 4
+			tl.ShowSub = tl.W >= 7 && tl.H >= 9
+		}
+	}
+}
+
+// tileStateColor maps a health state onto the same diverging green→yellow→red
+// scale a stock map uses for price change, so colour intensity reads as
+// severity: deep green for healthy, amber for degraded/blocked, deep red for
+// down, and neutral grey where there is no signal yet. It never invents a
+// numeric change — the state vocabulary is the source of truth.
+func tileStateColor(st board.State) string {
+	switch st {
+	case board.StateUp:
+		return healthColor(1, 1)
+	case board.StateUpReachability:
+		return healthColor(0.7, 1)
+	case board.StateDegraded:
+		return healthColor(0.2, 1)
+	case board.StateBlocked:
+		return healthColor(-0.45, 1)
+	case board.StateConfigError:
+		return healthColor(-0.2, 1)
+	case board.StateDown:
+		return healthColor(-1, 1)
+	case board.StateUnknown:
+		return "#b1b125"
+	default: // unmeasurable and anything without a health signal
+		return "#6b7280"
+	}
+}
+
+func healthColor(score float64, total int) string {
+	if total == 0 {
+		return "#6b7280"
+	}
+	if score > 1 {
+		score = 1
+	}
+	if score < -1 {
+		score = -1
+	}
+	hue := 120.0 * (score + 1) / 2.0
+	// HSL -> hex, because html/template's CSS sanitizer rejects hsl() in
+	// inline style attributes and emits "ZgotmplZ".
+	h, s, l := hue, 0.65, 0.42
+	c := (1 - math.Abs(2*l-1)) * s
+	hp := h / 60.0
+	x := c * (1 - math.Abs(math.Mod(hp, 2)-1))
+	var r, g, b float64
+	switch {
+	case hp < 1:
+		r, g, b = c, x, 0
+	case hp < 2:
+		r, g, b = x, c, 0
+	case hp < 3:
+		r, g, b = 0, c, x
+	case hp < 4:
+		r, g, b = 0, x, c
+	case hp < 5:
+		r, g, b = x, 0, c
+	default:
+		r, g, b = c, 0, x
+	}
+	m := l - c/2
+	return fmt.Sprintf("#%02x%02x%02x", int((r+m)*255+0.5), int((g+m)*255+0.5), int((b+m)*255+0.5))
+}
+
+// scopeSelector renders the selectors a scope names. A scope always names at
+// least one; "everything" is not expressible (LOGGING.md §6).
 func scopeSelector(scope logging.Scope) string {
 	parts := make([]string, 0, 4)
 	if scope.Target != "" {

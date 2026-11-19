@@ -1330,6 +1330,100 @@ func TestBuildFeedPollersHonoursTheDocumentedInterval(t *testing.T) {
 	}
 }
 
+func TestBuildLevelPollersIsOptInAndBounded(t *testing.T) {
+	// No t.Parallel: this test sets environment variables.
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "netweather.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	lg, err := logging.New(logging.DefaultConfig(), io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("NETWEATHER_FEEDS", "ioda")
+	if got := buildLevelPollers(st, lg); len(got) != 0 {
+		t.Fatalf("level feed without opt-in produced %+v", got)
+	}
+
+	t.Setenv("NETWEATHER_FEEDS", "ioda-level")
+	t.Setenv("NETWEATHER_IODA_LEVEL_LIMIT", "7")
+	got := buildLevelPollers(st, lg)
+	if len(got) != 1 || got[0].Feed != "ioda-level" {
+		t.Fatalf("level pollers = %+v, want one ioda-level poller", got)
+	}
+	if got[0].Every != 5*time.Minute {
+		t.Errorf("level interval = %v, want 5m", got[0].Every)
+	}
+	source, ok := got[0].Source.(*feeds.IODA)
+	if !ok {
+		t.Fatalf("level source = %T, want *feeds.IODA", got[0].Source)
+	}
+	if source.LevelLimit != 7 {
+		t.Errorf("level limit = %d, want 7", source.LevelLimit)
+	}
+	if source.SummaryEndpoint != feeds.DefaultIODASummaryEndpoint {
+		t.Errorf("summary endpoint = %q, want the compiled default", source.SummaryEndpoint)
+	}
+
+	// An out-of-range limit is a warning plus the bounded default, never an
+	// unbounded scrape of every country IODA knows.
+	t.Setenv("NETWEATHER_IODA_LEVEL_LIMIT", "9999")
+	source = buildLevelPollers(st, lg)[0].Source.(*feeds.IODA)
+	if source.LevelLimit != feeds.DefaultIODALevelLimit {
+		t.Errorf("out-of-range limit = %d, want default %d",
+			source.LevelLimit, feeds.DefaultIODALevelLimit)
+	}
+}
+
+func TestBuildRISStreamsIsOptInAndBounded(t *testing.T) {
+	// No t.Parallel: this test sets environment variables.
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "netweather.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	lg, err := logging.New(logging.DefaultConfig(), io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("NETWEATHER_FEEDS", "ris-live")
+	t.Setenv("NETWEATHER_RIS_STREAM", "")
+	t.Setenv("NETWEATHER_RIS_ASNS", "15169")
+	if got := buildRISStreams(st, lg); len(got) != 0 {
+		t.Fatalf("stream without opt-in produced %+v", got)
+	}
+
+	t.Setenv("NETWEATHER_RIS_STREAM", "true")
+	got := buildRISStreams(st, lg)
+	if len(got) != 1 {
+		t.Fatalf("streams = %d, want one", len(got))
+	}
+	if got[0].URL != feeds.DefaultRISLiveWSURL || len(got[0].ASNs) != 1 || got[0].ASNs[0] != 15169 {
+		t.Fatalf("stream = %+v, want the compiled endpoint and one ASN", got[0])
+	}
+
+	// A plaintext override is ignored, not silently honoured.
+	t.Setenv("NETWEATHER_RIS_WS_URL", "ws://ris-live.ripe.net/v1/ws/")
+	if again := buildRISStreams(st, lg); again[0].URL != feeds.DefaultRISLiveWSURL {
+		t.Errorf("plaintext override changed the stream URL to %q", again[0].URL)
+	}
+
+	// No ASNs means no stream: an unbounded subscription is not a configuration.
+	t.Setenv("NETWEATHER_RIS_ASNS", "not-a-number")
+	if got := buildRISStreams(st, lg); len(got) != 0 {
+		t.Fatalf("stream with no usable ASNs produced %+v", got)
+	}
+
+	if !feedURLIsWSS("wss://ris-live.ripe.net/v1/ws/") || feedURLIsWSS("ws://ris-live.ripe.net/v1/ws/") {
+		t.Error("feedURLIsWSS accepted a plaintext stream URL")
+	}
+}
+
 func TestSeedCommandDiffPreviewsWithoutWritingTargets(t *testing.T) {
 	dir := t.TempDir()
 	cfg := filepath.Join(dir, "targets.yaml")

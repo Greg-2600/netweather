@@ -120,6 +120,98 @@ func TestDNSEmptyAnswerIsNotSuccess(t *testing.T) {
 	}
 }
 
+// authoritativeResponse builds a NOERROR answer with the Authoritative bit set
+// and no A record. nsInAnswer puts an NS delegation in the answer section (the
+// root-server case); otherwise an SOA goes in the authority section (a ccTLD
+// apex negative answer).
+func authoritativeResponse(query []byte, nsInAnswer bool) []byte {
+	var msg dnsmessage.Message
+	if err := msg.Unpack(query); err != nil {
+		panic(err)
+	}
+	msg.Response = true
+	msg.Authoritative = true
+	msg.RecursionDesired = true
+	msg.RecursionAvailable = true
+	msg.RCode = dnsmessage.RCodeSuccess
+	owner := msg.Questions[0].Name
+	if nsInAnswer {
+		msg.Answers = []dnsmessage.Resource{{
+			Header: dnsmessage.ResourceHeader{Name: owner, Type: dnsmessage.TypeNS, Class: dnsmessage.ClassINET, TTL: 60},
+			Body:   &dnsmessage.NSResource{NS: dnsmessage.MustNewName("ns.example.")},
+		}}
+	} else {
+		msg.Authorities = []dnsmessage.Resource{{
+			Header: dnsmessage.ResourceHeader{Name: owner, Type: dnsmessage.TypeSOA, Class: dnsmessage.ClassINET, TTL: 60},
+			Body: &dnsmessage.SOAResource{
+				NS:   dnsmessage.MustNewName("ns.example."),
+				MBox: dnsmessage.MustNewName("hostmaster.example."),
+			},
+		}}
+	}
+	packed, err := msg.Pack()
+	if err != nil {
+		panic(err)
+	}
+	return packed
+}
+
+// nonAuthoritativeNODATA is the recursive-resolver case: an SOA in authority,
+// but no Authoritative bit, so it says nothing about the zone's health.
+func nonAuthoritativeNODATA(query []byte) []byte {
+	resp := authoritativeResponse(query, false)
+	var msg dnsmessage.Message
+	if err := msg.Unpack(resp); err != nil {
+		panic(err)
+	}
+	msg.Authoritative = false
+	out, err := msg.Pack()
+	if err != nil {
+		panic(err)
+	}
+	return out
+}
+
+func TestDNSAuthoritativeApexIsReachable(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		nsInAnswer bool
+	}{
+		{"soa_in_authority", false},
+		{"ns_in_answer", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			server := startDNSResponder(t, func(q []byte) []byte {
+				return authoritativeResponse(q, tc.nsInAnswer)
+			})
+			res := probe.NewDNS(nil).Do(context.Background(), server, "ac")
+			if res.Failed() {
+				t.Fatalf("authoritative apex should be reachable: %s: %v", res.ErrorClass, res.Err)
+			}
+			if !res.Authoritative {
+				t.Fatal("Authoritative flag not set on an apex delegation answer")
+			}
+			if len(res.Addresses) != 0 {
+				t.Fatalf("addresses = %v, want none", res.Addresses)
+			}
+		})
+	}
+}
+
+func TestDNSNonAuthoritativeNODATAStillFails(t *testing.T) {
+	t.Parallel()
+
+	server := startDNSResponder(t, nonAuthoritativeNODATA)
+	res := probe.NewDNS(nil).Do(context.Background(), server, "empty.example")
+	if !res.Failed() || res.ErrorClass != "dns_nodata" {
+		t.Fatalf("class = %q, want dns_nodata (authoritative bit must be required)", res.ErrorClass)
+	}
+}
+
 func TestDNSReportsRCODEs(t *testing.T) {
 	t.Parallel()
 

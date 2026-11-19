@@ -763,3 +763,248 @@ tr.low-coverage {
 .happening .section-title {
   margin-bottom: 0.25rem;
 }
+/* --- stock-market style cluster map (/map) -------------------------------- */
+/* Sectors are positioned blocks in percent coordinates. Tiles inside a block
+   use coordinates local to that block, which keeps clusters visually together
+   the way sector groups do on a market heat map. */
+
+.treemap {
+  position: relative;
+  width: 100%;
+  height: 70vh;
+  min-height: 420px;
+  background: #0b0d10;
+  border: 1px solid #2a2f36;
+}
+
+.map-sector {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #0b0d10;
+  background: #11161d;
+  overflow: hidden;
+}
+
+.map-sector-head {
+  position: relative;
+  height: 22px;
+  line-height: 22px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.map-sector-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.map-sector-stat {
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.map-sector-body {
+  position: absolute;
+  top: 22px;
+  right: 0;
+  bottom: 0;
+  left: 0;
+}
+
+/* A block with no header devotes every pixel to its tiles. */
+.map-sector > .map-sector-body:first-child {
+  top: 0;
+}
+
+.map-tile {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid #0b0d10;
+  padding: 3px;
+  color: #fff;
+  text-decoration: none;
+  display: block;
+  overflow: hidden;
+}
+
+.map-tile:hover,
+.map-tile:focus-visible {
+  outline: 2px solid #fff;
+  z-index: 2;
+}
+
+.map-tile-name {
+  display: block;
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.map-tile-sub {
+  display: block;
+  opacity: 0.8;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.map-legend .legend-scale {
+  display: inline-block;
+  width: 150px;
+  height: 10px;
+  vertical-align: middle;
+  margin-right: 0.5rem;
+  border: 1px solid #2a2f36;
+  background: linear-gradient(90deg, #b12525, #b1b125, #25b125);
+}
+
+.map-legend .up { color: #7ee787; }
+.map-legend .dn { color: #ff7b72; }
+
+/* --- at-a-glance health front panel (/map) -------------------------------- */
+
+.health-front {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--down);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 0.8rem 1rem;
+  margin: 0 0 1rem;
+}
+
+.health-headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem 1.5rem;
+}
+
+.health-score {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.health-pct {
+  font-size: 2.1rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--up);
+  font-variant-numeric: tabular-nums;
+}
+
+.health-pct-label {
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.health-total {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.health-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.health-counts b {
+  font-size: 1.05rem;
+}
+
+.health-counts .sev-down { color: #ff7b72; }
+.health-counts .sev-blocked { color: #e3a04a; }
+.health-counts .sev-impaired { color: #d9c95b; }
+.health-counts .sev-nodata { color: var(--muted); }
+.health-counts .sev-longest { color: var(--muted); font-size: 0.8rem; }
+
+.health-worst {
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.6rem;
+}
+
+.health-worst h2 {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.worst-row {
+  display: grid;
+  grid-template-columns: 1.4rem minmax(6rem, 1fr) 6rem minmax(6rem, 1fr) 5rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.22rem 0.3rem;
+  border-radius: 3px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+
+.worst-row:hover,
+.worst-row:focus-visible {
+  background: #1b2430;
+}
+
+.worst-rank {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.worst-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.worst-state {
+  color: #ff7b72;
+  font-weight: 600;
+}
+
+.worst-detail {
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.worst-duration {
+  text-align: right;
+  font-weight: 700;
+  color: #ffb4ae;
+  font-variant-numeric: tabular-nums;
+}
+
+.map-tile-ticker {
+  display: block;
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.03em;
+}

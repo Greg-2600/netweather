@@ -38,6 +38,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/feeds"
 	"github.com/Greg-2600/netweather/internal/ihi"
 	"github.com/Greg-2600/netweather/internal/incidents"
+	"github.com/Greg-2600/netweather/internal/webhook"
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/metrics"
 	"github.com/Greg-2600/netweather/internal/netx"
@@ -407,6 +408,17 @@ func serve(lg *logging.Logger) error {
 	for _, p := range feedPollers {
 		go feeds.Loop(ctx, p, lg.Logger)
 	}
+	// Level feeds are separate bounded polls: their snapshots are read by the
+	// world view, which never calls an upstream on a page view.
+	for _, p := range buildLevelPollers(st, lg) {
+		go feeds.LevelLoop(ctx, p, lg.Logger)
+	}
+	// RIS Live can also be read as a real-time stream. It is opt-in and additive
+	// to the RIPEstat poller: a persistent WebSocket is a different network
+	// commitment from a bounded REST read.
+	for _, s := range buildRISStreams(st, lg) {
+		go feeds.StreamLoop(ctx, s, lg.Logger)
+	}
 
 	var metricsHandler http.Handler
 	if os.Getenv("NETWEATHER_METRICS") == "true" {
@@ -456,6 +468,7 @@ func serve(lg *logging.Logger) error {
 		TargetCorroboration: st,
 		Provider:            st,
 		CountryEvents:       st,
+		CountryLevels:       st,
 		Corridors:           st,
 		DNSObservations:     st,
 		Health:              health,
@@ -602,7 +615,14 @@ func serve(lg *logging.Logger) error {
 			incidentInterval = d
 		}
 	}
-	go incidents.Loop(ctx, st, st, st, "local", incidentInterval, lg.Logger, incidentChanges.Notify,
+	webhookNotifier := webhook.New(os.Getenv("NETWEATHER_WEBHOOK_URL"), os.Getenv("NETWEATHER_WEBHOOK_SECRET"), lg.Logger)
+	incSink := incidents.Sink(st)
+	incRecon := incidents.Reconciler(st)
+	if webhookNotifier != nil {
+		incSink = webhook.WrapSink(st, webhookNotifier)
+		incRecon = webhook.WrapReconciler(st, webhookNotifier)
+	}
+	go incidents.Loop(ctx, st, incSink, incRecon, "local", incidentInterval, lg.Logger, incidentChanges.Notify,
 		func() bool { return healthGate.Blocked("clock-sync") })
 	go anomaly.Loop(ctx, st, st, "local", incidentInterval, lg.Logger, func(day string) {
 		// The both-direction rule marked the day atypical. Its samples are
@@ -697,7 +717,7 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 			url = targetURL(t.Host, t.Port, t.Path)
 		case "doh":
 			url = dohEndpoint(t.Host, t.Port, t.URL)
-		case "tls", "tcp", "tcpping", "dns", "ntp":
+		case "tls", "tcp", "tcpping", "dns", "ntp", "dot", "quic":
 			address = net.JoinHostPort(t.Host, strconv.Itoa(t.Port))
 		case "icmp":
 			// ICMP has no port; config validation already forced port 0.
@@ -729,6 +749,7 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 			Host:      t.Host,
 			Port:      t.Port,
 			Probe:     t.Probe,
+			Query:     t.QName,
 			Name:      t.Name,
 			Class:     t.Class,
 			Sector:    t.Sector,
@@ -758,6 +779,7 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 			Expect:       expect,
 			MaxRedirects: expect.MaxRedirects,
 			ICMPAnchor:   t.ICMPAnchor,
+			Family:       t.Family,
 		})
 	}
 	return out, nil
@@ -902,7 +924,7 @@ func applySeedEntries(ctx context.Context, st *store.Store, entries []seed.Entry
 			}
 		case "doh":
 			url = dohEndpoint(e.Host, port, e.URL)
-		case "tls", "tcp", "tcpping", "dns", "ntp":
+		case "tls", "tcp", "tcpping", "dns", "ntp", "dot", "quic":
 			address = net.JoinHostPort(e.Host, strconv.Itoa(port))
 		case "icmp":
 			address = e.Host
@@ -928,6 +950,7 @@ func applySeedEntries(ctx context.Context, st *store.Store, entries []seed.Entry
 			Host:      e.Host,
 			Port:      port,
 			Probe:     probe,
+			Query:     e.Query,
 			Name:      e.Name,
 			Class:     e.Class,
 			Sector:    e.Sector,
@@ -1379,12 +1402,18 @@ func newInstrumentsWithDialer(dialer *netx.Dialer, userAgent string) agent.Instr
 	dohProbe := probe.NewDoH(dialer)
 	dohProbe.UserAgent = userAgent
 
+	dotProbe := probe.NewDoT(dialer.DialContext)
+
+	quicProbe := probe.NewQUIC(dialer.DialContext)
+
 	return agent.Instruments{
 		HTTP: httpProbe,
 		TLS:  probe.NewTLS(dialer),
 		TCP:  probe.NewTCP(dialer),
 		DNS:  probe.NewDNS(dialer.DialContext),
 		DoH:  dohProbe,
+		DoT:  dotProbe,
+		QUIC: quicProbe,
 		NTP:  probe.NewNTP(dialer),
 		ICMP: ping,
 	}
@@ -2361,6 +2390,93 @@ func buildFeedPollers(st *store.Store, lg *logging.Logger) []*feeds.Poller {
 	return out
 }
 
+// buildLevelPollers returns a poller for each enabled bounded level feed. These
+// are separate from buildFeedPollers because their output is a small per-country
+// snapshot read by the world view, not a stream of evidence events.
+func buildLevelPollers(st *store.Store, lg *logging.Logger) []*feeds.LevelPoller {
+	enabled := strings.ToLower(os.Getenv("NETWEATHER_FEEDS"))
+	if !strings.Contains(enabled, "ioda-level") {
+		return nil
+	}
+
+	client := feedClient()
+	ioda := feeds.NewIODA(client)
+	if endpoint := strings.TrimSpace(os.Getenv("NETWEATHER_IODA_SUMMARY_URL")); endpoint != "" {
+		if feedURLIsHTTPS(endpoint) {
+			ioda.SummaryEndpoint = endpoint
+		} else {
+			lg.Warn("feed URL override is not HTTPS; keeping the compiled endpoint",
+				"event", "feed_url_insecure", "component", "feeds",
+				"feed", "ioda-level", "url", endpoint)
+		}
+	}
+	if raw := strings.TrimSpace(os.Getenv("NETWEATHER_IODA_LEVEL_LIMIT")); raw != "" {
+		limit, err := strconv.Atoi(raw)
+		if err != nil || limit < feeds.MinIODALevelLimit || limit > feeds.MaxIODALevelLimit {
+			lg.Warn("ioda level limit out of range; using the default",
+				"event", "feed_config_invalid", "component", "feeds",
+				"feed", "ioda-level", "value", raw, "default", feeds.DefaultIODALevelLimit)
+		} else {
+			ioda.LevelLimit = limit
+		}
+	}
+
+	lg.Info("bounded ioda country level feed enabled",
+		"event", "feed_configured", "component", "feeds",
+		"feed", "ioda-level", "limit", ioda.LevelLimit)
+
+	return []*feeds.LevelPoller{{
+		Feed:   "ioda-level",
+		Source: ioda,
+		Sink:   st,
+		Every:  5 * time.Minute,
+	}}
+}
+
+// buildRISStreams returns the real-time RIS Live stream when it is opted in.
+// NETWEATHER_FEEDS containing "ris-live-ws" or NETWEATHER_RIS_STREAM=true both
+// enable it; the same NETWEATHER_RIS_ASNS list feeds the poller and the stream.
+func buildRISStreams(st *store.Store, lg *logging.Logger) []*feeds.RISLiveWS {
+	enabled := strings.ToLower(os.Getenv("NETWEATHER_FEEDS"))
+	if !strings.Contains(enabled, "ris-live-ws") &&
+		!strings.EqualFold(strings.TrimSpace(os.Getenv("NETWEATHER_RIS_STREAM")), "true") {
+		return nil
+	}
+
+	var asns []int
+	for _, part := range splitList(os.Getenv("NETWEATHER_RIS_ASNS")) {
+		n, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil || n <= 0 {
+			lg.Warn("ris live stream ASN is not a positive integer; skipping",
+				"event", "feed_config_invalid", "component", "feeds",
+				"feed", feeds.RISLiveWSFeed, "value", part)
+			continue
+		}
+		asns = append(asns, n)
+	}
+	if len(asns) == 0 {
+		lg.Warn("ris live stream requested without NETWEATHER_RIS_ASNS",
+			"event", "feed_not_configured", "component", "feeds", "feed", feeds.RISLiveWSFeed)
+		return nil
+	}
+
+	stream := feeds.NewRISLiveWS(st, asns)
+	if endpoint := strings.TrimSpace(os.Getenv("NETWEATHER_RIS_WS_URL")); endpoint != "" {
+		if feedURLIsWSS(endpoint) {
+			stream.URL = endpoint
+		} else {
+			lg.Warn("stream URL override is not WSS; keeping the compiled endpoint",
+				"event", "feed_url_insecure", "component", "feeds",
+				"feed", feeds.RISLiveWSFeed, "url", endpoint)
+		}
+	}
+
+	lg.Info("real-time ris live stream enabled",
+		"event", "feed_configured", "component", "feeds",
+		"feed", feeds.RISLiveWSFeed, "asns", len(asns))
+	return []*feeds.RISLiveWS{stream}
+}
+
 // feedClient is the HTTP client every feed uses. TLS is required, not assumed:
 // a status page is evidence, and plaintext evidence can be rewritten in
 // transit (THREAT_MODEL.md T32). Redirects are re-checked because the scheme
@@ -2387,6 +2503,14 @@ func feedClient() *http.Client {
 func feedURLIsHTTPS(raw string) bool {
 	u, err := neturl.Parse(raw)
 	return err == nil && strings.EqualFold(u.Scheme, "https") && u.Host != ""
+}
+
+// feedURLIsWSS is the WebSocket equivalent of feedURLIsHTTPS. The compiled
+// endpoint is wss; an operator override must be too, because a plaintext stream
+// of routing evidence can be rewritten in transit.
+func feedURLIsWSS(raw string) bool {
+	u, err := neturl.Parse(raw)
+	return err == nil && strings.EqualFold(u.Scheme, "wss") && u.Host != ""
 }
 
 // staleWAL reports a non-empty write-ahead log beside dbPath. A WAL left by an

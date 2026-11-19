@@ -1,16 +1,18 @@
 # scripts/install-schedule.ps1
 #
-# Registers a Windows Task Scheduler job that runs scripts/deploy.ps1 every two
-# hours, so a fresh build lands in the container on a cadence.
+# Registers a Windows Task Scheduler job that deploys the early field trial
+# every two hours, so a fresh build lands in the container on a cadence.
 #
 #   .\scripts\install-schedule.ps1
+#   .\scripts\install-schedule.ps1 -Legacy      # old standalone demo deploy
 #   .\scripts\install-schedule.ps1 -Uninstall
 
-param([switch]$Uninstall)
+param([switch]$Uninstall, [switch]$Legacy)
 
 $taskName = 'netweather-deploy'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$script = Join-Path $root 'scripts\deploy.ps1'
+$deploy = if ($Legacy) { 'scripts\deploy.ps1' } else { 'scripts\deploy_fieldtrial.ps1' }
+$script = Join-Path $root $deploy
 
 if ($Uninstall) {
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
@@ -63,5 +65,8 @@ if ($mode -eq 'Interactive') {
     Write-Host "NOTE: runs only while you are logged in. For runs while logged out, re-run as Administrator."
 }
 
-# On Linux/macOS, use cron instead:
-#   0 */2 * * * /path/to/netweather/scripts/deploy.sh >> /var/log/netweather-deploy.log 2>&1
+# On Linux/macOS, use cron instead; deploy.sh is the legacy standalone path.
+# Until a POSIX field-trial wrapper exists, run the compose overlay directly:
+#   0 */2 * * * cd /path/to/netweather && docker compose --profile tor \
+#     -f compose.yaml -f compose.fieldtrial.yaml up -d --build \
+#     >> /var/log/netweather-deploy.log 2>&1

@@ -42,6 +42,10 @@ type Target struct {
 	Host    string
 	Port    int
 	Probe   string
+	// Query is the DNS question for dns/doh/dot targets. It is part of the
+	// natural key so ccTLD anchors asking different questions of one server
+	// can coexist (migration 0024).
+	Query   string
 	Name    string
 	Class   string
 	Sector  string
@@ -81,10 +85,11 @@ func (s *Store) UpsertTarget(ctx context.Context, t Target) error {
 	now := time.Now().UnixMilli()
 	_, err := s.writer.ExecContext(ctx, `
 		INSERT INTO target (
-			id, host, port, probe, name, class, sector, country, status_url, tier, interval_s,
+			id, host, port, probe, query, name, class, sector, country, status_url, tier, interval_s,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
+			query = excluded.query,
 			name = excluded.name,
 			class = excluded.class,
 			sector = excluded.sector,
@@ -97,7 +102,7 @@ func (s *Store) UpsertTarget(ctx context.Context, t Target) error {
 			-- so bringing it back is an upsert rather than a new target.
 			enabled = 1,
 			updated_at = excluded.updated_at`,
-		t.ID, t.Host, t.Port, t.Probe, t.Name, t.Class, t.Sector, t.Country,
+		t.ID, t.Host, t.Port, t.Probe, t.Query, t.Name, t.Class, t.Sector, t.Country,
 		t.StatusURL, t.Tier, t.IntervalS, now, now)
 	if err != nil {
 		return fmt.Errorf("store: target %q: %w", t.ID, err)

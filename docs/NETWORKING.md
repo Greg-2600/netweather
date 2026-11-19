@@ -89,7 +89,7 @@ A prober that reports outages caused by its own MTU is worse than useless.
 2. The `mtu` self-check reports the smallest MTU among up, non-loopback interfaces at startup and with maintenance, and warns below 1400. While it is failing and fresh (twenty minutes, twice the maintenance interval), `http_timeout`, `tcp_timeout`, and `tls_handshake` are classified `UNKNOWN` with the reason "egress MTU is below the floor" instead of faking `DOWN`; a `tcp_refused` stays `DOWN`, because the SYN arrived.
 3. Never add `NET_ADMIN` to run `iptables --clamp-mss-to-pmtu`. Fix the network, don't patch the container.
 
-Deliberately not implemented: a DF-marked path probe (1400 bytes, then 1280). That needs raw sockets or platform-specific path-MTU discovery, which the shipped image does not grant, and the interface check plus the classifier gate already covers the documented failure mode: a working path that looks dead. `DESIGN.md` §7.5 states the same limitation in the self-check row.
+Deliberately not implemented on non-Linux: a DF-marked path probe (1400 bytes, then 1280). Linux builds ship `internal/probe/pmtu_linux.go` using `IP_MTU_DISCOVER`; other platforms fall back to the interface-MTU self-check, which covers the documented failure mode. Raw sockets or platform-specific path-MTU discovery are not granted to the shipped image. `DESIGN.md` §7.5 states the same limitation in the self-check row.
 
 ---
 
@@ -455,6 +455,6 @@ Present and deliberate: `2600:2600` published on all host interfaces, with a tok
 ## 14. Open questions
 
 1. **Should `netweather doctor` rewrite the MTU?** It cannot without `NET_ADMIN`, and it should not have `NET_ADMIN`. Current answer: detect, warn, and document the one-line compose fix.
-2. **IPv6 as a first-class probe family.** Docker's IPv6 support is real but fiddly (per-network `enable_ipv6`, gateway mode, ip6tables). Leaning: measure IPv6 only under host networking, and report `SKIPPED_NO_IPV6` otherwise — never `DOWN`.
+2. **IPv6 as a first-class probe family.** Docker's IPv6 support is real but fiddly (per-network `enable_ipv6`, gateway mode, ip6tables). Implemented: `compose.ipv6.yaml` uses host networking so the container shares the host's IPv6 stack; the `family: 6` target flag and AAAA queries ship. Targets report `SKIPPED_NO_IPV6` rather than `DOWN` when no IPv6 is available.
 3. **macvlan profile.** Best measurement fidelity of any mode, worst portability. Worth a documented `profiles: ["lan"]` block if there is demand.
 4. **Per-vantage network namespace.** A second `netweather` container on a different host is a better vantage than any proxy. That is federation (`DESIGN.md` §16), post-v1.

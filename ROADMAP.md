@@ -12,13 +12,13 @@ Legend: **Shipped** · **Now** (release hardening) · **Next** (phase 3) ·
 
 ## 1. Where we are
 
-**MVP is shipped.** Phases 0–2 are complete and phase 3 is partial by design.
+**MVP is shipped.** Phases 0-3 are complete (OIDC deferred to Later).
 
-Verified on the current tree (`fbd183a`):
+Verified on the current tree (`f0d71a1`):
 
 | Gate | Command | Evidence |
 |---|---|---|
-| Format, vet, lint, unit + integration, coverage gates, build | `go run ./internal/devtool verify` | `verify: ok`, library total 87.5% |
+| Format, vet, lint, unit + integration, coverage gates, build | `go run ./internal/devtool verify` | `verify: ok`, library total 86.4% |
 | Real image + Docker network plane | `go run ./internal/devtool compose` | `ok … 110.7s` |
 | Browser UI | `go test -tags=uitest ./internal/web/uitest` | `ok 7.9s` |
 | Real internet, real instruments | `NETWEATHER_E2E=1 go test -tags=e2e ./internal/e2e -run TestRealEndpoints` | PASS 1.58s, 6/6 endpoints |
@@ -32,7 +32,9 @@ views, coverage, corridors, IHI, SSE with replay, the documented v1 API, auth
 and browser hardening, feeds and enrichment (IODA, Radar, Statuspage, AWS, GCP,
 Azure, Atlas, RIS Live), DNS divergence, certificate pins, and the operational
 CLI (seed, export, doctor, backup, debug bundle). Containers: hardened release
-image, Tor/Tailscale/RIPE/trace profiles, and a two-hour deploy cadence.
+image, Tor/Tailscale/RIPE/trace profiles, and a two-hour deploy cadence. UI:
+board, world, corridors, coverage, incidents, feeds status, and a FinViz-style
+treemap map view.
 
 Known limits, stated rather than hidden: single shared token (no user accounts);
 detection is floor-only until ~28 weeks of hour-of-week baseline exist; no
@@ -110,33 +112,37 @@ probes are still being scheduled.
 ### 2.5 Continuous deployment every two hours — **Implemented**
 
 **Outcome:** a fresh build of the working software lands in the running
-container on a fixed cadence, so the running instance never drifts from the
+field trial on a fixed cadence, so the running instance never drifts from the
 repository, and a broken build never replaces a working one.
 
-- `scripts/deploy.ps1` (Windows) and `scripts/deploy.sh` (POSIX) build the
-  release image, seed the secret volume at mode 0600, stop the previous
-  instance, start the new one, and gate on `/healthz` for up to 30 seconds.
-  A failing health check rolls back to the previous image tag instead of
-  leaving the instance down. `--dry-run` prints every command without touching
-  Docker; `--no-build` reuses the current image.
+- `scripts/deploy_fieldtrial.ps1` builds the release and Tor sidecar images,
+  seeds the external secret volume at mode 0600/uid 65532, recreates the
+  `compose.yaml` + `compose.fieldtrial.yaml` stack, and gates on `/healthz`
+  for up to two minutes. A failing health check retags the previous image and
+  recreates the stack instead of leaving the instance down. `-DryRun` prints
+  every command without touching Docker; `-NoBuild` reuses the current images.
+- `scripts/deploy.ps1` (Windows) and `scripts/deploy.sh` (POSIX) remain the
+  legacy standalone-demo path; `install-schedule.ps1 -Legacy` still selects it.
 - `scripts/install-schedule.ps1` registers a Windows Task Scheduler job that
-  runs the deploy every two hours; cron is the same job on Linux/macOS. The job
-  runs from the repository root and falls back to an interactive logon when
-  elevation is unavailable, so a non-admin user still gets a working schedule
-  (runs while logged in; re-run as Administrator for runs while logged out).
-- Acceptance: a dry run exits 0 and prints the build and run commands; a real run
-  leaves `/healthz` answering and the container on the new image; a broken build
-  leaves the previous image running and exits non-zero. **Verified on this host:**
-  the task `netweather-deploy` is `Ready`, trigger `PT2H`, next run
-  2026-11-17 22:00, and a real deploy rebuilt the image, swapped the
-  container, and exited 0 with `/healthz` returning 200.
+  runs the **field-trial** deploy every two hours; cron is the same job on
+  Linux/macOS. The job runs from the repository root and falls back to an
+  interactive logon when elevation is unavailable, so a non-admin user still
+  gets a working schedule (runs while logged in; re-run as Administrator for
+  runs while logged out).
+- Acceptance: a dry run prints the build and compose commands; a real run leaves
+  `/healthz` answering and the stack on the new image; a broken build leaves the
+  previous image running and exits non-zero. **Verified on this host:** the
+  `netweather-deploy` task is `Ready`, trigger `PT2H`, and its action now calls
+  `scripts\deploy_fieldtrial.ps1`. A real run rebuilt both images, recreated
+  the stack, tagged `netweather:fieldtrial-rollback`, and exited 0 with
+  `/healthz` returning 200, `targets=749`, and `vantages=local,tor`.
 - The two-hour cadence is deliberately short: the build is reproducible
   (`devtool repro`) and the container starts in seconds, so a fresh image is
   cheap; a broken one is caught by the health gate before it serves traffic.
 
 ---
 
-## 3. Next - phase 3
+## 3. Phase 3 (status)
 
 ### 3.1 Remote vantage agent (federation-lite) — **Implemented**
 
@@ -155,7 +161,7 @@ repository, and a broken build never replaces a working one.
   agent's remote sink (posting, server-error surfacing). The two-container
   compose scenario is the next increment.
 
-### 3.2 RIS Live feed plugin (BGP) — **Implemented (polling adapter)**
+### 3.2 RIS Live feed plugin (BGP) — **Implemented (poller + opt-in stream)**
 
 **Outcome:** BGP update history becomes corroborating feed events, not a second
 detector.
@@ -164,13 +170,20 @@ detector.
   the operator names (`NETWEATHER_RIS_ASNS`), with an optional HTTPS endpoint
   override (`NETWEATHER_RIS_URL`). It maps each update to an event: a
   withdrawal is severity 1.0, an announcement 0.0, both carrying the ASN and the
-  prefix in the payload.
-- It is read-only and spends no credits; it only reads RIPEstat.
+  prefix in the payload. This remains the default.
+- `internal/feeds/rislive_ws.go` is the opt-in real-time stream over
+  `wss://ris-live.ripe.net/v1/ws/`, enabled by `NETWEATHER_FEEDS=ris-live-ws` or
+  `NETWEATHER_RIS_STREAM=true`. It subscribes to `UPDATE` frames for the same
+  ASN list, maps them into the same `bgp_update` / `bgp_withdrawal` events under
+  feed `ris-live-ws`, batches writes, and reconnects with bounded backoff. The
+  TCP dial goes through `netx` and a plaintext URL override is ignored.
+  (`docs/DESIGN.md` §8.3.)
+- Both are read-only and spend no credits: they only read RIPE/RIPEstat.
 - An event is evidence, not a verdict: it appears in the feed strip and the
-  drawer's corroboration list. The real-time WebSocket stream is post-MVP
-  (`docs/DESIGN.md` §8.3).
-- Acceptance met: a contract test with a recorded payload, plus the env-doc and
-  API-path guards; `docs/DESIGN.md` §8.3 describes it as shipped.
+  drawer's corroboration list.
+- Acceptance met: a recorded-payload contract test for the poller and a
+  scripted-socket contract test (subscribe, ping/pong, mapping, reconnect) for
+  the stream, plus env-doc and API-path guards.
 
 ### 3.3 RIPE Atlas feed plugin — **Implemented**
 
@@ -189,20 +202,23 @@ target id is known; never guessed.
   API-path guards; `ACCEPTABLE_USE.md` §9 and `docs/RIPE_ATLAS.md` describe it
   as shipped.
 
-### 3.4 Live per-country IODA overlay — **Implemented (events)**
+### 3.4 Live per-country IODA overlay — **Implemented (events + bounded level)**
 
 **Outcome:** the world view shows a current per-country level without turning a
 page view into an API loop.
 
-- The world view already carries the highest-severity feed event for each
-  country from the last 24 hours (`row.Feed`, `row.FeedSeverity`), from one query
-  for the whole page. A missing reader, an empty window, and a failed query each
-  state their case rather than leaving a tile looking quiet.
-- The "live per-country IODA *level*" (a 0–1 score per country) remains a
-  separate, bounded server-side poll and is post-MVP: IODA publishes signals and
-  alerts, not one score with a fixed meaning, and its signal endpoints are per
-  entity, so a page-time fetch would be an API-scraping loop. The stored event
-  overlay is the shipped behaviour.
+- The world view carries the highest-severity feed event for each country from
+  the last 24 hours (`row.Feed`, `row.FeedSeverity`), from one query for the
+  whole page. A missing reader, an empty window, and a failed query each state
+  their case rather than leaving a tile looking quiet.
+- The bounded level feed (`NETWEATHER_FEEDS=ioda-level`) polls IODA's single
+  ranked `/v2/outages/summary` endpoint every five minutes and stores at most
+  `NETWEATHER_IODA_LEVEL_LIMIT` countries (default 25, hard max 100) in
+  `country_level` (migration `0025`). `/world` reads that map with one query.
+  IODA's `overall` is an unbounded magnitude, not a 0–1 probability, so the tile
+  shows a clearly labelled **relative** level beside the raw score and event
+  count; no absolute probability is invented. The event and level notes are
+  separate so one feed's failure cannot silence the other.
 
 ### 3.5 Multi-user auth (OIDC) — **Later**
 
@@ -226,15 +242,12 @@ deployment-scale concern, not a correctness one.
 
 | Item | Why later |
 |---|---|
-| IPv6 as a first-class probe family | Docker IPv6 is fiddly; host networking only at first (`NETWORKING.md` §14) |
-| QUIC/UDP-443 middlebox probe | New instrument, needs a UDP path and its own classifier rows |
-| DoT (853) | Ports allow it; no instrument yet, and DoH covers the resolver question |
-| DF-bit path-MTU probe | Needs raw sockets; the interface-MTU check already prevents the common false `DOWN` |
-| `macvlan` profile | Best fidelity, worst portability; ship only on demand |
-| Default corridor endpoints | There is no honest default path pair; corridors stay configuration-driven |
-| Helm chart / systemd unit | Compose and one binary cover the stated deployment |
-| Opt-in alert webhooks | The project is deliberately not a paging system (`README` "What it is not"); an operator can poll `/api/v1/events` |
-| mTLS and signed batches for remote agents | HTTPS + bearer ships today; client certs and request signing are the production hardening (`THREAT_MODEL.md`) |
+| IPv6 as a first-class probe family | **Implemented:** `family: 4|6` on targets; DNS/DoH/DoT AAAA queries; IPv6 literals allowed for country/network classes; netx already blocks IPv6 special-use ranges |
+| DoT (853) | **Implemented:** `internal/probe/dot.go` (DNS over TLS), port 853 allowlisted |
+| `macvlan` profile | **Implemented:** `compose.macvlan.yaml` override profile |
+| Helm chart / systemd unit | **Implemented:** `deploy/helm/netweather` and `deploy/systemd/netweather.service` |
+| Opt-in alert webhooks | **Implemented:** `internal/webhook`, `NETWEATHER_WEBHOOK_URL`/`SECRET`; best-effort POST on incident open/close |
+| mTLS and signed batches for remote agents | **Implemented:** signed batches (HMAC-SHA256, `NETWEATHER_VANTAGE_SIGNING_SECRET` / `NETWEATHER_AGENT_SIGNING_SECRET`); client-certificate loading on the agent and verification on the ingest path when TLS is enabled |
 
 ---
 
@@ -248,6 +261,9 @@ deployment-scale concern, not a correctness one.
 | Telemetry or analytics | No outbound call exists except probes, feeds, self-checks, opt-in enrichment |
 | A generated `openapi.yaml` | A source parser would emit a partial spec; `API.md` plus `/api/v1/meta` is the contract |
 | Multi-tenant SaaS | This is a single-team, self-hosted instance |
+| Default corridor endpoints | No honest default path pair exists; corridors stay configuration-driven (an operator supplies pairs they can defend) |
+| QUIC/UDP-443 full handshake | Only a UDP reachability probe ships; a full QUIC/TLS handshake requires a QUIC stack (quic-go) that is not vendored, and the UDP probe already detects middlebox blocking |
+| DF-bit path-MTU probe on non-Linux | Linux-only (raw socket options); other platforms use the interface-MTU self-check, which covers the documented failure mode |
 
 ---
 

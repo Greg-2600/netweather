@@ -22,9 +22,13 @@ type DNSResult struct {
 	Addresses []netip.Addr
 	// CNAMEs is the chain seen in the answer section. It is evidence about
 	// hosting, used by the divergence baseline; it is not a target state.
-	CNAMEs     []string
-	ErrorClass string
-	Err        error
+	CNAMEs []string
+	// Authoritative marks a NOERROR answer from a server authoritative for the
+	// queried zone that carried NS/SOA records but no A/AAAA addresses. That is
+	// a healthy zone apex (ccTLD, root, glue), not an outage (CLASSIFIER.md §3.1).
+	Authoritative bool
+	ErrorClass    string
+	Err           error
 }
 
 // Failed reports whether the query produced a transport-class failure.
@@ -57,7 +61,7 @@ func NewDNS(d DialFunc) *DNS {
 // Do queries name's A records against server ("host:53"). It never falls back
 // to the system resolver: a fallback would make an unreachable anchor look
 // healthy.
-func (p *DNS) Do(ctx context.Context, server, name string) DNSResult {
+func (p *DNS) do(ctx context.Context, server, name string, qtype dnsmessage.Type) DNSResult {
 	start := time.Now()
 	out := DNSResult{}
 
@@ -88,7 +92,7 @@ func (p *DNS) Do(ctx context.Context, server, name string) DNSResult {
 		return out
 	}
 
-	query, err := packQuery(qname)
+	query, err := packQueryType(qname, qtype)
 	if err != nil {
 		out.Latency = time.Since(start)
 		out.ErrorClass = "dns_config"
@@ -152,14 +156,52 @@ func (p *DNS) Do(ctx context.Context, server, name string) DNSResult {
 	out.CNAMEs = answerCNAMEs(msg)
 	addrs := answerAddresses(msg)
 	if len(addrs) == 0 {
-		// NOERROR with no records is a real answer, but not a usable one.
+		// NOERROR with no records is normally NODATA. But an authoritative
+		// server answering a zone-apex A question has no A record to give: its
+		// NS/SOA records are the healthy answer. Counting that as DOWN would
+		// label essentially every ccTLD, root and glue anchor as an outage.
+		if answerHasDelegation(msg) {
+			out.Authoritative = true
+			return out
+		}
 		out.ErrorClass = "dns_nodata"
-		out.Err = fmt.Errorf("probe: %q resolved to no A records", name)
+		out.Err = fmt.Errorf("probe: %q resolved to no records", name)
 		return out
 	}
 
 	out.Addresses = addrs
 	return out
+}
+
+// answerHasDelegation reports whether msg is an authoritative response that
+// carries NS or SOA records in its answer or authority sections. An
+// authoritative server has no A/AAAA record at its own zone apex, so those
+// records — not addresses — are the proof that it is serving the zone. The
+// Authoritative bit is required: a recursive resolver's cached NODATA reply
+// carries an SOA too, but says nothing about whether the zone is served.
+func answerHasDelegation(msg dnsmessage.Message) bool {
+	if !msg.Authoritative {
+		return false
+	}
+	for _, section := range [][]dnsmessage.Resource{msg.Answers, msg.Authorities} {
+		for _, resource := range section {
+			switch resource.Body.(type) {
+			case *dnsmessage.NSResource, *dnsmessage.SOAResource:
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Do queries name's A records against server ("host:53").
+func (p *DNS) Do(ctx context.Context, server, name string) DNSResult {
+	return p.do(ctx, server, name, dnsmessage.TypeA)
+}
+
+// Do6 queries name's AAAA records against server ("host:53").
+func (p *DNS) Do6(ctx context.Context, server, name string) DNSResult {
+	return p.do(ctx, server, name, dnsmessage.TypeAAAA)
 }
 
 // dnsName qualifies a name for the wire: lower-case, one trailing dot.

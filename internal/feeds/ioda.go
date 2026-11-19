@@ -18,11 +18,16 @@ import (
 type IODA struct {
 	// Endpoint is the events URL. It is injectable so tests do not need IODA.
 	Endpoint string
-	Client   *http.Client
+	// SummaryEndpoint is the ranked country-summary URL used by FetchLevels.
+	// It is injectable so the level feed can be tested without IODA.
+	SummaryEndpoint string
+	Client          *http.Client
 	// Lookback bounds the query window; the API returns recent events anyway,
 	// but an explicit window keeps the response small.
 	Lookback time.Duration
-	Now      func() time.Time
+	// LevelLimit caps how many ranked countries FetchLevels stores per poll.
+	LevelLimit int
+	Now        func() time.Time
 	// MaxBytes caps the response before parsing.
 	MaxBytes int64
 }
@@ -34,11 +39,13 @@ const DefaultIODAEndpoint = "https://api.ioda.inetintel.cc.gatech.edu/v2/outages
 // configuration error at call time, not a panic here.
 func NewIODA(client *http.Client) *IODA {
 	return &IODA{
-		Endpoint: DefaultIODAEndpoint,
-		Client:   client,
-		Lookback: 24 * time.Hour,
-		Now:      time.Now,
-		MaxBytes: 4 << 20,
+		Endpoint:        DefaultIODAEndpoint,
+		SummaryEndpoint: DefaultIODASummaryEndpoint,
+		Client:          client,
+		Lookback:        24 * time.Hour,
+		LevelLimit:      DefaultIODALevelLimit,
+		Now:             time.Now,
+		MaxBytes:        4 << 20,
 	}
 }
 

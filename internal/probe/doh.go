@@ -66,7 +66,17 @@ type dohAnswer struct {
 // Do asks endpoint about qname. endpoint is the DoH JSON base
 // ("https://cloudflare-dns.com/dns-query"); it is operator configuration, not
 // discovered, and must be HTTPS: a plaintext answer is not evidence.
+// Do asks endpoint about qname for an A record.
 func (d *DoH) Do(ctx context.Context, endpoint, qname string) Result {
+	return d.do(ctx, endpoint, qname, "A", 1)
+}
+
+// Do6 asks endpoint about qname for an AAAA record.
+func (d *DoH) Do6(ctx context.Context, endpoint, qname string) Result {
+	return d.do(ctx, endpoint, qname, "AAAA", 28)
+}
+
+func (d *DoH) do(ctx context.Context, endpoint, qname, qtype string, rrtype int) Result {
 	res := Result{}
 	start := time.Now()
 
@@ -86,7 +96,7 @@ func (d *DoH) Do(ctx context.Context, endpoint, qname string) Result {
 	}
 	query := u.Query()
 	query.Set("name", qname)
-	query.Set("type", "A")
+	query.Set("type", qtype)
 	u.RawQuery = query.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
@@ -157,7 +167,7 @@ func (d *DoH) Do(ctx context.Context, endpoint, qname string) Result {
 	}
 
 	for _, record := range answer.Answer {
-		if record.Type != 1 { // A
+		if record.Type != rrtype { // A / AAAA
 			continue
 		}
 		if addr, err := netip.ParseAddr(strings.TrimSpace(record.Data)); err == nil {
@@ -166,7 +176,7 @@ func (d *DoH) Do(ctx context.Context, endpoint, qname string) Result {
 	}
 	if len(res.Addresses) == 0 {
 		res.ErrorClass = "doh_no_answer"
-		res.Err = fmt.Errorf("probe: doh returned no A record for %s", qname)
+		res.Err = fmt.Errorf("probe: doh returned no %s record for %s", qtype, qname)
 		return res
 	}
 	return res

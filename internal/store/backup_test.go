@@ -40,8 +40,8 @@ func TestBackupWritesAConsistentCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != 23 {
-		t.Fatalf("backup schema version = %d, want 23", version)
+	if version != 25 {
+		t.Fatalf("backup schema version = %d, want 25", version)
 	}
 	ids, err := copied.TargetIDs(ctx)
 	if err != nil {

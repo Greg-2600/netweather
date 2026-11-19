@@ -238,7 +238,7 @@ Protocol choice is a **diagnostic** choice, not a coverage choice. Each instrume
 
 Not every target needs HTTP. A bank that bot-walls you is better measured with `tls` + `robots.txt` than with a fake browser (§5.3).
 
-**Implemented:** `dns`, `doh`, `tcp`, `tcpping`, `tls`, `http`, `icmp`, `ntp`, and on-demand `trace` are instruments in `internal/probe`, dispatched by `agent.Instruments`. The `doh` instrument is one HTTPS `GET` to a JSON endpoint (`?name=…&type=A`) through the same guarded dialer as every other probe; it requires `qname`, accepts an explicit `url` because providers disagree on the path (Google `/resolve`, Cloudflare `/dns-query`, and the default `https://host:port/dns-query` otherwise), refuses a plaintext endpoint, does not follow redirects, and reports NXDOMAIN as a real DOWN while SERVFAIL, a malformed answer, and a missing A record are UNKNOWN rather than an outage. `quic` is phase 3 and not built; `corridor` is not a per-target instrument but the corridor sampler in §9.
+**Implemented:** `dns`, `doh`, `dot`, `quic`, `tcp`, `tcpping`, `tls`, `http`, `icmp`, `ntp`, and on-demand `trace` are instruments in `internal/probe`, dispatched by `agent.Instruments`. The `doh` instrument is one HTTPS `GET` to a JSON endpoint (`?name=…&type=A`) through the same guarded dialer as every other probe; it requires `qname`, accepts an explicit `url` because providers disagree on the path (Google `/resolve`, Cloudflare `/dns-query`, and the default `https://host:port/dns-query` otherwise), refuses a plaintext endpoint, does not follow redirects, and reports NXDOMAIN as a real DOWN while SERVFAIL, a malformed answer, and a missing A record are UNKNOWN rather than an outage. The `dot` instrument (DNS over TLS, port 853) reuses the DNS wire format over a TLS connection and reports the same RCODEs. The `quic` instrument is a UDP/443 middlebox reachability probe (not a full QUIC handshake). `corridor` is not a per-target instrument but the corridor sampler in §9.
 
 ### 5.2 HTTP probe specifics
 
@@ -703,7 +703,7 @@ Every correlation depends on assumptions that can silently break. Check them.
 | **Probe heartbeat** | continuous | Feeds the `STALE` verdict (3.3). **Implemented:** the verdict reads `MAX(target_state.last_probe_at)` on every render, so silence is noticed at the cadence of the slowest reference target rather than by a separate heartbeat process. |
 | **Config validity** | on reload | A rejected config keeps the previous one live (§13.3). |
 | **All of the above** | shared tick | **Implemented:** every check in this table other than the heartbeat runs at startup and then on the maintenance loop's ten-minute tick, so the intervals column is the effective cadence rather than a separate scheduler. A slower check would need its own timer; none does today. |
-| **Path MTU** | 10 min | Docker bridges default to 1500; a VPN uplink of 1420 black-holes large handshakes and fakes `DOWN`. See `NETWORKING.md` §4. **Implemented:** the `mtu` self-check reports the smallest MTU among up, non-loopback interfaces and warns below a 1400-byte floor. It measures the local interface, not the path: a lower path MTU needs a DF-bit probe and raw sockets, and the detail says so rather than implying a path measurement. While that check is failing and fresh, the agent tells the classifier, so an `http_timeout`, `tcp_timeout`, or `tls_handshake` becomes `UNKNOWN` with the reason "egress MTU is below the floor" instead of faking `DOWN`. A `tcp_refused` stays `DOWN`: the SYN arrived, so this handshake was not black-holed. |
+| **Path MTU** | 10 min | Docker bridges default to 1500; a VPN uplink of 1420 black-holes large handshakes and fakes `DOWN`. See `NETWORKING.md` §4. **Implemented:** the `mtu` self-check reports the smallest MTU among up, non-loopback interfaces and warns below a 1400-byte floor. It measures the local interface, not the path: a lower path MTU needs a DF-bit probe and raw sockets. A Linux-only implementation ships as `internal/probe/pmtu_linux.go`; other platforms fall back to this interface check, and the detail says so rather than implying a path measurement. While that check is failing and fresh, the agent tells the classifier, so an `http_timeout`, `tcp_timeout`, or `tls_handshake` becomes `UNKNOWN` with the reason "egress MTU is below the floor" instead of faking `DOWN`. A `tcp_refused` stays `DOWN`: the SYN arrived, so this handshake was not black-holed. |
 | **Egress ports** | 10 min | Port 53 blocked turns 250 country anchors red for no reason. Blocked → `UNMEASURABLE`, never `DOWN`. See `NETWORKING.md` §10. **Implemented:** the `port53` self-check proves UDP/53 and TCP/53 to a public resolver and names the blocked transport. A fresh failure feeds a gate in the agent: while egress port 53 is blocked, `dns_timeout` and `dns_error` classify `UNMEASURABLE` with the blocked port in the reason, so one firewall cannot turn every anchor red. A stale gate fails open (the classifier runs normally) and an NXDOMAIN is still `DOWN`, because that is target truth rather than a blocked path. |
 
 `VANTAGE_CHANGED` is not an outage — it invalidates baselines, and the UI must say so plainly:
@@ -731,6 +731,8 @@ Georgia Tech's Internet Outage Detection and Analysis. Country-level outage scor
 - **This is the use case, already solved.** Do not reimplement it.
 - Poll every 5 minutes. Cache aggressively. Attribution required.
 
+**Implemented:** two separate adapters. `internal/feeds.IODA` polls `/v2/outages/events` on the five-minute cycle and stores country evidence with the event's real score as severity (`NETWEATHER_FEEDS=ioda`). `internal/feeds.IODA.FetchLevels` polls the ranked `/v2/outages/summary` once per cycle (`NETWEATHER_FEEDS=ioda-level`) and stores at most `NETWEATHER_IODA_LEVEL_LIMIT` (default 25, hard max 100) countries in `country_level` (migration `0025`). IODA's `overall` score is an unbounded magnitude, not a probability, so the stored `level` is a **relative** value: `log10(1+score) / log10(1+top_score)` within the same window. The raw score, event count, and rank are stored beside it and shown with it, so a tile never claims an absolute outage probability. The world page reads the stored map with one query; it never calls IODA on a page view. A stale observation cannot replace a newer one, and a missing, empty, or failed snapshot states its case on the page.
+
 ### 8.2 Cloudflare Radar — build second
 
 Free with a Cloudflare account token. The BGP feeds are the cyberwar signal.
@@ -747,10 +749,8 @@ Free with a Cloudflare account token. The BGP feeds are the cyberwar signal.
 
 RIS Live is RIPE's real-time BGP update stream. It is powerful and very noisy,
 and it is only useful once the baseline machinery (§7.2) is proven. This
-project now ships a **polling adapter** over RIPEstat's BGP update history
-endpoint rather than the real-time WebSocket: it fits the existing feed model,
-needs no persistent connection, and costs nothing per poll. The real-time
-stream is a separate, post-MVP concern.
+project ships **two adapters**: a bounded RIPEstat polling adapter that is the
+default, and an opt-in real-time WebSocket stream over RIS Live itself.
 
 - `internal/feeds/rislive` polls the RIPEstat bgp-updates endpoint for the ASNs
   the operator names (`NETWEATHER_RIS_ASNS`), with an optional endpoint override
@@ -763,6 +763,23 @@ stream is a separate, post-MVP concern.
   with "feed is not enabled" rather than fabricating routing health.
 - The adapter is read-only and spends no credits; it only reads RIPEstat.
 - A contract test with a recorded payload pins the wire shape.
+
+**Real-time stream (opt-in).** `internal/feeds/rislive_ws.go` reads RIS Live at
+`wss://ris-live.ripe.net/v1/ws/?client=netweather` and subscribes to `UPDATE`
+messages for the same `NETWEATHER_RIS_ASNS` list. It is enabled by
+`NETWEATHER_FEEDS=ris-live-ws` or `NETWEATHER_RIS_STREAM=true`; an endpoint
+override (`NETWEATHER_RIS_WS_URL`) must be `wss`, and a plaintext override is
+ignored with `event=feed_url_insecure`. It is additive to the poller: a
+persistent socket is a different network commitment from a bounded REST read,
+so the polling adapter keeps working where a WebSocket cannot traverse.
+`ris_message` updates are mapped into the same `bgp_update` / `bgp_withdrawal`
+evidence shape (feed name `ris-live-ws`) with host, peer, path, and prefixes in
+the payload; application-level `ping` frames are answered so a quiet
+subscription is not dropped. Frames are batched (≤128, or a ten-second flush)
+into one store write, the TCP dial goes through `netx` so the egress policy
+still applies, and a disconnect is recorded as feed failure then reconnected
+with exponential backoff capped at one minute. A contract test with a scripted
+socket pins the subscribe frame, ping/pong, event mapping, and reconnect.
 
 ### 8.4 Statuspage family
 
@@ -923,7 +940,18 @@ One tile per country: ccTLD code + flag, coloured by reachability, with an IODA 
 
 **Implemented:** `/world` renders one tile per learned country, worst state first, with the target count and per-state chips; the code, state text, and glyph carry the meaning alongside colour. A target with no learned country is counted separately as "unplaced", never folded into a real code. Clicking a tile opens the board filtered to that country (`/?group=country&country=US`), and the board shows the active filter with a clear link that preserves the grouping lens and focus mode. A country tile also carries the highest-severity feed event for that country from the last 24 hours (`ioda outage 0.87`), with one query for the whole page; a missing reader, an empty window, and a failed query each state their case instead of leaving the tile looking quiet. The tile also carries the regional-indicator flag for the code, decorative only: the code is always rendered as text, so a platform without flag glyphs loses nothing.
 
-**Deliberately not implemented: a live per-country IODA score.** IODA publishes signals and alerts, not one score with a fixed meaning, and its signal endpoints are per entity: rendering a world page would mean one upstream call per country, which turns a page view into an API-scraping loop and makes the board depend on a third party's latency. The overlay therefore shows the latest stored IODA event, which is a real observation with a real severity, and names the feed so the operator knows the source. A live overlay would need a server-side poll that stores a bounded per-country level; that is a later, separate feed, not a page-time fetch.
+**Live per-country level (bounded, server-side).** The earlier objection to a
+live IODA overlay was the cost of IODA's per-entity signal endpoints: a page
+view would become an API-scraping loop. That is still true, so the world page
+does **not** fetch IODA. Instead the `ioda-level` feed polls the single ranked
+`/v2/outages/summary` endpoint every five minutes and stores at most 25
+countries; `/world` reads that stored map with the same one-query discipline as
+the event overlay. IODA's `overall` is an unbounded magnitude, not a 0–1
+probability, so the tile shows a clearly named **relative level** beside the
+raw score and event count, with the source (`ioda-summary`) on the badge. The
+event overlay and the level snapshot have separate notes: an event feed can be
+healthy while the level feed is not, and neither silence is allowed to look
+like "no level".
 
 ### 10.4 Corridors
 
@@ -1142,7 +1170,7 @@ Config changes apply without a restart. The path is polled every 30 seconds rath
 | Minimum interval per host | 30s, not configurable lower |
 | Per-host concurrency | 1 |
 | Global rate ceiling | 20 req/s default (`NETWEATHER_RATE_LIMIT`), ramped from 2 req/s over ten minutes from the database's first target; **implemented** in the agent's Step pacing |
-| Allowed ports (outbound) | 80, 443, 53 (DNS), 123 (NTP, fixed allowlist), 853 (DoT, phase 3). **22 and everything else excluded.** |
+| Allowed ports (outbound) | 80, 443, 53 (DNS), 123 (NTP, fixed allowlist), 853 (DoT, implemented). **22 and everything else excluded.** |
 | Inbound port | `2600` only; no other listener. Non-loopback bind requires auth (`NETWORKING.md` §7.1) |
 | API rate limit | 60 req/min per token, burst 20, `429` with `Retry-After` (`API.md` §8) |
 | Allowed probe methods | GET, HEAD. The API's POST actions (pause, resume, annotate, trace, disable) are not outbound probes |
@@ -1175,7 +1203,7 @@ The living plan — what is now, next, later, and deliberately not planned — i
 | **0** | Service targets, probe ladder, classifier (incl. per-resolver DNS baseline), SQLite, board + overview, reference/LOCAL, baseline health | It is not noise | Implemented |
 | **1** | Country anchors, ASN enrichment, coverage panel, attribution, world view, corridors, optional RIPE Atlas profile, Atlas feed plugin (read-only) | It sees more than a favicon grid | Implemented. The RIPE Atlas **software-probe profile** ships (`docs/RIPE_ATLAS.md`), and the Atlas **feed plugin** now ships as a read-only adapter (`internal/feeds/atlas`) that reads measurements the operator created and never spends credits |
 | **2** | IODA + Radar plugins, Statuspage corroboration, IHI, drawer depth | It detects large events | Implemented |
-| **3** | RIS Live, cert pinning, multi-instance agent, live IODA overlay | It detects tampering and mass events | Cert pinning, RIS Live (polling adapter), the IODA overlay (stored events), and federation-lite remote agents implemented. Vantages are first-class (direct, Tor, remote); an agent runs the same instruments and reports to `/api/v1/vantages/{id}/reports`. mTLS and signed batches are a hardening item. |
+| **3** | RIS Live, cert pinning, multi-instance agent, live IODA overlay | It detects tampering and mass events | Cert pinning, both RIS Live adapters (RIPEstat poller plus opt-in real-time WebSocket), the bounded live IODA level overlay, and federation-lite remote agents implemented. Vantages are first-class (direct, Tor, remote); an agent runs the same instruments and reports to `/api/v1/vantages/{id}/reports`. mTLS and signed batches are a hardening item. |
 
 Phase 0 is the whole thesis in miniature. If phase 0 is noisy, nothing later saves it.
 
@@ -1189,7 +1217,7 @@ Phase 0 is the whole thesis in miniature. If phase 0 is noisy, nothing later sav
 - **RIPE Atlas — optional compose profile** (§8.6), off by default.
 - **Traceroute - on-demand only, via the opt-in `compose.trace.yaml` override** that adds `CAP_NET_RAW`; the default image has no capabilities.
 - **Tailscale — compose profile only** (`NETWORKING.md` §7); the default compose publishes exactly one port.
-- **BGP - v1 ships IODA and Radar summaries only (phase 2).** RIS Live now ships as a polling adapter over RIPEstat (`internal/feeds/rislive`); the real-time WebSocket is post-MVP.
+- **BGP - v1 ships IODA and Radar summaries only (phase 2).** RIS Live ships as both a bounded RIPEstat poller (`internal/feeds/rislive`) and an opt-in real-time WebSocket (`internal/feeds/rislive_ws.go`); the poller stays the default where a persistent socket is not wanted.
 
 **Open:**
 

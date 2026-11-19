@@ -748,12 +748,18 @@ func TestBoardFocusWithNothingToShow(t *testing.T) {
 }
 
 type fakeFeedHealth struct {
-	states []store.FeedState
-	err    error
+	states  []store.FeedState
+	events  []store.ExternalEvent
+	statesErr error
+	eventsErr error
 }
 
 func (f *fakeFeedHealth) FeedStates(context.Context) ([]store.FeedState, error) {
-	return f.states, f.err
+	return f.states, f.statesErr
+}
+
+func (f *fakeFeedHealth) ExternalEvents(context.Context, int) ([]store.ExternalEvent, error) {
+	return f.events, f.eventsErr
 }
 
 func newServerWithFeeds(t *testing.T, token string, m *board.Memory, feeds web.FeedHealth) *httptest.Server {
@@ -823,7 +829,7 @@ func TestBoardFeedHealthStatesAreExplicit(t *testing.T) {
 	}{
 		{"unconfigured", nil, "not configured"},
 		{"empty", &fakeFeedHealth{}, "No external feeds are enabled"},
-		{"failed", &fakeFeedHealth{err: errors.New("db down")}, "temporarily unavailable"},
+		{"failed", &fakeFeedHealth{statesErr: errors.New("db down")}, "temporarily unavailable"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -2548,6 +2554,15 @@ func (f *fakeCountryEvents) RecentCountryEvents(context.Context, time.Time) (map
 	return f.events, f.err
 }
 
+type fakeCountryLevels struct {
+	levels map[string]store.CountryLevel
+	err    error
+}
+
+func (f *fakeCountryLevels) CountryLevels(context.Context) (map[string]store.CountryLevel, error) {
+	return f.levels, f.err
+}
+
 func newServerWithCountryEvents(t *testing.T, token string, m *board.Memory, events web.CountryEvents) *httptest.Server {
 	t.Helper()
 
@@ -2605,6 +2620,107 @@ func TestWorldShowsTheFeedOverlay(t *testing.T) {
 	// Only US has an event; DE must not borrow it.
 	if strings.Count(page, `data-testid="country-feed"`) != 1 {
 		t.Error("an event was attached to the wrong country")
+	}
+}
+
+func newServerWithWorldFeeds(t *testing.T, token string, m *board.Memory,
+	events web.CountryEvents, levels web.CountryLevels) *httptest.Server {
+	t.Helper()
+
+	h, err := web.New(web.Deps{
+		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:        m,
+		Watcher:       m,
+		CountryEvents: events,
+		CountryLevels: levels,
+		Vantage:       "local",
+		Token:         token,
+		Version:       "test",
+		StartedAt:     time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestWorldShowsBoundedCountryLevel(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(
+		board.Target{ID: "1", Name: "Chase", Host: "chase.com", Country: "US", State: board.StateUp},
+		board.Target{ID: "2", Name: "Deutsche", Host: "de.example", Country: "DE", State: board.StateUp},
+	)
+	levels := &fakeCountryLevels{levels: map[string]store.CountryLevel{
+		"US": {Country: "US", Level: 0.92, Score: 56448000, Source: "ioda-summary"},
+	}}
+
+	ts := newServerWithWorldFeeds(t, testToken, m, &fakeCountryEvents{}, levels)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/world") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	for _, want := range []string{
+		`data-testid="country-level"`,
+		`data-source="ioda-summary"`,
+		`level 0.92`,
+		`56.4M`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("level overlay missing %q:\n%s", want, page)
+		}
+	}
+	if strings.Count(page, `data-testid="country-level"`) != 1 {
+		t.Error("a level was attached to the wrong country")
+	}
+	if strings.Contains(page, `data-testid="world-level-note"`) {
+		t.Error("a level note rendered with a level snapshot present")
+	}
+}
+
+func TestWorldLevelNotes(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(
+		board.Target{ID: "1", Name: "Chase", Host: "chase.com", Country: "US", State: board.StateUp},
+	)
+	cases := []struct {
+		name   string
+		levels web.CountryLevels
+		want   string
+	}{
+		{"unconfigured", nil, "not configured"},
+		{"empty", &fakeCountryLevels{}, "No country level snapshot"},
+		{"failed", &fakeCountryLevels{err: errors.New("db down")}, "temporarily unavailable"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ts := newServerWithWorldFeeds(t, testToken, m, &fakeCountryEvents{}, tc.levels)
+			client, _ := newClient(t)
+			login(t, ts, client, testToken)
+
+			resp, err := client.Get(ts.URL + "/world") //nolint:bodyclose // body() closes it
+			if err != nil {
+				t.Fatal(err)
+			}
+			page := body(t, resp)
+			if !strings.Contains(page, `data-testid="world-level-note"`) || !strings.Contains(page, tc.want) {
+				t.Fatalf("level note missing %q:\n%s", tc.want, page)
+			}
+			if strings.Contains(page, `data-testid="country-level"`) {
+				t.Error("a level badge rendered without a level snapshot")
+			}
+		})
 	}
 }
 

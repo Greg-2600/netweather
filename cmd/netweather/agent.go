@@ -3,6 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -21,15 +25,26 @@ import (
 // remoteSink posts a batch of probes to a primary server's vantage ingest
 // endpoint. It is the agent side of federation-lite.
 type remoteSink struct {
-	server  string
-	vantage string
-	token   string
-	client  *http.Client
+	server         string
+	vantage        string
+	token          string
+	signingSecret   string
+	clientCertPath string
+	clientKeyPath  string
+	client         *http.Client
 }
 
 func (r *remoteSink) Record(ctx context.Context, probes []store.Probe) error {
 	if r.client == nil {
 		r.client = &http.Client{Timeout: 30 * time.Second}
+		if r.clientCertPath != "" && r.clientKeyPath != "" {
+			cert, err := tls.LoadX509KeyPair(r.clientCertPath, r.clientKeyPath)
+			if err == nil {
+				r.client.Transport = &http.Transport{
+					TLSClientConfig: &tls.Config{Certificates: []tls.Certificate{cert}},
+				}
+			}
+		}
 	}
 	body, err := json.Marshal(map[string]any{"probes": probes})
 	if err != nil {
@@ -43,6 +58,11 @@ func (r *remoteSink) Record(ctx context.Context, probes []store.Probe) error {
 	req.Header.Set("Content-Type", "application/json")
 	if r.token != "" {
 		req.Header.Set("Authorization", "Bearer "+r.token)
+	}
+	if r.signingSecret != "" {
+		mac := hmac.New(sha256.New, []byte(r.signingSecret))
+		mac.Write(body)
+		req.Header.Set("X-Netweather-Signature", hex.EncodeToString(mac.Sum(nil)))
 	}
 	resp, err := r.client.Do(req)
 	if err != nil {
@@ -63,6 +83,9 @@ func agentCommand(args []string, stdout io.Writer) error {
 	server := fs.String("server", os.Getenv("NETWEATHER_SERVER_URL"), "primary server base URL")
 	vantage := fs.String("vantage", os.Getenv("NETWEATHER_VANTAGE"), "vantage id to report under")
 	token := fs.String("token", os.Getenv("NETWEATHER_AGENT_TOKEN"), "bearer token for the primary")
+	signingSecret := fs.String("signing-secret", os.Getenv("NETWEATHER_AGENT_SIGNING_SECRET"), "shared secret for signing batches")
+	clientCert := fs.String("client-cert", os.Getenv("NETWEATHER_AGENT_CLIENT_CERT"), "client certificate for mTLS")
+	clientKey := fs.String("client-key", os.Getenv("NETWEATHER_AGENT_CLIENT_KEY"), "client key for mTLS")
 	configPath := fs.String("config", os.Getenv("NETWEATHER_CONFIG"), "target config file")
 	interval := fs.Duration("interval", 30*time.Second, "reporting cadence")
 	once := fs.Bool("once", false, "run a single probe pass and exit")
@@ -84,7 +107,14 @@ func agentCommand(args []string, stdout io.Writer) error {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	dialer := netx.New()
 	instruments := newInstrumentsWithDialer(dialer, "netweather-agent")
-	sink := &remoteSink{server: *server, vantage: *vantage, token: *token}
+	sink := &remoteSink{
+		server:         *server,
+		vantage:        *vantage,
+		token:          *token,
+		signingSecret:  *signingSecret,
+		clientCertPath: *clientCert,
+		clientKeyPath:  *clientKey,
+	}
 	ag := agent.New(targets, instruments, sink)
 	ag.Logger = logger
 

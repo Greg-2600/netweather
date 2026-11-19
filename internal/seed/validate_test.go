@@ -116,6 +116,28 @@ func TestValidateRejectsDuplicates(t *testing.T) {
 	}
 }
 
+func TestValidateAllowsSharedDNSWithDifferentQuestions(t *testing.T) {
+	t.Parallel()
+
+	uk := seed.Entry{
+		ID: "cctld-uk", Name: "UK ccTLD", Host: "fork.sth.dnsnode.net",
+		Port: 53, Probe: "dns", Query: "uk",
+		Class: "country", Sector: "country", Tier: schedule.TierAnchor,
+	}
+	de := uk
+	de.ID, de.Name, de.Query = "cctld-de", "DE ccTLD", "de"
+	if err := seed.Validate([]seed.Entry{uk, de}); err != nil {
+		t.Fatalf("two ccTLD anchors on one nameserver were rejected: %v", err)
+	}
+
+	// The same question twice is still a duplicate.
+	dup := uk
+	dup.ID = "cctld-uk-2"
+	if err := seed.Validate([]seed.Entry{uk, dup}); err == nil {
+		t.Fatal("a duplicate dns question was accepted")
+	}
+}
+
 func TestValidateAcceptsAnAnchorIP(t *testing.T) {
 	t.Parallel()
 

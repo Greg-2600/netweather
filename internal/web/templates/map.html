@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Map · netweather</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  {{template "insecure" .}}
+  <header class="bar">
+    <a class="brand" href="/">netweather</a>
+    <a class="nav" href="/">Board</a>
+    <a class="nav" href="/world">World</a>
+    <a class="nav" href="/corridors">Corridors</a>
+    <a class="nav" href="/coverage">Coverage</a>
+    <a class="nav" href="/incidents">Incidents</a>
+    <a class="nav" href="/feeds">Feeds</a>
+    <a class="nav" href="/map">Map</a>
+  </header>
+
+  <main>
+    <h1 class="page-title">Map</h1>
+
+    {{with .Health}}
+    <section class="health-front" data-testid="health-front"
+             aria-label="Internet health at a glance">
+      <div class="health-headline">
+        <div class="health-score">
+          <span class="health-pct" data-testid="health-pct">{{.HealthyPct}}%</span>
+          <span class="health-pct-label">reachable</span>
+          <span class="health-total">of {{.Total}} targets</span>
+        </div>
+        <div class="health-counts">
+          <span class="sev-down"><b data-testid="health-down">{{.Down}}</b> down</span>
+          <span class="sev-blocked"><b>{{.Blocked}}</b> blocked</span>
+          <span class="sev-impaired"><b>{{.Impaired}}</b> degraded / config</span>
+          <span class="sev-nodata"><b>{{.NoData}}</b> no data</span>
+          <span class="sev-longest" data-testid="health-longest">longest outage {{.Longest}}</span>
+        </div>
+      </div>
+      {{if .Top}}
+      <div class="health-worst">
+        <h2>Worst right now <span class="muted small">— ranked by severity and time in state</span></h2>
+        {{range $i, $t := .Top}}
+        <a class="worst-row" href="/targets/{{$t.Target}}" data-testid="worst-row">
+          <span class="worst-rank">{{$i}}</span>
+          <span class="worst-name" title="{{$t.Label}}">{{$t.Label}}</span>
+          <span class="worst-state">{{$t.State}}</span>
+          <span class="worst-detail">{{$t.Detail}}</span>
+          <span class="worst-duration" data-testid="worst-duration">{{$t.Duration}}</span>
+        </a>
+        {{end}}
+      </div>
+      {{end}}
+    </section>
+    {{end}}
+
+    <p class="muted" data-testid="map-summary">
+      Clustered by health: outages first, then blocked, degraded and healthy.
+      Each block is sized by the severity and duration of the targets inside it,
+      so problems take space instead of hiding among healthy targets. Colour is
+      a diverging health scale (deep red = down, amber = impaired, green = up).
+      Hover a box for its full name, state, error and duration; click to open it.
+    </p>
+    <p class="muted">
+      Cluster by:
+      <a class="nav" href="/map?by=health">Health</a>
+      <a class="nav" href="/map?by=sector">Sector</a>
+      <a class="nav" href="/map?by=country">Country</a>
+      <a class="nav" href="/map?by=asn">ASN</a>
+      (current: {{.By}})
+    </p>
+
+    <div data-testid="treemap" class="treemap">
+      {{range .Sectors}}
+      <section class="map-sector" data-testid="map-sector" data-group="{{.Label}}"
+               style="left:{{printf "%.2f" .X}}%;top:{{printf "%.2f" .Y}}%;width:{{printf "%.2f" .W}}%;height:{{printf "%.2f" .H}}%;">
+        {{if .ShowHead}}
+        <header class="map-sector-head" style="background:{{.Color}};">
+          <span class="map-sector-name" title="{{.Label}}">{{.Label}}</span>
+          <span class="map-sector-stat">{{.Count}} · <span class="up">{{.Up}}</span>/<span class="dn">{{.Down}}</span></span>
+        </header>
+        {{end}}
+        <div class="map-sector-body">
+          {{range .Tiles}}
+          <a href="/targets/{{.Target}}" data-testid="map-tile" class="map-tile"
+             title="{{.Label}} ({{.Group}}): {{.State}}{{if ne .Detail .State}} · {{.Detail}}{{end}} · {{.Duration}}"
+             style="left:{{printf "%.2f" .X}}%;top:{{printf "%.2f" .Y}}%;width:{{printf "%.2f" .W}}%;height:{{printf "%.2f" .H}}%;background:{{.Color}};">
+            {{if .ShowFull}}
+            <span class="map-tile-name">{{.Label}}</span>
+            {{else if .ShowTicker}}
+            <span class="map-tile-ticker">{{.Ticker}}</span>
+            {{end}}
+            {{if .ShowSub}}<span class="map-tile-sub">{{.Duration}}</span>{{end}}
+          </a>
+          {{end}}
+        </div>
+      </section>
+      {{end}}
+      {{if not .Tiles}}
+      <p class="muted" data-testid="no-map-tiles" style="padding:1rem;">No targets to map yet. The board is still being probed.</p>
+      {{end}}
+    </div>
+
+    <p class="muted map-legend" style="margin-top:0.5rem;font-size:11px;">
+      <span class="legend-scale" aria-hidden="true"></span>
+      down <span aria-hidden="true">→</span> degraded / blocked <span aria-hidden="true">→</span> up
+      <span style="margin-left:0.75rem;">Box area = severity × time in state. Block borders separate clusters; the header tint is the cluster's overall health.</span>
+    </p>
+  </main>
+</body>
+</html>

@@ -49,6 +49,7 @@ type Target struct {
 	// instrument's default (CLASSIFIER.md §7).
 	MaxRedirects int
 	ICMPAnchor   bool
+	Family       int
 }
 
 // Runner executes one target with the right instrument. agent.Instruments is the
@@ -65,6 +66,8 @@ type Instruments struct {
 	TCP  *probe.TCP
 	DNS  *probe.DNS
 	DoH  *probe.DoH
+	DoT  *probe.DoT
+	QUIC *probe.QUIC
 	NTP  *probe.NTP
 	ICMP *probe.ICMP
 }
@@ -93,20 +96,50 @@ func (i Instruments) Run(ctx context.Context, t Target) probe.Result {
 		if i.DNS == nil {
 			return probe.Result{Err: fmt.Errorf("agent: dns instrument not configured")}
 		}
-		r := i.DNS.Do(ctx, t.Address, t.Query)
+		var r probe.DNSResult
+		if t.Family == 6 {
+			r = i.DNS.Do6(ctx, t.Address, t.Query)
+		} else {
+			r = i.DNS.Do(ctx, t.Address, t.Query)
+		}
 		return probe.Result{
 			Latency: r.Latency, ErrorClass: r.ErrorClass, Err: r.Err,
 			Addresses: r.Addresses, CNAMEs: r.CNAMEs,
+			Authoritative: r.Authoritative,
 		}
 	case "doh":
 		if i.DoH == nil {
 			return probe.Result{Err: fmt.Errorf("agent: doh instrument not configured")}
 		}
-		r := i.DoH.Do(ctx, t.URL, t.Query)
-		return probe.Result{
-			Latency: r.Latency, ErrorClass: r.ErrorClass, Err: r.Err,
-			Addresses: r.Addresses,
+		var r probe.Result
+		if t.Family == 6 {
+			dr := i.DoH.Do6(ctx, t.URL, t.Query)
+			r = probe.Result{Latency: dr.Latency, ErrorClass: dr.ErrorClass, Err: dr.Err, Addresses: dr.Addresses}
+		} else {
+			dr := i.DoH.Do(ctx, t.URL, t.Query)
+			r = probe.Result{Latency: dr.Latency, ErrorClass: dr.ErrorClass, Err: dr.Err, Addresses: dr.Addresses}
 		}
+		return r
+	case "dot":
+		if i.DoT == nil {
+			return probe.Result{Err: fmt.Errorf("agent: dot instrument not configured")}
+		}
+		var dr probe.DNSResult
+		if t.Family == 6 {
+			dr = i.DoT.Do6(ctx, t.Address, t.Query)
+		} else {
+			dr = i.DoT.Do(ctx, t.Address, t.Query)
+		}
+		return probe.Result{
+			Latency: dr.Latency, ErrorClass: dr.ErrorClass, Err: dr.Err,
+			Addresses: dr.Addresses,
+		}
+	case "quic":
+		if i.QUIC == nil {
+			return probe.Result{Err: fmt.Errorf("agent: quic instrument not configured")}
+		}
+		r := i.QUIC.Do(ctx, t.Address)
+		return probe.Result{Latency: r.Latency, ErrorClass: r.ErrorClass, Err: r.Err, Status: r.Status}
 	case "ntp":
 		if i.NTP == nil {
 			return probe.Result{Err: fmt.Errorf("agent: ntp instrument not configured")}
@@ -880,10 +913,14 @@ func decisionFor(t Target, res probe.Result, dnsBlocked, mtuBlocked bool) classi
 	}
 
 	if t.Instrument != "" && t.Instrument != "http" && res.Err == nil && res.ErrorClass == "" {
+		reason := "reachability only"
+		if res.Authoritative {
+			reason = "authoritative answer (zone served)"
+		}
 		return classify.Result{
 			State:      state.UpReachability,
 			Confidence: classify.Low,
-			Reason:     "reachability only",
+			Reason:     reason,
 		}
 	}
 	return classify.Decide(expect, classify.Response{
@@ -902,6 +939,10 @@ func stageFor(t Target, class string) string {
 		return "dns"
 	case strings.HasPrefix(class, "doh_"):
 		return "doh"
+	case strings.HasPrefix(class, "dot_"):
+		return "dot"
+	case strings.HasPrefix(class, "quic_"):
+		return "quic"
 	case strings.HasPrefix(class, "tcp_"):
 		return "tcp"
 	case strings.HasPrefix(class, "tls_"):
@@ -920,6 +961,10 @@ func stageFor(t Target, class string) string {
 		return "dns"
 	case "doh":
 		return "doh"
+	case "dot":
+		return "dot"
+	case "quic":
+		return "quic"
 	case "ntp":
 		return "ntp"
 	case "icmp":

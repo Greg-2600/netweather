@@ -33,7 +33,7 @@ func loadAgentTargets(path string) ([]agent.Target, error) {
 			url = targetURL(t.Host, t.Port, t.Path)
 		case "doh":
 			url = dohEndpoint(t.Host, t.Port, t.URL)
-		case "tls", "tcp", "tcpping", "dns", "ntp":
+		case "tls", "tcp", "tcpping", "dns", "ntp", "dot", "quic":
 			address = net.JoinHostPort(t.Host, strconv.Itoa(t.Port))
 		case "icmp":
 			address = t.Host

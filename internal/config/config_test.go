@@ -123,6 +123,42 @@ func TestLoadRejects(t *testing.T) {
 	}
 }
 
+func TestCountryAnchorsShareANameserver(t *testing.T) {
+	t.Parallel()
+
+	// The ccTLD fleet asks different questions of one NS. It is one target per
+	// country, not a duplicate endpoint, so the qname is part of the identity.
+	path := write(t, `version: 1
+targets:
+  - id: cctld-uk
+    name: UK ccTLD
+    host: fork.sth.dnsnode.net
+    port: 53
+    probe: dns
+    qname: uk
+    class: country
+    tier: 3
+  - id: cctld-de
+    name: DE ccTLD
+    host: fork.sth.dnsnode.net
+    port: 53
+    probe: dns
+    qname: de
+    class: country
+    tier: 3
+`)
+	f, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("country anchors were rejected: %v", err)
+	}
+	if len(f.Targets) != 2 {
+		t.Fatalf("targets = %d, want 2", len(f.Targets))
+	}
+	if f.Targets[0].QName != "uk" || f.Targets[1].QName != "de" {
+		t.Fatalf("qnames = %q, %q", f.Targets[0].QName, f.Targets[1].QName)
+	}
+}
+
 func TestDuplicatesAreRejected(t *testing.T) {
 	t.Parallel()
 

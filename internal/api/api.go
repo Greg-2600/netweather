@@ -1,10 +1,14 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
 	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +16,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -849,10 +854,38 @@ func (s *server) handleVantageReport(w http.ResponseWriter, r *http.Request, van
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "the request body could not be read")
+		return
+	}
+	// Signed batches: when a shared secret is configured, the agent must sign
+	// the raw body with HMAC-SHA256 and send it as X-Netweather-Signature.
+	if secret := os.Getenv("NETWEATHER_VANTAGE_SIGNING_SECRET"); secret != "" {
+		sig := r.Header.Get("X-Netweather-Signature")
+		mac := hmac.New(sha256.New, []byte(secret))
+		mac.Write(bodyBytes)
+		expected := hex.EncodeToString(mac.Sum(nil))
+		if !hmac.Equal([]byte(sig), []byte(expected)) {
+			writeError(w, r, http.StatusUnauthorized, CodeUnauthorized, "invalid or missing batch signature")
+			return
+		}
+	}
+	// mTLS: when a client CA is configured and the connection is TLS, require a
+	// verified client certificate.
+	if caPath := os.Getenv("NETWEATHER_VANTAGE_CLIENT_CA"); caPath != "" && r.TLS != nil {
+		if len(r.TLS.PeerCertificates) == 0 {
+			writeError(w, r, http.StatusUnauthorized, CodeUnauthorized, "client certificate required")
+			return
+		}
+		// Verification of the chain against the CA is performed by the TLS
+		// handshake when the server is configured with ClientAuth; this check
+		// only ensures a cert was presented.
+	}
 	var batch struct {
 		Probes []store.Probe `json:"probes"`
 	}
-	dec := json.NewDecoder(r.Body)
+	dec := json.NewDecoder(bytes.NewReader(bodyBytes))
 	if err := dec.Decode(&batch); err != nil {
 		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument,
 			"the request body is not a valid probe batch")

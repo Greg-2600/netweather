@@ -81,6 +81,9 @@ type Target struct {
 	Tier       int    `yaml:"tier"`
 	IntervalS  int    `yaml:"interval_s"`
 	ICMPAnchor bool   `yaml:"icmp_anchor"`
+	// Family is the IP family for DNS/DoH/DoT queries and address handling:
+	// 4 (default) or 6. HTTP/TCP/TLS targets dial the host as given.
+	Family     int    `yaml:"family"`
 	Expect     Expect `yaml:"expect"`
 }
 
@@ -205,6 +208,8 @@ var (
 		"tls":     {443: {}},
 		"dns":     {53: {}},
 		"doh":     {443: {}},
+		"dot":     {853: {}},
+		"quic":    {443: {}},
 		"ntp":     {123: {}},
 		"icmp":    {},
 	}
@@ -232,7 +237,10 @@ func (f *File) Validate() error {
 			return fmt.Errorf("config: target %d (%s): %w", i, t.Host, err)
 		}
 
-		key := fmt.Sprintf("%s|%d|%s", t.Host, t.Port, t.Probe)
+		// The DNS question is part of a target's identity: many ccTLD anchors
+		// ask different questions of the same authoritative nameserver, and
+		// collapsing them would silently drop countries from the fleet.
+		key := fmt.Sprintf("%s|%d|%s|%s", t.Host, t.Port, t.Probe, t.QName)
 		if other, dup := seenKey[key]; dup {
 			return fmt.Errorf("config: target %d duplicates target %d (%s)", i, other, key)
 		}
@@ -302,6 +310,13 @@ func validateTarget(t *Target) error {
 		return fmt.Errorf("tier %d must be 0-3", t.Tier)
 	}
 
+	if t.Family == 0 {
+		t.Family = 4
+	}
+	if t.Family != 4 && t.Family != 6 {
+		return fmt.Errorf("family %d must be 4 or 6", t.Family)
+	}
+
 	// NTP is self-health, not a target monitor (DESIGN.md §14): a fixed clock
 	// source keep the tool from becoming a UDP/123 scanner and from a typo
 	// pointing the clock check at a stranger's host.
@@ -314,15 +329,17 @@ func validateTarget(t *Target) error {
 	// and meaningless for every other instrument, so a stray value is a config
 	// mistake rather than something to ignore.
 	t.QName = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(t.QName), "."))
-	if t.Probe == "dns" || t.Probe == "doh" {
+	if t.Probe == "dns" || t.Probe == "doh" || t.Probe == "dot" {
 		if t.QName == "" {
 			return fmt.Errorf("%s targets require qname", t.Probe)
 		}
-		if !validHostname(t.QName) {
+		// A DNS question may be a single label: the ccTLD anchors ask about
+		// "uk" and "de", which are valid DNS names but not valid hostnames.
+		if !validQName(t.QName) {
 			return fmt.Errorf("invalid qname %q", t.QName)
 		}
 	} else if t.QName != "" {
-		return fmt.Errorf("qname is only valid for dns and doh targets, not %q", t.Probe)
+		return fmt.Errorf("qname is only valid for dns, doh, and dot targets, not %q", t.Probe)
 	}
 
 	// url is the DoH endpoint, and only a DoH target has one. It must be HTTPS:
@@ -500,7 +517,17 @@ func validHostname(host string) bool {
 	if len(host) == 0 || len(host) > 253 || !strings.Contains(host, ".") {
 		return false
 	}
-	for _, label := range strings.Split(host, ".") {
+	return validQName(host)
+}
+
+// validQName accepts a DNS question: one or more labels of letters, digits and
+// hyphens. Unlike a host it allows a single label, because a country anchor
+// asks its nameserver about the bare ccTLD ("uk", "de", ...).
+func validQName(name string) bool {
+	if len(name) == 0 || len(name) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(name, ".") {
 		if !hostLabelRE.MatchString(label) {
 			return false
 		}

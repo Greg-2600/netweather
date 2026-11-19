@@ -10,7 +10,7 @@ A self-hosted internet weather station. One small container that answers three q
 
 Most monitors answer only #2, and answer it badly: `curl != 200` becomes "down." That produces enough false alarms that people stop looking. This one classifies bot protection instead of evading it, and refuses to call a single vantage point a global truth.
 
-**Status: phases 0-2 implemented; phase 3 partial.** The binary probes configured targets over HTTP, TLS, TCP, DNS, DoH, NTP, and ICMP on the tiered scheduler, classifies each result, writes to SQLite, and serves a store-backed board with live SSE updates plus the versioned API and a hardened container image. Incidents, baseline anomalies, coverage, self-checks, exports, feeds (IODA, Radar, Statuspage, AWS, GCP, Azure, Atlas, RIPE RIS Live), ASN/CDN/PeeringDB enrichment, certificate issuer pinning and chain/leaf records, per-resolver DNS divergence, provider status mapping, idempotent actions, on-demand traceroute, the world view, configuration-driven corridors with one captured trace per step change, the Internet Health Index, and SSE replay are implemented; Tor (with an optional verified exit country) and Tailscale are compose profiles, traceroute has its own capability overlay, and RIPE's software probe is an opt-in profile (`docs/RIPE_ATLAS.md`). `NETWEATHER_SEED=none` starts with an empty board. Not built: remote multi-instance agents; `DESIGN.md` §15 records what each remaining phase means. The RIPE Atlas feed plugin now ships as a read-only adapter (`internal/feeds/atlas`); it reads measurements the operator created and never spends credits. RIS Live now ships as a polling adapter over RIPEstat (`internal/feeds/rislive`); the real-time WebSocket is post-MVP.
+**Status: phases 0-3 implemented (OIDC deferred to Later).** The binary probes configured targets over HTTP, TLS, TCP, DNS, DoH, DoT, QUIC (UDP/443 reachability), NTP, and ICMP on the tiered scheduler, classifies each result, writes to SQLite, and serves a store-backed board with live SSE updates plus the versioned API and a hardened container image. Incidents, baseline anomalies, coverage, self-checks, exports, feeds (IODA, Radar, Statuspage, AWS, GCP, Azure, Atlas, RIPE RIS Live), ASN/CDN/PeeringDB enrichment, certificate issuer pinning and chain/leaf records, per-resolver DNS divergence, provider status mapping, idempotent actions, on-demand traceroute, the world view, configuration-driven corridors with one captured trace per step change, the Internet Health Index, SSE replay, a Feeds status page, and a FinViz-style treemap map view are implemented; Tor (with an optional verified exit country) and Tailscale are compose profiles, traceroute has its own capability overlay, and RIPE's software probe is an opt-in profile (`docs/RIPE_ATLAS.md`). Remote vantage agents (federation-lite) are implemented: `netweather agent` runs the same instruments on a remote host and reports to `/api/v1/vantages/{id}/reports`. `NETWEATHER_SEED=none` starts with an empty board. Not built: OIDC multi-user auth (deferred to Later). Known limits, stated rather than hidden: QUIC is a UDP/443 reachability probe (not a full handshake); the DF-bit path-MTU probe is Linux-only (other platforms use the interface-MTU self-check); IPv6 measurement runs under host networking only (`compose.ipv6.yaml`); RIPE RIS Live is a polling adapter (real-time WebSocket is post-MVP); IODA shows stored events, not a live per-country score. The RIPE Atlas feed plugin ships as a read-only adapter (`internal/feeds/atlas`); it reads measurements the operator created and never spends credits. RIS Live ships as a polling adapter over RIPEstat (`internal/feeds/rislive`); the real-time WebSocket is post-MVP.
 
 Build and test with one command: `go run ./internal/devtool verify`.
 
@@ -73,7 +73,7 @@ The through-line: `censor_sensor` asked *"can I reach it?"*, `global_packet_thro
 
 **Verdicts** - `OK` · `INCIDENT` · `REGIONAL` · `LOCAL` · `TAMPER` · `STALE` · `LEARNING`.
 
-**Instruments** — DNS, DoH, TCP, TLS, HTTP(S), ICMP, TCP-ping, NTP, traceroute (on-demand only).
+**Instruments** - DNS, DoH, DoT, QUIC, TCP, TLS, HTTP(S), ICMP, TCP-ping, NTP, traceroute (on-demand only).
 
 **Vantages** — `direct` (your connection) and optional `socks5` (Tor, with exit-country pinning). Only the primary vantage may declare `DOWN`.
 
@@ -127,7 +127,7 @@ networks:
       com.docker.network.driver.mtu: 1400          # VPN uplinks are not 1500
 ```
 
-Ships with ~14 targets across banking, airlines, cloud, social, developer, and reference. Scale is opt-in: point `NETWEATHER_CONFIG` at a target file or directory, or add the ~250 ccTLD country anchors with `netweather seed --country-anchors` (one IANA root-zone fetch; `NETWEATHER_ROOT_ZONE_URL` points it at a mirror). `netweather seed --diff` prints what a run would add or change without writing any targets, which is the review step for a seed you did not author.
+Ships with ~14 targets across banking, airlines, cloud, social, developer, and reference. Scale is opt-in: point `NETWEATHER_CONFIG` at a target file or directory, or add the ~250 ccTLD country anchors with `netweather seed --country-anchors` (one IANA root-zone fetch; `NETWEATHER_ROOT_ZONE_URL` points it at a mirror). `netweather seed --diff` prints what a run would add or change without writing any targets, which is the review step for a seed you did not author. The early field-trial fleet is pre-generated at `config/fieldtrial-targets.yaml`: 749 real targets (399 ccTLD anchors, 100 network anchors, 240 services, 10 references), rebuilt from the IANA root zone by `scripts/gen_fieldtrial_targets.py`.
 
 **Verify the image before running it.** Releases are multi-arch, signed with cosign keyless, and carry SBOM and provenance attestations (`docs/IMAGE.md` §6). Pin the digest, not a tag:
 
@@ -184,7 +184,14 @@ Every environment variable the binary reads, including the ones that exist for a
 | `NETWEATHER_RATE_LIMIT` | `20` | global probe ceiling in requests per second; fractional values are allowed, the cold-start ramp still starts at 2 req/s and lasts ten minutes, and a malformed or non-positive value refuses startup |
 | `NETWEATHER_ENRICH` | on | `false` disables ASN, prefix, and CDN learning |
 | `NETWEATHER_PEERINGDB` / `NETWEATHER_PEERINGDB_URL` | on | exchange-membership labels; `false` disables them without disabling enrichment, and `_URL` points at a mirror |
-| `NETWEATHER_FEEDS` | none | comma list of `ioda`, `radar`, `statuspage`, `aws-status`, `gcp-status`, `azure-status`; empty means no external calls |
+| `NETWEATHER_FEEDS` | none | comma list of `ioda`, `ioda-level`, `radar`, `statuspage`, `aws-status`, `gcp-status`, `azure-status`, `ris-live`/`ris`; empty means no external calls |
+| `NETWEATHER_WEBHOOK_URL` | none | optional URL receiving a POST on incident open/close; empty disables webhooks |
+| `NETWEATHER_WEBHOOK_SECRET` | none | optional secret sent as `X-Netweather-Secret` on webhook deliveries |
+| `NETWEATHER_VANTAGE_SIGNING_SECRET` | none | optional shared secret; when set, vantage ingest requires an HMAC-SHA256 `X-Netweather-Signature` over the body |
+| `NETWEATHER_VANTAGE_CLIENT_CA` | none | optional CA file; when set and the server runs TLS, client certificates are required on the ingest path |
+| `NETWEATHER_AGENT_SIGNING_SECRET` | none | agent-side shared secret for signing batches (must match the primary's) |
+| `NETWEATHER_AGENT_CLIENT_CERT` | none | agent client certificate for mTLS |
+| `NETWEATHER_AGENT_CLIENT_KEY` | none | agent client key for mTLS |
 | `NETWEATHER_REMOTE_VANTAGES` | none | comma list of vantage ids a primary registers for remote agents; they are corroborating by default |
 | `NETWEATHER_SERVER_URL` | none | primary server base URL for a remote vantage agent (`agent` subcommand) |
 | `NETWEATHER_VANTAGE` | remote | vantage id an agent reports under |
@@ -194,8 +201,12 @@ Every environment variable the binary reads, including the ones that exist for a
 | `NETWEATHER_ATLAS_MEASUREMENTS` | none | comma list of RIPE Atlas measurement ids the `atlas` feed reads; required for the feed to run |
 | `NETWEATHER_ATLAS_URL` | upstream default | endpoint override for a mirror or a test; **HTTPS only**, and a plaintext override is ignored with `event=feed_url_insecure` |
 | `NETWEATHER_RADAR_TOKEN` | none | Cloudflare Radar API token; the `radar` feed is skipped with a warning without it |
-| `NETWEATHER_RIS_ASNS` | none | comma list of ASNs the `ris-live` feed reads; required for the feed to run |
+| `NETWEATHER_RIS_ASNS` | none | comma list of ASNs the `ris-live` poller and the `ris-live-ws` stream read; required for either to run |
 | `NETWEATHER_RIS_URL` | upstream default | endpoint override for a mirror or a test; **HTTPS only**, and a plaintext override is ignored with `event=feed_url_insecure` |
+| `NETWEATHER_RIS_STREAM` | `false` | `true` enables the real-time RIS Live WebSocket (`ris-live-ws`) in addition to the poller; needs `NETWEATHER_RIS_ASNS` |
+| `NETWEATHER_RIS_WS_URL` | upstream default | `wss` endpoint override for the stream; **WSS only**, plaintext is ignored with `event=feed_url_insecure` |
+| `NETWEATHER_IODA_LEVEL_LIMIT` | `25` | maximum ranked countries stored per `ioda-level` poll; clamped to 1–100 so a poll stays bounded |
+| `NETWEATHER_IODA_SUMMARY_URL` | upstream default | endpoint override for the `ioda-level` summary; **HTTPS only** |
 | `NETWEATHER_IODA_URL`, `NETWEATHER_RADAR_URL`, `NETWEATHER_AWS_STATUS_URL`, `NETWEATHER_GCP_STATUS_URL`, `NETWEATHER_AZURE_STATUS_URL` | upstream defaults | endpoint overrides for a mirror or a test; **HTTPS only**, and a plaintext override is ignored with `event=feed_url_insecure` |
 | `NETWEATHER_TOR` | off | enables the Tor corroboration vantage |
 | `NETWEATHER_TOR_SOCKS` | `127.0.0.1:9050` | SOCKS5 entry point; `socks5h` only, so the proxy resolves names. The shipped compose profile sets `tor:9050`, the sidecar's service name |
@@ -226,15 +237,32 @@ docker compose exec netweather /netweather debug enable --target chase.com --lev
 
 ## Continuous deployment
 
-`scripts/deploy.ps1` (Windows) and `scripts/deploy.sh` (Linux/macOS) build the release image, seed the token secret into a named volume at mode `0600`, replace the running container only after the new one answers `/healthz`, and roll back to the previous image on a health failure. Nothing is overwritten while the build is broken.
+The field trial deploys through `compose.yaml` plus `compose.fieldtrial.yaml`: the production-sized target file, direct + Tor vantages, hardened runtime, an external secret volume at mode `0600`/uid `65532`, a `/healthz` gate, and image-tag rollback.
 
-```sh
-./scripts/deploy.ps1            # Windows
-./scripts/deploy.sh             # Linux/macOS
-./scripts/deploy.sh --dry-run   # print the commands, touch nothing
+```powershell
+.\scripts\deploy_fieldtrial.ps1               # Windows: build + deploy
+.\scripts\deploy_fieldtrial.ps1 -DryRun       # print the commands, touch nothing
+.\scripts\deploy_fieldtrial.ps1 -NoBuild      # reuse existing images
 ```
 
-`scripts/install-schedule.ps1` registers a Windows Task Scheduler job that runs the deploy every two hours; on Linux/macOS the same cadence is one cron line (`0 */2 * * * /path/to/netweather/scripts/deploy.sh`). The build is reproducible (`go run ./internal/devtool repro`), so a scheduled rebuild is cheap, and the health gate means a broken build never replaces a working instance.
+```sh
+./scripts/deploy_fieldtrial.sh                # Linux/macOS/CI: same deploy
+./scripts/deploy_fieldtrial.sh --dry-run
+./scripts/deploy_fieldtrial.sh --no-build
+```
+
+Both wrappers seed the secret volume, tag a rollback image, recreate the stack, wait for `/healthz`, and roll back if the new instance is unhealthy. The field-trial overlay enables the bounded `ioda-level` feed: one ranked IODA summary poll every five minutes stores at most 25 countries, and `/world` reads that stored snapshot rather than calling IODA per country. The displayed level is **relative** (log-scaled against the top-ranked country in the same window) and is shown beside IODA's raw score and event count; it is evidence, not a verdict or a probability. The real-time RIS Live WebSocket is opt-in — set `NETWEATHER_RIS_STREAM=true` with `NETWEATHER_RIS_ASNS` — and runs alongside the polling adapter rather than replacing it.
+
+After a deploy, verify the running instance (or soak it by raising `CYCLES`):
+
+```sh
+./scripts/check_fieldtrial.sh                          # health, 749 targets, auth, /map, feed, Tor
+CYCLES=12 SLEEP=300 ./scripts/check_fieldtrial.sh     # ~1 hour soak
+```
+
+The token is read from `NETWEATHER_UI_TOKEN`, `TOKEN_FILE`, or the `nw-fieldtrial-secret` volume.
+
+`scripts/deploy.ps1` (Windows) and `scripts/deploy.sh` (Linux/macOS) remain the legacy standalone-demo path. `scripts/install-schedule.ps1` registers the **field-trial** deploy every two hours; `.\scripts\install-schedule.ps1 -Legacy` selects the old standalone path instead. On Linux/macOS the same cadence is one cron line running `scripts/deploy_fieldtrial.sh`. The build is reproducible (`go run ./internal/devtool repro`), so a scheduled rebuild is cheap, and the health gate means a broken build never replaces a working instance.
 
 ## Safety posture
 

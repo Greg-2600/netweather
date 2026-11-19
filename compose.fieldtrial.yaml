@@ -1,0 +1,35 @@
+# Early field-trial overlay for compose.yaml.
+#
+#   docker compose --profile tor -f compose.yaml -f compose.fieldtrial.yaml up -d --build
+#
+# The base file supplies the hardened runtime (read-only root, uid 65532,
+# dropped capabilities, healthcheck, restart policy, unprivileged ICMP). This
+# overlay selects the production-sized target file, turns on the Tor
+# corroboration vantage, and points auth at a real 0600 secret (a Docker named
+# volume, because a Windows bind mount cannot carry Unix mode 0600).
+services:
+  netweather:
+    image: netweather:local
+    environment:
+      NETWEATHER_CONFIG: /config/fieldtrial-targets.yaml
+      NETWEATHER_TOR: "true"
+      NETWEATHER_CONTACT: "field-trial-operator@example.invalid"
+      NETWEATHER_UI_TOKEN_FILE: /run/secrets-prod/ui_token
+      # Bounded country-level overlay for /world. One ranked IODA summary poll
+      # every five minutes (at most 25 countries); the page never calls IODA.
+      # The real-time RIS WebSocket is opt-in via NETWEATHER_RIS_STREAM=true plus
+      # NETWEATHER_RIS_ASNS, so a field trial is not silently left holding an
+      # open connection to a third-party BGP firehose.
+      NETWEATHER_FEEDS: "ioda-level"
+    volumes:
+      - nw-fieldtrial-secret:/run/secrets-prod:ro
+    depends_on:
+      - tor
+
+volumes:
+  nw-fieldtrial-secret:
+    # The deploy script creates and seeds this exact volume. Without an explicit
+    # name Compose prefixes it with the project name and mounts an empty volume.
+    # External keeps `down` from deleting the token between two-hour deploys.
+    name: nw-fieldtrial-secret
+    external: true

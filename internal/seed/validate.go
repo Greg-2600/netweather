@@ -110,7 +110,9 @@ func Validate(entries []Entry) error {
 			return fmt.Errorf("%s: url %q is not HTTPS", where, e.URL)
 		}
 
-		key := e.Host + "|" + strconv.Itoa(e.Port) + "|" + probe
+		// A DNS question is part of the target's identity: separate ccTLD
+		// anchors legitimately ask different questions of one nameserver.
+		key := e.Host + "|" + strconv.Itoa(e.Port) + "|" + probe + "|" + e.Query
 		if _, ok := seenTargets[key]; ok {
 			return fmt.Errorf("%s: duplicate target %s", where, key)
 		}

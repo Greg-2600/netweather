@@ -1,0 +1,12 @@
+# Optional macvlan profile (ROADMAP "Later"). Best fidelity, worst portability.
+# Usage: docker compose -f compose.yaml -f compose.macvlan.yaml up -d
+services:
+  netweather:
+    networks:
+      nw-macvlan:
+        ipv4_address: 192.168.1.250
+networks:
+  nw-macvlan:
+    driver: macvlan
+    driver_opts:
+      parent: eth0

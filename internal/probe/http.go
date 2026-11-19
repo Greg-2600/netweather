@@ -85,9 +85,13 @@ type Result struct {
 	Addresses []netip.Addr
 	// CNAMEs is the answer-section CNAME chain, used for the divergence
 	// baseline s hosting label.
-	CNAMEs     []string
-	ErrorClass string
-	Err        error
+	CNAMEs []string
+	// Authoritative is set only by the DNS instrument when an authoritative
+	// apex answer carried NS/SOA instead of addresses. It is evidence the
+	// zone is served, not a separate target state.
+	Authoritative bool
+	ErrorClass    string
+	Err           error
 }
 
 // Failed reports whether the exchange produced a transport-class failure.

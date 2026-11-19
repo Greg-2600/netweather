@@ -14,7 +14,9 @@
     <a class="nav" href="/world">World</a>
     <a class="nav" href="/corridors">Corridors</a>
     <a class="nav" href="/coverage">Coverage</a>
-    <a class="nav" href="/incidents">Incidents</a>`n    <a class="nav" href="/feeds">Feeds</a>
+    <a class="nav" href="/incidents">Incidents</a>
+    <a class="nav" href="/feeds">Feeds</a>
+    <a class="nav" href="/map">Map</a>
   </header>
 
   <main>
@@ -34,6 +36,12 @@
         <span class="country-code">{{.Code}}</span>
         <span class="country-count">{{.Count}} target(s)</span>
         <span class="state"><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Worst}}</span>
+        {{if .FeedLevel}}
+        <span class="feed" data-testid="country-level" data-source="{{.FeedLevelSrc}}"
+              title="Relative level from {{.FeedLevelSrc}}, raw score {{.FeedLevelRaw}}">
+          {{.FeedLevelSrc}} level {{.FeedLevel}} ({{.FeedLevelRaw}})
+        </span>
+        {{end}}
         {{if .Feed}}
         <span class="feed" data-testid="country-feed" data-feed="{{.Feed}}">{{.Feed}} {{.FeedSeverity}}</span>
         {{end}}
@@ -48,6 +56,10 @@
 
     {{if .OverlayNote}}
     <p class="muted small" data-testid="world-overlay-note">{{.OverlayNote}}</p>
+    {{end}}
+
+    {{if .LevelNote}}
+    <p class="muted small" data-testid="world-level-note">{{.LevelNote}}</p>
     {{end}}
 
     {{if .Unplaced}}

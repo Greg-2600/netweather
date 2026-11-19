@@ -513,4 +513,31 @@ func TestFeedsPageRenders(t *testing.T) {
 	if err := expect.Locator(h.page.Locator(`[data-testid="feeds-summary"]`)).ToBeVisible(); err != nil {
 		t.Fatalf("summary not visible: %v", err)
 	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="no-feeds"]`)).ToBeVisible(); err != nil {
+		t.Fatalf("no-feeds note not visible: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="no-events"]`)).ToBeVisible(); err != nil {
+		t.Fatalf("no-events note not visible: %v", err)
+	}
+}
+
+func TestMapPageRenders(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.login(t)
+
+	expect := playwright.NewPlaywrightAssertions(5000)
+
+	if _, err := h.page.Goto(h.baseURL + "/map"); err != nil {
+		t.Fatalf("goto /map: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator("h1")).ToHaveText("Map"); err != nil {
+		t.Fatalf("heading = %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="map-summary"]`)).ToBeVisible(); err != nil {
+		t.Fatalf("summary not visible: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="treemap"]`)).ToBeVisible(); err != nil {
+		t.Fatalf("treemap not visible: %v", err)
+	}
 }

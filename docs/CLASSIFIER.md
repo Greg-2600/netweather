@@ -57,7 +57,7 @@ A lone failure from a corroborating vantage is not even a signal. Tor exits are 
 | Class | Condition | Candidate state | Notes |
 |---|---|---|---|
 | `dns_nxdomain` | RCODE 3 | DOWN | **Implemented.** Must be corroborated (§3.2) |
-| `dns_nodata` | RCODE 0, 0 answers | DOWN | **Implemented.** Apex exists but no A/AAAA |
+| `dns_nodata` | RCODE 0, 0 answers, no authoritative NS/SOA | DOWN | **Implemented.** Name exists but has no A/AAAA and the answerer is not a zone authority |
 | `dns_servfail` | RCODE 2 | DOWN | **Implemented.** The wire client reads the RCODE instead of collapsing it |
 | `dns_refused` | RCODE 5 | DOWN | **Implemented.** The resolver answered, so the path works |
 | `dns_timeout` | no response in the target timeout | DOWN | **Implemented.** Default 5s. `UNMEASURABLE` instead while the `port53` self-check reports this vantage's egress port 53 blocked |
@@ -66,6 +66,8 @@ A lone failure from a corroborating vantage is not even a signal. Tor exits are 
 The port-53 gate is a narrow, honest exception: a timeout or transport error while our own `:53` is unreachable measures the vantage, not the destination. It never applies to `dns_nxdomain`, `dns_nodata`, `dns_servfail`, or `dns_refused`, because those are answers rather than silence. A resolver that replied has proven the path works.
 
 The instrument speaks DNS on the wire rather than through `net.Resolver`, because the standard resolver collapses SERVFAIL, REFUSED, and NOERROR-with-no-answers into opaque errors, and those RCODEs are the difference between "the name is gone" and "the resolver declined". A truncated UDP answer is retried over TCP with the two-byte length framing, so a large answer is not misread as NODATA.
+
+An authoritative NOERROR answer that carries NS or SOA records but no A/AAAA is **not** NODATA: it is the normal response at a zone apex, where the server has a delegation and SOA rather than an address. Country, network and root-reference anchors query authoritative servers at their own apex, so counting this as DOWN would label most of the DNS fleet as an outage. The wire client requires the AA bit: a recursive resolver's cached NODATA reply also carries an SOA, but it says nothing about the zone's health and still maps to `dns_nodata`. An authoritative apex answer is recorded as `UP_REACHABILITY` with reason "authoritative answer (zone served)"; SERVFAIL, REFUSED, NXDOMAIN, timeouts and genuine empty answers are unchanged.
 
 ### 3.2 DNS divergence — the tamper detector
 

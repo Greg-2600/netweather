@@ -1,0 +1,137 @@
+# netweather target configuration
+#
+# Point NETWEATHER_CONFIG at this file (or your own copy) to replace the shipped
+# seed list. Validation is strict: an unknown field, a bad port, or a 10s
+# interval is a startup error, not a probe.
+#
+# Outbound ports: 80, 443, 53, 123, 853. Service targets must be hostnames;
+# country and network anchors may be IP literals. The 30s interval floor is
+# enforced here and in the scheduler.
+
+version: 1
+
+targets:
+  - name: Example
+    host: example.com
+    port: 443
+    probe: http
+    class: reference
+    tier: 0
+    # interval_s is optional; omitting it uses the tier default (30s for tier 0).
+    expect:
+      status: [200]
+
+  - name: Cloudflare
+    host: www.cloudflare.com
+    port: 443
+    probe: http
+    class: service
+    sector: cloud
+    country: US
+    # status_url is the operator's own status page, in the same shape the
+    # Statuspage feed accepts. When set, the target drawer lists that page's
+    # incidents as the provider's report. netweather never guesses it.
+    # status_url: "https://www.cloudflarestatus.com/"
+    tier: 1
+    interval_s: 120
+    expect:
+      status: [200]
+      body_contains: "cloudflare"
+
+  - name: Wikipedia
+    host: www.wikipedia.org
+    port: 443
+    probe: http
+    class: service
+    sector: reference
+    tier: 2
+    expect:
+      status: [200]
+      title_contains: "Wikipedia"
+
+  # An anchor may use an IP literal; a service target may not. A dns target
+  # asks its listed server about qname rather than using the host resolver.
+  - name: Root server A
+    host: 198.41.0.4
+    port: 53
+    probe: dns
+    qname: example.com
+    class: network
+    tier: 3
+    interval_s: 120
+
+  # DoH asks one HTTPS JSON endpoint the same question, which is useful as a
+  # reference: it says whether the name resolves from outside this vantage's
+  # resolver. qname is required. url is optional because providers disagree on
+  # the path; the default is https://host:port/dns-query.
+  - name: Cloudflare DoH
+    host: cloudflare-dns.com
+    port: 443
+    probe: doh
+    qname: example.com
+    url: https://cloudflare-dns.com/dns-query
+    class: reference
+    tier: 0
+    interval_s: 600
+
+  # An http target may name a request path. It exists for the robots.txt
+  # recipe (DESIGN.md 5.3): a hard target is often bot-walled on /, while
+  # /robots.txt is published for automated clients. The path is http-only and
+  # must start with a single /; the default is /.
+  - name: Chase robots
+    host: www.chase.com
+    port: 443
+    probe: http
+    path: /robots.txt
+    class: service
+    sector: financial/banking
+    tier: 1
+    interval_s: 300
+    expect:
+      status: [200, 404]
+
+  # NTP is self-health: it records this vantage's clock offset and never
+  # produces UP or DOWN. A large offset is visible in the reason, not as an
+  # outage.
+  - name: Cloudflare time
+    host: time.cloudflare.com
+    port: 123
+    probe: ntp
+    class: reference
+    tier: 0
+    interval_s: 600
+
+  # ICMP anchors are chosen because they answer ICMP. A timeout on a service
+  # target is meaningless, so only icmp_anchor targets can be DOWN from it.
+  # This needs CAP_NET_RAW (see compose.trace.yaml) or an unprivileged ping
+  # socket; without either the anchor reports UNKNOWN, never DOWN.
+  # - name: Gateway anchor
+  #   host: 192.0.2.1
+  #   port: 0
+  #   probe: icmp
+  #   icmp_anchor: true
+  #   class: network
+  #   tier: 3
+  #   interval_s: 120
+
+  # tcpping is the portable RTT instrument: a TCP connect, no raw socket.
+  # It is explicit rather than an automatic fallback from icmp, because
+  # guessing a port on an anchor would fabricate a measurement.
+  # - name: Portable RTT anchor
+  #   host: 1.1.1.1
+  #   port: 443
+  #   probe: tcpping
+  #   class: network
+  #   tier: 3
+  #   interval_s: 120
+# Corridors (DESIGN.md §9) are an operator-defined pair of in-region endpoints,
+# sampled with TCP every five minutes. A step change is judged against the
+# corridor's own six-hour baseline and must persist for two samples.
+#
+# There is no shipped default list: inventing endpoints would fabricate the
+# measurement. Provide two hosts you can reach on 80 or 443, one at each end.
+# corridors:
+#   - id: nyc-lon
+#     from: NYC
+#     to: LON
+#     endpoints: ["anchor.us.example:443", "anchor.uk.example:443"]

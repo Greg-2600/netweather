@@ -1,0 +1,7 @@
+# Optional IPv6 profile (ROADMAP/DESIGN.md §14). Docker's IPv6 networking is
+# fiddly; this profile uses host networking so the container shares the host's
+# IPv6 stack. Use only when the host has working IPv6.
+# Usage: docker compose -f compose.yaml -f compose.ipv6.yaml up -d
+services:
+  netweather:
+    network_mode: host
