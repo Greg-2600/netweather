@@ -17,6 +17,7 @@ type fakeEcho struct {
 	sent    []int
 	closed  bool
 	sendErr error
+	kind    string
 }
 
 func (f *fakeEcho) SendEcho(_ netip.Addr, _, seq int) error {
@@ -32,8 +33,12 @@ func (f *fakeEcho) Recv(time.Time) (netip.Addr, probe.TraceMessage, error) {
 	if !f.reply[f.seq] {
 		return netip.Addr{}, probe.TraceMessage{}, errors.New("timeout")
 	}
+	kind := f.kind
+	if kind == "" {
+		kind = "echo_reply"
+	}
 	return netip.MustParseAddr("192.0.2.9"),
-		probe.TraceMessage{Kind: "echo_reply", Seq: f.seq}, nil
+		probe.TraceMessage{Kind: kind, Seq: f.seq}, nil
 }
 
 func (f *fakeEcho) Close() error {
@@ -102,6 +107,16 @@ func TestICMPNoRepliesIsATimeout(t *testing.T) {
 	}
 }
 
+func TestICMPIgnoresAReplyOfAnotherKind(t *testing.T) {
+	t.Parallel()
+
+	transport := &fakeEcho{reply: map[int]bool{1: true}, kind: "time_exceeded"}
+	got := ping(t, transport, 1).Do(context.Background(), "anchor.example")
+	if got.ErrorClass != "icmp_timeout" || got.Replied != 0 {
+		t.Fatalf("result = %+v", got)
+	}
+}
+
 func TestICMPFailuresAreVisible(t *testing.T) {
 	t.Parallel()
 
@@ -153,7 +168,7 @@ func TestICMPDefaultsAndLiteralAddresses(t *testing.T) {
 	// Count 0 means the documented five; a literal address needs no resolver.
 	instrument := probe.NewICMP()
 	instrument.Open = func() (probe.EchoTransport, error) { return transport, nil }
-	instrument.Timeout = 50 * time.Millisecond
+	instrument.Timeout = 0 // exercises the documented default deadline
 	instrument.Resolve = func(context.Context, string) (netip.Addr, error) {
 		t.Fatal("a literal address should not be resolved")
 		return netip.Addr{}, nil

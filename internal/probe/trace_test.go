@@ -181,6 +181,29 @@ func TestTraceTransportFailures(t *testing.T) {
 	}
 }
 
+func TestTraceDefaultTransportAndHopCeiling(t *testing.T) {
+	t.Parallel()
+
+	dst := netip.MustParseAddr("192.0.2.9")
+
+	// A nil Open installs the raw-socket transport. Whether this environment
+	// grants CAP_NET_RAW decides between trace_send and trace_unavailable;
+	// either way the default branch itself must be reachable.
+	zero := &probe.Trace{MaxHops: 1, Timeout: 10 * time.Millisecond}
+	if got := zero.Run(context.Background(), dst); got.ErrorClass != "trace_send" && got.ErrorClass != "trace_unavailable" && got.Reached {
+		t.Fatalf("unexpected default-transport result: %+v", got)
+	}
+
+	// Two silent hops exhaust MaxHops before the three-silent-hop early stop,
+	// so the walk returns from the loop's normal exit.
+	trace, _ := newTrace(nil)
+	trace.MaxHops = 2
+	got := trace.Run(context.Background(), dst)
+	if got.Reached || len(got.Hops) != 2 {
+		t.Fatalf("hop ceiling result = %+v", got)
+	}
+}
+
 func TestTraceUsesDefaults(t *testing.T) {
 	t.Parallel()
 

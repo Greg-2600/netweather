@@ -62,7 +62,8 @@
       Each block is sized by the severity and duration of the targets inside it,
       so problems take space instead of hiding among healthy targets. Colour is
       a diverging health scale (deep red = down, amber = impaired, green = up).
-      Hover a box for its full name, state, error and duration; click to open it.
+      Hover a box to see what the target is, the raw signal, and why the
+      classifier gave it that status; click to open the target drawer.
     </p>
     <p class="muted">
       Cluster by:
@@ -86,7 +87,15 @@
         <div class="map-sector-body">
           {{range .Tiles}}
           <a href="/targets/{{.Target}}" data-testid="map-tile" class="map-tile"
-             title="{{.Label}} ({{.Group}}): {{.State}}{{if ne .Detail .State}} · {{.Detail}}{{end}} · {{.Duration}}"
+             aria-label="{{.Tip}}"
+             data-tip-name="{{.Label}}"
+             data-tip-kind="{{.Kind}}"
+             data-tip-endpoint="{{.Endpoint}}"
+             data-tip-state="{{.StateLabel}}"
+             data-tip-detail="{{.Detail}}"
+             data-tip-why="{{.Why}}"
+             data-tip-duration="{{.Duration}}"
+             data-tip-group="{{.Group}}"
              style="left:{{printf "%.2f" .X}}%;top:{{printf "%.2f" .Y}}%;width:{{printf "%.2f" .W}}%;height:{{printf "%.2f" .H}}%;background:{{.Color}};">
             {{if .ShowFull}}
             <span class="map-tile-name">{{.Label}}</span>
@@ -109,6 +118,23 @@
       down <span aria-hidden="true">→</span> degraded / blocked <span aria-hidden="true">→</span> up
       <span style="margin-left:0.75rem;">Box area = severity × time in state. Block borders separate clusters; the header tint is the cluster's overall health.</span>
     </p>
+
+    <div class="map-tip" data-testid="map-tip" role="tooltip" hidden aria-hidden="true">
+      <div class="map-tip-head">
+        <strong data-tip-field="name"></strong>
+        <span class="map-tip-state" data-tip-field="state"></span>
+      </div>
+      <p class="map-tip-kind" data-tip-field="kind"></p>
+      <dl class="map-tip-facts">
+        <dt>Endpoint</dt><dd data-tip-field="endpoint"></dd>
+        <dt>Signal</dt><dd data-tip-field="detail"></dd>
+        <dt>In state</dt><dd data-tip-field="duration"></dd>
+        <dt>Cluster</dt><dd data-tip-field="group"></dd>
+      </dl>
+      <p class="map-tip-why" data-tip-field="why"></p>
+      <p class="map-tip-hint">Click to open the target drawer</p>
+    </div>
   </main>
+  <script src="/static/map.js" defer></script>
 </body>
 </html>

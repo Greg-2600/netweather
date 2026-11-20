@@ -210,10 +210,6 @@ func dnsName(name string) string {
 	return strings.TrimSuffix(name, ".") + "."
 }
 
-func packQuery(qname dnsmessage.Name) ([]byte, error) {
-	return packQueryType(qname, dnsmessage.TypeA)
-}
-
 func packQueryType(qname dnsmessage.Name, qtype dnsmessage.Type) ([]byte, error) {
 	id := dnsID()
 	msg := dnsmessage.Message{

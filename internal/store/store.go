@@ -44,6 +44,16 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return nil, fmt.Errorf("store: create directory: %w", err)
 		}
+		// MkdirAll does not tighten a directory that already exists. A Docker
+		// volume or an operator-created data directory is commonly 0755, so
+		// enforce T45 explicitly rather than inheriting that mode.
+		if runtime.GOOS != "windows" {
+			// 0700 is the private-directory mode: gosec G302 wants 0600, but a
+			// directory needs the execute bit to be traversable at all.
+			if err := os.Chmod(dir, 0o700); err != nil { //nolint:gosec // a directory requires 0700 to be traversable.
+				return nil, fmt.Errorf("store: directory permissions: %w", err)
+			}
+		}
 	}
 
 	writer, err := openPool(ctx, path, true)

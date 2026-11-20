@@ -1,4 +1,4 @@
-package web
+package web_test
 
 import (
 	"io"
@@ -6,15 +6,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/board"
+	"github.com/Greg-2600/netweather/internal/web"
 )
 
 func TestMapSmoke2(t *testing.T) {
 	m := board.NewMemory(board.Target{ID: "t1", Name: "Example", Host: "example.com", Sector: "cloud", State: board.StateUp})
-	h, err := New(Deps{
+	h, err := web.New(web.Deps{
 		Logger:    slog.New(slog.NewTextHandler(os.Stderr, nil)),
 		Source:    m,
 		Token:     "",
@@ -26,23 +28,72 @@ func TestMapSmoke2(t *testing.T) {
 	}
 	ts := httptest.NewServer(h)
 	defer ts.Close()
-	resp, _ := http.Get(ts.URL + "/map")
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+
+	resp, err := http.Get(ts.URL + "/map")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Logf("STATUS=%d LEN=%d", resp.StatusCode, len(body))
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
-	if !contains(string(body), "map-tile") {
-		t.Fatalf("no map-tile in body")
+	if !strings.Contains(string(body), "map-tile") {
+		t.Fatal("no map-tile in body")
 	}
 }
 
-func contains(s, sub string) bool {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
+func TestMapHoverCardExposesEntityAndReason(t *testing.T) {
+	m := board.NewMemory(board.Target{
+		ID: "root-a", Name: "Root server A", Host: "a.root-servers.net", Port: 53,
+		Class: "reference", Sector: "reference", Probe: "dns",
+		State: board.StateDown, ErrorClass: "dns_nodata",
+	})
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		Source:    m,
+		Token:     "",
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(h)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/map")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`data-testid="map-tip"`,
+		`data-tip-name="Root server A"`,
+		`data-tip-kind="DNS root server`,
+		`data-tip-state="DOWN"`,
+		`data-tip-why="Marked DOWN because`,
+		`/static/map.js`,
+	} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("map HTML is missing %q", want)
 		}
 	}
-	return false
+
+	js, err := http.Get(ts.URL + "/static/map.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = js.Body.Close() }()
+	if js.StatusCode != http.StatusOK {
+		t.Fatalf("map.js status %d", js.StatusCode)
+	}
 }

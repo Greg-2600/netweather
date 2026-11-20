@@ -50,6 +50,11 @@ changed between two images without it.
   now carry expanded names from CLDR and IANA ("NP ccTLD" is "Nepal ccTLD",
   "UZ ccTLD" is "Uzbekistan ccTLD"; IDN labels show their English country name
   and Unicode form), so codes are understandable at a glance on every page.
+  Every tile now has a styled hover card (and an equivalent accessible label)
+  naming what the target is — root server, ccTLD, resolver, network anchor or
+  public service — with its endpoint, raw signal, time in state and a plain
+  English explanation of why the classifier gave it that status. Root servers
+  keep their letter on small tiles (`ROOT A`, not four identical `ROOT` labels).
 - An early field-trial deployment: `scripts/gen_fieldtrial_targets.py` builds a
   749-target config from the IANA root zone (399 ccTLD anchors, 100 network
   anchors, 240 real public services, 10 references); `compose.fieldtrial.yaml`

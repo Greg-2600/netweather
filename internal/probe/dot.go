@@ -83,9 +83,10 @@ func (p *DoT) do(ctx context.Context, server, name string, qtype dnsmessage.Type
 	if err != nil {
 		out.Latency = time.Since(start)
 		out.ErrorClass = classifyExchangeError(err)
-		if out.ErrorClass == "dns_timeout" {
+		switch out.ErrorClass {
+		case "dns_timeout":
 			out.ErrorClass = "dot_timeout"
-		} else if out.ErrorClass == "dns_error" {
+		case "dns_error":
 			out.ErrorClass = "dot_error"
 		}
 		out.Err = err
@@ -144,9 +145,10 @@ func (p *DoT) do(ctx context.Context, server, name string, qtype dnsmessage.Type
 	if _, err := readFull(tlsConn, size[:]); err != nil {
 		out.Latency = time.Since(start)
 		out.ErrorClass = classifyExchangeError(err)
-		if out.ErrorClass == "dns_timeout" {
+		switch out.ErrorClass {
+		case "dns_timeout":
 			out.ErrorClass = "dot_timeout"
-		} else if out.ErrorClass == "dns_error" {
+		case "dns_error":
 			out.ErrorClass = "dot_error"
 		}
 		out.Err = err
@@ -157,9 +159,10 @@ func (p *DoT) do(ctx context.Context, server, name string, qtype dnsmessage.Type
 	if _, err := readFull(tlsConn, raw); err != nil {
 		out.Latency = time.Since(start)
 		out.ErrorClass = classifyExchangeError(err)
-		if out.ErrorClass == "dns_timeout" {
+		switch out.ErrorClass {
+		case "dns_timeout":
 			out.ErrorClass = "dot_timeout"
-		} else if out.ErrorClass == "dns_error" {
+		case "dns_error":
 			out.ErrorClass = "dot_error"
 		}
 		out.Err = err

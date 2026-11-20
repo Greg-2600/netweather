@@ -202,6 +202,32 @@ func TestDNSAuthoritativeApexIsReachable(t *testing.T) {
 	}
 }
 
+func TestDNSAuthoritativeNODATAWithoutDelegationStillFails(t *testing.T) {
+	t.Parallel()
+
+	server := startDNSResponder(t, func(query []byte) []byte {
+		msg, ok := decodeQuery(query)
+		if !ok || len(msg.Questions) != 1 {
+			return nil
+		}
+		msg.Response = true
+		msg.Authoritative = true
+		msg.Answers = []dnsmessage.Resource{{
+			Header: dnsmessage.ResourceHeader{
+				Name: msg.Questions[0].Name, Type: dnsmessage.TypeCNAME,
+				Class: dnsmessage.ClassINET, TTL: 60,
+			},
+			Body: &dnsmessage.CNAMEResource{CNAME: dnsmessage.MustNewName("alias.example.")},
+		}}
+		return packMessage(msg)
+	})
+
+	res := probe.NewDNS(nil).Do(context.Background(), server, "empty.example")
+	if res.ErrorClass != "dns_nodata" || res.Authoritative {
+		t.Fatalf("class = %q, authoritative = %v", res.ErrorClass, res.Authoritative)
+	}
+}
+
 func TestDNSNonAuthoritativeNODATAStillFails(t *testing.T) {
 	t.Parallel()
 
@@ -867,6 +893,43 @@ func TestDNSDoNSReadsTheDelegation(t *testing.T) {
 	}
 }
 
+func TestDNSDoNSDeduplicatesAndIgnoresEmptyTargets(t *testing.T) {
+	t.Parallel()
+
+	server := startDNSResponder(t, func(query []byte) []byte {
+		msg, ok := decodeQuery(query)
+		if !ok || len(msg.Questions) != 1 {
+			return nil
+		}
+		ns := dnsmessage.MustNewName("ns.example.")
+		authority := dnsmessage.MustNewName("auth.example.")
+		root := dnsmessage.MustNewName(".")
+		header := dnsmessage.ResourceHeader{
+			Name: msg.Questions[0].Name, Type: dnsmessage.TypeNS,
+			Class: dnsmessage.ClassINET, TTL: 60,
+		}
+		msg.Response = true
+		msg.Answers = []dnsmessage.Resource{
+			{Header: header, Body: &dnsmessage.NSResource{NS: ns}},
+			{Header: header, Body: &dnsmessage.NSResource{NS: ns}},
+			{Header: header, Body: &dnsmessage.NSResource{NS: root}},
+		}
+		msg.Authorities = []dnsmessage.Resource{
+			{Header: header, Body: &dnsmessage.NSResource{NS: authority}},
+		}
+		return packMessage(msg)
+	})
+
+	res := probe.NewDNS(nil).DoNS(context.Background(), server, "example.com")
+	if res.Failed() {
+		t.Fatalf("DoNS failed: %s: %v", res.ErrorClass, res.Err)
+	}
+	want := []string{"auth.example", "ns.example"}
+	if len(res.Names) != len(want) || res.Names[0] != want[0] || res.Names[1] != want[1] {
+		t.Fatalf("names = %v, want %v from answers and authority", res.Names, want)
+	}
+}
+
 // nsResponse answers an NS query with one NS record, so the TCP retry path and
 // the delegation parser share one shape.
 func nsResponse(query []byte, ns string) []byte {
@@ -1079,6 +1142,56 @@ func TestDNSDoNSTruncatedRetryFailureIsReported(t *testing.T) {
 	}
 	if !strings.HasPrefix(res.ErrorClass, "dns_") {
 		t.Fatalf("class = %q, want a dns_ class", res.ErrorClass)
+	}
+}
+
+func TestDNSDoNSTruncatedRetryRejectsABadAnswer(t *testing.T) {
+	t.Parallel()
+
+	udpPC, tcpLn := listenUDPAndTCP(t)
+	t.Cleanup(func() {
+		_ = udpPC.Close()
+		_ = tcpLn.Close()
+	})
+	addr := tcpLn.Addr().(*net.TCPAddr)
+
+	go func() {
+		for {
+			conn, err := tcpLn.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer func() { _ = c.Close() }()
+				var size [2]byte
+				if _, err := readFully(c, size[:]); err != nil {
+					return
+				}
+				query := make([]byte, int(size[0])<<8|int(size[1]))
+				if _, err := readFully(c, query); err != nil {
+					return
+				}
+				_, _ = c.Write([]byte{0, 3, 'a', 'b', 'c'})
+			}(conn)
+		}
+	}()
+
+	go func() {
+		buf := make([]byte, 512)
+		for {
+			n, peer, err := udpPC.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			truncated := dnsResponse(buf[:n], 0, "")
+			truncated[2] |= 0x02
+			_, _ = udpPC.WriteTo(truncated, peer)
+		}
+	}()
+
+	res := probe.NewDNS(nil).DoNS(context.Background(), addr.String(), "example.com")
+	if res.ErrorClass != "dns_error" || res.Err == nil {
+		t.Fatalf("class = %q, want dns_error (%v)", res.ErrorClass, res.Err)
 	}
 }
 

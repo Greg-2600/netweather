@@ -19,8 +19,15 @@ type mapTile struct {
 	Detail    string
 	Duration  string
 	DurationS float64 // seconds in state, used to rank capped-outages by age
-	Up        int
-	Down      int
+	// Kind, Endpoint, Why, StateLabel and Tip feed the hover card. They explain
+	// what the target is and why the classifier gave it this status.
+	Kind       string
+	Endpoint   string
+	Why        string
+	StateLabel string
+	Tip        string
+	Up         int
+	Down       int
 	// Weight is the layout area of the tile. It grows with severity and with
 	// the time spent in a bad state, so an outage dominates the map instead
 	// of being lost among hundreds of healthy targets.

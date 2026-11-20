@@ -1,4 +1,4 @@
-package web
+package web //nolint:testpackage // white-box tests pin the health clustering and label gating rules
 
 import (
 	"reflect"
@@ -78,6 +78,8 @@ func TestCompactLabel(t *testing.T) {
 		"Egypt (مصر) ccTLD":      "EGYPT",
 		"United Kingdom ccTLD":   "UK",
 		"North Korea ccTLD":      "N.KOREA",
+		"Root server A":          "ROOT A",
+		"Root server M":          "ROOT M",
 		"x.nic.aarp DNS":         "AARP",
 		"v2n1.nic.agency":        "AGENCY",
 		"":                       "?",

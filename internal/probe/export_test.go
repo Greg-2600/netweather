@@ -15,16 +15,22 @@ import (
 // white-box because icmpPing is deliberately unexported; the file name is in
 // the testpackage skip list.
 type fakePacketConn struct {
-	reply   []byte
-	wrote   []byte
-	addr    net.Addr
-	closed  bool
-	readErr error
+	reply       []byte
+	wrote       []byte
+	addr        net.Addr
+	peer        net.Addr
+	closed      bool
+	readErr     error
+	writeErr    error
+	deadlineErr error
 }
 
 func (f *fakePacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	f.wrote = append([]byte(nil), b...)
 	f.addr = addr
+	if f.writeErr != nil {
+		return 0, f.writeErr
+	}
 	return len(b), nil
 }
 
@@ -32,10 +38,13 @@ func (f *fakePacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	if f.readErr != nil {
 		return 0, nil, f.readErr
 	}
+	if f.peer != nil {
+		return copy(b, f.reply), f.peer, nil
+	}
 	return copy(b, f.reply), &net.IPAddr{IP: net.IPv4(198, 51, 100, 7)}, nil
 }
 
-func (f *fakePacketConn) SetReadDeadline(time.Time) error { return nil }
+func (f *fakePacketConn) SetReadDeadline(time.Time) error { return f.deadlineErr }
 
 func (f *fakePacketConn) Close() error {
 	f.closed = true
@@ -143,5 +152,39 @@ func TestICMPPingMarshalFailureIsReported(t *testing.T) {
 	ping := &icmpPing{conn: &fakePacketConn{}}
 	if err := ping.SendEcho(netip.MustParseAddr("2001:db8::1"), 1, 1); err == nil {
 		t.Fatal("a v6 destination was accepted by the v4 ping transport")
+	}
+}
+
+func TestICMPPingSocketErrorsAreReported(t *testing.T) {
+	t.Parallel()
+
+	want := errors.New("socket closed")
+	ping := &icmpPing{conn: &fakePacketConn{writeErr: want}}
+	if err := ping.SendEcho(netip.MustParseAddr("192.0.2.9"), 1, 1); !errors.Is(err, want) {
+		t.Fatalf("SendEcho error = %v, want %v", err, want)
+	}
+
+	ping = &icmpPing{conn: &fakePacketConn{deadlineErr: want}}
+	if _, _, err := ping.Recv(time.Now().Add(time.Second)); !errors.Is(err, want) {
+		t.Fatalf("Recv deadline error = %v, want %v", err, want)
+	}
+}
+
+func TestICMPPingIgnoresANonIPPeer(t *testing.T) {
+	t.Parallel()
+
+	ping := &icmpPing{conn: &fakePacketConn{
+		reply: echoReply(t, 3),
+		peer:  &net.UDPAddr{IP: net.IPv4(198, 51, 100, 7)},
+	}}
+	from, msg, err := ping.Recv(time.Now().Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if from.IsValid() {
+		t.Fatalf("from = %s, want no address for an unexpected peer type", from)
+	}
+	if msg.Kind != "echo_reply" || msg.Seq != 3 {
+		t.Fatalf("message = %+v", msg)
 	}
 }

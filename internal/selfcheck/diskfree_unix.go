@@ -12,9 +12,11 @@ func DiskFreeShare(dir string) (float64, error) {
 	if err := syscall.Statfs(dir, &st); err != nil {
 		return 0, err
 	}
-	total := uint64(st.Blocks) * uint64(st.Bsize)
+	// statfs reports non-negative block counts on the supported filesystems.
+	total := uint64(st.Blocks) * uint64(st.Bsize) // #nosec G115 -- statfs blocks are non-negative here.
 	if total == 0 {
 		return 1, nil
 	}
-	return float64(uint64(st.Bavail)*uint64(st.Bsize)) / float64(total), nil
+	available := uint64(st.Bavail) * uint64(st.Bsize) // #nosec G115 -- statfs avail is non-negative here.
+	return float64(available) / float64(total), nil
 }

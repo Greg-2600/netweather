@@ -3132,10 +3132,27 @@ func (s *server) handleMap(w http.ResponseWriter, r *http.Request) {
 		}
 
 		weight := tileWeight(t.State, d)
+		dur := humanDuration(d)
+		detail := tileDetail(t)
+		kind := tileEntity(t)
+		why := tileWhy(t)
+		stateLabel := tileStateLabel(t.State)
+		endpoint := strings.TrimSpace(t.Host)
+		if endpoint != "" && t.Port > 0 {
+			endpoint = fmt.Sprintf("%s:%d", endpoint, t.Port)
+		}
+		if probe := strings.ToUpper(strings.TrimSpace(t.Probe)); probe != "" {
+			endpoint = strings.TrimSpace(endpoint + " · " + probe)
+		}
+		if endpoint == "" {
+			endpoint = "—"
+		}
 		tile := &mapTile{
 			Label: t.Name, Ticker: compactLabel(t.Name), Target: t.ID,
 			State: string(t.State), Group: sec.Label, Color: tileStateColor(t.State),
-			Detail: tileDetail(t), Duration: humanDuration(d), DurationS: d.Seconds(),
+			Detail: detail, Duration: dur, DurationS: d.Seconds(),
+			Kind: kind, Endpoint: endpoint, Why: why, StateLabel: stateLabel,
+			Tip:    mapTip(t.Name, kind, stateLabel, detail, dur, why),
 			Weight: weight,
 		}
 		switch t.State {
@@ -3293,6 +3310,8 @@ func tileWeight(st board.State, d time.Duration) int {
 		if mult > 3 {
 			mult = 3
 		}
+	default:
+		// Healthy, unknown and config-error states keep the base multiplier.
 	}
 	w := int(float64(base)*mult + 0.5)
 	if w < 1 {
@@ -3362,6 +3381,11 @@ func compactLabel(name string) string {
 	if len(fields) == 0 {
 		return "?"
 	}
+	// "Root server A", "Root server J"… otherwise all collapse to "ROOT" and
+	// four separate outages look like one repeated label.
+	if len(fields) >= 3 && strings.EqualFold(fields[0], "root") && strings.EqualFold(fields[1], "server") {
+		return "ROOT " + strings.ToUpper(fields[2])
+	}
 	tok := fields[0]
 	if strings.Contains(tok, ".") {
 		best := ""
@@ -3420,7 +3444,7 @@ func textWidthPx(s string) float64 {
 		case r > 127:
 			w += 11
 		default:
-			w += 7
+			w += 8
 		}
 	}
 	return w
@@ -3451,8 +3475,8 @@ func layoutMap(sectors []*mapSector) {
 			// colour-only heat-map cell with the full detail in its tooltip.
 			pxW := tl.W / 100 * sec.W / 100 * mapWidthPx
 			pxH := tl.H / 100 * sec.H / 100 * mapHeightPx
-			tl.ShowFull = pxW >= textWidthPx(tl.Label)+12 && pxH >= 34
-			tl.ShowTicker = !tl.ShowFull && pxW >= textWidthPx(tl.Ticker)+10 && pxH >= 18
+			tl.ShowFull = pxW >= textWidthPx(tl.Label)+18 && pxH >= 34
+			tl.ShowTicker = !tl.ShowFull && pxW >= textWidthPx(tl.Ticker)+16 && pxH >= 18
 			tl.ShowSub = tl.ShowFull && pxW >= 80 && pxH >= 52
 		}
 	}

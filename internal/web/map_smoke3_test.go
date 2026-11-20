@@ -1,4 +1,4 @@
-package web
+package web_test
 
 import (
 	"fmt"
@@ -7,19 +7,25 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/board"
+	"github.com/Greg-2600/netweather/internal/web"
 )
 
 func TestMapSmoke3(t *testing.T) {
 	targets := make([]board.Target, 0, 10)
 	for i := 0; i < 10; i++ {
-		targets = append(targets, board.Target{ID: fmt.Sprintf("t%d", i), Name: fmt.Sprintf("T%d", i), Host: "example.com", Sector: []string{"cloud", "financial", "airline"}[i%3], State: board.StateUp})
+		targets = append(targets, board.Target{
+			ID: fmt.Sprintf("t%d", i), Name: fmt.Sprintf("T%d", i),
+			Host: "example.com", Sector: []string{"cloud", "financial", "airline"}[i%3],
+			State: board.StateUp,
+		})
 	}
 	m := board.NewMemory(targets...)
-	h, err := New(Deps{
+	h, err := web.New(web.Deps{
 		Logger:    slog.New(slog.NewTextHandler(os.Stderr, nil)),
 		Source:    m,
 		Token:     "",
@@ -31,22 +37,18 @@ func TestMapSmoke3(t *testing.T) {
 	}
 	ts := httptest.NewServer(h)
 	defer ts.Close()
-	resp, _ := http.Get(ts.URL + "/map")
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	t.Logf("STATUS=%d LEN=%d tiles=%d", resp.StatusCode, len(body), countSub(string(body), "map-tile"))
-	if resp.StatusCode != 200 {
+
+	resp, err := http.Get(ts.URL + "/map")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("STATUS=%d LEN=%d tiles=%d", resp.StatusCode, len(body), strings.Count(string(body), "map-tile"))
+	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
-}
-
-func countSub(s, sub string) int {
-	n := 0
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			n++
-			i += len(sub) - 1
-		}
-	}
-	return n
 }
