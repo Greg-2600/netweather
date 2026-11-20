@@ -10,6 +10,11 @@ us two real, operator-maintained inventories:
   * ccTLD NS delegations  -> ~399 country anchors (one DNS question per territory)
   * glue A records       -> ~100 network anchors (authoritative DNS server IPs)
 
+A small REACHABLE_NS table below overrides the lexicographically first NS for
+zones whose oldest-listed nameserver no longer answers. Every override is still
+a real NS record for that TLD in the root zone and is checked at generation
+time, so the fleet keeps measuring genuine IANA delegations.
+
 Service targets are a curated list of real, public, unauthenticated endpoints
 across the sectors the design monitors. No endpoint here requires a login or
 accepts terms per request (ACCEPTABLE_USE.md 5).
@@ -56,6 +61,7 @@ for raw in body.split("\n"):
 
 # ccTLD -> lexicographically first NS (matches internal/seed.ParseCountryAnchors).
 chosen_ns: dict[str, str] = {}
+ns_by_tld: dict[str, set[str]] = collections.defaultdict(set)
 for f in lines:
     name = f[0].lower().rstrip(".")
     if "." in name:
@@ -71,8 +77,33 @@ for f in lines:
         continue
     if not re.fullmatch(r"[a-z0-9-]+(\.[a-z0-9-]+)+", ns):
         continue
+    ns_by_tld[name].add(ns)
     if name not in chosen_ns or ns < chosen_ns[name]:
         chosen_ns[name] = ns
+
+# The lexicographically first NS is not always the reachable one. Every name
+# below is an NS record for its TLD in this same root zone, selected after
+# probing the whole delegated set from the field-trial vantage. The default
+# choice would otherwise produce permanently DOWN anchors for zones whose
+# oldest-listed nameserver has gone dark.
+REACHABLE_NS: dict[str, str] = {
+    "gu": "phloem.uoregon.edu",
+    "iq": "ns01.trs-dns.net",
+    "jo": "rip.psg.com",
+    "kp": "ns2.kptc.kp",
+    "mw": "mw-e.ns.nic.cz",
+    "ne": "ns.intnet.ne",
+    "np": "shikhar.mos.com.np",
+    "sd": "pch.sis.sd",
+    "uz": "ns2.uz",
+    "xn--mgbpl2fh": "pch.sis.sd",  # Sudan (Arabic)
+    "xn--mgbtx2b": "nsp-anycast.cmc.iq",  # Iraq (Arabic)
+    "xn--mgbayh7gpa": "jo.cctld.authdns.ripe.net",  # Jordan (Arabic)
+    "xn--ygbi2ammx": "ps.cctld.authdns.ripe.net",  # Palestine (Arabic)
+}
+for tld, ns in REACHABLE_NS.items():
+    if ns not in ns_by_tld.get(tld, set()):
+        sys.exit(f"REACHABLE_NS[{tld!r}] = {ns!r} is not delegated in the root zone")
 
 # Glue A records -> (IP, owner TLD, NS host). Used for network anchors.
 glue: list[tuple[str, str, str]] = []
@@ -397,7 +428,7 @@ counts = collections.Counter()
 
 # Country anchors: one DNS question per ccTLD against its authoritative NS.
 for tld in sorted(chosen_ns):
-    ns = chosen_ns[tld]
+    ns = REACHABLE_NS.get(tld, chosen_ns[tld])
     w(f"  - id: cctld-{tld}")
     w(f"    name: {y(country_name(tld))}")
     w(f"    host: {y(ns)}")
@@ -477,8 +508,14 @@ for rid, name, host, cls in REFERENCES:
     counts["reference"] += 1
 
 # Operator-supplied path pairs (DESIGN.md §9). Kept separate from the target
-# count: corridors are evidence about a path, never probe targets.
+# count: corridors are evidence about a path, never probe targets. Emit the
+# same explanation into the config so regeneration preserves it.
 if CORRIDORS:
+    w("")
+    w("# Operator-supplied path pairs (DESIGN.md §9). The design deliberately ships")
+    w("# no default list: each endpoint below is a real public TCP:443 service that")
+    w("# was verified to connect from the field-trial host. City labels are approximate")
+    w("# because CDNs anycast — the endpoints, not the labels, are the measurement.")
     w("corridors:")
     for cid, frm, to, near, far in CORRIDORS:
         w(f"  - id: {cid}")

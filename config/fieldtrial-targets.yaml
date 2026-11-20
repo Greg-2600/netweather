@@ -905,7 +905,7 @@ targets:
     tier: 3
   - id: cctld-gu
     name: "Guam ccTLD"
-    host: "gold.uog.edu"
+    host: "phloem.uoregon.edu"
     port: 53
     probe: dns
     qname: "gu"
@@ -1055,7 +1055,7 @@ targets:
     tier: 3
   - id: cctld-iq
     name: "Iraq ccTLD"
-    host: "ns.cmc.iq"
+    host: "ns01.trs-dns.net"
     port: 53
     probe: dns
     qname: "iq"
@@ -1115,7 +1115,7 @@ targets:
     tier: 3
   - id: cctld-jo
     name: "Jordan ccTLD"
-    host: "a.cctld-servers.net.jo"
+    host: "rip.psg.com"
     port: 53
     probe: dns
     qname: "jo"
@@ -1195,7 +1195,7 @@ targets:
     tier: 3
   - id: cctld-kp
     name: "North Korea ccTLD"
-    host: "ns1.kptc.kp"
+    host: "ns2.kptc.kp"
     port: 53
     probe: dns
     qname: "kp"
@@ -1535,7 +1535,7 @@ targets:
     tier: 3
   - id: cctld-mw
     name: "Malawi ccTLD"
-    host: "chambo.sdnp.org.mw"
+    host: "mw-e.ns.nic.cz"
     port: 53
     probe: dns
     qname: "mw"
@@ -1595,7 +1595,7 @@ targets:
     tier: 3
   - id: cctld-ne
     name: "Niger ccTLD"
-    host: "bow.rain.fr"
+    host: "ns.intnet.ne"
     port: 53
     probe: dns
     qname: "ne"
@@ -1655,7 +1655,7 @@ targets:
     tier: 3
   - id: cctld-np
     name: "Nepal ccTLD"
-    host: "np-ns.npix.net.np"
+    host: "shikhar.mos.com.np"
     port: 53
     probe: dns
     qname: "np"
@@ -1935,7 +1935,7 @@ targets:
     tier: 3
   - id: cctld-sd
     name: "Sudan ccTLD"
-    host: "ans1.canar.sd"
+    host: "pch.sis.sd"
     port: 53
     probe: dns
     qname: "sd"
@@ -2335,7 +2335,7 @@ targets:
     tier: 3
   - id: cctld-uz
     name: "Uzbekistan ccTLD"
-    host: "ns1.uz"
+    host: "ns2.uz"
     port: 53
     probe: dns
     qname: "uz"
@@ -3355,7 +3355,7 @@ targets:
     tier: 3
   - id: cctld-xn--mgbayh7gpa
     name: "Jordan (الاردن) ccTLD"
-    host: "a.cctld-servers.net.jo"
+    host: "jo.cctld.authdns.ripe.net"
     port: 53
     probe: dns
     qname: "xn--mgbayh7gpa"
@@ -3445,7 +3445,7 @@ targets:
     tier: 3
   - id: cctld-xn--mgbpl2fh
     name: "Sudan (سودان) ccTLD"
-    host: "ans1.sis.sd"
+    host: "pch.sis.sd"
     port: 53
     probe: dns
     qname: "xn--mgbpl2fh"
@@ -3465,7 +3465,7 @@ targets:
     tier: 3
   - id: cctld-xn--mgbtx2b
     name: "Iraq (عراق) ccTLD"
-    host: "ns.cmc.iq"
+    host: "nsp-anycast.cmc.iq"
     port: 53
     probe: dns
     qname: "xn--mgbtx2b"
@@ -3925,7 +3925,7 @@ targets:
     tier: 3
   - id: cctld-xn--ygbi2ammx
     name: "Palestinian Territories (فلسطين) ccTLD"
-    host: "dns1.gov.ps"
+    host: "ps.cctld.authdns.ripe.net"
     port: 53
     probe: dns
     qname: "xn--ygbi2ammx"
