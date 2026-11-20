@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -96,4 +97,59 @@ func TestMapHoverCardExposesEntityAndReason(t *testing.T) {
 	if js.StatusCode != http.StatusOK {
 		t.Fatalf("map.js status %d", js.StatusCode)
 	}
+}
+
+func TestMapHealthPutsOutagesFirstInDOM(t *testing.T) {
+	// The board deliberately lists the healthy target first: health clustering
+	// must reorder clusters, not rely on input order, so both the picture and
+	// the tab order put the outage in front.
+	m := board.NewMemory(
+		board.Target{ID: "a-healthy", Name: "A Healthy", Host: "healthy.example", Sector: "cloud", State: board.StateUp},
+		board.Target{ID: "z-outage", Name: "Z Outage", Host: "outage.example", Sector: "cloud", State: board.StateDown, Since: time.Now()},
+	)
+	h, err := web.New(web.Deps{
+		Logger:    slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		Source:    m,
+		Token:     "",
+		Version:   "test",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(h)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/map?by=health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+
+	groups := regexp.MustCompile(`data-testid="map-sector" data-group="([^"]+)"`).FindStringSubmatch(string(body))
+	if len(groups) < 2 || groups[1] != "Recent outages" {
+		t.Fatalf("first health cluster = %q, want Recent outages", firstMatch(groups))
+	}
+	idx := strings.Index(string(body), `data-testid="map-tile"`)
+	if idx < 0 {
+		t.Fatal("no map tile in body")
+	}
+	state := regexp.MustCompile(`data-tip-state="([^"]+)"`).FindStringSubmatch(string(body)[idx:])
+	if len(state) < 2 || state[1] != "DOWN" {
+		t.Fatalf("first tile state = %q, want DOWN", firstMatch(state))
+	}
+}
+
+func firstMatch(match []string) string {
+	if len(match) < 2 {
+		return ""
+	}
+	return match[1]
 }

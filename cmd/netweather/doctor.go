@@ -83,12 +83,21 @@ func doctorCommand(args []string, out io.Writer) error {
 	// Dockerfile.tor; the app container cannot inspect the sidecar's config,
 	// and claiming to would be the kind of assurance this project avoids.
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("NETWEATHER_TOR")), "true") ||
-		strings.TrimSpace(os.Getenv("NETWEATHER_TOR_SOCKS")) != "" {
-		proxy := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_SOCKS"))
-		if proxy == "" {
-			proxy = "tor:9050"
+		strings.TrimSpace(os.Getenv("NETWEATHER_TOR_SOCKS")) != "" ||
+		strings.TrimSpace(os.Getenv("NETWEATHER_TOR_VANTAGES")) != "" {
+		specs, err := parseTorSpecs()
+		if err != nil {
+			checks = append(checks, doctor.Check{Name: "tor socks (optional)", Run: func(context.Context) (string, error) {
+				return "", err
+			}})
 		}
-		checks = append(checks, doctor.Check{Name: "tor socks (optional)", Run: torSocksCheck(proxy)})
+		for _, spec := range specs {
+			spec := spec
+			checks = append(checks, doctor.Check{
+				Name: "tor socks " + spec.ID + " (optional)",
+				Run:  torSocksCheck(spec.Socks),
+			})
+		}
 	}
 
 	runner := &doctor.Runner{Checks: checks}

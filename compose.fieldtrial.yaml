@@ -13,6 +13,11 @@ services:
     environment:
       NETWEATHER_CONFIG: /config/fieldtrial-targets.yaml
       NETWEATHER_TOR: "true"
+      # Five pinned Tor exits provide corroboration from five continents. Each
+      # entry is CC=SOCKS endpoint and is verified through that proxy before
+      # the country label is used. One unavailable exit is skipped; the rest
+      # keep running.
+      NETWEATHER_TOR_VANTAGES: "DE=tor-de:9050,JP=tor-jp:9050,AU=tor-au:9050,SG=tor-sg:9050,CL=tor-cl:9050,MX=tor-mx:9050"
       NETWEATHER_CONTACT: "field-trial-operator@example.invalid"
       NETWEATHER_UI_TOKEN_FILE: /run/secrets-prod/ui_token
       # Bounded country-level overlay for /world. One ranked IODA summary poll
@@ -24,7 +29,12 @@ services:
     volumes:
       - nw-fieldtrial-secret:/run/secrets-prod:ro
     depends_on:
-      - tor
+      - tor-de
+      - tor-jp
+      - tor-au
+      - tor-sg
+      - tor-cl
+      - tor-mx
 
 volumes:
   nw-fieldtrial-secret:

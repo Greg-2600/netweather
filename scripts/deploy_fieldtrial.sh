@@ -67,6 +67,14 @@ fi
 if [ "$NO_BUILD" = "0" ]; then
     step "building the Tor client sidecar image"
     run docker build -f Dockerfile.tor -t netweather-tor:local .
+    # Each exit pin is baked into its own image, so rebuild all six or `up -d`
+    # may keep running a sidecar built before a torrc edit.
+    for cc in DE JP AU SG CL MX; do
+        lower=$(printf '%s' "$cc" | tr '[:upper:]' '[:lower:]')
+        step "building the Tor client sidecar image for $cc"
+        run docker build -f Dockerfile.tor --build-arg "TOR_EXIT_COUNTRY=$cc" \
+            -t "netweather-tor-$lower:local" .
+    done
     step "building $IMAGE"
     run docker build -t "$IMAGE" .
 else

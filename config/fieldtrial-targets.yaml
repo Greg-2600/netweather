@@ -5330,6 +5330,7 @@ targets:
     host: "www.cathaypacific.com"
     port: 443
     probe: http
+    path: "/cx/en_US.html"
     class: service
     sector: "airline"
     tier: 2
@@ -5371,10 +5372,11 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-spirit
-    name: "Spirit"
-    host: "www.spirit.com"
+    name: "Sunwing"
+    host: "www.sunwing.ca"
     port: 443
     probe: http
+    path: "/en/"
     class: service
     sector: "airline"
     tier: 2

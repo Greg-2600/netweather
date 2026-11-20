@@ -31,6 +31,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/streamlimit"
 	"github.com/Greg-2600/netweather/internal/tracebudget"
+	"github.com/Greg-2600/netweather/internal/vantagegeo"
 	"github.com/Greg-2600/netweather/internal/verdict"
 )
 
@@ -612,6 +613,8 @@ type vantageItem struct {
 	ID        string `json:"id"`
 	Kind      string `json:"kind,omitempty"`
 	Role      string `json:"role,omitempty"`
+	Country   string `json:"country,omitempty"`
+	Continent string `json:"continent,omitempty"`
 	State     string `json:"state"`
 	Since     string `json:"since,omitempty"`
 	LastProbe string `json:"last_probe,omitempty"`
@@ -1009,6 +1012,7 @@ func (s *server) serveTarget(w http.ResponseWriter, r *http.Request, id string) 
 		for _, state := range states {
 			v := vantageItem{
 				ID: state.ID, Kind: state.Kind, Role: state.Role, State: state.State,
+				Country: vantagegeo.Country(state.ID), Continent: vantagegeo.FromVantage(state.ID),
 			}
 			if !state.Since.IsZero() {
 				v.Since = state.Since.UTC().Format(time.RFC3339)

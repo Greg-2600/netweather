@@ -89,6 +89,11 @@ func (s *Store) UpsertTarget(ctx context.Context, t Target) error {
 			created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
+			-- The config file owns the endpoint as well as the label. Without
+			-- these columns a replaced host keeps the old DNS answer forever.
+			host = excluded.host,
+			port = excluded.port,
+			probe = excluded.probe,
 			query = excluded.query,
 			name = excluded.name,
 			class = excluded.class,

@@ -535,6 +535,23 @@ func TestEgressIPCheckEnrichesWithASNAndCountry(t *testing.T) {
 	}
 }
 
+func TestEgressIPCheckKeepsCountryWithoutASN(t *testing.T) {
+	t.Parallel()
+
+	body := "ip=203.0.113.9\n"
+	lookup := func(context.Context, netip.Addr) (int, string) { return 0, "DE" }
+	check := selfcheck.EgressIPCheck(
+		probe.NewHTTPWithTransport(dateTransport{body: body}), "https://trace.example/", lookup)
+
+	ok, value, _, err := check.Run(context.Background())
+	if err != nil || !ok {
+		t.Fatalf("check = (%v, %q, %v)", ok, value, err)
+	}
+	if value != "203.0.113.9,,DE" {
+		t.Fatalf("value = %q, want the country without an invented ASN", value)
+	}
+}
+
 func TestEgressIPCheckFailures(t *testing.T) {
 	t.Parallel()
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Greg-2600/netweather/internal/agent"
+	"github.com/Greg-2600/netweather/internal/bytecap"
 	"github.com/Greg-2600/netweather/internal/config"
 	"github.com/Greg-2600/netweather/internal/feeds"
 	"github.com/Greg-2600/netweather/internal/logging"
@@ -540,6 +542,61 @@ func TestNewTorAgentBuildsOne(t *testing.T) {
 	_ = states
 }
 
+func TestParseTorSpecsMultipleContinents(t *testing.T) {
+	t.Setenv("NETWEATHER_TOR_VANTAGES",
+		"DE=tor-de:9050, JP = tor-jp:9050 ,AU=tor-au:9050,SG=tor-sg:9050,CL=tor-cl:9050,MX=tor-mx:9050")
+
+	specs, err := parseTorSpecs()
+	if err != nil {
+		t.Fatalf("parseTorSpecs: %v", err)
+	}
+	want := []torSpec{
+		{Country: "DE", Socks: "tor-de:9050", Control: "tor-de:9051", ID: "tor-de"},
+		{Country: "JP", Socks: "tor-jp:9050", Control: "tor-jp:9051", ID: "tor-jp"},
+		{Country: "AU", Socks: "tor-au:9050", Control: "tor-au:9051", ID: "tor-au"},
+		{Country: "SG", Socks: "tor-sg:9050", Control: "tor-sg:9051", ID: "tor-sg"},
+		{Country: "CL", Socks: "tor-cl:9050", Control: "tor-cl:9051", ID: "tor-cl"},
+		{Country: "MX", Socks: "tor-mx:9050", Control: "tor-mx:9051", ID: "tor-mx"},
+	}
+	if len(specs) != len(want) {
+		t.Fatalf("specs = %d, want %d", len(specs), len(want))
+	}
+	for i := range want {
+		if specs[i] != want[i] {
+			t.Errorf("spec %d = %+v, want %+v", i, specs[i], want[i])
+		}
+	}
+}
+
+func TestParseTorSpecsRejectsBadEntries(t *testing.T) {
+	for _, raw := range []string{
+		"DE", "de=tor:9050", "USA=tor:9050", "DE=", "DE=tor:9050,DE=tor2:9050", ",",
+	} {
+		t.Run(raw, func(t *testing.T) {
+			t.Setenv("NETWEATHER_TOR_VANTAGES", raw)
+			if _, err := parseTorSpecs(); err == nil {
+				t.Fatalf("accepted %q", raw)
+			}
+		})
+	}
+}
+
+func TestCombinedBudgetWaitsForEveryExit(t *testing.T) {
+	spent := bytecap.New(100)
+	spent.Add(100)
+	fresh := bytecap.New(100)
+	b := combinedBudget{spent, fresh}
+	if b.Used() != 100 || b.Allowance() != 200 {
+		t.Fatalf("used=%d allowance=%d", b.Used(), b.Allowance())
+	}
+	if b.Exhausted() {
+		t.Fatal("one exhausted exit must not pause the other vantages")
+	}
+	if !(combinedBudget{spent}).Exhausted() {
+		t.Fatal("all exits exhausted must report exhausted")
+	}
+}
+
 func TestNewTorAgentRequiresTcpTargets(t *testing.T) {
 	t.Setenv("NETWEATHER_TOR", "true")
 	t.Setenv("NETWEATHER_TOR_SOCKS", "127.0.0.1:9050")
@@ -908,6 +965,37 @@ func (p pinTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}, nil
 }
 
+func TestTorGeoIPCountry(t *testing.T) {
+	t.Parallel()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		scanner := bufio.NewScanner(conn)
+		for scanner.Scan() {
+			if strings.HasPrefix(scanner.Text(), "GETINFO ip-to-country/") {
+				_, _ = io.WriteString(conn, "250-ip-to-country/203.0.113.9=de\r\n250 OK\r\n")
+				return
+			}
+		}
+	}()
+
+	if got := torGeoIPCountry(context.Background(), ln.Addr().String(), "203.0.113.9"); got != "DE" {
+		t.Fatalf("country = %q, want DE", got)
+	}
+	if got := torGeoIPCountry(context.Background(), "", "203.0.113.9"); got != "" {
+		t.Fatalf("empty control returned %q", got)
+	}
+}
+
 func TestTorExitCountry(t *testing.T) {
 	t.Parallel()
 
@@ -952,6 +1040,38 @@ func TestTorExitCountry(t *testing.T) {
 		probe.NewHTTPWithTransport(pinTransport{status: 502, body: usBody}), usLookup, "US")
 	if err == nil || !strings.Contains(err.Error(), "unavailable") {
 		t.Fatalf("trace failure error = %v", err)
+	}
+}
+
+func TestTorExitCountryUsesGeoIPWhenRegistrarHasNoASN(t *testing.T) {
+	t.Parallel()
+
+	lookup := func(context.Context, netip.Addr) (int, string) { return 0, "DE" }
+	got, err := torExitCountry(context.Background(),
+		probe.NewHTTPWithTransport(pinTransport{body: "ip=203.0.113.9\n"}), lookup, "DE")
+	if err != nil {
+		t.Fatalf("country-only lookup failed: %v", err)
+	}
+	if got != "203.0.113.9,,DE" {
+		t.Fatalf("value = %q", got)
+	}
+}
+
+func TestVerifyTorExitDoesNotRetryMismatch(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+	lookup := func(context.Context, netip.Addr) (int, string) {
+		calls++
+		return 64500, "NL"
+	}
+	_, err := verifyTorExitWithRetry(context.Background(),
+		probe.NewHTTPWithTransport(pinTransport{body: "ip=203.0.113.9\n"}), lookup, "US")
+	if err == nil {
+		t.Fatal("mismatch was accepted")
+	}
+	if calls != 1 {
+		t.Fatalf("mismatch retried %d times", calls)
 	}
 }
 

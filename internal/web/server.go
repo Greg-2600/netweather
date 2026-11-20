@@ -25,6 +25,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/streamlimit"
+	"github.com/Greg-2600/netweather/internal/vantagegeo"
 	"github.com/Greg-2600/netweather/internal/verdict"
 )
 
@@ -1591,14 +1592,16 @@ type sourceView struct {
 
 // vantageStateView is one vantage's row in the drawer.
 type vantageStateView struct {
-	ID      string
-	Kind    string
-	Role    string
-	State   string
-	Text    string
-	Glyph   string
-	Since   string
-	Primary bool
+	ID        string
+	Kind      string
+	Role      string
+	Country   string
+	Continent string
+	State     string
+	Text      string
+	Glyph     string
+	Since     string
+	Primary   bool
 }
 
 // targetCorroborationView is one feed event near the target's scope.
@@ -1744,7 +1747,9 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 					st := state.State(row.State)
 					view.Vantages = append(view.Vantages, vantageStateView{
 						ID: row.ID, Kind: row.Kind, Role: row.Role,
-						State: row.State, Text: st.Text(), Glyph: st.Glyph(),
+						Country:   vantagegeo.Country(row.ID),
+						Continent: vantagegeo.FromVantage(row.ID),
+						State:     row.State, Text: st.Text(), Glyph: st.Glyph(),
 						Since: formatTimestamp(row.Since), Primary: row.Role == "primary",
 					})
 					if row.Role == "primary" && st == state.Down {
@@ -3223,6 +3228,15 @@ func (s *server) handleMap(w http.ResponseWriter, r *http.Request) {
 		}
 		sectors = append(sectors, sec)
 	}
+	// layoutSectors packs urgent clusters at the top-left, but the template
+	// ranges over this slice. Sort it too so the DOM/tab order agrees with the
+	// picture: a keyboard user reaches the outage before the healthy majority.
+	sort.SliceStable(sectors, func(i, j int) bool {
+		if sectors[i].Order != sectors[j].Order {
+			return sectors[i].Order < sectors[j].Order
+		}
+		return sectors[i].Area > sectors[j].Area
+	})
 	layoutMap(sectors)
 
 	// A flat view is kept for callers/tests that just want the whole tile set.

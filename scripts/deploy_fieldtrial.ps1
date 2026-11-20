@@ -100,6 +100,14 @@ if (-not $DryRun -and -not $NoBuild) {
 if (-not $NoBuild) {
     Step 'building the Tor client sidecar image'
     Invoke-Docker @('build', '-f', 'Dockerfile.tor', '-t', 'netweather-tor:local', '.')
+    # Each regional vantage is a separate image because its exit pin is baked
+    # into torrc. Build them here so a torrc or Dockerfile edit cannot leave an
+    # old pinned sidecar running after `up -d`.
+    foreach ($cc in @('de', 'jp', 'au', 'sg', 'cl', 'mx')) {
+        Step "building the Tor client sidecar image for $($cc.ToUpperInvariant())"
+        Invoke-Docker @('build', '-f', 'Dockerfile.tor', '--build-arg', "TOR_EXIT_COUNTRY=$($cc.ToUpperInvariant())",
+            '-t', "netweather-tor-$cc`:local", '.')
+    }
     Step "building $image"
     Invoke-Docker @('build', '-t', $image, '.')
 } else {

@@ -419,8 +419,16 @@ func EgressIPCheck(httpProbe *probe.HTTP, url string, lookup func(ctx context.Co
 			value := addr.Unmap().String()
 			detail := "observed via " + url
 			if lookup != nil {
-				if asn, country := lookup(ctx, addr); asn > 0 {
+				asn, country := lookup(ctx, addr)
+				switch {
+				case asn > 0:
 					value = fmt.Sprintf("%s,AS%d,%s", addr.Unmap(), asn, country)
+				case country != "":
+					// A country can be known from a local GeoIP source even when
+					// the ASN registrar lookup is unavailable. Keep the empty
+					// ASN slot rather than inventing one, but do not discard the
+					// country: Tor exit verification depends on it.
+					value = fmt.Sprintf("%s,,%s", addr.Unmap(), country)
 				}
 			}
 			return true, value, detail, nil

@@ -18,6 +18,17 @@ RUN apk add --no-cache tor ca-certificates-bundle \
 
 COPY --chmod=0644 torrc /etc/tor/torrc
 
+# Optional exit pin for a regional corroboration vantage. The value is checked
+# before it is appended, so a build arg cannot inject extra torrc directives.
+# The monitor still verifies the real exit through this proxy before it labels
+# any observation with the country (ACCEPTABLE_USE.md §8).
+ARG TOR_EXIT_COUNTRY=""
+RUN case "$TOR_EXIT_COUNTRY" in \
+      "") ;; \
+      [A-Z][A-Z]) printf '\nExitNodes {%s}\nStrictNodes 1\n' "$TOR_EXIT_COUNTRY" >> /etc/tor/torrc ;; \
+      *) echo "TOR_EXIT_COUNTRY must be a two-letter upper-case code" >&2; exit 1 ;; \
+    esac
+
 USER 65532:65532
 EXPOSE 9050
 

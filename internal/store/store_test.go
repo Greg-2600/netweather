@@ -358,7 +358,7 @@ func TestUpsertTargetUpdatesExisting(t *testing.T) {
 	seed(t, s)
 
 	if err := s.UpsertTarget(context.Background(), store.Target{
-		ID: "t1", Host: "chase.com", Port: 443, Probe: "http",
+		ID: "t1", Host: "chase.com", Port: 8443, Probe: "tls",
 		Name: "Chase Bank", Class: "service", Tier: 1, IntervalS: 120,
 	}); err != nil {
 		t.Fatal(err)
@@ -368,7 +368,8 @@ func TestUpsertTargetUpdatesExisting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rows[0].Name != "Chase Bank" || rows[0].Tier != 1 {
+	if rows[0].Name != "Chase Bank" || rows[0].Tier != 1 ||
+		rows[0].Host != "chase.com" || rows[0].Port != 8443 || rows[0].Probe != "tls" {
 		t.Fatalf("row = %+v", rows[0])
 	}
 }

@@ -178,7 +178,13 @@ SERVICES: list[tuple[str, str, str, str]] = [
     ("jal", "Japan Airlines", "www.jal.co.jp", "airline"),
     ("qantas", "Qantas", "www.qantas.com", "airline"),
     ("aircanada", "Air Canada", "www.aircanada.com", "airline"),
-    ("spirit", "Spirit", "www.spirit.com", "airline"),
+    # Spirit ceased operations in 2026: www.spirit.com is NXDOMAIN worldwide, so
+    # no vantage can reach it. Sun Country and Air Transat answer with Incapsula
+    # challenges (the latter still sends x-iinfo on an otherwise clean page), so
+    # a real airline that publishes assessable HTML is used here. The id is
+    # retained as the stable key so the fleet stays at 749 and this target's
+    # history records the replacement.
+    ("spirit", "Sunwing", "www.sunwing.ca", "airline"),
     ("frontier", "Frontier", "www.flyfrontier.com", "airline"),
     ("easyjet", "easyJet", "www.easyjet.com", "airline"),
     ("ryanair", "Ryanair", "www.ryanair.com", "airline"),
@@ -464,6 +470,17 @@ for ip, tld, owner in glue:
     w("    tier: 3")
     counts["network"] += 1
 
+# A few services need a concrete path. Cathay's apex takes ~10 s to 301 and the
+# canonical page another ~10 s, so the default probe exceeds its 15 s timeout;
+# asking for the final page directly keeps the same public service measurable.
+# Sunwing's /en/ page is likewise the stable public page that returns
+# assessable HTML without a bot challenge. Every path is verified against the
+# real endpoint.
+SERVICE_PATHS: dict[str, str] = {
+    "cathay": "/cx/en_US.html",
+    "spirit": "/en/",
+}
+
 # Service targets: curated real endpoints.
 seen_hosts: set[str] = set()
 for sid, name, host, sector in SERVICES:
@@ -475,6 +492,8 @@ for sid, name, host, sector in SERVICES:
     w(f"    host: {y(host)}")
     w("    port: 443")
     w("    probe: http")
+    if sid in SERVICE_PATHS:
+        w(f"    path: {y(SERVICE_PATHS[sid])}")
     w("    class: service")
     w(f"    sector: {y(sector)}")
     if sector in ("financial/banking", "cloud", "developer"):

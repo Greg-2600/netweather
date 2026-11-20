@@ -113,17 +113,19 @@ pass() {
             check "ioda-level feed" 1 "not present in /api/v1/feeds"
         fi
 
-        # 6. Tor vantage came up. Prefer the doctor's live SOCKS probe; fall
-        #    back to the startup event in the API log when docker is not
-        #    reachable from this shell (e.g. a Git Bash client on Windows).
+        # 6. Tor vantages came up. Prefer the doctor's live SOCKS probes; fall
+        #    back to the board's budget when docker is not reachable from this
+        #    shell (e.g. a Git Bash client on Windows). Each pinned exit gets
+        #    its own doctor row: tor socks tor-de (optional), etc.
         doctor="$(docker compose --profile tor -f compose.yaml -f compose.fieldtrial.yaml \
             exec -T netweather /netweather doctor 2>/dev/null || true)"
-        if printf '%s' "$doctor" | grep -qE 'tor socks \(optional\).*ok'; then
-            check "tor vantage" 0 "$(printf '%s' "$doctor" | grep -E 'tor socks \(optional\)' | head -1 | tr -s ' ')"
+        ok_exits="$(printf '%s' "$doctor" | grep -E 'tor socks tor-[a-z]{2} \(optional\).*ok' || true)"
+        if [ -n "$ok_exits" ]; then
+            check "tor vantages" 0 "$(printf '%s' "$ok_exits" | head -1 | tr -s ' ') (and $(printf '%s' "$ok_exits" | wc -l | tr -d ' ') pinned exits)"
         elif [ "$(printf '%s' "$(ui_page "$jar" / || true)" | grep -c 'data-testid="tor-budget"')" -gt 0 ]; then
-            check "tor vantage" 0 "board shows the Tor budget (doctor unavailable here)"
+            check "tor vantages" 0 "board shows the Tor budget (doctor unavailable here)"
         else
-            check "tor vantage" 1 "no Tor evidence from doctor or the board"
+            check "tor vantages" 1 "no Tor evidence from doctor or the board"
         fi
         rm -f "$jar"
 

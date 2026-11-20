@@ -71,11 +71,14 @@ services:
       retries: 3
       start_period: 10s
 
-  # Optional Tor vantage. The sidecar is client-only and the monitor never
+  # Optional Tor vantages. The sidecars are client-only and the monitor never
   # embeds Tor. Start with: docker compose --profile tor up -d
   #
-  # The exit is not country-pinned; use a pinned SOCKS5 endpoint when the
-  # country label matters (docs/ACCEPTABLE_USE.md §8).
+  # `tor` is the original unpinned proxy for a single `NETWEATHER_TOR` vantage.
+  # The `tor-<cc>` services below each build their own client-only image with a
+  # pinned exit country, then `NETWEATHER_TOR_VANTAGES` names the SOCKS
+  # endpoints. A country label is only trusted after the monitor checks the
+  # real exit through that proxy (docs/ACCEPTABLE_USE.md §8).
   tor:
     # Built from this repository's Dockerfile.tor, not a third-party image: the
     # client-only torrc is baked in, so an operator cannot turn the proxy into
@@ -86,6 +89,101 @@ services:
       context: .
       dockerfile: Dockerfile.tor
     image: netweather-tor:local
+    profiles: [tor]
+    networks: [egress]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  # One pinned exit per continent. Each service is a separate Tor client with
+  # its own DataDirectory inside the container, so its circuit selection cannot
+  # leak into another vantage. These five countries were chosen because they
+  # had reachable exits at field-trial time; the monitor skips any exit that
+  # cannot be verified rather than labeling it by intention.
+  tor-de:
+    build:
+      context: .
+      dockerfile: Dockerfile.tor
+      args:
+        TOR_EXIT_COUNTRY: DE
+    image: netweather-tor-de:local
+    profiles: [tor]
+    networks: [egress]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  tor-jp:
+    build:
+      context: .
+      dockerfile: Dockerfile.tor
+      args:
+        TOR_EXIT_COUNTRY: JP
+    image: netweather-tor-jp:local
+    profiles: [tor]
+    networks: [egress]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  tor-au:
+    build:
+      context: .
+      dockerfile: Dockerfile.tor
+      args:
+        TOR_EXIT_COUNTRY: AU
+    image: netweather-tor-au:local
+    profiles: [tor]
+    networks: [egress]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  tor-sg:
+    build:
+      context: .
+      dockerfile: Dockerfile.tor
+      args:
+        TOR_EXIT_COUNTRY: SG
+    image: netweather-tor-sg:local
+    profiles: [tor]
+    networks: [egress]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  tor-cl:
+    build:
+      context: .
+      dockerfile: Dockerfile.tor
+      args:
+        TOR_EXIT_COUNTRY: CL
+    image: netweather-tor-cl:local
+    profiles: [tor]
+    networks: [egress]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  tor-mx:
+    build:
+      context: .
+      dockerfile: Dockerfile.tor
+      args:
+        TOR_EXIT_COUNTRY: MX
+    image: netweather-tor-mx:local
     profiles: [tor]
     networks: [egress]
     restart: unless-stopped

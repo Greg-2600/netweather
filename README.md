@@ -35,7 +35,7 @@ netweather answers these, in this order:
 
 **Status: phases 0–3 implemented** (OIDC deferred to *Later*). The binary probes configured targets over HTTP, TLS, TCP, DNS, DoH, DoT, QUIC (UDP/443 reachability), NTP, and ICMP on a tiered scheduler; classifies each result; writes to SQLite; and serves a store-backed board with live SSE updates, the versioned API, and a hardened container image.
 
-Incidents, baseline anomalies, coverage, self-checks, exports, feeds (IODA, Radar, Statuspage, AWS, GCP, Azure, Atlas, RIPE RIS Live), ASN/CDN/PeeringDB enrichment, certificate issuer pinning, per-resolver DNS divergence, provider status mapping, idempotent actions, on-demand traceroute, the world view, configuration-driven corridors with captured traces, the Internet Health Index, SSE replay, a Feeds status page, and a FinViz-style **treemap health map** are all implemented. Tor and Tailscale are compose profiles; traceroute and RIPE's software probe have their own opt-in overlays. Remote vantage agents (`netweather agent`) run the same instruments on a remote host and report to `/api/v1/vantages/{id}/reports`.
+Incidents, baseline anomalies, coverage, self-checks, exports, feeds (IODA, Radar, Statuspage, AWS, GCP, Azure, Atlas, RIPE RIS Live), ASN/CDN/PeeringDB enrichment, certificate issuer pinning, per-resolver DNS divergence, provider status mapping, idempotent actions, on-demand traceroute, the world view, configuration-driven corridors with captured traces, the Internet Health Index, SSE replay, a Feeds status page, and a FinViz-style **treemap health map** are all implemented. Tor (single or multi-continent pinned exits) and Tailscale are compose profiles; traceroute and RIPE's software probe have their own opt-in overlays. Remote vantage agents (`netweather agent`) run the same instruments on a remote host and report to `/api/v1/vantages/{id}/reports`.
 
 > [!NOTE]
 > **Known limits, stated rather than hidden:** QUIC is UDP/443 reachability, not a full handshake; the DF-bit PMTU probe is Linux-only; IPv6 measurement runs under host networking only; RIS Live is a polling adapter (WebSocket is post-MVP); IODA shows stored events, not a live per-country score. `NETWEATHER_SEED=none` starts with an empty board.
@@ -66,7 +66,7 @@ Everything builds and tests with one command: **`go run ./internal/devtool verif
 | | Capability | What it gives you |
 |:--:|---|---|
 | 🗺️ | **Health treemap** | `/map` clusters long-running outages → recent outages → blocked → degraded → no data → healthy, packed most-urgent first. Area grows with severity × duration; hover cards explain *why* a tile has its status. |
-| 🧭 | **Vantages** | `direct` (your connection) plus optional `socks5` Tor corroboration with verified exit country. Only the primary vantage may declare `DOWN`. |
+| 🧭 | **Vantages** | `direct` (your connection) plus optional `socks5` Tor corroboration, including multiple pinned exit countries across continents. Only the primary vantage may declare `DOWN`. |
 | 🔬 | **Honest classification** | `UP` · `UP_REACHABILITY` · `DEGRADED` · `DOWN` · `BLOCKED` · `UNKNOWN` · `CONFIG_ERROR` · `UNMEASURABLE`. The last three never count against health — that is what keeps the board from being permanently on fire. |
 | 🌐 | **External intelligence** | IODA, Cloudflare Radar, the Statuspage family (AWS/GCP/Azure), RIPE RIS Live, Atlas, PeeringDB. All optional; the core works with zero feeds. |
 | 🧪 | **Six test layers** | Unit, classifier fixtures, fake internet, API, browser (Playwright), and container — plus fuzzing, mutation testing, and per-package coverage gates. |
@@ -89,7 +89,7 @@ docker compose up -d
 
 Open <http://localhost:2600> and log in with the token you just created. That's it — 14 shipped targets, roughly 50 MB/day.
 
-Want the full field-trial fleet (749 real targets + Tor vantage)?
+Want the full field-trial fleet (749 real targets + five-continent Tor corroboration)?
 
 ```powershell
 .\scripts\deploy_fieldtrial.ps1               # Windows: build + deploy
@@ -228,11 +228,12 @@ Every environment variable the binary reads, including the ones that exist for a
 | `NETWEATHER_RIS_STREAM` / `NETWEATHER_RIS_WS_URL` | `false` / upstream default | opt-in real-time RIS Live WebSocket; **WSS only** |
 | `NETWEATHER_IODA_LEVEL_LIMIT` | `25` | max ranked countries per `ioda-level` poll (clamped 1–100) |
 | `NETWEATHER_IODA_SUMMARY_URL`, `NETWEATHER_IODA_URL`, `NETWEATHER_RADAR_URL`, `NETWEATHER_AWS_STATUS_URL`, `NETWEATHER_GCP_STATUS_URL`, `NETWEATHER_AZURE_STATUS_URL` | upstream defaults | endpoint overrides; **HTTPS only**, plaintext ignored with `event=feed_url_insecure` |
-| `NETWEATHER_TOR` | off | enables the Tor corroboration vantage |
-| `NETWEATHER_TOR_SOCKS` | `127.0.0.1:9050` | SOCKS5 entry point (`socks5h` only); compose uses `tor:9050` |
-| `NETWEATHER_TOR_MAX` | `25` | maximum Tor targets |
-| `NETWEATHER_TOR_DAILY_MB` | `50` | Tor daily volume budget; `0` disables it |
-| `NETWEATHER_TOR_EXIT_COUNTRY` | none | two-letter code; the exit is verified through the proxy and a mismatch refuses startup |
+| `NETWEATHER_TOR` | off | enables Tor corroboration vantages |
+| `NETWEATHER_TOR_SOCKS` | `127.0.0.1:9050` | single SOCKS5 entry point (`socks5h` only); compose uses `tor:9050` |
+| `NETWEATHER_TOR_VANTAGES` | none | comma-separated `CC=host:port` list for several pinned exits, e.g. `DE=tor-de:9050,JP=tor-jp:9050` |
+| `NETWEATHER_TOR_MAX` | `25` | maximum Tor targets **per exit** |
+| `NETWEATHER_TOR_DAILY_MB` | `50` | Tor daily volume budget **per exit**; `0` disables it |
+| `NETWEATHER_TOR_EXIT_COUNTRY` | none | single-vantage code; the exit is verified through the proxy and a mismatch refuses that vantage |
 
 ---
 
@@ -271,7 +272,7 @@ docker compose exec netweather /netweather debug enable --target chase.com --lev
 
 ## 🚢 Deployment
 
-The field trial deploys through `compose.yaml` + `compose.fieldtrial.yaml`: the production-sized target file, direct + Tor vantages, hardened runtime, an external secret volume at `0600`/uid `65532`, a `/healthz` gate, and image-tag rollback. Both wrappers seed the secret, tag a rollback image, recreate the stack, wait for health, and roll back if unhealthy.
+The field trial deploys through `compose.yaml` + `compose.fieldtrial.yaml`: the production-sized target file, direct plus six pinned Tor vantages (DE, JP, AU, SG, CL, MX — five continents), hardened runtime, an external secret volume at `0600`/uid `65532`, a `/healthz` gate, and image-tag rollback. Each Tor exit is a separate client-only sidecar with its own verified country, probe subset, and budget; a failed exit is skipped without stopping the others. Both wrappers seed the secret, tag a rollback image, recreate the stack, wait for health, and roll back if unhealthy.
 
 ```powershell
 .\scripts\deploy_fieldtrial.ps1               # Windows
@@ -306,7 +307,7 @@ This tool sends periodic requests to third-party sites. That is dual-use, so the
 - Inbound: `2600` only, and a non-loopback bind requires auth
 - Private ranges blocked after DNS resolution **and** after every redirect
 - Traceroute: on-demand or anomaly-triggered, ≤10 runs/hour
-- Tor vantages: off by default, ≤25 targets, ≥2s spacing, daily bandwidth budget
+- Tor vantages: off by default, ≤25 targets and ≥2s spacing per exit, daily bandwidth budget per exit
 - **No telemetry, ever**
 
 At the full 750-target fleet this is ~430k probes/day and ~0.7 GB/day, dominated by TLS handshakes. Details and arithmetic: [`docs/ACCEPTABLE_USE.md`](docs/ACCEPTABLE_USE.md) §4.

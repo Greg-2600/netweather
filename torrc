@@ -15,6 +15,15 @@ PublishServerDescriptor 0
 # (DESIGN.md 5.7).
 SocksPort 0.0.0.0:9050 IsolateSOCKSAuth
 
+# Read-only control channel used only to ask Tor's own GeoIP database where the
+# observed exit address lives. It stays on the egress network and is never
+# published; the password is a shared deployment constant, not an operator
+# secret (the control commands available here cannot turn this client into a
+# relay). Cymru still supplies the ASN, but a registrar's country is not a
+# reliable exit location, so it is not used for the country label.
+ControlPort 0.0.0.0:9051
+HashedControlPassword 16:37CEADE74D08592C60D89583F659CD4A5D99123C41E80471A77ECA9D05
+
 # The release image runs read-only with a tmpfs at /tmp, and tor needs a
 # writable data directory it owns.
 DataDirectory /tmp/tor

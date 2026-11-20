@@ -10,6 +10,12 @@ changed between two images without it.
 
 ### Added
 
+- Multi-continent Tor corroboration: `NETWEATHER_TOR_VANTAGES` runs several
+  client-only Tor sidecars with pinned exits (DE, JP, AU, SG, CL, MX in the
+  field trial). Each exit's real country is verified through its own SOCKS hop,
+  each has an independent probe subset, pace, and byte budget, and one failed
+  exit no longer stops the others. Target drawers and the API show each
+  vantage's verified country and continent.
 - A bounded live IODA overlay: the opt-in `ioda-level` feed polls IODA's ranked
   `/v2/outages/summary` every five minutes and stores at most 25 countries
   (`country_level`, migration `0025`). `/world` shows a clearly labelled
@@ -95,6 +101,13 @@ changed between two images without it.
 
 ### Fixed
 
+- `svc-cathay` probes the canonical `/cx/en_US.html` page directly. The apex
+  redirect alone takes ~10 s, which pushed the full chain past the 15 s timeout
+  even though the service is healthy.
+- `svc-spirit` now points at Sunwing's live public `/en/` page under the same
+  stable id. `www.spirit.com` is NXDOMAIN because Spirit Airlines ceased
+  operations in 2026; Sun Country and Air Transat return Incapsula challenges,
+  so none of those could be measured as a healthy public service.
 - Authoritative DNS anchors (ccTLD, network/glue and root references) no longer
   render as `DOWN` when their apex has NS/SOA records but no A/AAAA. The wire
   client now requires the AA bit and a delegation record, records such an answer

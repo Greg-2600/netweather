@@ -173,11 +173,12 @@
       <h2 class="section-title">Vantages</h2>
       {{if .Vantages}}
       <table class="probes" data-testid="target-vantages">
-        <thead><tr><th>Vantage</th><th>Role</th><th>State</th><th>Since</th></tr></thead>
+        <thead><tr><th>Vantage</th><th>Origin</th><th>Role</th><th>State</th><th>Since</th></tr></thead>
         <tbody>
           {{range .Vantages}}
-          <tr data-testid="target-vantage-row" data-vantage="{{.ID}}" data-state="{{.State}}">
+          <tr data-testid="target-vantage-row" data-vantage="{{.ID}}" data-state="{{.State}}" data-continent="{{.Continent}}">
             <td class="mono">{{.ID}}</td>
+            <td>{{if .Country}}{{.Country}} · {{.Continent}}{{else}}local{{end}}</td>
             <td>{{.Role}}</td>
             <td><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Text}}</td>
             <td class="mono">{{.Since}}</td>

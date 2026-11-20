@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -22,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -308,9 +310,9 @@ func serve(lg *logging.Logger) error {
 	}
 	userAgent := probe.BuildUserAgent(version.Version, contact)
 
-	torAgent, torBudget, err := newTorAgent(ctx, st, targets, lg, userAgent)
+	torAgents, torBudgets, torSpecs, err := newTorAgents(ctx, st, targets, lg, userAgent)
 	if err != nil {
-		lg.Error("tor vantage unavailable", "event", "tor_unavailable", "error", err)
+		lg.Error("tor vantages unavailable", "event", "tor_unavailable", "error", err)
 		return err
 	}
 
@@ -500,11 +502,12 @@ func serve(lg *logging.Logger) error {
 		// first method call, so the field is set only when a budget exists.
 		webDeps.Budget = directBudget
 	}
-	if torBudget != nil {
-		// The Tor vantage's own allowance is shown beside the direct one so a
-		// paused corroboration source is visible rather than inferred from
-		// missing samples (DESIGN.md §5.7).
-		webDeps.TorBudget = torBudget
+	if len(torBudgets) > 0 {
+		// The Tor vantages' combined allowance is shown beside the direct one
+		// so a paused corroboration source is visible rather than inferred
+		// from missing samples (DESIGN.md §5.7). Each exit keeps its own cap;
+		// this is only the display total.
+		webDeps.TorBudget = combinedBudget(torBudgets)
 	}
 	ui, err := web.New(webDeps)
 	if err != nil {
@@ -527,7 +530,7 @@ func serve(lg *logging.Logger) error {
 			return false, err
 		}
 		removed := ag.RemoveTarget(id)
-		if torAgent != nil {
+		for _, torAgent := range torAgents {
 			torAgent.RemoveTarget(id)
 		}
 		changes.Notify()
@@ -606,7 +609,7 @@ func serve(lg *logging.Logger) error {
 	}
 
 	go probeLoop(ctx, lg, ag, changes)
-	if torAgent != nil {
+	for _, torAgent := range torAgents {
 		go probeLoop(ctx, lg, torAgent, changes)
 	}
 
@@ -659,9 +662,9 @@ func serve(lg *logging.Logger) error {
 	if configSource == "" {
 		configSource = "builtin seed"
 	}
-	vantages := "local"
-	if torAgent != nil {
-		vantages = "local,tor"
+	vantages := []string{"local"}
+	for _, spec := range torSpecs {
+		vantages = append(vantages, spec.ID)
 	}
 	lg.Info("listening",
 		"event", "startup",
@@ -2013,6 +2016,72 @@ func cymruLookup() func(context.Context, netip.Addr) (int, string) {
 	}
 }
 
+// torControlPassword matches the hashed value baked into torrc. It protects an
+// internal, never-published control port from unrelated containers on egress;
+// it is not an operator secret and grants no relay capability.
+const torControlPassword = "nwverify"
+
+// torExitLookup combines the two facts needed for a country label: the ASN from
+// Cymru's guarded DNS lookup, and the country from Tor's own GeoIP database via
+// the same process that carried the probe. Cymru's country is registrar data
+// and can disagree with the relay's actual location (a German exit registered
+// under a US foundation, for example), so it is only a fallback for a
+// user-supplied SOCKS endpoint that has no control port.
+func torExitLookup(control string) func(context.Context, netip.Addr) (int, string) {
+	cymru := cymruLookup()
+	return func(ctx context.Context, addr netip.Addr) (int, string) {
+		asn, cymruCountry := cymru(ctx, addr)
+		if control == "" {
+			return asn, cymruCountry
+		}
+		if country := torGeoIPCountry(ctx, control, addr.Unmap().String()); country != "" {
+			return asn, country
+		}
+		return asn, cymruCountry
+	}
+}
+
+// torGeoIPCountry asks the sidecar's control port where an address is, using
+// GETINFO ip-to-country. The query never leaves the egress network and uses
+// Tor's shipped GeoIP database rather than a third-party geolocation API.
+func torGeoIPCountry(ctx context.Context, control, ip string) string {
+	if control == "" || ip == "" {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	conn, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp", control)
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = conn.Close() }()
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	}
+	if _, err := fmt.Fprintf(conn, "AUTHENTICATE %q\r\nGETINFO ip-to-country/%s\r\nQUIT\r\n",
+		torControlPassword, ip); err != nil {
+		return ""
+	}
+
+	scanner := bufio.NewScanner(conn)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.HasPrefix(line, "250") || !strings.Contains(line, "ip-to-country/") {
+			continue
+		}
+		_, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		value = strings.ToUpper(strings.TrimSpace(value))
+		if alpha2(value) {
+			return value
+		}
+	}
+	return ""
+}
+
 // torExitCountry verifies a declared exit country through the Tor proxy.
 //
 // A country-labelled vantage is a country measurement only when the exit is
@@ -2046,77 +2115,221 @@ func torExitCountry(ctx context.Context, httpProbe *probe.HTTP, lookup func(cont
 	return value, nil
 }
 
-func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg *logging.Logger,
-	userAgent string,
-) (*agent.Agent, *bytecap.Budget, error) {
-	if !strings.EqualFold(strings.TrimSpace(os.Getenv("NETWEATHER_TOR")), "true") {
-		return nil, nil, nil
+const (
+	torVerifyTimeout = 45 * time.Second
+	torVerifyRetry   = 2 * time.Second
+)
+
+// verifyTorExitWithRetry tolerates a cold sidecar still building its first
+// circuit. A real mismatch is not retried: StrictNodes cannot turn a wrong
+// exit into the declared country, and repeating that check would only delay
+// the dashboard's health gate.
+func verifyTorExitWithRetry(ctx context.Context, httpProbe *probe.HTTP,
+	lookup func(context.Context, netip.Addr) (int, string), want string,
+) (string, error) {
+	deadline := time.Now().Add(torVerifyTimeout)
+	for {
+		value, err := torExitCountry(ctx, httpProbe, lookup, want)
+		if err == nil {
+			return value, nil
+		}
+		if !strings.Contains(err.Error(), "could not be learned") &&
+			!strings.Contains(err.Error(), "unavailable") {
+			return "", err
+		}
+		if !time.Now().Before(deadline) {
+			return "", err
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(torVerifyRetry):
+		}
+	}
+}
+
+// torSpec is one pinned Tor exit. Country is verified through that exit's own
+// SOCKS hop before the vantage is allowed to report, so the label is never
+// guessed from a container name or an operator's intention (ACCEPTABLE_USE.md §8).
+type torSpec struct {
+	Country string // ISO-3166 alpha-2, upper case; empty means unpinned
+	Socks   string // host:port of this Tor instance's SOCKS5 listener
+	Control string // host:port of the same instance's read-only control port
+	ID      string // vantage id: "tor" or "tor-<cc>"
+}
+
+// parseTorSpecs reads NETWEATHER_TOR_VANTAGES, a comma-separated list of
+// CC=host:port pairs. Each pair names a real Tor client with that exit pinned
+// in its own torrc. The single-vantage variables remain the fallback so an
+// existing deployment keeps working unchanged.
+func parseTorSpecs() ([]torSpec, error) {
+	raw := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_VANTAGES"))
+	if raw == "" {
+		cc := strings.ToUpper(strings.TrimSpace(os.Getenv("NETWEATHER_TOR_EXIT_COUNTRY")))
+		socks := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_SOCKS"))
+		if socks == "" {
+			socks = defaultTorProxy
+		}
+		id := "tor"
+		if cc != "" {
+			id = "tor-" + strings.ToLower(cc)
+		}
+		return []torSpec{{Country: cc, Socks: socks, Control: torControlAddr(socks), ID: id}}, nil
 	}
 
-	proxyAddr := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_SOCKS"))
-	if proxyAddr == "" {
-		proxyAddr = defaultTorProxy
+	var out []torSpec
+	seen := make(map[string]bool)
+	for _, item := range strings.Split(raw, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		cc, addr, ok := strings.Cut(item, "=")
+		rawCC := strings.TrimSpace(cc)
+		cc = strings.ToUpper(rawCC)
+		addr = strings.TrimSpace(addr)
+		if !ok || !alpha2(rawCC) || addr == "" {
+			return nil, fmt.Errorf("NETWEATHER_TOR_VANTAGES entry %q is not CC=host:port", item)
+		}
+		if seen[cc] {
+			return nil, fmt.Errorf("NETWEATHER_TOR_VANTAGES lists %s twice", cc)
+		}
+		seen[cc] = true
+		out = append(out, torSpec{
+			Country: cc, Socks: addr, Control: torControlAddr(addr),
+			ID: "tor-" + strings.ToLower(cc),
+		})
 	}
-	dial, err := netx.Socks5(proxyAddr)
+	if len(out) == 0 {
+		return nil, errors.New("NETWEATHER_TOR_VANTAGES is set but empty")
+	}
+	return out, nil
+}
+
+func alpha2(s string) bool {
+	if len(s) != 2 {
+		return false
+	}
+	for _, r := range s {
+		if r < 'A' || r > 'Z' {
+			return false
+		}
+	}
+	return true
+}
+
+// torControlAddr pairs a SOCKS listener with the control port of the same Tor
+// process. The sidecars ship both on 9050/9051 inside one container namespace.
+func torControlAddr(socks string) string {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(socks))
+	if err != nil {
+		return ""
+	}
+	return net.JoinHostPort(host, "9051")
+}
+
+// combinedBudget is the display total across pinned exits. It never gates a
+// probe: each agent suspends on its own budget, so one exhausted country does
+// not stop the others. The board sums the allowances to explain a full pause.
+type combinedBudget []*bytecap.Budget
+
+func (b combinedBudget) Used() int64 {
+	var total int64
+	for _, budget := range b {
+		total += budget.Used()
+	}
+	return total
+}
+
+func (b combinedBudget) Allowance() int64 {
+	var total int64
+	for _, budget := range b {
+		total += budget.Allowance()
+	}
+	return total
+}
+
+func (b combinedBudget) Exhausted() bool {
+	if len(b) == 0 {
+		return false
+	}
+	for _, budget := range b {
+		if !budget.Exhausted() {
+			return false
+		}
+	}
+	return true
+}
+
+// torLimits reads the caps shared by every Tor vantage. One set of limits is
+// applied per exit, not to the group, so a slow country cannot starve another.
+func torLimits() (maxTargets, dailyMB int, err error) {
+	maxTargets = defaultTorMax
+	if raw := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_MAX")); raw != "" {
+		n, e := strconv.Atoi(raw)
+		if e != nil || n <= 0 {
+			return 0, 0, fmt.Errorf("NETWEATHER_TOR_MAX %q is not a positive integer", raw)
+		}
+		maxTargets = n
+	}
+	dailyMB = torDailyMBDefault
+	if raw := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_DAILY_MB")); raw != "" {
+		n, e := strconv.Atoi(raw)
+		if e != nil || n < 0 {
+			return 0, 0, fmt.Errorf("NETWEATHER_TOR_DAILY_MB %q is not a non-negative integer", raw)
+		}
+		dailyMB = n
+	}
+	return maxTargets, dailyMB, nil
+}
+
+// buildTorVantage builds one pinned-exit corroboration agent. The same target
+// subset is selected for every vantage, so a difference between rows is a
+// difference about the path rather than about which hosts were measured.
+func buildTorVantage(ctx context.Context, st *store.Store, direct []agent.Target, lg *logging.Logger,
+	userAgent string, spec torSpec, maxTargets, dailyMB int,
+) (*agent.Agent, *bytecap.Budget, error) {
+	dial, err := netx.Socks5(spec.Socks)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// ACCEPTABLE_USE.md §8: the Tor vantage carries a daily volume budget. It
-	// is counted on the SOCKS connection itself, not estimated from response
-	// sizes, so a large body or a retry cannot slip past it.
-	dailyMB := torDailyMBDefault
-	if raw := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_DAILY_MB")); raw != "" {
-		n, err := strconv.Atoi(raw)
-		if err != nil || n < 0 {
-			return nil, nil, fmt.Errorf("NETWEATHER_TOR_DAILY_MB %q is not a non-negative integer", raw)
-		}
-		dailyMB = n
-	}
+	// ACCEPTABLE_USE.md §8: the Tor vantage carries its own daily volume budget,
+	// counted on the SOCKS connection so a retry cannot slip past it.
 	budget := bytecap.New(int64(dailyMB) << 20)
 	budget.OnExhausted = func(used int64) {
-		lg.Warn("tor daily volume budget exhausted; the tor vantage stops until UTC midnight",
+		lg.Warn("tor daily volume budget exhausted; the vantage stops until UTC midnight",
 			"event", "tor_budget_exhausted", "component", "agent",
-			"used_bytes", used, "limit_bytes", budget.Limit, "proxy", proxyAddr)
+			"used_bytes", used, "limit_bytes", budget.Limit,
+			"vantage", spec.ID, "proxy", spec.Socks)
 	}
 	torDial := probe.DialFunc(budget.Wrap(dial))
 
-	maxTargets := defaultTorMax
-	if raw := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_MAX")); raw != "" {
-		n, err := strconv.Atoi(raw)
-		if err != nil || n <= 0 {
-			return nil, nil, fmt.Errorf("NETWEATHER_TOR_MAX %q is not a positive integer", raw)
-		}
-		maxTargets = n
-	}
-
 	selected := selectTorTargets(direct, maxTargets)
 	if len(selected) == 0 {
-		return nil, nil, errors.New("tor vantage enabled but no tcp-based targets are configured")
+		return nil, nil, fmt.Errorf("%s: no tcp-based targets are configured", spec.ID)
 	}
 
 	// A country label is only honest when the exit is actually there. The
 	// identity is fetched through the same SOCKS hop the probes will use, so a
 	// mismatched or unverifiable exit refuses to start rather than fabricating
 	// a country measurement (ACCEPTABLE_USE.md §8).
-	vantageID := "tor"
-	if want := strings.TrimSpace(os.Getenv("NETWEATHER_TOR_EXIT_COUNTRY")); want != "" {
+	if spec.Country != "" {
 		exitProbe := probe.NewHTTPWithDial(torDial)
 		exitProbe.UserAgent = userAgent
-		value, err := torExitCountry(ctx, exitProbe, cymruLookup(), want)
+		value, err := verifyTorExitWithRetry(ctx, exitProbe, torExitLookup(spec.Control), spec.Country)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("%s: %w", spec.ID, err)
 		}
-		vantageID = "tor-" + strings.ToLower(strings.TrimSpace(want))
 		lg.Info("tor exit country verified",
 			"event", "tor_exit_verified", "component", "agent",
-			"exit", value, "country", strings.ToUpper(strings.TrimSpace(want)))
+			"vantage", spec.ID, "exit", value, "country", spec.Country)
 	}
 	for i := range selected {
-		selected[i].Vantage = vantageID
+		selected[i].Vantage = spec.ID
 	}
 
-	if err := st.EnsureVantage(ctx, vantageID, "socks5", "corroboration"); err != nil {
+	if err := st.EnsureVantage(ctx, spec.ID, "socks5", "corroboration"); err != nil {
 		return nil, nil, err
 	}
 
@@ -2134,8 +2347,89 @@ func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg
 
 	lg.Info("tor vantage enabled",
 		"event", "tor_enabled", "component", "agent",
-		"proxy", proxyAddr, "targets", len(selected), "pace", torPace.String())
+		"vantage", spec.ID, "proxy", spec.Socks,
+		"country", spec.Country, "targets", len(selected), "pace", torPace.String())
 	return ag, budget, nil
+}
+
+// newTorAgents builds every configured Tor vantage. One bad exit is logged and
+// skipped: a country with no healthy exits at that moment must not take the
+// primary vantage or the other continents down with it.
+func newTorAgents(ctx context.Context, st *store.Store, direct []agent.Target, lg *logging.Logger,
+	userAgent string,
+) ([]*agent.Agent, []*bytecap.Budget, []torSpec, error) {
+	if !strings.EqualFold(strings.TrimSpace(os.Getenv("NETWEATHER_TOR")), "true") {
+		return nil, nil, nil, nil
+	}
+	specs, err := parseTorSpecs()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	maxTargets, dailyMB, err := torLimits()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	// Verification talks through each proxy, so build them concurrently: a
+	// cold Tor circuit can take tens of seconds, and six sequential checks would
+	// delay the dashboard's health gate. Results are written by index to keep
+	// the vantage order deterministic.
+	type buildResult struct {
+		agent  *agent.Agent
+		budget *bytecap.Budget
+	}
+	results := make([]buildResult, len(specs))
+	var wg sync.WaitGroup
+	for i, spec := range specs {
+		wg.Add(1)
+		go func(i int, spec torSpec) {
+			defer wg.Done()
+			ag, budget, err := buildTorVantage(ctx, st, direct, lg, userAgent, spec, maxTargets, dailyMB)
+			if err != nil {
+				lg.Error("tor vantage unavailable; the other vantages keep running",
+					"event", "tor_vantage_failed", "component", "agent",
+					"vantage", spec.ID, "proxy", spec.Socks, "error", err)
+				return
+			}
+			results[i] = buildResult{agent: ag, budget: budget}
+		}(i, spec)
+	}
+	wg.Wait()
+
+	var agents []*agent.Agent
+	var budgets []*bytecap.Budget
+	var live []torSpec
+	for i, res := range results {
+		if res.agent == nil {
+			continue
+		}
+		agents = append(agents, res.agent)
+		budgets = append(budgets, res.budget)
+		live = append(live, specs[i])
+	}
+	if len(agents) == 0 {
+		return nil, nil, nil, errors.New("no tor vantage could be started")
+	}
+	return agents, budgets, live, nil
+}
+
+// newTorAgent is the strict single-vantage form used by the unit tests. The
+// server uses newTorAgents so one unavailable exit cannot stop the fleet.
+func newTorAgent(ctx context.Context, st *store.Store, direct []agent.Target, lg *logging.Logger,
+	userAgent string,
+) (*agent.Agent, *bytecap.Budget, error) {
+	if !strings.EqualFold(strings.TrimSpace(os.Getenv("NETWEATHER_TOR")), "true") {
+		return nil, nil, nil
+	}
+	specs, err := parseTorSpecs()
+	if err != nil {
+		return nil, nil, err
+	}
+	maxTargets, dailyMB, err := torLimits()
+	if err != nil {
+		return nil, nil, err
+	}
+	return buildTorVantage(ctx, st, direct, lg, userAgent, specs[0], maxTargets, dailyMB)
 }
 
 // selectTorTargets copies the TCP-based targets under the vantage, sorted by id

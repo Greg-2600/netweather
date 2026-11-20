@@ -207,6 +207,8 @@ func TestTorSidecarIsBakedIn(t *testing.T) {
 		"ClientOnly 1", "ExitPolicy reject *:*",
 		"BridgeRelay 0", "PublishServerDescriptor 0",
 		"SocksPort 0.0.0.0:9050 IsolateSOCKSAuth",
+		"ControlPort 0.0.0.0:9051",
+		"HashedControlPassword 16:",
 		"MaxCircuitDirtiness 3600",
 	} {
 		if !strings.Contains(string(torrc), want) {
