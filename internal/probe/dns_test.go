@@ -234,7 +234,40 @@ func TestDNSNonAuthoritativeNODATAStillFails(t *testing.T) {
 	server := startDNSResponder(t, nonAuthoritativeNODATA)
 	res := probe.NewDNS(nil).Do(context.Background(), server, "empty.example")
 	if !res.Failed() || res.ErrorClass != "dns_nodata" {
-		t.Fatalf("class = %q, want dns_nodata (authoritative bit must be required)", res.ErrorClass)
+		t.Fatalf("class = %q, want dns_nodata (a cached NODATA proves nothing)", res.ErrorClass)
+	}
+}
+
+// rootReferralResponse is the real shape of a root server's answer to "com" A:
+// NOERROR, AA=0 because it is not authoritative for com, RA=0 because it is
+// iterative, and an NS set in the authority section.
+func rootReferralResponse(query []byte) []byte {
+	msg, ok := decodeQuery(query)
+	if !ok || len(msg.Questions) == 0 {
+		return nil
+	}
+	msg.Response = true
+	msg.RCode = dnsmessage.RCodeSuccess
+	msg.Authorities = []dnsmessage.Resource{{
+		Header: dnsmessage.ResourceHeader{
+			Name: msg.Questions[0].Name, Type: dnsmessage.TypeNS,
+			Class: dnsmessage.ClassINET, TTL: 172800,
+		},
+		Body: &dnsmessage.NSResource{NS: dnsmessage.MustNewName("a.gtld-servers.net.")},
+	}}
+	return packMessage(msg)
+}
+
+func TestDNSRootReferralIsReachable(t *testing.T) {
+	t.Parallel()
+
+	server := startDNSResponder(t, rootReferralResponse)
+	res := probe.NewDNS(nil).Do(context.Background(), server, "com")
+	if res.Failed() {
+		t.Fatalf("a root referral should be reachable: %s: %v", res.ErrorClass, res.Err)
+	}
+	if !res.Authoritative {
+		t.Fatal("root referral did not set the delegation flag")
 	}
 }
 

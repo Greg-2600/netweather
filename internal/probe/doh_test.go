@@ -2,6 +2,7 @@ package probe_test
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"io"
 	"net"
@@ -79,6 +80,174 @@ func TestDoHClassifiesAnswers(t *testing.T) {
 				t.Fatal("a classified failure had no error detail")
 			}
 		})
+	}
+}
+
+// rejectingDoHServer answers the JSON query with 400, as providers that only
+// implement RFC 8484 do, and hands the decoded wire query to reply.
+func rejectingDoHServer(t *testing.T, reply func(http.ResponseWriter, []byte)) (*httptest.Server, *int) {
+	t.Helper()
+
+	wireQueries := 0
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		encoded := r.URL.Query().Get("dns")
+		if encoded == "" {
+			if got := r.Header.Get("Accept"); got != "application/dns-json" {
+				t.Errorf("JSON Accept = %q", got)
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, "no 'dns' query parameter found")
+			return
+		}
+		wireQueries++
+		if got := r.Header.Get("Accept"); got != "application/dns-message" {
+			t.Errorf("wire Accept = %q", got)
+		}
+		query, err := base64.RawURLEncoding.DecodeString(encoded)
+		if err != nil {
+			t.Errorf("wire query is not base64url: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		reply(w, query)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &wireQueries
+}
+
+// wireDoHServer returns 400 to the JSON API and answers the RFC 8484 retry
+// with a DNS response built from the encoded query.
+func wireDoHServer(t *testing.T, rcode int, ip string) (*httptest.Server, *int) {
+	t.Helper()
+
+	return rejectingDoHServer(t, func(w http.ResponseWriter, query []byte) {
+		_, _ = w.Write(dnsResponse(query, rcode, ip))
+	})
+}
+
+func TestDoHFallsBackToWireFormat(t *testing.T) {
+	t.Parallel()
+
+	srv, wireQueries := wireDoHServer(t, 0, "203.0.113.9")
+	got := probe.NewDoHWithClient(srv.Client()).Do(context.Background(), srv.URL+"/dns-query", "example.com")
+	if got.Failed() {
+		t.Fatalf("wire fallback failed: %s: %v", got.ErrorClass, got.Err)
+	}
+	if *wireQueries != 1 {
+		t.Fatalf("wire queries = %d, want 1", *wireQueries)
+	}
+	if len(got.Addresses) != 1 || got.Addresses[0].String() != "203.0.113.9" {
+		t.Fatalf("addresses = %v", got.Addresses)
+	}
+}
+
+func TestDoHWireClassifiesRcodes(t *testing.T) {
+	t.Parallel()
+
+	srv, wireQueries := wireDoHServer(t, 3, "")
+	got := probe.NewDoHWithClient(srv.Client()).Do(context.Background(), srv.URL+"/dns-query", "example.com")
+	if got.ErrorClass != "doh_nxdomain" {
+		t.Fatalf("class = %q, want doh_nxdomain", got.ErrorClass)
+	}
+	if *wireQueries != 1 {
+		t.Fatalf("wire queries = %d, want 1", *wireQueries)
+	}
+}
+
+func TestDoHWireFailureClasses(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		body func(http.ResponseWriter, []byte)
+		want string
+	}{
+		{"http error", func(w http.ResponseWriter, _ []byte) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}, "doh_http"},
+		{"not dns", func(w http.ResponseWriter, _ []byte) {
+			_, _ = io.WriteString(w, "not a dns message")
+		}, "doh_error"},
+		{"servfail", func(w http.ResponseWriter, q []byte) {
+			_, _ = w.Write(dnsResponse(q, 2, ""))
+		}, "doh_servfail"},
+		{"no answer", func(w http.ResponseWriter, q []byte) {
+			_, _ = w.Write(dnsResponse(q, 0, ""))
+		}, "doh_no_answer"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv, _ := rejectingDoHServer(t, tc.body)
+			got := probe.NewDoHWithClient(srv.Client()).Do(context.Background(), srv.URL+"/dns-query", "example.com")
+			if got.ErrorClass != tc.want {
+				t.Fatalf("class = %q, want %q (%v)", got.ErrorClass, tc.want, got.Err)
+			}
+		})
+	}
+}
+
+// secondRequestFails fails only the wire retry, so the JSON 400 is confirmed
+// to have triggered it and the transport error is classified on that path.
+type secondRequestFails struct{ calls int }
+
+func (s *secondRequestFails) RoundTrip(req *http.Request) (*http.Response, error) {
+	s.calls++
+	if s.calls == 1 {
+		return &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("no 'dns' query parameter found")),
+			Request:    req,
+		}, nil
+	}
+	return nil, errors.New("wire request blocked")
+}
+
+func TestDoHWireTransportErrorIsClassified(t *testing.T) {
+	t.Parallel()
+
+	rt := &secondRequestFails{}
+	got := probe.NewDoHWithClient(&http.Client{Transport: rt}).Do(
+		context.Background(), "https://dns.example/dns-query", "example.com")
+	if got.ErrorClass != "http_error" || got.Err == nil {
+		t.Fatalf("class = %q, err = %v", got.ErrorClass, got.Err)
+	}
+	if rt.calls != 2 {
+		t.Fatalf("requests = %d, want 2 (JSON then wire)", rt.calls)
+	}
+}
+
+func TestDoHWireRejectsAnUnpackableName(t *testing.T) {
+	t.Parallel()
+
+	srv, _ := rejectingDoHServer(t, func(w http.ResponseWriter, q []byte) {
+		_, _ = w.Write(dnsResponse(q, 0, "203.0.113.9"))
+	})
+	longName := strings.Repeat("a", 64) + "." + strings.Repeat("b", 64) + "." +
+		strings.Repeat("c", 64) + "." + strings.Repeat("d", 64) + ".com"
+	got := probe.NewDoHWithClient(srv.Client()).Do(context.Background(), srv.URL+"/dns-query", longName)
+	if got.ErrorClass != "doh_config" {
+		t.Fatalf("class = %q, want doh_config (%v)", got.ErrorClass, got.Err)
+	}
+}
+
+func TestDoHUsesConfiguredUserAgent(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("User-Agent"); got != "netweather-test/1.0" {
+			t.Errorf("User-Agent = %q", got)
+		}
+		_, _ = io.WriteString(w, `{"Status":0,"Answer":[{"type":1,"data":"203.0.113.9"}]}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	doh := probe.NewDoHWithClient(srv.Client())
+	doh.UserAgent = "netweather-test/1.0"
+	if got := doh.Do(context.Background(), srv.URL+"/dns-query", "example.com"); got.Failed() {
+		t.Fatalf("Do failed: %s", got.ErrorClass)
 	}
 }
 

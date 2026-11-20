@@ -173,25 +173,32 @@ func (p *DNS) do(ctx context.Context, server, name string, qtype dnsmessage.Type
 	return out
 }
 
-// answerHasDelegation reports whether msg is an authoritative response that
-// carries NS or SOA records in its answer or authority sections. An
-// authoritative server has no A/AAAA record at its own zone apex, so those
-// records — not addresses — are the proof that it is serving the zone. The
-// Authoritative bit is required: a recursive resolver's cached NODATA reply
-// carries an SOA too, but says nothing about whether the zone is served.
+// answerHasDelegation reports whether msg proves the queried server is serving
+// a zone even though it returned no A/AAAA record.
+//
+// An authoritative apex answer carries NS or SOA with AA=1. A referral from a
+// root or TLD server does not: RFC 1034 referrals deliberately clear AA because
+// the responder is not authoritative for the delegated zone, and put the NS set
+// in the authority section. Requiring AA there labels every healthy root and
+// ccTLD anchor as DOWN. A recursive resolver's cached NODATA also has AA=0, but
+// it carries an SOA and sets RA=1; it says nothing about the anchor's health.
+// NS records from a non-recursive server (RA=0) are therefore accepted too.
 func answerHasDelegation(msg dnsmessage.Message) bool {
-	if !msg.Authoritative {
-		return false
-	}
+	hasNS, hasSOA := false, false
 	for _, section := range [][]dnsmessage.Resource{msg.Answers, msg.Authorities} {
 		for _, resource := range section {
 			switch resource.Body.(type) {
-			case *dnsmessage.NSResource, *dnsmessage.SOAResource:
-				return true
+			case *dnsmessage.NSResource:
+				hasNS = true
+			case *dnsmessage.SOAResource:
+				hasSOA = true
 			}
 		}
 	}
-	return false
+	if msg.Authoritative {
+		return hasNS || hasSOA
+	}
+	return hasNS && !msg.RecursionAvailable
 }
 
 // Do queries name's A records against server ("host:53").
