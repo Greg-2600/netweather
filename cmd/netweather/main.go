@@ -552,6 +552,7 @@ func serve(lg *logging.Logger) error {
 		TrustedProxies:  trustedProxies,
 		Control:         ag,
 		TargetControl:   targetDisabler(disableTarget),
+		ProbeRecorder:   st,
 		Probes:          st,
 		Incidents:       st,
 		IncidentProbes:  st,

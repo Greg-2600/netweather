@@ -46,11 +46,14 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		}
 		// MkdirAll does not tighten a directory that already exists. A Docker
 		// volume or an operator-created data directory is commonly 0755, so
-		// enforce T45 explicitly rather than inheriting that mode.
+		// enforce T45 explicitly rather than inheriting that mode. A host bind
+		// mount is owned by the host user, not the container uid, so chmod on
+		// it returns EPERM: that directory's mode belongs to its owner, and
+		// refusing to start there would break every bind-mounted deployment.
 		if runtime.GOOS != "windows" {
 			// 0700 is the private-directory mode: gosec G302 wants 0600, but a
 			// directory needs the execute bit to be traversable at all.
-			if err := os.Chmod(dir, 0o700); err != nil { //nolint:gosec // a directory requires 0700 to be traversable.
+			if err := os.Chmod(dir, 0o700); err != nil && !errors.Is(err, os.ErrPermission) { //nolint:gosec // a directory requires 0700 to be traversable.
 				return nil, fmt.Errorf("store: directory permissions: %w", err)
 			}
 		}

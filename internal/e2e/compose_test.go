@@ -611,7 +611,7 @@ targets:
 
 		// The remote vantage should now appear for the example target.
 		body := composeGetInNetwork(t, composeNet, "nw-agent-primary",
-			"/api/v1/targets/example/vantages")
+			"/api/v1/targets/example")
 		if !strings.Contains(string(body), `"remote"`) {
 			t.Fatalf("remote vantage did not report: %s", string(body))
 		}

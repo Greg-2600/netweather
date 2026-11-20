@@ -117,6 +117,13 @@ func agentCommand(args []string, stdout io.Writer) error {
 	}
 	ag := agent.New(targets, instruments, sink)
 	ag.Logger = logger
+	if *once {
+		// A one-shot run is an explicit "probe everything now": the cold-start
+		// spread would otherwise push the first probe up to an interval away,
+		// so a single Step usually records nothing and reports an empty batch.
+		// Removing the jitter makes every target due on the first pass.
+		ag.Rand = func() float64 { return 0 }
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
