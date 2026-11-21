@@ -87,6 +87,7 @@ for f in lines:
 # choice would otherwise produce permanently DOWN anchors for zones whose
 # oldest-listed nameserver has gone dark.
 REACHABLE_NS: dict[str, str] = {
+    "et": "c.nic.et",  # a.nic.et drops ~60% of UDP queries from this vantage
     "gu": "phloem.uoregon.edu",
     "iq": "ns01.trs-dns.net",
     "jo": "rip.psg.com",

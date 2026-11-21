@@ -665,7 +665,7 @@ targets:
     tier: 3
   - id: cctld-et
     name: "Ethiopia ccTLD"
-    host: "a.nic.et"
+    host: "c.nic.et"
     port: 53
     probe: dns
     qname: "et"
