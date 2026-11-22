@@ -2754,7 +2754,7 @@ func worstStateFromClass(class string) board.State {
 
 // --- hubs ------------------------------------------------------------------
 
-// hubsView is the US hub board. City and state come from the target name
+// hubsView is the US hub treemap. City and state come from the target name
 // convention "<City>, <ST> hub — <site>" on sector "us/hub". It deliberately
 // uses no schema field, so the stored schema stays at version 25.
 type hubsView struct {
@@ -2762,32 +2762,12 @@ type hubsView struct {
 	NoAuth   bool
 	Version  string
 	CSRF     string
-	Hubs     []hubView
-	Other    int
-	Note     string
-}
-
-// hubView is one city/state tile. Sites carry their own identity and state
-// reason in a title, so a tile with a bad endpoint is explainable on hover.
-type hubView struct {
-	City     string
-	State    string
-	Count    int
-	Worst    string
-	WorstCls string
-	Glyph    string
-	Counts   []countView
-	Href     string
-	Sites    []hubSiteView
-}
-
-type hubSiteView struct {
-	Name  string
-	State string
-	Glyph string
-	Class string
-	Href  string
-	Title string
+	// Sectors are city blocks; each block's Tiles are the individual public
+	// endpoints in that city. The geometry and hover data reuse /map.
+	Sectors []*mapSector
+	Tiles   []*mapTile
+	Other   int
+	Note    string
 }
 
 // parseHubName reads the naming convention without a schema change. The state
@@ -2817,8 +2797,39 @@ func parseHubName(name string) (city, state, site string, ok bool) {
 	return city, state, site, true
 }
 
-// handleHubs groups the configured us/hub targets by city and state. Unplaced
-// hub targets are counted in a note, never folded into a guessed location.
+// hubMapTile turns one hub endpoint into the same tile contract the health map
+// uses: severity and duration set its area/colour, while the hover fields keep
+// the site identity, endpoint, raw signal, and classifier explanation.
+func hubMapTile(t board.Target, cityState, site, title string, now time.Time) *mapTile {
+	d := targetStateDuration(t, now)
+	stateLabel := tileStateLabel(t.State)
+	detail := tileDetail(t)
+	why := tileWhy(t)
+	tile := &mapTile{
+		Label: site, Ticker: compactLabel(site), Target: t.ID,
+		State: string(t.State), Group: cityState, Color: tileStateColor(t.State),
+		Detail: detail, Duration: humanDuration(d), DurationS: d.Seconds(),
+		Kind: tileEntity(t), Endpoint: targetEndpoint(t), Why: why,
+		StateLabel: stateLabel, Tip: title,
+		Weight: tileWeight(t.State, d),
+	}
+	switch t.State {
+	case board.StateUp, board.StateUpReachability:
+		tile.Up = 1
+	case board.StateDown:
+		tile.Down = 1
+	default:
+		// Degraded, blocked, and no-data states are neither up nor a confirmed
+		// outage for the block counters; their colour and area still reflect them.
+	}
+	return tile
+}
+
+// handleHubs groups the configured us/hub targets by city and state. It lays
+// them out as a treemap: one block per city, one box per public endpoint. Bad
+// endpoints are large, come first in the DOM, and keep their own hover detail.
+// Unplaced hub targets are counted in a note, never folded into a guessed
+// location.
 func (s *server) handleHubs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
@@ -2851,6 +2862,7 @@ func (s *server) handleHubs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	csrf, _ := s.auth.csrfFrom(r)
+	now := time.Now()
 	view := hubsView{
 		Version:  s.deps.Version,
 		CSRF:     csrf,
@@ -2861,36 +2873,21 @@ func (s *server) handleHubs(w http.ResponseWriter, r *http.Request) {
 
 	for _, members := range byHub {
 		city, state, _, _ := parseHubName(members[0].Name)
-		counts := make(map[board.State]int)
+		cityState := city + ", " + state
 		worst := board.StateUp
 		for _, t := range members {
-			counts[t.State]++
 			if board.SeverityRank(t.State) < board.SeverityRank(worst) {
 				worst = t.State
 			}
 		}
-		row := hubView{
-			City:     city,
-			State:    state,
-			Count:    len(members),
-			Worst:    worst.Text(),
-			WorstCls: worst.CSSClass(),
-			Glyph:    worst.Glyph(),
+		sec := &mapSector{
+			Label: cityState, City: city, State: state,
+			Count: len(members), Color: tileStateColor(worst),
+			Order: board.SeverityRank(worst),
+			Worst: worst.Text(), WorstCls: worst.CSSClass(), Glyph: worst.Glyph(),
 			// The board's sector grouping is the closest existing drill-down:
 			// there is no city column in schema 25, so no fake filter is added.
 			Href: "/?group=sector",
-		}
-		for _, st := range []board.State{
-			board.StateDown, board.StateDegraded, board.StateBlocked,
-			board.StateUnknown, board.StateConfigError, board.StateUnmeasurable,
-			board.StateUpReachability, board.StateUp,
-		} {
-			if n := counts[st]; n > 0 {
-				row.Counts = append(row.Counts, countView{
-					State: string(st), Label: st.Text(), Glyph: st.Glyph(),
-					Class: st.CSSClass(), Count: n,
-				})
-			}
 		}
 
 		sites := append([]board.Target(nil), members...)
@@ -2914,32 +2911,34 @@ func (s *server) handleHubs(w http.ResponseWriter, r *http.Request) {
 			if reason != "" {
 				title += " — " + reason
 			}
-			row.Sites = append(row.Sites, hubSiteView{
-				Name:  site,
-				State: t.State.Text(),
-				Glyph: t.State.Glyph(),
-				Class: t.State.CSSClass(),
-				Href:  "/targets/" + url.PathEscape(t.ID),
-				Title: title,
-			})
+			tile := hubMapTile(t, cityState, site, title, now)
+			sec.Area += float64(tile.Weight)
+			sec.Tiles = append(sec.Tiles, tile)
+			sec.Up += tile.Up
+			sec.Down += tile.Down
 		}
-		view.Hubs = append(view.Hubs, row)
+		view.Sectors = append(view.Sectors, sec)
 	}
 
-	sort.SliceStable(view.Hubs, func(i, j int) bool {
-		ri := board.SeverityRank(worstStateFromClass(view.Hubs[i].WorstCls))
-		rj := board.SeverityRank(worstStateFromClass(view.Hubs[j].WorstCls))
-		if ri != rj {
-			return ri < rj
+	// Keep the DOM/tab order in step with the picture: the unhealthiest city
+	// block is packed first, and its worst endpoint is the first link in it.
+	sort.SliceStable(view.Sectors, func(i, j int) bool {
+		a, b := view.Sectors[i], view.Sectors[j]
+		if a.Order != b.Order {
+			return a.Order < b.Order
 		}
-		if view.Hubs[i].State != view.Hubs[j].State {
-			return view.Hubs[i].State < view.Hubs[j].State
+		if a.Area != b.Area {
+			return a.Area > b.Area
 		}
-		return view.Hubs[i].City < view.Hubs[j].City
+		return a.Label < b.Label
 	})
+	layoutMap(view.Sectors)
+	for _, sec := range view.Sectors {
+		view.Tiles = append(view.Tiles, sec.Tiles...)
+	}
 
 	switch {
-	case len(view.Hubs) == 0 && other == 0:
+	case len(view.Sectors) == 0 && other == 0:
 		view.Note = "No us/hub targets are configured."
 	case other > 0:
 		view.Note = fmt.Sprintf("%d us/hub target(s) do not follow the city/state name convention and are not placed.", other)
@@ -2947,7 +2946,7 @@ func (s *server) handleHubs(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy",
-		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+		"default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "hubs.html", view)
 }
 
@@ -3301,10 +3300,7 @@ func (s *server) handleMap(w http.ResponseWriter, r *http.Request) {
 	health := &healthSummary{}
 	var attention []*mapTile
 	for _, t := range targets {
-		d := time.Duration(0)
-		if !t.Since.IsZero() && t.Since.Before(now) {
-			d = now.Sub(t.Since)
-		}
+		d := targetStateDuration(t, now)
 
 		key := ""
 		switch by {
@@ -3342,16 +3338,7 @@ func (s *server) handleMap(w http.ResponseWriter, r *http.Request) {
 		kind := tileEntity(t)
 		why := tileWhy(t)
 		stateLabel := tileStateLabel(t.State)
-		endpoint := strings.TrimSpace(t.Host)
-		if endpoint != "" && t.Port > 0 {
-			endpoint = fmt.Sprintf("%s:%d", endpoint, t.Port)
-		}
-		if probe := strings.ToUpper(strings.TrimSpace(t.Probe)); probe != "" {
-			endpoint = strings.TrimSpace(endpoint + " · " + probe)
-		}
-		if endpoint == "" {
-			endpoint = "—"
-		}
+		endpoint := targetEndpoint(t)
 		tile := &mapTile{
 			Label: t.Name, Ticker: compactLabel(t.Name), Target: t.ID,
 			State: string(t.State), Group: sec.Label, Color: tileStateColor(t.State),
@@ -3629,6 +3616,31 @@ func tileDetail(t board.Target) string {
 		return t.ErrorClass
 	}
 	return string(t.State)
+}
+
+// targetStateDuration is the time a target has held its current state. Future
+// or unset timestamps are treated as no duration rather than a huge age.
+func targetStateDuration(t board.Target, now time.Time) time.Duration {
+	if t.Since.IsZero() || t.Since.After(now) {
+		return 0
+	}
+	return now.Sub(t.Since)
+}
+
+// targetEndpoint is the compact endpoint line shared by the map and hub hover
+// cards. It never invents a host or port; a missing host is shown as unknown.
+func targetEndpoint(t board.Target) string {
+	endpoint := strings.TrimSpace(t.Host)
+	if endpoint != "" && t.Port > 0 {
+		endpoint = fmt.Sprintf("%s:%d", endpoint, t.Port)
+	}
+	if probe := strings.ToUpper(strings.TrimSpace(t.Probe)); probe != "" {
+		endpoint = strings.TrimSpace(endpoint + " · " + probe)
+	}
+	if endpoint == "" {
+		return "—"
+	}
+	return endpoint
 }
 
 // mapAspect approximates the treemap's pixel width/height on a desktop. Laying

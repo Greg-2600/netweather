@@ -66,7 +66,7 @@ Everything builds and tests with one command: **`go run ./internal/devtool verif
 | | Capability | What it gives you |
 |:--:|---|---|
 | 🗺️ | **Health treemap** | `/map` clusters long-running outages → recent outages → blocked → degraded → no data → healthy, packed most-urgent first. Area grows with severity × duration; hover cards explain *why* a tile has its status. |
-| 🏙️ | **US hubs** | `/hubs` groups real airport and city-portal targets by city and state using a name convention — no schema change. Worst city first; each site keeps its own identity and state reason. |
+| 🏙️ | **US hubs** | `/hubs` maps real airport and city-portal targets with the same health treemap as `/map`: city blocks, one box per endpoint, worst first. City/state come from a name convention — no schema change. |
 | 🧭 | **Vantages** | `direct` (your connection) plus optional `socks5` Tor corroboration, including multiple pinned exit countries across continents. Only the primary vantage may declare `DOWN`. |
 | 🔬 | **Honest classification** | `UP` · `UP_REACHABILITY` · `DEGRADED` · `DOWN` · `BLOCKED` · `UNKNOWN` · `CONFIG_ERROR` · `UNMEASURABLE`. The last three never count against health — that is what keeps the board from being permanently on fire. |
 | 🌐 | **External intelligence** | IODA, Cloudflare Radar, the Statuspage family (AWS/GCP/Azure), RIPE RIS Live, Atlas, PeeringDB. All optional; the core works with zero feeds. |

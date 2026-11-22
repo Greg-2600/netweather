@@ -61,6 +61,17 @@ type mapSector struct {
 	ShowHead   bool
 	X, Y, W, H float64
 	Tiles      []*mapTile
+
+	// Hub presentation, empty on /map. The hubs view reuses the treemap as a
+	// city -> sites map: the sector is one city, and each tile is one endpoint.
+	// These fields carry the name-convention metadata and the drill-down link
+	// without adding a first-class location field to the stored schema.
+	City     string
+	State    string
+	Href     string
+	Worst    string
+	WorstCls string
+	Glyph    string
 }
 
 type sqItem struct {

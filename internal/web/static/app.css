@@ -311,40 +311,41 @@ body.auth {
   font-size: 0.78rem;
 }
 
-/* Hubs view: one compact city card, with the sites as separate links so site
-   identity and state reason stay clickable without nesting anchors. */
-.hub-grid {
-  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+/* Hubs view: the /map treemap one level down. A city is a sector block and a
+   public endpoint is a tile; all sizing, colouring and hover behaviour is
+   shared, so the two views read as the same kind of picture. */
+.treemap.hubs {
+  height: 64vh;
+  min-height: 380px;
 }
 
-.tile.country.hub {
-  gap: 0.3rem;
-  overflow-wrap: anywhere;
+.map-sector.hub .map-sector-head {
+  font-size: 10px;
+  height: 20px;
+  line-height: 20px;
 }
 
-.tile.hub .hub-city {
-  font-size: 1rem;
-  font-weight: 700;
-  line-height: 1.2;
+.map-sector.hub > .map-sector-body {
+  top: 20px;
+}
+
+.map-sector.hub > .map-sector-body:first-child {
+  top: 0;
+}
+
+.map-sector-name {
+  color: #fff;
   text-decoration: none;
 }
 
-.hub-sites {
-  display: grid;
-  gap: 0.1rem;
-  margin-top: 0.2rem;
-}
-
-.hub-site {
-  color: var(--text);
-  font-size: 0.76rem;
-  line-height: 1.25;
-  text-decoration: none;
-}
-
-.hub-site:hover,
-.hub-site:focus-visible {
+.map-sector-name:hover,
+.map-sector-name:focus-visible {
   text-decoration: underline;
+}
+
+.map-tile.hub-endpoint {
+  /* Site labels are short tickers; the full identity is in the hover card. */
+  font-variant-numeric: tabular-nums;
 }
 
 /* Feed staleness: text and border, not only colour (DESIGN.md P5, 10.7). */

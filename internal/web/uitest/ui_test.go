@@ -573,8 +573,14 @@ func TestHubsPageRenders(t *testing.T) {
 	if err := expect.Locator(h.page.Locator(`[data-testid="hubs-summary"]`)).ToBeVisible(); err != nil {
 		t.Fatalf("summary not visible: %v", err)
 	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="treemap"]`)).ToBeVisible(); err != nil {
+		t.Fatalf("hub treemap not visible: %v", err)
+	}
 	if err := expect.Locator(h.page.Locator(`[data-testid="hub"]`)).ToHaveCount(2); err != nil {
-		t.Fatalf("hub tile count: %v", err)
+		t.Fatalf("hub city count: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="map-tile"]`)).ToHaveCount(2); err != nil {
+		t.Fatalf("hub endpoint count: %v", err)
 	}
 	if err := expect.Locator(h.page.Locator(`[data-testid="hub"]`).First()).
 		ToHaveAttribute("data-city", "Dallas"); err != nil {

@@ -1,6 +1,6 @@
-// Map hover cards. The server renders every explanation into data-* attributes,
-// so this file only positions and shows one shared card — no network calls and
-// no per-tile DOM construction for 749 targets.
+// Map and hub hover cards. The server renders every explanation into data-*
+// attributes, so this file only positions and shows one shared card — no
+// network calls and no per-tile DOM construction for hundreds of boxes.
 (() => {
   "use strict";
 

@@ -11,6 +11,7 @@
   {{template "insecure" .}}
   <header class="bar">
     <a class="brand" href="/">netweather</a>
+    <a class="nav" href="/">Board</a>
     <a class="nav" href="/world">World</a>
     <a class="nav" href="/hubs">Hubs</a>
     <a class="nav" href="/corridors">Corridors</a>
@@ -23,29 +24,54 @@
   <main>
     <h1 class="page-title">US hubs</h1>
     <p class="muted" data-testid="hubs-summary">
-      One tile per US hub city, worst state first. City and state come from the
-      target name convention “City, ST hub — site”; a site’s title gives its
-      identity, state, and status reason. This is naming metadata, not a new
-      location column.
+      The same health treemap as <a href="/map">/map</a>, one level closer: each
+      block is a US hub city, and each box inside it is one public airport or
+      city-portal endpoint. Block and box area grows with severity × time in
+      state; colour follows the same diverging health scale. Hover a box for the
+      site identity, endpoint, raw signal, and why the classifier gave it that
+      status. City and state come from the name convention “City, ST hub — site”,
+      not a schema column.
     </p>
 
-    {{if .Hubs}}
-    <section class="board world-grid hub-grid" aria-label="US hubs" data-testid="hubs">
-      {{range .Hubs}}
-      <div class="tile country hub {{.WorstCls}}" data-testid="hub"
-           data-city="{{.City}}" data-state="{{.WorstCls}}"
-           aria-label="{{.City}}, {{.State}}: {{.Count}} target(s), worst {{.Worst}}">
-        <a class="hub-city" href="{{.Href}}">{{.City}}</a>
-        <span class="country-count">{{.State}} · {{.Count}} target(s)</span>
-        <span class="state"><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Worst}}</span>
-        <div class="hub-sites">
-          {{range .Sites}}
-          <a class="hub-site {{.Class}}" href="{{.Href}}" title="{{.Title}}"
-             aria-label="{{.Title}}"><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Name}}</a>
+    {{if .Sectors}}
+    <section data-testid="hubs" aria-label="US hubs">
+      <div data-testid="treemap" class="treemap hubs">
+        {{range .Sectors}}
+        <section class="map-sector hub {{.WorstCls}}" data-testid="hub"
+                 data-city="{{.City}}" data-state="{{.WorstCls}}"
+                 aria-label="{{.City}}, {{.State}}: {{.Count}} target(s), worst {{.Worst}}"
+                 style="left:{{printf "%.2f" .X}}%;top:{{printf "%.2f" .Y}}%;width:{{printf "%.2f" .W}}%;height:{{printf "%.2f" .H}}%;">
+          {{if .ShowHead}}
+          <header class="map-sector-head" style="background:{{.Color}};">
+            <a class="map-sector-name" href="{{.Href}}" title="{{.Label}}">{{.Label}}</a>
+            <span class="map-sector-stat"><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Worst}} · {{.Count}}</span>
+          </header>
           {{end}}
-        </div>
+          <div class="map-sector-body">
+            {{range .Tiles}}
+            <a href="/targets/{{.Target}}" data-testid="map-tile" class="map-tile hub-endpoint"
+               title="{{.Tip}}" aria-label="{{.Tip}}"
+               data-tip-name="{{.Label}}"
+               data-tip-kind="{{.Kind}}"
+               data-tip-endpoint="{{.Endpoint}}"
+               data-tip-state="{{.StateLabel}}"
+               data-tip-detail="{{.Detail}}"
+               data-tip-why="{{.Why}}"
+               data-tip-duration="{{.Duration}}"
+               data-tip-group="{{.Group}}"
+               style="left:{{printf "%.2f" .X}}%;top:{{printf "%.2f" .Y}}%;width:{{printf "%.2f" .W}}%;height:{{printf "%.2f" .H}}%;background:{{.Color}};">
+              {{if .ShowFull}}
+              <span class="map-tile-name">{{.Label}}</span>
+              {{else if .ShowTicker}}
+              <span class="map-tile-ticker">{{.Ticker}}</span>
+              {{end}}
+              {{if .ShowSub}}<span class="map-tile-sub">{{.Duration}}</span>{{end}}
+            </a>
+            {{end}}
+          </div>
+        </section>
+        {{end}}
       </div>
-      {{end}}
     </section>
     {{else}}
     <p class="empty" data-testid="empty-hubs">No US hub targets are placed yet.</p>
@@ -55,11 +81,34 @@
     <p class="muted small" data-testid="hubs-note">{{.Note}}</p>
     {{end}}
 
+    <p class="muted map-legend" style="margin-top:0.5rem;font-size:11px;">
+      <span class="legend-scale" aria-hidden="true"></span>
+      down <span aria-hidden="true">→</span> degraded / blocked <span aria-hidden="true">→</span> up
+      <span style="margin-left:0.75rem;">Box area = severity × time in state. Block borders separate cities; the header tint is the city's worst state.</span>
+    </p>
+
     <p class="muted small">
       This view answers “which hub cities look unhappy?” from this vantage. It is
-      not a claim about a city-wide outage: one tile is one set of public
+      not a claim about a city-wide outage: one box is one set of public
       endpoints, and every site keeps its own state on the target drawer.
     </p>
+
+    <div class="map-tip" data-testid="map-tip" role="tooltip" hidden aria-hidden="true">
+      <div class="map-tip-head">
+        <strong data-tip-field="name"></strong>
+        <span class="map-tip-state" data-tip-field="state"></span>
+      </div>
+      <p class="map-tip-kind" data-tip-field="kind"></p>
+      <dl class="map-tip-facts">
+        <dt>Endpoint</dt><dd data-tip-field="endpoint"></dd>
+        <dt>Signal</dt><dd data-tip-field="detail"></dd>
+        <dt>In state</dt><dd data-tip-field="duration"></dd>
+        <dt>Hub city</dt><dd data-tip-field="group"></dd>
+      </dl>
+      <p class="map-tip-why" data-tip-field="why"></p>
+      <p class="map-tip-hint">Click to open the target drawer</p>
+    </div>
   </main>
+  <script src="/static/map.js" defer></script>
 </body>
 </html>

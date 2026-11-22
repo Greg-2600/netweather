@@ -10,11 +10,12 @@ changed between two images without it.
 
 ### Added
 
-- `/hubs` groups real US airport and city-portal targets by city and state from
-  the `City, ST hub — site` name convention on sector `us/hub`. The 42 targets
+- `/hubs` maps real US airport and city-portal targets with the same health
+  treemap as `/map`: one city block per `City, ST hub — site` group on sector
+  `us/hub`, one box per endpoint, worst cities and sites first. The 42 targets
   that stayed blocked from every vantage were replaced with egress-verified
   public endpoints under their original ids; the fleet stays at 749 and the
-  schema stays at 25. `scripts/check_fieldtrial.sh` now checks the hub tiles.
+  schema stays at 25. `scripts/check_fieldtrial.sh` now checks the hub blocks.
 - One bounded DNS timeout retry: a lost UDP datagram gets a second attempt
   inside the existing 5s budget, while negative answers, policy blocks, and
   malformed replies remain final. `NETWEATHER_DNS_RETRIES` (0–2) and

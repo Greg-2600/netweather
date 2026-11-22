@@ -48,13 +48,19 @@ func TestHubsGroupsByCityAndState(t *testing.T) {
 	}
 
 	if got := strings.Count(page, `data-testid="hub"`); got != 3 {
-		t.Fatalf("hub tiles = %d, want 3", got)
+		t.Fatalf("hub city blocks = %d, want 3", got)
+	}
+	if got := strings.Count(page, `data-testid="map-tile"`); got != 3 {
+		t.Fatalf("hub endpoint boxes = %d, want 3", got)
 	}
 	for _, want := range []string{
+		`data-testid="treemap"`, `data-testid="map-tile"`,
 		`data-city="Atlanta"`, `data-city="Boston"`, `data-city="Austin"`,
 		`href="/targets/svc-b"`, `title="city portal — Down — http_timeout"`,
 		`aria-label="Boston, MA: 1 target(s), worst Down"`,
-		`data-testid="hubs-note"`,
+		`data-tip-name="city portal"`, `data-tip-group="Boston, MA"`,
+		`data-tip-state="DOWN"`, `data-tip-why="Marked DOWN because the HTTPS request timed out`,
+		`data-testid="map-tip"`, `data-testid="hubs-note"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("hubs page missing %q", want)
