@@ -11,6 +11,17 @@ import (
 	"github.com/Greg-2600/netweather/internal/state"
 )
 
+// LatestProbeJoin joins each target's newest probe at one vantage. The
+// target-first index is pinned deliberately: SQLite otherwise picks
+// probe_vantage_ts for a busy vantage and rescans that vantage's whole history
+// once per target, which made 1000-target board/API reads take minutes.
+const LatestProbeJoin = `
+		LEFT JOIN probe p ON p.id = (
+			SELECT p2.id FROM probe p2 INDEXED BY probe_target_ts
+			WHERE p2.target_id = t.id AND p2.vantage_id = ?
+			ORDER BY p2.ts DESC, p2.id DESC LIMIT 1
+		)`
+
 // TargetState is the latest observation per (target, vantage).
 type TargetState struct {
 	TargetID   string
@@ -151,6 +162,13 @@ type TargetRow struct {
 
 // TargetsWithState is the board query: every enabled target plus its current
 // state, defaulting to UNKNOWN when it has never been probed.
+//
+// The latest-probe subquery pins probe_target_ts rather than letting SQLite
+// choose probe_vantage_ts. With a busy vantage (local, or a Tor exit) the
+// vantage-first index makes SQLite scan that vantage's entire probe history
+// once per target; at the 1000-target fleet this turns a board/API read into a
+// multi-minute query. The target-first index keeps the work bounded by one
+// target's history and needs no schema migration.
 func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]TargetRow, error) {
 	rows, err := s.reader.QueryContext(ctx, `
 		SELECT t.id, t.host, t.port, t.probe, t.name, t.class,
@@ -174,12 +192,8 @@ func (s *Store) TargetsWithState(ctx context.Context, vantageID string) ([]Targe
 			SELECT d2.id FROM dns_divergence d2
 			WHERE d2.target_id = t.id ORDER BY d2.ts DESC, d2.id DESC LIMIT 1
 		)
-		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
-		LEFT JOIN probe p ON p.id = (
-			SELECT p2.id FROM probe p2
-			WHERE p2.target_id = t.id AND p2.vantage_id = ?
-			ORDER BY p2.ts DESC, p2.id DESC LIMIT 1
-		)
+		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?`+
+		LatestProbeJoin+`
 		WHERE t.enabled = 1
 		ORDER BY t.class, COALESCE(t.sector, ''), t.name`, vantageID, vantageID)
 	if err != nil {
@@ -365,12 +379,8 @@ func (s *Store) TargetByID(ctx context.Context, vantageID, id string) (TargetRow
 			SELECT d2.id FROM dns_divergence d2
 			WHERE d2.target_id = t.id ORDER BY d2.ts DESC, d2.id DESC LIMIT 1
 		)
-		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?
-		LEFT JOIN probe p ON p.id = (
-			SELECT p2.id FROM probe p2
-			WHERE p2.target_id = t.id AND p2.vantage_id = ?
-			ORDER BY p2.ts DESC, p2.id DESC LIMIT 1
-		)
+		LEFT JOIN target_state ts ON ts.target_id = t.id AND ts.vantage_id = ?`+
+		LatestProbeJoin+`
 		WHERE t.id = ? AND t.enabled = 1`, vantageID, vantageID, id).Scan(
 		&row.ID, &row.Host, &row.Port, &row.Probe, &row.Name, &row.Class,
 		&row.Sector, &row.Country, &row.Tier, &row.IntervalS,

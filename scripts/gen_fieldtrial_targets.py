@@ -7,8 +7,13 @@ A saved IANA root zone file (the same source `netweather seed --country-anchors`
 uses). Pass its path as the first argument, or set ROOT_ZONE. The root zone gives
 us two real, operator-maintained inventories:
 
-  * ccTLD NS delegations  -> ~399 country anchors (one DNS question per territory)
-  * glue A records       -> ~100 network anchors (authoritative DNS server IPs)
+   * ccTLD NS delegations  -> ~399 country anchors (one DNS question per territory)
+   * glue A records       -> ~100 network anchors (authoritative DNS server IPs)
+
+Two smaller curated tables below add a second delegated NS for selected ccTLDs
+and extra root-zone glue IPs. Both are verified against the same root zone at
+generation time, so they remain operator-maintained inventory rather than
+invented endpoints.
 
 A small REACHABLE_NS table below overrides the lexicographically first NS for
 zones whose oldest-listed nameserver no longer answers. Every override is still
@@ -106,6 +111,82 @@ for tld, ns in REACHABLE_NS.items():
     if ns not in ns_by_tld.get(tld, set()):
         sys.exit(f"REACHABLE_NS[{tld!r}] = {ns!r} is not delegated in the root zone")
 
+# A second ccTLD observation asks a different delegated operator the same real
+# question. Every pair below is present in this root zone and answered a SOA
+# query for its zone from the field-trial egress. IDs are new so the original
+# cctld-* targets keep their history.
+SECONDARY_NS: list[tuple[str, str]] = [
+    ("ac", "a2.nic.ac"),
+    ("ai", "v0n1.nic.ai"),
+    ("ar", "c.dns.ar"),
+    ("ax", "ns3.alcom.fi"),
+    ("be", "b.nsset.be"),
+    ("bj", "ns-bj.nic.fr"),
+    ("bs", "anyns.pch.net"),
+    ("bz", "b0.cctld.afilias-nst.org"),
+    ("cg", "sunic.sunet.se"),
+    ("cm", "ns-cm.afrinic.net"),
+    ("cv", "c.dns.pt"),
+    ("de", "l.de.net"),
+    ("dz", "ns1.nic.dz"),
+    ("es", "c.nic.es"),
+    ("gb", "ns0.ja.net"),
+    ("gh", "ns1.nic.gh"),
+    ("gp", "gp.cctld.authdns.ripe.net"),
+    ("hn", "ns1.anycastdns.cz"),
+    ("ie", "c.ns.ie"),
+    ("jm", "ns.jm"),
+    ("kh", "ns1.dns.net.kh"),
+    ("kr", "c.dns.kr"),
+    ("lb", "i.ns.lb"),
+    ("ls", "ns-ls.afrinic.net"),
+    ("ma", "dns.inria.fr"),
+    ("mt", "b.ns.mt"),
+    ("my", "e.nic.my"),
+    ("pa", "ns.dns.br"),
+    ("pk", "root-c2.pknic.pk"),
+    ("ps", "fork.sth.dnsnode.net"),
+    ("re", "f.ext.nic.fr"),
+    ("sa", "c2.dns.sa"),
+    ("sg", "ns4.apnic.net"),
+    ("sl", "ns2.neoip.com"),
+    ("ss", "pch.nic.ss"),
+    ("sy", "pch.anycast.tld.sy"),
+    ("tg", "ns1.nic.tg"),
+    ("tv", "b.nic.tv"),
+    ("uk", "dns2.nic.uk"),
+    ("vu", "b.tldns.vu"),
+    ("xn--1qqw23a", "tb.ngtld.cn"),
+    ("xn--45brj9c", "ns2.registry.in"),
+    ("xn--6qq986b3xl", "c.zdnscloud.com"),
+    ("xn--80aswg", "anycast23.irondns.net"),
+    ("xn--9dbq2a", "ac2.nstld.com"),
+    ("xn--c1avg", "a2.nic.xn--c1avg"),
+    ("xn--d1alf", "dns-mk.univie.ac.at"),
+    ("xn--fjq720a", "v0n1.nic.xn--fjq720a"),
+    ("xn--g2xx48c", "b.nic.xn--g2xx48c"),
+    ("xn--io0a7i", "b.ngtld.cn"),
+    ("xn--jvr189m", "v0n1.nic.xn--jvr189m"),
+    ("xn--l1acc", "ns11.dns.mn"),
+    ("xn--mgba7c0bbn0a", "b.nic.xn--mgba7c0bbn0a"),
+    ("xn--mgbcpq6gpa1a", "ns01.trs-dns.net"),
+    ("xn--mgbt3dhd", "dns2.emdns.uk"),
+    ("xn--mxtq1m", "b.nic.xn--mxtq1m"),
+    ("xn--nqv7f", "a2.nic.xn--nqv7f"),
+    ("xn--rhqv96g", "ns2.teleinfoo.com"),
+    ("xn--vermgensberatung-pwb", "b.nic.xn--vermgensberatung-pwb"),
+    ("xn--wgbh1c", "ns2.dotmasr.eg"),
+]
+seen_secondary_ns: set[str] = set()
+for tld, ns in SECONDARY_NS:
+    if ns not in ns_by_tld.get(tld, set()):
+        sys.exit(f"SECONDARY_NS[{tld!r}] = {ns!r} is not delegated in the root zone")
+    if ns == REACHABLE_NS.get(tld, chosen_ns[tld]):
+        sys.exit(f"SECONDARY_NS[{tld!r}] repeats the primary nameserver {ns!r}")
+    if ns in seen_secondary_ns:
+        sys.exit(f"SECONDARY_NS repeats nameserver {ns!r}")
+    seen_secondary_ns.add(ns)
+
 # Glue A records -> (IP, owner TLD, NS host). Used for network anchors.
 glue: list[tuple[str, str, str]] = []
 for f in lines:
@@ -118,6 +199,51 @@ for f in lines:
             if tld and re.fullmatch(r"[a-z0-9-]+", tld):
                 glue.append((ip, tld, owner))
 
+# Extra network anchors use distinct root-zone glue A records not consumed by
+# the first 100. Each IP answered a SOA query for the zone it is glue for from
+# the field-trial egress; the ids are new so net-* history is untouched.
+EXTRA_GLUE: list[tuple[str, str, str]] = [
+    ("199.115.153.1", "ai", "v0n1.nic.ai"),
+    ("192.5.5.241", "arpa", "f.ns.arpa"),
+    ("217.14.111.13", "az", "ns13.intrans.az"),
+    ("65.22.38.17", "bet", "c0.nic.bet"),
+    ("185.24.64.85", "bond", "b.nic.bond"),
+    ("213.248.218.63", "call", "dns1.nic.call"),
+    ("194.169.218.78", "ceo", "a.nic.ceo"),
+    ("190.124.27.10", "cl", "a.nic.cl"),
+    ("200.107.82.100", "cr", "dns.nic.cr"),
+    ("65.22.26.61", "degree", "v0n2.nic.degree"),
+    ("65.22.26.21", "doctor", "v0n2.nic.doctor"),
+    ("65.22.33.21", "equipment", "v0n1.nic.equipment"),
+    ("65.22.34.8", "farm", "v0n2.nic.farm"),
+    ("194.169.218.26", "fm", "a.nic.fm"),
+    ("65.22.27.8", "gallery", "v2n0.nic.gallery"),
+    ("65.22.28.46", "golf", "v0n0.nic.golf"),
+    ("65.22.27.20", "haus", "v2n0.nic.haus"),
+    ("65.22.24.7", "house", "v0n0.nic.house"),
+    ("65.22.84.33", "java", "a0.nic.java"),
+    ("203.189.128.1", "kh", "dns1.online.com.kh"),
+    ("185.91.97.18", "lb", "nabil.ns.lb"),
+    ("194.169.218.157", "llp", "a.nic.llp"),
+    ("185.24.64.116", "makeup", "b.nic.makeup"),
+    ("165.90.218.166", "ml", "b.nic.ml"),
+    ("204.61.216.131", "mw", "pch1.nic.mw"),
+]
+default_glue_ips: set[str] = set()
+for ip, tld, owner in glue:
+    if len(default_glue_ips) >= 100:
+        break
+    if ip in default_glue_ips or ip in ("198.41.0.4", "192.58.128.30"):
+        continue
+    default_glue_ips.add(ip)
+seen_extra_glue_ips: set[str] = set()
+for ip, tld, owner in EXTRA_GLUE:
+    if (ip, tld, owner) not in {(gip, gtld, gowner) for gip, gtld, gowner in glue}:
+        sys.exit(f"EXTRA_GLUE {(ip, tld, owner)!r} is not root-zone glue")
+    if ip in default_glue_ips or ip in seen_extra_glue_ips:
+        sys.exit(f"EXTRA_GLUE repeats network anchor IP {ip!r}")
+    seen_extra_glue_ips.add(ip)
+
 # ------------------------------------------------------------- curated sets ---
 
 # (id, name, host, sector). Real, stable, public endpoints. www is included
@@ -126,7 +252,7 @@ for f in lines:
 #
 # Forty-two services that stayed bot-walled from every vantage were replaced by
 # real US hub endpoints: official airport sites and city/state portals. Their
-# ids are retained so the fleet stays at 749 and their history is preserved.
+# ids are retained so their original history is preserved.
 # Names use "<City>, <ST> hub — <site>" and sector "us/hub"; /hubs groups on
 # that convention without changing the schema. Every replacement returned an
 # assessable 200 from the egress vantage before it was added. Hosts that still
@@ -135,7 +261,7 @@ for f in lines:
 #
 # A second pass moved stable ids between service sectors to thicken airline,
 # education, health and social, which had too few targets for a stable view.
-# The fleet stays at 749: every moved slot still names a real public endpoint
+# Every moved slot still names a real public endpoint
 # and the sector is still derived from this curated list, not a new city/state
 # field.
 SERVICES: list[tuple[str, str, str, str]] = [
@@ -183,7 +309,7 @@ SERVICES: list[tuple[str, str, str, str]] = [
     # airline / travel. Six services that answered with a bot challenge or a
     # config error from every vantage were swapped for other real airline and
     # travel sites that return assessable HTML. The ids are stable keys, so
-    # their history survives and the fleet stays at 749.
+    # their history survives.
     ("united", "Skyscanner", "www.skyscanner.com", "airline"),
     ("delta", "WestJet", "www.westjet.com", "airline"),
     ("american", "Houston, TX hub — IAH airport", "www.flyiah.com", "us/hub"),
@@ -213,7 +339,7 @@ SERVICES: list[tuple[str, str, str, str]] = [
     # no vantage can reach it. Sun Country and Air Transat answer with Incapsula
     # challenges (the latter still sends x-iinfo on an otherwise clean page), so
     # a real airline that publishes assessable HTML is used here. The id is
-    # retained as the stable key so the fleet stays at 749 and this target's
+    # retained as the stable key so this target's
     # history records the replacement.
     ("spirit", "Sunwing", "www.sunwing.ca", "airline"),
     ("frontier", "Raleigh, NC hub — RDU airport", "www.rdu.com", "us/hub"),
@@ -412,7 +538,7 @@ SERVICES: list[tuple[str, str, str, str]] = [
     # Nine hardware/vendor slots were reassigned to universities. They were
     # already well represented in cloud; education had only five targets, so
     # a 100%-measured sector was still too thin to support a verdict. Ids are
-    # stable and the fleet stays at 749.
+    # stable for the original fleet.
     ("huawei", "UT Austin", "www.utexas.edu", "education"),
     ("oppo", "Cornell University", "www.cornell.edu", "education"),
     ("vivo", "Yale University", "www.yale.edu", "education"),
@@ -432,6 +558,177 @@ SERVICES: list[tuple[str, str, str, str]] = [
     ("mercadolibre", "Mercado Libre", "www.mercadolibre.com", "retail"),
     ("latam", "Washington, DC hub — DCA airport", "www.flyreagan.com", "us/hub"),
     ("airnewzealand", "Air New Zealand", "www.airnewzealand.co.nz", "airline"),
+    # Fleet expansion: real public endpoints verified from the field-trial
+    # egress with the documented netweather User-Agent. 200 responses had to
+    # carry assessable content; bounded 206 range responses were accepted too.
+    # Every host was checked for bot-challenge markers and no challenged host
+    # was retried with a different identity (docs/ACCEPTABLE_USE.md).
+    ("rogers", "Rogers", "www.rogers.com", "telecom"),
+    ("bellcanada", "Bell Canada", "www.bell.ca", "telecom"),
+    ("americamovil", "América Móvil", "www.americamovil.com", "telecom"),
+    ("movistar", "Movistar", "www.movistar.com", "telecom"),
+    ("timbrasil", "TIM Brasil", "www.tim.com.br", "telecom"),
+    ("entel", "Entel", "www.entel.cl", "telecom"),
+    ("personalar", "Personal", "www.personal.com.ar", "telecom"),
+    ("vodafoneuk", "Vodafone UK", "www.vodafone.co.uk", "telecom"),
+    ("ee", "EE", "www.ee.co.uk", "telecom"),
+    ("threeuk", "Three UK", "www.three.co.uk", "telecom"),
+    ("deutschetelekom", "Deutsche Telekom", "www.telekom.de", "telecom"),
+    ("kpn", "KPN", "www.kpn.com", "telecom"),
+    ("proximus", "Proximus", "www.proximus.be", "telecom"),
+    ("swisscom", "Swisscom", "www.swisscom.ch", "telecom"),
+    ("orangefr", "Orange France", "www.orange.fr", "telecom"),
+    ("bouygues", "Bouygues Telecom", "www.bouyguestelecom.fr", "telecom"),
+    ("sfr", "SFR", "www.sfr.fr", "telecom"),
+    ("windtre", "Wind Tre", "www.windtre.it", "telecom"),
+    ("timitalia", "TIM Italia", "www.tim.it", "telecom"),
+    ("a1austria", "A1 Austria", "www.a1.at", "telecom"),
+    ("telenor", "Telenor", "www.telenor.no", "telecom"),
+    ("telia", "Telia", "www.telia.se", "telecom"),
+    ("elisa", "Elisa", "www.elisa.fi", "telecom"),
+    ("tdcdk", "TDC", "www.tdc.dk", "telecom"),
+    ("playpl", "Play", "www.play.pl", "telecom"),
+    ("a1bulgaria", "A1 Bulgaria", "www.a1.bg", "telecom"),
+    ("turktelekom", "Turk Telekom", "www.turktelekom.com.tr", "telecom"),
+    ("turkcell", "Turkcell", "www.turkcell.com.tr", "telecom"),
+    ("mtsru", "MTS", "www.mts.ru", "telecom"),
+    ("kddi", "KDDI", "www.kddi.com", "telecom"),
+    ("kt", "KT", "www.kt.com", "telecom"),
+    ("cht", "Chunghwa Telecom", "www.cht.com.tw", "telecom"),
+    ("tmmalaysia", "Telekom Malaysia", "www.tm.com.my", "telecom"),
+    ("maxis", "Maxis", "www.maxis.com.my", "telecom"),
+    ("singtel", "Singtel", "www.singtel.com", "telecom"),
+    ("pldt", "PLDT", "www.pldt.com", "telecom"),
+    ("telkomid", "Telkom Indonesia", "www.telkom.co.id", "telecom"),
+    ("airtelin", "Airtel India", "www.airtel.in", "telecom"),
+    ("etisalat", "Etisalat", "www.etisalat.ae", "telecom"),
+    ("du", "du", "www.du.ae", "telecom"),
+    ("stc", "stc", "www.stc.com.sa", "telecom"),
+    ("mtn", "MTN", "www.mtn.com", "telecom"),
+    ("vodafoneau", "Vodafone Australia", "www.vodafone.com.au", "telecom"),
+    ("tpg", "TPG", "www.tpg.com.au", "telecom"),
+    ("australiagov", "Australian Government", "www.australia.gov.au", "government"),
+    ("govtnz", "New Zealand Government", "www.govt.nz", "government"),
+    ("govsg", "Singapore Government", "www.gov.sg", "government"),
+    ("govbr", "Government of Brazil", "www.gov.br", "government"),
+    ("gobmx", "Government of Mexico", "www.gob.mx", "government"),
+    ("govza", "Government of South Africa", "www.gov.za", "government"),
+    ("ec", "European Commission", "ec.europa.eu", "government"),
+    ("unicef", "UNICEF", "www.unicef.org", "government"),
+    ("icrc", "ICRC", "www.icrc.org", "government"),
+    ("ethz", "ETH Zürich", "www.ethz.ch", "education"),
+    ("epfl", "EPFL", "www.epfl.ch", "education"),
+    ("kyoto", "Kyoto University", "www.kyoto-u.ac.jp", "education"),
+    ("snu", "Seoul National University", "www.snu.ac.kr", "education"),
+    ("ntu", "NTU Singapore", "www.ntu.edu.sg", "education"),
+    ("hku", "University of Hong Kong", "www.hku.hk", "education"),
+    ("unimelb", "University of Melbourne", "www.unimelb.edu.au", "education"),
+    ("sydneyu", "University of Sydney", "www.sydney.edu.au", "education"),
+    ("uct", "University of Cape Town", "www.uct.ac.za", "education"),
+    ("uonbi", "University of Nairobi", "www.uonbi.ac.ke", "education"),
+    ("usp", "Universidade de São Paulo", "www.usp.br", "education"),
+    ("mcgill", "McGill", "www.mcgill.ca", "education"),
+    ("ubc", "UBC", "www.ubc.ca", "education"),
+    ("tum", "Technical University of Munich", "www.tum.de", "education"),
+    ("uva", "University of Amsterdam", "www.uva.nl", "education"),
+    ("sorbonne", "Sorbonne Université", "www.sorbonne-universite.fr", "education"),
+    ("lung", "American Lung Association", "www.lung.org", "health"),
+    ("stanfordhealth", "Stanford Health Care", "www.stanfordhealthcare.org", "health"),
+    ("mercy", "Mercy", "www.mercy.net", "health"),
+    ("kaiser", "Kaiser Permanente", "www.kp.org", "health"),
+    ("cvshealth", "CVS Health", "www.cvshealth.com", "health"),
+    ("walgreens", "Walgreens", "www.walgreens.com", "health"),
+    ("ema", "European Medicines Agency", "www.ema.europa.eu", "health"),
+    ("msf", "Médecins Sans Frontières", "www.msf.org", "health"),
+    ("stjude", "St. Jude", "www.stjude.org", "health"),
+    ("dana", "Dana-Farber", "www.dana-farber.org", "health"),
+    ("mskcc", "Memorial Sloan Kettering", "www.mskcc.org", "health"),
+    ("mdanderson", "MD Anderson", "www.mdanderson.org", "health"),
+    ("ally", "Ally", "www.ally.com", "financial/banking"),
+    ("discover", "Discover", "www.discover.com", "financial/banking"),
+    ("amex", "American Express", "www.americanexpress.com", "financial/banking"),
+    ("scotiabankca", "Scotiabank", "www.scotiabank.com", "financial/banking"),
+    ("nbc", "National Bank of Canada", "www.nbc.ca", "financial/banking"),
+    ("caixabank", "CaixaBank", "www.caixabank.es", "financial/banking"),
+    ("ing", "ING", "www.ing.com", "financial/banking"),
+    ("ubs", "UBS", "www.ubs.com", "financial/banking"),
+    ("uob", "UOB", "www.uobgroup.com", "financial/banking"),
+    ("cimb", "CIMB", "www.cimb.com", "financial/banking"),
+    ("icbc", "ICBC", "www.icbc.com.cn", "financial/banking"),
+    ("boc", "Bank of China", "www.boc.cn", "financial/banking"),
+    ("mufg", "MUFG", "www.mufg.jp", "financial/banking"),
+    ("smbc", "SMBC", "www.smbc.co.jp", "financial/banking"),
+    ("kebhana", "Hana Bank", "www.kebhana.com", "financial/banking"),
+    ("standardbank", "Standard Bank", "www.standardbank.com", "financial/banking"),
+    ("nedbank", "Nedbank", "www.nedbank.co.za", "financial/banking"),
+    ("absa", "Absa", "www.absa.co.za", "financial/banking"),
+    ("vercel", "Vercel", "vercel.com", "cloud"),
+    ("netlify", "Netlify", "www.netlify.com", "cloud"),
+    ("heroku", "Heroku", "www.heroku.com", "cloud"),
+    ("render", "Render", "render.com", "cloud"),
+    ("fly", "Fly.io", "fly.io", "cloud"),
+    ("scaleway", "Scaleway", "www.scaleway.com", "cloud"),
+    ("alibabacloud", "Alibaba Cloud", "www.alibabacloud.com", "cloud"),
+    ("tencentcloud", "Tencent Cloud", "www.tencentcloud.com", "cloud"),
+    ("huaweicloud", "Huawei Cloud", "www.huaweicloud.com", "cloud"),
+    ("jetbrains", "JetBrains", "www.jetbrains.com", "developer"),
+    ("sourceforge", "SourceForge", "sourceforge.net", "developer"),
+    ("gitea", "Gitea", "gitea.io", "developer"),
+    ("elastic", "Elastic", "www.elastic.co", "developer"),
+    ("grafana", "Grafana", "grafana.com", "developer"),
+    ("datadog", "Datadog", "www.datadoghq.com", "developer"),
+    ("supabase", "Supabase", "supabase.com", "developer"),
+    ("mongodb", "MongoDB", "www.mongodb.com", "developer"),
+    ("suse", "SUSE", "www.suse.com", "developer"),
+    ("fedora", "Fedora", "getfedora.org", "developer"),
+    ("debian", "Debian", "www.debian.org", "developer"),
+    ("ubuntu", "Ubuntu", "www.ubuntu.com", "developer"),
+    ("archlinux", "Arch Linux", "archlinux.org", "developer"),
+    ("xinhua", "Xinhua", "www.xinhuanet.com", "news"),
+    ("kyodo", "Kyodo News", "www.kyodonews.jp", "news"),
+    ("yonhap", "Yonhap", "www.yna.co.kr", "news"),
+    ("anadolu", "Anadolu Agency", "www.aa.com.tr", "news"),
+    ("pti", "Press Trust of India", "www.ptinews.com", "news"),
+    ("nhk", "NHK", "www3.nhk.or.jp", "news"),
+    ("france24", "France 24", "www.france24.com", "news"),
+    ("cna", "CNA", "www.channelnewsasia.com", "news"),
+    ("japantimes", "The Japan Times", "www.japantimes.co.jp", "news"),
+    ("koreaherald", "The Korea Herald", "www.koreaherald.com", "news"),
+    ("ctv", "CTV News", "www.ctvnews.ca", "news"),
+    ("elpais", "El País", "elpais.com", "news"),
+    ("corriere", "Corriere della Sera", "www.corriere.it", "news"),
+    ("folha", "Folha de S.Paulo", "www.folha.uol.com.br", "news"),
+    ("clarin", "Clarín", "www.clarin.com", "news"),
+    ("aldi", "Aldi", "www.aldi.com", "retail"),
+    ("lidl", "Lidl", "www.lidl.com", "retail"),
+    ("kmart", "Kmart", "www.kmart.com", "retail"),
+    ("ulta", "Ulta Beauty", "www.ulta.com", "retail"),
+    ("decathlon", "Decathlon", "www.decathlon.com", "retail"),
+    ("flipkart", "Flipkart", "www.flipkart.com", "retail"),
+    ("lazada", "Lazada", "www.lazada.com", "retail"),
+    ("shopee", "Shopee", "www.shopee.com", "retail"),
+    ("tap", "TAP Air Portugal", "www.flytap.com", "airline"),
+    ("gulfair", "Gulf Air", "www.gulfair.com", "airline"),
+    ("kuwaitairways", "Kuwait Airways", "www.kuwaitairways.com", "airline"),
+    ("kenyaairways", "Kenya Airways", "www.kenya-airways.com", "airline"),
+    ("rwandair", "RwandAir", "www.rwandair.com", "airline"),
+    ("saairways", "South African Airways", "www.flysaa.com", "airline"),
+    ("volaris", "Volaris", "www.volaris.com", "airline"),
+    ("gol", "GOL", "www.voegol.com.br", "airline"),
+    ("chinaairlines", "China Airlines", "www.china-airlines.com", "airline"),
+    ("ceair", "China Eastern", "www.ceair.com", "airline"),
+    ("csair", "China Southern", "www.csair.com", "airline"),
+    ("spicejet", "SpiceJet", "www.spicejet.com", "airline"),
+    ("akasa", "Akasa Air", "www.akasaair.com", "airline"),
+    ("okru", "Odnoklassniki", "ok.ru", "social"),
+    ("line", "LINE", "line.me", "social"),
+    ("viber", "Viber", "www.viber.com", "social"),
+    ("signal", "Signal", "signal.org", "social"),
+    ("threads", "Threads", "www.threads.net", "social"),
+    ("mewe", "MeWe", "www.mewe.com", "social"),
+    ("minds", "Minds", "www.minds.com", "social"),
+    ("diaspora", "Diaspora", "diasporafoundation.org", "social"),
+    ("pixelfed", "Pixelfed", "pixelfed.org", "social"),
 ]
 
 REFERENCES = [
@@ -499,6 +796,22 @@ for tld in sorted(chosen_ns):
     w("    tier: 3")
     counts["country"] += 1
 
+# A second observation per selected ccTLD, aimed at a different root-zone NS.
+for tld, ns in SECONDARY_NS:
+    w(f"  - id: cctld2-{tld}")
+    w(f"    name: {y(NAMES.get(tld.lower(), tld.upper()) + ' ccTLD secondary')}")
+    w(f"    host: {y(ns)}")
+    w("    port: 53")
+    w("    probe: dns")
+    w(f"    qname: {y(tld)}")
+    w("    class: country")
+    w("    sector: country")
+    w("    country: " + y(tld.upper() if len(tld) == 2 else "XN"))
+    w("    tier: 3")
+    counts["country"] += 1
+
+w("")
+
 # Network anchors: distinct authoritative DNS IPs from root-zone glue. Query
 # each server about the TLD it is glue for, so the answer is meaningful.
 seen_ips: set[str] = set()
@@ -521,6 +834,29 @@ for ip, tld, owner in glue:
     w("    sector: network")
     w("    tier: 3")
     counts["network"] += 1
+
+# Extra distinct glue IPs, using new ids so the first 100 keep their history.
+used_net2_ids: set[str] = set()
+for ip, tld, owner in EXTRA_GLUE:
+    base = re.sub(r"[^a-z0-9]+", "-", owner).strip("-")[:50]
+    ident = f"net2-{base}"
+    suffix = 2
+    while ident in used_net2_ids:
+        ident = f"net2-{base}-{suffix}"
+        suffix += 1
+    used_net2_ids.add(ident)
+    w(f"  - id: {ident}")
+    w(f"    name: {y(owner + ' DNS')}")
+    w(f"    host: {y(ip)}")
+    w("    port: 53")
+    w("    probe: dns")
+    w(f"    qname: {y(tld)}")
+    w("    class: network")
+    w("    sector: network")
+    w("    tier: 3")
+    counts["network"] += 1
+
+w("")
 
 # A few services need a concrete path. Cathay's apex takes ~10 s to 301 and the
 # canonical page another ~10 s, so the default probe exceeds its 15 s timeout;
@@ -559,6 +895,8 @@ for sid, name, host, sector in SERVICES:
         w("    tier: 2")
         w("    interval_s: 300")
     counts["service"] += 1
+
+w("")
 
 # References: self-health and public DNS anchors.
 for rid, name, host, cls in REFERENCES:

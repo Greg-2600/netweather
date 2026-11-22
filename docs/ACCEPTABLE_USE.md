@@ -89,27 +89,27 @@ The daily egress budget is the backstop for everything above it. A misconfigurat
 
 ## 4. Volume
 
-At the full 750-target fleet with the default tiers (`DESIGN.md` §6.1):
+At the full 1000-target field-trial fleet with its generated intervals (`DESIGN.md` §6.1):
 
 | Tier | Targets | Interval | Probes/day |
 |---|---|---|---|
-| 0 — reference | 20 | 30s | 57,600 |
-| 1 — critical | 80 | 120s | 57,600 |
-| 2 — service | 320 | 450s (midpoint) | 61,400 |
-| 3 — anchors | 350 | 120s | 252,000 |
-| **Total** | **750** | | **~430,000** |
+| 0 — reference | 10 | 600s | 1,440 |
+| 1 — critical | 109 | 120s | 78,480 |
+| 2 — service | 297 | 300s | 85,536 |
+| 3 — anchors | 584 | 120s | 420,480 |
+| **Total** | **1000** | | **~586,000** |
 
-That is ~5 requests/second on average, and **not** a burst: the dispatcher spreads due targets across its 1-second tick and jitter is additive.
+That is ~6.8 requests/second on average, and **not** a burst: the dispatcher spreads due targets across its 1-second tick and jitter is additive.
 
 Bandwidth is dominated by TLS handshakes, not by bodies:
 
 | Traffic | Estimate |
 |---|---|
-| Anchor DNS probes (252k × ~0.15 KB) | ~38 MB/day |
-| HTTP/TLS probes (~119k × ~6 KB) | ~700 MB/day |
-| **Total at full scale** | **~0.7 GB/day ≈ 20 GB/month** |
+| Anchor DNS probes (420k × ~0.15 KB) | ~63 MB/day |
+| HTTP/TLS probes (~165k × ~6 KB) | ~1.0 GB/day |
+| **Total at full scale** | **~1.1 GB/day ≈ 32 GB/month** |
 
-At the shipped 14 targets this is roughly 50 MB/day, dominated by the 30-second reference target and the three criticals; the rest of the list is on the 300-second tier. The fleet number is the honest cost of 750 independent measurements and is worth knowing before seeding a metered VPS.
+At the shipped 14 targets this is roughly 50 MB/day, dominated by the 30-second reference target and the three criticals; the rest of the list is on the 300-second tier. The fleet number is the honest cost of 1000 independent measurements and is worth knowing before seeding a metered VPS.
 
 Two mitigations are built in:
 

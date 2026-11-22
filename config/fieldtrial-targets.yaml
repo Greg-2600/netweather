@@ -3993,6 +3993,607 @@ targets:
     sector: country
     country: "ZW"
     tier: 3
+  - id: cctld2-ac
+    name: "Ascension Island ccTLD secondary"
+    host: "a2.nic.ac"
+    port: 53
+    probe: dns
+    qname: "ac"
+    class: country
+    sector: country
+    country: "AC"
+    tier: 3
+  - id: cctld2-ai
+    name: "Anguilla ccTLD secondary"
+    host: "v0n1.nic.ai"
+    port: 53
+    probe: dns
+    qname: "ai"
+    class: country
+    sector: country
+    country: "AI"
+    tier: 3
+  - id: cctld2-ar
+    name: "Argentina ccTLD secondary"
+    host: "c.dns.ar"
+    port: 53
+    probe: dns
+    qname: "ar"
+    class: country
+    sector: country
+    country: "AR"
+    tier: 3
+  - id: cctld2-ax
+    name: "Åland Islands ccTLD secondary"
+    host: "ns3.alcom.fi"
+    port: 53
+    probe: dns
+    qname: "ax"
+    class: country
+    sector: country
+    country: "AX"
+    tier: 3
+  - id: cctld2-be
+    name: "Belgium ccTLD secondary"
+    host: "b.nsset.be"
+    port: 53
+    probe: dns
+    qname: "be"
+    class: country
+    sector: country
+    country: "BE"
+    tier: 3
+  - id: cctld2-bj
+    name: "Benin ccTLD secondary"
+    host: "ns-bj.nic.fr"
+    port: 53
+    probe: dns
+    qname: "bj"
+    class: country
+    sector: country
+    country: "BJ"
+    tier: 3
+  - id: cctld2-bs
+    name: "Bahamas ccTLD secondary"
+    host: "anyns.pch.net"
+    port: 53
+    probe: dns
+    qname: "bs"
+    class: country
+    sector: country
+    country: "BS"
+    tier: 3
+  - id: cctld2-bz
+    name: "Belize ccTLD secondary"
+    host: "b0.cctld.afilias-nst.org"
+    port: 53
+    probe: dns
+    qname: "bz"
+    class: country
+    sector: country
+    country: "BZ"
+    tier: 3
+  - id: cctld2-cg
+    name: "Congo - Brazzaville ccTLD secondary"
+    host: "sunic.sunet.se"
+    port: 53
+    probe: dns
+    qname: "cg"
+    class: country
+    sector: country
+    country: "CG"
+    tier: 3
+  - id: cctld2-cm
+    name: "Cameroon ccTLD secondary"
+    host: "ns-cm.afrinic.net"
+    port: 53
+    probe: dns
+    qname: "cm"
+    class: country
+    sector: country
+    country: "CM"
+    tier: 3
+  - id: cctld2-cv
+    name: "Cape Verde ccTLD secondary"
+    host: "c.dns.pt"
+    port: 53
+    probe: dns
+    qname: "cv"
+    class: country
+    sector: country
+    country: "CV"
+    tier: 3
+  - id: cctld2-de
+    name: "Germany ccTLD secondary"
+    host: "l.de.net"
+    port: 53
+    probe: dns
+    qname: "de"
+    class: country
+    sector: country
+    country: "DE"
+    tier: 3
+  - id: cctld2-dz
+    name: "Algeria ccTLD secondary"
+    host: "ns1.nic.dz"
+    port: 53
+    probe: dns
+    qname: "dz"
+    class: country
+    sector: country
+    country: "DZ"
+    tier: 3
+  - id: cctld2-es
+    name: "Spain ccTLD secondary"
+    host: "c.nic.es"
+    port: 53
+    probe: dns
+    qname: "es"
+    class: country
+    sector: country
+    country: "ES"
+    tier: 3
+  - id: cctld2-gb
+    name: "United Kingdom ccTLD secondary"
+    host: "ns0.ja.net"
+    port: 53
+    probe: dns
+    qname: "gb"
+    class: country
+    sector: country
+    country: "GB"
+    tier: 3
+  - id: cctld2-gh
+    name: "Ghana ccTLD secondary"
+    host: "ns1.nic.gh"
+    port: 53
+    probe: dns
+    qname: "gh"
+    class: country
+    sector: country
+    country: "GH"
+    tier: 3
+  - id: cctld2-gp
+    name: "Guadeloupe ccTLD secondary"
+    host: "gp.cctld.authdns.ripe.net"
+    port: 53
+    probe: dns
+    qname: "gp"
+    class: country
+    sector: country
+    country: "GP"
+    tier: 3
+  - id: cctld2-hn
+    name: "Honduras ccTLD secondary"
+    host: "ns1.anycastdns.cz"
+    port: 53
+    probe: dns
+    qname: "hn"
+    class: country
+    sector: country
+    country: "HN"
+    tier: 3
+  - id: cctld2-ie
+    name: "Ireland ccTLD secondary"
+    host: "c.ns.ie"
+    port: 53
+    probe: dns
+    qname: "ie"
+    class: country
+    sector: country
+    country: "IE"
+    tier: 3
+  - id: cctld2-jm
+    name: "Jamaica ccTLD secondary"
+    host: "ns.jm"
+    port: 53
+    probe: dns
+    qname: "jm"
+    class: country
+    sector: country
+    country: "JM"
+    tier: 3
+  - id: cctld2-kh
+    name: "Cambodia ccTLD secondary"
+    host: "ns1.dns.net.kh"
+    port: 53
+    probe: dns
+    qname: "kh"
+    class: country
+    sector: country
+    country: "KH"
+    tier: 3
+  - id: cctld2-kr
+    name: "South Korea ccTLD secondary"
+    host: "c.dns.kr"
+    port: 53
+    probe: dns
+    qname: "kr"
+    class: country
+    sector: country
+    country: "KR"
+    tier: 3
+  - id: cctld2-lb
+    name: "Lebanon ccTLD secondary"
+    host: "i.ns.lb"
+    port: 53
+    probe: dns
+    qname: "lb"
+    class: country
+    sector: country
+    country: "LB"
+    tier: 3
+  - id: cctld2-ls
+    name: "Lesotho ccTLD secondary"
+    host: "ns-ls.afrinic.net"
+    port: 53
+    probe: dns
+    qname: "ls"
+    class: country
+    sector: country
+    country: "LS"
+    tier: 3
+  - id: cctld2-ma
+    name: "Morocco ccTLD secondary"
+    host: "dns.inria.fr"
+    port: 53
+    probe: dns
+    qname: "ma"
+    class: country
+    sector: country
+    country: "MA"
+    tier: 3
+  - id: cctld2-mt
+    name: "Malta ccTLD secondary"
+    host: "b.ns.mt"
+    port: 53
+    probe: dns
+    qname: "mt"
+    class: country
+    sector: country
+    country: "MT"
+    tier: 3
+  - id: cctld2-my
+    name: "Malaysia ccTLD secondary"
+    host: "e.nic.my"
+    port: 53
+    probe: dns
+    qname: "my"
+    class: country
+    sector: country
+    country: "MY"
+    tier: 3
+  - id: cctld2-pa
+    name: "Panama ccTLD secondary"
+    host: "ns.dns.br"
+    port: 53
+    probe: dns
+    qname: "pa"
+    class: country
+    sector: country
+    country: "PA"
+    tier: 3
+  - id: cctld2-pk
+    name: "Pakistan ccTLD secondary"
+    host: "root-c2.pknic.pk"
+    port: 53
+    probe: dns
+    qname: "pk"
+    class: country
+    sector: country
+    country: "PK"
+    tier: 3
+  - id: cctld2-ps
+    name: "Palestinian Territories ccTLD secondary"
+    host: "fork.sth.dnsnode.net"
+    port: 53
+    probe: dns
+    qname: "ps"
+    class: country
+    sector: country
+    country: "PS"
+    tier: 3
+  - id: cctld2-re
+    name: "Réunion ccTLD secondary"
+    host: "f.ext.nic.fr"
+    port: 53
+    probe: dns
+    qname: "re"
+    class: country
+    sector: country
+    country: "RE"
+    tier: 3
+  - id: cctld2-sa
+    name: "Saudi Arabia ccTLD secondary"
+    host: "c2.dns.sa"
+    port: 53
+    probe: dns
+    qname: "sa"
+    class: country
+    sector: country
+    country: "SA"
+    tier: 3
+  - id: cctld2-sg
+    name: "Singapore ccTLD secondary"
+    host: "ns4.apnic.net"
+    port: 53
+    probe: dns
+    qname: "sg"
+    class: country
+    sector: country
+    country: "SG"
+    tier: 3
+  - id: cctld2-sl
+    name: "Sierra Leone ccTLD secondary"
+    host: "ns2.neoip.com"
+    port: 53
+    probe: dns
+    qname: "sl"
+    class: country
+    sector: country
+    country: "SL"
+    tier: 3
+  - id: cctld2-ss
+    name: "South Sudan ccTLD secondary"
+    host: "pch.nic.ss"
+    port: 53
+    probe: dns
+    qname: "ss"
+    class: country
+    sector: country
+    country: "SS"
+    tier: 3
+  - id: cctld2-sy
+    name: "Syria ccTLD secondary"
+    host: "pch.anycast.tld.sy"
+    port: 53
+    probe: dns
+    qname: "sy"
+    class: country
+    sector: country
+    country: "SY"
+    tier: 3
+  - id: cctld2-tg
+    name: "Togo ccTLD secondary"
+    host: "ns1.nic.tg"
+    port: 53
+    probe: dns
+    qname: "tg"
+    class: country
+    sector: country
+    country: "TG"
+    tier: 3
+  - id: cctld2-tv
+    name: "Tuvalu ccTLD secondary"
+    host: "b.nic.tv"
+    port: 53
+    probe: dns
+    qname: "tv"
+    class: country
+    sector: country
+    country: "TV"
+    tier: 3
+  - id: cctld2-uk
+    name: "United Kingdom ccTLD secondary"
+    host: "dns2.nic.uk"
+    port: 53
+    probe: dns
+    qname: "uk"
+    class: country
+    sector: country
+    country: "UK"
+    tier: 3
+  - id: cctld2-vu
+    name: "Vanuatu ccTLD secondary"
+    host: "b.tldns.vu"
+    port: 53
+    probe: dns
+    qname: "vu"
+    class: country
+    sector: country
+    country: "VU"
+    tier: 3
+  - id: cctld2-xn--1qqw23a
+    name: "Foshan (佛山) ccTLD secondary"
+    host: "tb.ngtld.cn"
+    port: 53
+    probe: dns
+    qname: "xn--1qqw23a"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--45brj9c
+    name: "India (ভারত) ccTLD secondary"
+    host: "ns2.registry.in"
+    port: 53
+    probe: dns
+    qname: "xn--45brj9c"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--6qq986b3xl
+    name: "I love you (我爱你) ccTLD secondary"
+    host: "c.zdnscloud.com"
+    port: 53
+    probe: dns
+    qname: "xn--6qq986b3xl"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--80aswg
+    name: "Site (сайт) ccTLD secondary"
+    host: "anycast23.irondns.net"
+    port: 53
+    probe: dns
+    qname: "xn--80aswg"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--9dbq2a
+    name: "Qom (קום) ccTLD secondary"
+    host: "ac2.nstld.com"
+    port: 53
+    probe: dns
+    qname: "xn--9dbq2a"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--c1avg
+    name: "Org (орг) ccTLD secondary"
+    host: "a2.nic.xn--c1avg"
+    port: 53
+    probe: dns
+    qname: "xn--c1avg"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--d1alf
+    name: "Macedonia (мкд) ccTLD secondary"
+    host: "dns-mk.univie.ac.at"
+    port: 53
+    probe: dns
+    qname: "xn--d1alf"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--fjq720a
+    name: "Entertainment (娱乐) ccTLD secondary"
+    host: "v0n1.nic.xn--fjq720a"
+    port: 53
+    probe: dns
+    qname: "xn--fjq720a"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--g2xx48c
+    name: "Shopping (购物) ccTLD secondary"
+    host: "b.nic.xn--g2xx48c"
+    port: 53
+    probe: dns
+    qname: "xn--g2xx48c"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--io0a7i
+    name: "Network (网络) ccTLD secondary"
+    host: "b.ngtld.cn"
+    port: 53
+    probe: dns
+    qname: "xn--io0a7i"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--jvr189m
+    name: "Food (食品) ccTLD secondary"
+    host: "v0n1.nic.xn--jvr189m"
+    port: 53
+    probe: dns
+    qname: "xn--jvr189m"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--l1acc
+    name: "Mongolia (мон) ccTLD secondary"
+    host: "ns11.dns.mn"
+    port: 53
+    probe: dns
+    qname: "xn--l1acc"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--mgba7c0bbn0a
+    name: "Olayan (العليان) ccTLD secondary"
+    host: "b.nic.xn--mgba7c0bbn0a"
+    port: 53
+    probe: dns
+    qname: "xn--mgba7c0bbn0a"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--mgbcpq6gpa1a
+    name: "Bahrain (البحرين) ccTLD secondary"
+    host: "ns01.trs-dns.net"
+    port: 53
+    probe: dns
+    qname: "xn--mgbcpq6gpa1a"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--mgbt3dhd
+    name: "Comrade (همراه) ccTLD secondary"
+    host: "dns2.emdns.uk"
+    port: 53
+    probe: dns
+    qname: "xn--mgbt3dhd"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--mxtq1m
+    name: "Government (政府) ccTLD secondary"
+    host: "b.nic.xn--mxtq1m"
+    port: 53
+    probe: dns
+    qname: "xn--mxtq1m"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--nqv7f
+    name: "Organization (机构) ccTLD secondary"
+    host: "a2.nic.xn--nqv7f"
+    port: 53
+    probe: dns
+    qname: "xn--nqv7f"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--rhqv96g
+    name: "World (世界) ccTLD secondary"
+    host: "ns2.teleinfoo.com"
+    port: 53
+    probe: dns
+    qname: "xn--rhqv96g"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--vermgensberatung-pwb
+    name: "Financial advice (vermögensberatung) ccTLD secondary"
+    host: "b.nic.xn--vermgensberatung-pwb"
+    port: 53
+    probe: dns
+    qname: "xn--vermgensberatung-pwb"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+  - id: cctld2-xn--wgbh1c
+    name: "Egypt (مصر) ccTLD secondary"
+    host: "ns2.dotmasr.eg"
+    port: 53
+    probe: dns
+    qname: "xn--wgbh1c"
+    class: country
+    sector: country
+    country: "XN"
+    tier: 3
+
   - id: net-a-nic-aaa
     name: "a.nic.aaa DNS"
     host: "37.209.192.9"
@@ -4893,6 +5494,232 @@ targets:
     class: network
     sector: network
     tier: 3
+  - id: net2-v0n1-nic-ai
+    name: "v0n1.nic.ai DNS"
+    host: "199.115.153.1"
+    port: 53
+    probe: dns
+    qname: "ai"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-f-ns-arpa
+    name: "f.ns.arpa DNS"
+    host: "192.5.5.241"
+    port: 53
+    probe: dns
+    qname: "arpa"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-ns13-intrans-az
+    name: "ns13.intrans.az DNS"
+    host: "217.14.111.13"
+    port: 53
+    probe: dns
+    qname: "az"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-c0-nic-bet
+    name: "c0.nic.bet DNS"
+    host: "65.22.38.17"
+    port: 53
+    probe: dns
+    qname: "bet"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-b-nic-bond
+    name: "b.nic.bond DNS"
+    host: "185.24.64.85"
+    port: 53
+    probe: dns
+    qname: "bond"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-dns1-nic-call
+    name: "dns1.nic.call DNS"
+    host: "213.248.218.63"
+    port: 53
+    probe: dns
+    qname: "call"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-a-nic-ceo
+    name: "a.nic.ceo DNS"
+    host: "194.169.218.78"
+    port: 53
+    probe: dns
+    qname: "ceo"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-a-nic-cl
+    name: "a.nic.cl DNS"
+    host: "190.124.27.10"
+    port: 53
+    probe: dns
+    qname: "cl"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-dns-nic-cr
+    name: "dns.nic.cr DNS"
+    host: "200.107.82.100"
+    port: 53
+    probe: dns
+    qname: "cr"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-v0n2-nic-degree
+    name: "v0n2.nic.degree DNS"
+    host: "65.22.26.61"
+    port: 53
+    probe: dns
+    qname: "degree"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-v0n2-nic-doctor
+    name: "v0n2.nic.doctor DNS"
+    host: "65.22.26.21"
+    port: 53
+    probe: dns
+    qname: "doctor"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-v0n1-nic-equipment
+    name: "v0n1.nic.equipment DNS"
+    host: "65.22.33.21"
+    port: 53
+    probe: dns
+    qname: "equipment"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-v0n2-nic-farm
+    name: "v0n2.nic.farm DNS"
+    host: "65.22.34.8"
+    port: 53
+    probe: dns
+    qname: "farm"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-a-nic-fm
+    name: "a.nic.fm DNS"
+    host: "194.169.218.26"
+    port: 53
+    probe: dns
+    qname: "fm"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-v2n0-nic-gallery
+    name: "v2n0.nic.gallery DNS"
+    host: "65.22.27.8"
+    port: 53
+    probe: dns
+    qname: "gallery"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-v0n0-nic-golf
+    name: "v0n0.nic.golf DNS"
+    host: "65.22.28.46"
+    port: 53
+    probe: dns
+    qname: "golf"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-v2n0-nic-haus
+    name: "v2n0.nic.haus DNS"
+    host: "65.22.27.20"
+    port: 53
+    probe: dns
+    qname: "haus"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-v0n0-nic-house
+    name: "v0n0.nic.house DNS"
+    host: "65.22.24.7"
+    port: 53
+    probe: dns
+    qname: "house"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-a0-nic-java
+    name: "a0.nic.java DNS"
+    host: "65.22.84.33"
+    port: 53
+    probe: dns
+    qname: "java"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-dns1-online-com-kh
+    name: "dns1.online.com.kh DNS"
+    host: "203.189.128.1"
+    port: 53
+    probe: dns
+    qname: "kh"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-nabil-ns-lb
+    name: "nabil.ns.lb DNS"
+    host: "185.91.97.18"
+    port: 53
+    probe: dns
+    qname: "lb"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-a-nic-llp
+    name: "a.nic.llp DNS"
+    host: "194.169.218.157"
+    port: 53
+    probe: dns
+    qname: "llp"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-b-nic-makeup
+    name: "b.nic.makeup DNS"
+    host: "185.24.64.116"
+    port: 53
+    probe: dns
+    qname: "makeup"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-b-nic-ml
+    name: "b.nic.ml DNS"
+    host: "165.90.218.166"
+    port: 53
+    probe: dns
+    qname: "ml"
+    class: network
+    sector: network
+    tier: 3
+  - id: net2-pch1-nic-mw
+    name: "pch1.nic.mw DNS"
+    host: "204.61.216.131"
+    port: 53
+    probe: dns
+    qname: "mw"
+    class: network
+    sector: network
+    tier: 3
+
   - id: svc-chase
     name: "Chase"
     host: "www.chase.com"
@@ -7058,6 +7885,1501 @@ targets:
     sector: "airline"
     tier: 2
     interval_s: 300
+  - id: svc-rogers
+    name: "Rogers"
+    host: "www.rogers.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-bellcanada
+    name: "Bell Canada"
+    host: "www.bell.ca"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-americamovil
+    name: "América Móvil"
+    host: "www.americamovil.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-movistar
+    name: "Movistar"
+    host: "www.movistar.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-timbrasil
+    name: "TIM Brasil"
+    host: "www.tim.com.br"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-entel
+    name: "Entel"
+    host: "www.entel.cl"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-personalar
+    name: "Personal"
+    host: "www.personal.com.ar"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-vodafoneuk
+    name: "Vodafone UK"
+    host: "www.vodafone.co.uk"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-ee
+    name: "EE"
+    host: "www.ee.co.uk"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-threeuk
+    name: "Three UK"
+    host: "www.three.co.uk"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-deutschetelekom
+    name: "Deutsche Telekom"
+    host: "www.telekom.de"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-kpn
+    name: "KPN"
+    host: "www.kpn.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-proximus
+    name: "Proximus"
+    host: "www.proximus.be"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-swisscom
+    name: "Swisscom"
+    host: "www.swisscom.ch"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-orangefr
+    name: "Orange France"
+    host: "www.orange.fr"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-bouygues
+    name: "Bouygues Telecom"
+    host: "www.bouyguestelecom.fr"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-sfr
+    name: "SFR"
+    host: "www.sfr.fr"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-windtre
+    name: "Wind Tre"
+    host: "www.windtre.it"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-timitalia
+    name: "TIM Italia"
+    host: "www.tim.it"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-a1austria
+    name: "A1 Austria"
+    host: "www.a1.at"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-telenor
+    name: "Telenor"
+    host: "www.telenor.no"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-telia
+    name: "Telia"
+    host: "www.telia.se"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-elisa
+    name: "Elisa"
+    host: "www.elisa.fi"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-tdcdk
+    name: "TDC"
+    host: "www.tdc.dk"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-playpl
+    name: "Play"
+    host: "www.play.pl"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-a1bulgaria
+    name: "A1 Bulgaria"
+    host: "www.a1.bg"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-turktelekom
+    name: "Turk Telekom"
+    host: "www.turktelekom.com.tr"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-turkcell
+    name: "Turkcell"
+    host: "www.turkcell.com.tr"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-mtsru
+    name: "MTS"
+    host: "www.mts.ru"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-kddi
+    name: "KDDI"
+    host: "www.kddi.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-kt
+    name: "KT"
+    host: "www.kt.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-cht
+    name: "Chunghwa Telecom"
+    host: "www.cht.com.tw"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-tmmalaysia
+    name: "Telekom Malaysia"
+    host: "www.tm.com.my"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-maxis
+    name: "Maxis"
+    host: "www.maxis.com.my"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-singtel
+    name: "Singtel"
+    host: "www.singtel.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-pldt
+    name: "PLDT"
+    host: "www.pldt.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-telkomid
+    name: "Telkom Indonesia"
+    host: "www.telkom.co.id"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-airtelin
+    name: "Airtel India"
+    host: "www.airtel.in"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-etisalat
+    name: "Etisalat"
+    host: "www.etisalat.ae"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-du
+    name: "du"
+    host: "www.du.ae"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-stc
+    name: "stc"
+    host: "www.stc.com.sa"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-mtn
+    name: "MTN"
+    host: "www.mtn.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-vodafoneau
+    name: "Vodafone Australia"
+    host: "www.vodafone.com.au"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-tpg
+    name: "TPG"
+    host: "www.tpg.com.au"
+    port: 443
+    probe: http
+    class: service
+    sector: "telecom"
+    tier: 2
+    interval_s: 300
+  - id: svc-australiagov
+    name: "Australian Government"
+    host: "www.australia.gov.au"
+    port: 443
+    probe: http
+    class: service
+    sector: "government"
+    tier: 2
+    interval_s: 300
+  - id: svc-govtnz
+    name: "New Zealand Government"
+    host: "www.govt.nz"
+    port: 443
+    probe: http
+    class: service
+    sector: "government"
+    tier: 2
+    interval_s: 300
+  - id: svc-govsg
+    name: "Singapore Government"
+    host: "www.gov.sg"
+    port: 443
+    probe: http
+    class: service
+    sector: "government"
+    tier: 2
+    interval_s: 300
+  - id: svc-govbr
+    name: "Government of Brazil"
+    host: "www.gov.br"
+    port: 443
+    probe: http
+    class: service
+    sector: "government"
+    tier: 2
+    interval_s: 300
+  - id: svc-gobmx
+    name: "Government of Mexico"
+    host: "www.gob.mx"
+    port: 443
+    probe: http
+    class: service
+    sector: "government"
+    tier: 2
+    interval_s: 300
+  - id: svc-govza
+    name: "Government of South Africa"
+    host: "www.gov.za"
+    port: 443
+    probe: http
+    class: service
+    sector: "government"
+    tier: 2
+    interval_s: 300
+  - id: svc-ec
+    name: "European Commission"
+    host: "ec.europa.eu"
+    port: 443
+    probe: http
+    class: service
+    sector: "government"
+    tier: 2
+    interval_s: 300
+  - id: svc-unicef
+    name: "UNICEF"
+    host: "www.unicef.org"
+    port: 443
+    probe: http
+    class: service
+    sector: "government"
+    tier: 2
+    interval_s: 300
+  - id: svc-icrc
+    name: "ICRC"
+    host: "www.icrc.org"
+    port: 443
+    probe: http
+    class: service
+    sector: "government"
+    tier: 2
+    interval_s: 300
+  - id: svc-ethz
+    name: "ETH Zürich"
+    host: "www.ethz.ch"
+    port: 443
+    probe: http
+    class: service
+    sector: "education"
+    tier: 2
+    interval_s: 300
+  - id: svc-epfl
+    name: "EPFL"
+    host: "www.epfl.ch"
+    port: 443
+    probe: http
+    class: service
+    sector: "education"
+    tier: 2
+    interval_s: 300
+  - id: svc-kyoto
+    name: "Kyoto University"
+    host: "www.kyoto-u.ac.jp"
+    port: 443
+    probe: http
+    class: service
+    sector: "education"
+    tier: 2
+    interval_s: 300
+  - id: svc-snu
+    name: "Seoul National University"
+    host: "www.snu.ac.kr"
+    port: 443
+    probe: http
+    class: service
+    sector: "education"
+    tier: 2
+    interval_s: 300
+  - id: svc-ntu
+    name: "NTU Singapore"
+    host: "www.ntu.edu.sg"
+    port: 443
+    probe: http
+    class: service
+    sector: "education"
+    tier: 2
+    interval_s: 300
+  - id: svc-hku
+    name: "University of Hong Kong"
+    host: "www.hku.hk"
+    port: 443
+    probe: http
+    class: service
+    sector: "education"
+    tier: 2
+    interval_s: 300
+  - id: svc-unimelb
+    name: "University of Melbourne"
+    host: "www.unimelb.edu.au"
+    port: 443
+    probe: http
+    class: service
+    sector: "education"
+    tier: 2
+    interval_s: 300
+  - id: svc-sydneyu
+    name: "University of Sydney"
+    host: "www.sydney.edu.au"
+    port: 443
+    probe: http
+    class: service
+    sector: "education"
+    tier: 2
+    interval_s: 300
+  - id: svc-uct
+    name: "University of Cape Town"
+    host: "www.uct.ac.za"
+    port: 443
+    probe: http
+    class: service
+    sector: "education"
+    tier: 2
+    interval_s: 300
+  - id: svc-uonbi
+    name: "University of Nairobi"
+    host: "www.uonbi.ac.ke"
+    port: 443
+    probe: http
+    class: service
+    sector: "education"
+    tier: 2
+    interval_s: 300
+  - id: svc-usp
+    name: "Universidade de São Paulo"
+    host: "www.usp.br"
+    port: 443
+    probe: http
+    class: service
+    sector: "education"
+    tier: 2
+    interval_s: 300
+  - id: svc-mcgill
+    name: "McGill"
+    host: "www.mcgill.ca"
+    port: 443
+    probe: http
+    class: service
+    sector: "education"
+    tier: 2
+    interval_s: 300
+  - id: svc-ubc
+    name: "UBC"
+    host: "www.ubc.ca"
+    port: 443
+    probe: http
+    class: service
+    sector: "education"
+    tier: 2
+    interval_s: 300
+  - id: svc-tum
+    name: "Technical University of Munich"
+    host: "www.tum.de"
+    port: 443
+    probe: http
+    class: service
+    sector: "education"
+    tier: 2
+    interval_s: 300
+  - id: svc-uva
+    name: "University of Amsterdam"
+    host: "www.uva.nl"
+    port: 443
+    probe: http
+    class: service
+    sector: "education"
+    tier: 2
+    interval_s: 300
+  - id: svc-sorbonne
+    name: "Sorbonne Université"
+    host: "www.sorbonne-universite.fr"
+    port: 443
+    probe: http
+    class: service
+    sector: "education"
+    tier: 2
+    interval_s: 300
+  - id: svc-lung
+    name: "American Lung Association"
+    host: "www.lung.org"
+    port: 443
+    probe: http
+    class: service
+    sector: "health"
+    tier: 2
+    interval_s: 300
+  - id: svc-stanfordhealth
+    name: "Stanford Health Care"
+    host: "www.stanfordhealthcare.org"
+    port: 443
+    probe: http
+    class: service
+    sector: "health"
+    tier: 2
+    interval_s: 300
+  - id: svc-mercy
+    name: "Mercy"
+    host: "www.mercy.net"
+    port: 443
+    probe: http
+    class: service
+    sector: "health"
+    tier: 2
+    interval_s: 300
+  - id: svc-kaiser
+    name: "Kaiser Permanente"
+    host: "www.kp.org"
+    port: 443
+    probe: http
+    class: service
+    sector: "health"
+    tier: 2
+    interval_s: 300
+  - id: svc-cvshealth
+    name: "CVS Health"
+    host: "www.cvshealth.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "health"
+    tier: 2
+    interval_s: 300
+  - id: svc-walgreens
+    name: "Walgreens"
+    host: "www.walgreens.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "health"
+    tier: 2
+    interval_s: 300
+  - id: svc-ema
+    name: "European Medicines Agency"
+    host: "www.ema.europa.eu"
+    port: 443
+    probe: http
+    class: service
+    sector: "health"
+    tier: 2
+    interval_s: 300
+  - id: svc-msf
+    name: "Médecins Sans Frontières"
+    host: "www.msf.org"
+    port: 443
+    probe: http
+    class: service
+    sector: "health"
+    tier: 2
+    interval_s: 300
+  - id: svc-stjude
+    name: "St. Jude"
+    host: "www.stjude.org"
+    port: 443
+    probe: http
+    class: service
+    sector: "health"
+    tier: 2
+    interval_s: 300
+  - id: svc-dana
+    name: "Dana-Farber"
+    host: "www.dana-farber.org"
+    port: 443
+    probe: http
+    class: service
+    sector: "health"
+    tier: 2
+    interval_s: 300
+  - id: svc-mskcc
+    name: "Memorial Sloan Kettering"
+    host: "www.mskcc.org"
+    port: 443
+    probe: http
+    class: service
+    sector: "health"
+    tier: 2
+    interval_s: 300
+  - id: svc-mdanderson
+    name: "MD Anderson"
+    host: "www.mdanderson.org"
+    port: 443
+    probe: http
+    class: service
+    sector: "health"
+    tier: 2
+    interval_s: 300
+  - id: svc-ally
+    name: "Ally"
+    host: "www.ally.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "financial/banking"
+    tier: 1
+    interval_s: 120
+  - id: svc-discover
+    name: "Discover"
+    host: "www.discover.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "financial/banking"
+    tier: 1
+    interval_s: 120
+  - id: svc-amex
+    name: "American Express"
+    host: "www.americanexpress.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "financial/banking"
+    tier: 1
+    interval_s: 120
+  - id: svc-scotiabankca
+    name: "Scotiabank"
+    host: "www.scotiabank.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "financial/banking"
+    tier: 1
+    interval_s: 120
+  - id: svc-nbc
+    name: "National Bank of Canada"
+    host: "www.nbc.ca"
+    port: 443
+    probe: http
+    class: service
+    sector: "financial/banking"
+    tier: 1
+    interval_s: 120
+  - id: svc-caixabank
+    name: "CaixaBank"
+    host: "www.caixabank.es"
+    port: 443
+    probe: http
+    class: service
+    sector: "financial/banking"
+    tier: 1
+    interval_s: 120
+  - id: svc-ing
+    name: "ING"
+    host: "www.ing.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "financial/banking"
+    tier: 1
+    interval_s: 120
+  - id: svc-ubs
+    name: "UBS"
+    host: "www.ubs.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "financial/banking"
+    tier: 1
+    interval_s: 120
+  - id: svc-uob
+    name: "UOB"
+    host: "www.uobgroup.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "financial/banking"
+    tier: 1
+    interval_s: 120
+  - id: svc-cimb
+    name: "CIMB"
+    host: "www.cimb.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "financial/banking"
+    tier: 1
+    interval_s: 120
+  - id: svc-icbc
+    name: "ICBC"
+    host: "www.icbc.com.cn"
+    port: 443
+    probe: http
+    class: service
+    sector: "financial/banking"
+    tier: 1
+    interval_s: 120
+  - id: svc-boc
+    name: "Bank of China"
+    host: "www.boc.cn"
+    port: 443
+    probe: http
+    class: service
+    sector: "financial/banking"
+    tier: 1
+    interval_s: 120
+  - id: svc-mufg
+    name: "MUFG"
+    host: "www.mufg.jp"
+    port: 443
+    probe: http
+    class: service
+    sector: "financial/banking"
+    tier: 1
+    interval_s: 120
+  - id: svc-smbc
+    name: "SMBC"
+    host: "www.smbc.co.jp"
+    port: 443
+    probe: http
+    class: service
+    sector: "financial/banking"
+    tier: 1
+    interval_s: 120
+  - id: svc-kebhana
+    name: "Hana Bank"
+    host: "www.kebhana.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "financial/banking"
+    tier: 1
+    interval_s: 120
+  - id: svc-standardbank
+    name: "Standard Bank"
+    host: "www.standardbank.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "financial/banking"
+    tier: 1
+    interval_s: 120
+  - id: svc-nedbank
+    name: "Nedbank"
+    host: "www.nedbank.co.za"
+    port: 443
+    probe: http
+    class: service
+    sector: "financial/banking"
+    tier: 1
+    interval_s: 120
+  - id: svc-absa
+    name: "Absa"
+    host: "www.absa.co.za"
+    port: 443
+    probe: http
+    class: service
+    sector: "financial/banking"
+    tier: 1
+    interval_s: 120
+  - id: svc-vercel
+    name: "Vercel"
+    host: "vercel.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "cloud"
+    tier: 1
+    interval_s: 120
+  - id: svc-netlify
+    name: "Netlify"
+    host: "www.netlify.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "cloud"
+    tier: 1
+    interval_s: 120
+  - id: svc-heroku
+    name: "Heroku"
+    host: "www.heroku.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "cloud"
+    tier: 1
+    interval_s: 120
+  - id: svc-render
+    name: "Render"
+    host: "render.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "cloud"
+    tier: 1
+    interval_s: 120
+  - id: svc-fly
+    name: "Fly.io"
+    host: "fly.io"
+    port: 443
+    probe: http
+    class: service
+    sector: "cloud"
+    tier: 1
+    interval_s: 120
+  - id: svc-scaleway
+    name: "Scaleway"
+    host: "www.scaleway.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "cloud"
+    tier: 1
+    interval_s: 120
+  - id: svc-alibabacloud
+    name: "Alibaba Cloud"
+    host: "www.alibabacloud.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "cloud"
+    tier: 1
+    interval_s: 120
+  - id: svc-tencentcloud
+    name: "Tencent Cloud"
+    host: "www.tencentcloud.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "cloud"
+    tier: 1
+    interval_s: 120
+  - id: svc-huaweicloud
+    name: "Huawei Cloud"
+    host: "www.huaweicloud.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "cloud"
+    tier: 1
+    interval_s: 120
+  - id: svc-jetbrains
+    name: "JetBrains"
+    host: "www.jetbrains.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "developer"
+    tier: 1
+    interval_s: 120
+  - id: svc-sourceforge
+    name: "SourceForge"
+    host: "sourceforge.net"
+    port: 443
+    probe: http
+    class: service
+    sector: "developer"
+    tier: 1
+    interval_s: 120
+  - id: svc-gitea
+    name: "Gitea"
+    host: "gitea.io"
+    port: 443
+    probe: http
+    class: service
+    sector: "developer"
+    tier: 1
+    interval_s: 120
+  - id: svc-elastic
+    name: "Elastic"
+    host: "www.elastic.co"
+    port: 443
+    probe: http
+    class: service
+    sector: "developer"
+    tier: 1
+    interval_s: 120
+  - id: svc-grafana
+    name: "Grafana"
+    host: "grafana.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "developer"
+    tier: 1
+    interval_s: 120
+  - id: svc-datadog
+    name: "Datadog"
+    host: "www.datadoghq.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "developer"
+    tier: 1
+    interval_s: 120
+  - id: svc-supabase
+    name: "Supabase"
+    host: "supabase.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "developer"
+    tier: 1
+    interval_s: 120
+  - id: svc-mongodb
+    name: "MongoDB"
+    host: "www.mongodb.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "developer"
+    tier: 1
+    interval_s: 120
+  - id: svc-suse
+    name: "SUSE"
+    host: "www.suse.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "developer"
+    tier: 1
+    interval_s: 120
+  - id: svc-fedora
+    name: "Fedora"
+    host: "getfedora.org"
+    port: 443
+    probe: http
+    class: service
+    sector: "developer"
+    tier: 1
+    interval_s: 120
+  - id: svc-debian
+    name: "Debian"
+    host: "www.debian.org"
+    port: 443
+    probe: http
+    class: service
+    sector: "developer"
+    tier: 1
+    interval_s: 120
+  - id: svc-ubuntu
+    name: "Ubuntu"
+    host: "www.ubuntu.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "developer"
+    tier: 1
+    interval_s: 120
+  - id: svc-archlinux
+    name: "Arch Linux"
+    host: "archlinux.org"
+    port: 443
+    probe: http
+    class: service
+    sector: "developer"
+    tier: 1
+    interval_s: 120
+  - id: svc-xinhua
+    name: "Xinhua"
+    host: "www.xinhuanet.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "news"
+    tier: 2
+    interval_s: 300
+  - id: svc-kyodo
+    name: "Kyodo News"
+    host: "www.kyodonews.jp"
+    port: 443
+    probe: http
+    class: service
+    sector: "news"
+    tier: 2
+    interval_s: 300
+  - id: svc-yonhap
+    name: "Yonhap"
+    host: "www.yna.co.kr"
+    port: 443
+    probe: http
+    class: service
+    sector: "news"
+    tier: 2
+    interval_s: 300
+  - id: svc-anadolu
+    name: "Anadolu Agency"
+    host: "www.aa.com.tr"
+    port: 443
+    probe: http
+    class: service
+    sector: "news"
+    tier: 2
+    interval_s: 300
+  - id: svc-pti
+    name: "Press Trust of India"
+    host: "www.ptinews.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "news"
+    tier: 2
+    interval_s: 300
+  - id: svc-nhk
+    name: "NHK"
+    host: "www3.nhk.or.jp"
+    port: 443
+    probe: http
+    class: service
+    sector: "news"
+    tier: 2
+    interval_s: 300
+  - id: svc-france24
+    name: "France 24"
+    host: "www.france24.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "news"
+    tier: 2
+    interval_s: 300
+  - id: svc-cna
+    name: "CNA"
+    host: "www.channelnewsasia.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "news"
+    tier: 2
+    interval_s: 300
+  - id: svc-japantimes
+    name: "The Japan Times"
+    host: "www.japantimes.co.jp"
+    port: 443
+    probe: http
+    class: service
+    sector: "news"
+    tier: 2
+    interval_s: 300
+  - id: svc-koreaherald
+    name: "The Korea Herald"
+    host: "www.koreaherald.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "news"
+    tier: 2
+    interval_s: 300
+  - id: svc-ctv
+    name: "CTV News"
+    host: "www.ctvnews.ca"
+    port: 443
+    probe: http
+    class: service
+    sector: "news"
+    tier: 2
+    interval_s: 300
+  - id: svc-elpais
+    name: "El País"
+    host: "elpais.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "news"
+    tier: 2
+    interval_s: 300
+  - id: svc-corriere
+    name: "Corriere della Sera"
+    host: "www.corriere.it"
+    port: 443
+    probe: http
+    class: service
+    sector: "news"
+    tier: 2
+    interval_s: 300
+  - id: svc-folha
+    name: "Folha de S.Paulo"
+    host: "www.folha.uol.com.br"
+    port: 443
+    probe: http
+    class: service
+    sector: "news"
+    tier: 2
+    interval_s: 300
+  - id: svc-clarin
+    name: "Clarín"
+    host: "www.clarin.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "news"
+    tier: 2
+    interval_s: 300
+  - id: svc-aldi
+    name: "Aldi"
+    host: "www.aldi.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "retail"
+    tier: 2
+    interval_s: 300
+  - id: svc-lidl
+    name: "Lidl"
+    host: "www.lidl.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "retail"
+    tier: 2
+    interval_s: 300
+  - id: svc-kmart
+    name: "Kmart"
+    host: "www.kmart.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "retail"
+    tier: 2
+    interval_s: 300
+  - id: svc-ulta
+    name: "Ulta Beauty"
+    host: "www.ulta.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "retail"
+    tier: 2
+    interval_s: 300
+  - id: svc-decathlon
+    name: "Decathlon"
+    host: "www.decathlon.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "retail"
+    tier: 2
+    interval_s: 300
+  - id: svc-flipkart
+    name: "Flipkart"
+    host: "www.flipkart.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "retail"
+    tier: 2
+    interval_s: 300
+  - id: svc-lazada
+    name: "Lazada"
+    host: "www.lazada.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "retail"
+    tier: 2
+    interval_s: 300
+  - id: svc-shopee
+    name: "Shopee"
+    host: "www.shopee.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "retail"
+    tier: 2
+    interval_s: 300
+  - id: svc-tap
+    name: "TAP Air Portugal"
+    host: "www.flytap.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "airline"
+    tier: 2
+    interval_s: 300
+  - id: svc-gulfair
+    name: "Gulf Air"
+    host: "www.gulfair.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "airline"
+    tier: 2
+    interval_s: 300
+  - id: svc-kuwaitairways
+    name: "Kuwait Airways"
+    host: "www.kuwaitairways.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "airline"
+    tier: 2
+    interval_s: 300
+  - id: svc-kenyaairways
+    name: "Kenya Airways"
+    host: "www.kenya-airways.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "airline"
+    tier: 2
+    interval_s: 300
+  - id: svc-rwandair
+    name: "RwandAir"
+    host: "www.rwandair.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "airline"
+    tier: 2
+    interval_s: 300
+  - id: svc-saairways
+    name: "South African Airways"
+    host: "www.flysaa.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "airline"
+    tier: 2
+    interval_s: 300
+  - id: svc-volaris
+    name: "Volaris"
+    host: "www.volaris.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "airline"
+    tier: 2
+    interval_s: 300
+  - id: svc-gol
+    name: "GOL"
+    host: "www.voegol.com.br"
+    port: 443
+    probe: http
+    class: service
+    sector: "airline"
+    tier: 2
+    interval_s: 300
+  - id: svc-chinaairlines
+    name: "China Airlines"
+    host: "www.china-airlines.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "airline"
+    tier: 2
+    interval_s: 300
+  - id: svc-ceair
+    name: "China Eastern"
+    host: "www.ceair.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "airline"
+    tier: 2
+    interval_s: 300
+  - id: svc-csair
+    name: "China Southern"
+    host: "www.csair.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "airline"
+    tier: 2
+    interval_s: 300
+  - id: svc-spicejet
+    name: "SpiceJet"
+    host: "www.spicejet.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "airline"
+    tier: 2
+    interval_s: 300
+  - id: svc-akasa
+    name: "Akasa Air"
+    host: "www.akasaair.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "airline"
+    tier: 2
+    interval_s: 300
+  - id: svc-okru
+    name: "Odnoklassniki"
+    host: "ok.ru"
+    port: 443
+    probe: http
+    class: service
+    sector: "social"
+    tier: 2
+    interval_s: 300
+  - id: svc-line
+    name: "LINE"
+    host: "line.me"
+    port: 443
+    probe: http
+    class: service
+    sector: "social"
+    tier: 2
+    interval_s: 300
+  - id: svc-viber
+    name: "Viber"
+    host: "www.viber.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "social"
+    tier: 2
+    interval_s: 300
+  - id: svc-signal
+    name: "Signal"
+    host: "signal.org"
+    port: 443
+    probe: http
+    class: service
+    sector: "social"
+    tier: 2
+    interval_s: 300
+  - id: svc-threads
+    name: "Threads"
+    host: "www.threads.net"
+    port: 443
+    probe: http
+    class: service
+    sector: "social"
+    tier: 2
+    interval_s: 300
+  - id: svc-mewe
+    name: "MeWe"
+    host: "www.mewe.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "social"
+    tier: 2
+    interval_s: 300
+  - id: svc-minds
+    name: "Minds"
+    host: "www.minds.com"
+    port: 443
+    probe: http
+    class: service
+    sector: "social"
+    tier: 2
+    interval_s: 300
+  - id: svc-diaspora
+    name: "Diaspora"
+    host: "diasporafoundation.org"
+    port: 443
+    probe: http
+    class: service
+    sector: "social"
+    tier: 2
+    interval_s: 300
+  - id: svc-pixelfed
+    name: "Pixelfed"
+    host: "pixelfed.org"
+    port: 443
+    probe: http
+    class: service
+    sector: "social"
+    tier: 2
+    interval_s: 300
+
   - id: ref-example
     name: "example.com"
     host: "example.com"

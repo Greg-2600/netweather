@@ -458,7 +458,7 @@ This is the feature most likely to earn the project a bad reputation, so the lim
 
 Hard floor: **30s per host, enforced in code, not configurable below.**
 
-Anchors sit at 120s rather than 60s on purpose. National shutdowns and cable cuts are measured in hours; halving the anchor cadence doubles the largest single block of traffic (~350 targets) to buy a detection latency improvement nobody can use. At 120s the whole 750-target fleet lands near 5 probes/s, which is also the number the storage sizing in §12 assumes.
+Anchors sit at 120s rather than 60s on purpose. National shutdowns and cable cuts are measured in hours; halving the anchor cadence doubles the largest single block of traffic (~584 targets in the expanded fleet) to buy a detection latency improvement nobody can use. At 120s the original 750-target fleet landed near 5 probes/s; the expanded 1000-target fleet lands near 6.8 probes/s, the rate used in the egress estimate in `docs/ACCEPTABLE_USE.md` §4.
 
 ```
 20  @ 30s   = 0.67/s
@@ -467,6 +467,16 @@ Anchors sit at 120s rather than 60s on purpose. National shutdowns and cable cut
 350 @ 120s  = 2.92/s      # anchors
                 ----
                 4.97/s  ≈ 430k probes/day
+```
+
+The checked-in 1000-target fleet resolves to a slightly different mix:
+
+```
+ 10 @ 600s  = 0.02/s      # references
+693 @ 120s  = 5.78/s      # country/network anchors + critical services
+297 @ 300s  = 0.99/s      # bulk services
+              ----
+              6.79/s  ≈ 586k probes/day
 ```
 
 Jitter is **additive only**: `interval + rand(0, pct·interval)`, never subtractive. Two reasons, both load-bearing:

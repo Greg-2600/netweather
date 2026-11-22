@@ -9,14 +9,14 @@
 #
 # Token resolution (first match wins): NETWEATHER_UI_TOKEN, TOKEN_FILE, then the
 # nw-fieldtrial-secret Docker volume written by deploy_fieldtrial.sh.
-#   EXPECTED_TARGETS=749 EXPECTED_CORRIDORS=10 EXPECTED_HUBS=42 BASE_URL=http://localhost:2600  (overridable)
+#   EXPECTED_TARGETS=1000 EXPECTED_CORRIDORS=10 EXPECTED_HUBS=42 BASE_URL=http://localhost:2600  (overridable)
 
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
 
 BASE_URL="${BASE_URL:-http://localhost:2600}"
-EXPECTED_TARGETS="${EXPECTED_TARGETS:-749}"
+EXPECTED_TARGETS="${EXPECTED_TARGETS:-1000}"
 EXPECTED_CORRIDORS="${EXPECTED_CORRIDORS:-10}"
 EXPECTED_HUBS="${EXPECTED_HUBS:-42}"
 SECRET="${SECRET:-nw-fieldtrial-secret}"

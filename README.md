@@ -91,7 +91,7 @@ docker compose up -d
 
 Open <http://localhost:2600> and log in with the token you just created. That's it — 14 shipped targets, roughly 50 MB/day.
 
-Want the full field-trial fleet (749 real targets + five-continent Tor corroboration)?
+Want the full field-trial fleet (1000 real targets + five-continent Tor corroboration)?
 
 ```powershell
 .\scripts\deploy_fieldtrial.ps1               # Windows: build + deploy
@@ -100,14 +100,14 @@ Want the full field-trial fleet (749 real targets + five-continent Tor corrobora
 
 ```sh
 ./scripts/deploy_fieldtrial.sh                # Linux/macOS/CI: same deploy
-./scripts/check_fieldtrial.sh                 # health, 749 targets, auth, map, hubs, corridors, feeds, Tor
+./scripts/check_fieldtrial.sh                 # health, 1000 targets, auth, map, hubs, corridors, feeds, Tor
 ```
 
 ---
 
 ## Screenshots
 
-All shots are from the local field-trial deploy — 749 real targets, no mocked data.
+All shots are from the local field-trial deploy — 1000 real targets, no mocked data.
 
 **Health treemap at `/map`** — outages first, largest and reddest longest-standing:
 
@@ -138,14 +138,14 @@ Every page is server-rendered HTML + SSE — no JS framework, no build step.
 
 ## 🔍 At a glance
 
-**Targets** — four classes, ~750 probes:
+**Targets** — four classes, 1000 probes in the field-trial config:
 
 | Class | Count | Job |
 |---|---|---|
-| Service | 400 | Sector health (banking, airlines, cloud, …) |
-| Country anchor | 250 | ccTLD nameservers — "is country X still on the internet?" |
-| Network anchor | 100 | Root servers, public resolvers, IXP route servers |
-| Reference | 10–100 | The "is it me?" baseline |
+| Service | 406 | Sector health (banking, airlines, telecom, cloud, …) |
+| Country anchor | 459 | ccTLD nameservers — "is country X still on the internet?" |
+| Network anchor | 125 | Root-zone glue DNS servers and public resolvers |
+| Reference | 10 | The "is it me?" baseline |
 
 **Verdicts** — `OK` · `INCIDENT` · `REGIONAL` · `LOCAL` · `TAMPER` · `STALE` · `LEARNING`
 
@@ -153,7 +153,7 @@ Every page is server-rendered HTML + SSE — no JS framework, no build step.
 
 **Stack** — Go, SQLite (pure Go), server-rendered HTML + SSE. One binary. No JS build step, no framework. Browser tests use Playwright.
 
-The early field-trial fleet is pre-generated at [`config/fieldtrial-targets.yaml`](config/fieldtrial-targets.yaml): **749 real targets** (399 ccTLD anchors, 100 network anchors, 240 services, 10 references), rebuilt from the IANA root zone by [`scripts/gen_fieldtrial_targets.py`](scripts/gen_fieldtrial_targets.py). `netweather seed --diff` prints what a seed would change without writing anything.
+The early field-trial fleet is pre-generated at [`config/fieldtrial-targets.yaml`](config/fieldtrial-targets.yaml): **1000 real targets** (459 ccTLD anchors, 125 network anchors, 406 services, 10 references), rebuilt from the IANA root zone by [`scripts/gen_fieldtrial_targets.py`](scripts/gen_fieldtrial_targets.py). The extra anchors are second delegated NS records and distinct root-zone glue IPs; the extra services are egress-verified public endpoints that deepen telecom, government, health, and education coverage. Every original id is preserved. `netweather seed --diff` prints what a seed would change without writing anything.
 
 ---
 
@@ -323,7 +323,7 @@ This tool sends periodic requests to third-party sites. That is dual-use, so the
 - Tor vantages: off by default, ≤25 targets and ≥2s spacing per exit, daily bandwidth budget per exit
 - **No telemetry, ever**
 
-At the full 750-target fleet this is ~430k probes/day and ~0.7 GB/day, dominated by TLS handshakes. Details and arithmetic: [`docs/ACCEPTABLE_USE.md`](docs/ACCEPTABLE_USE.md) §4.
+At the full 1000-target field-trial fleet this is ~586k probes/day and ~1.1 GB/day, dominated by TLS handshakes. Details and arithmetic: [`docs/ACCEPTABLE_USE.md`](docs/ACCEPTABLE_USE.md) §4.
 
 ---
 

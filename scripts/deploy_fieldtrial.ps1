@@ -1,6 +1,6 @@
 # scripts/deploy_fieldtrial.ps1
 #
-# Deploys the early field trial: production-sized target fleet (749 targets),
+# Deploys the early field trial: production-sized target fleet (1000 targets),
 # direct + Tor vantages, hardened runtime, health gate, and rollback.
 #
 #   .\scripts\deploy_fieldtrial.ps1               # build + deploy

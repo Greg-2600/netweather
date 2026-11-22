@@ -10,6 +10,15 @@ changed between two images without it.
 
 ### Added
 
+- The field-trial fleet grows from 749 to 1000 quality-gated real targets while
+  preserving every existing id. The 251 additions are 60 second ccTLD NS
+  anchors from the IANA root zone, 25 distinct root-zone glue IPs, and 166
+  egress-verified public service endpoints. Service additions deepen telecom,
+  government, health, and education while adding breadth across banking, cloud,
+  developer, news, retail, airline, and social sectors. Bot-challenged hosts were
+  excluded rather than approached with a new identity. Schema stays at 25, with
+  no status URLs, city/state fields, or runtime fetches added;
+  `scripts/check_fieldtrial.sh` now expects 1000 targets.
 - Zero-infrastructure telephony-adjacent evidence feeds: the field trial now
   polls verified public Statuspage JSON from Twilio, Telnyx, and Verizon plus
   RIPEstat BGP updates for nine verified public operator ASNs. Statuspage rows
@@ -58,8 +67,9 @@ changed between two images without it.
   treemap as `/map`: one city block per `City, ST hub — site` group on sector
   `us/hub`, one box per endpoint, worst cities and sites first. The 42 targets
   that stayed blocked from every vantage were replaced with egress-verified
-  public endpoints under their original ids; the fleet stays at 749 and the
-  schema stays at 25. `scripts/check_fieldtrial.sh` now checks the hub blocks.
+  public endpoints under their original ids; that replacement pass kept the
+  fleet at 749 and the schema at 25. `scripts/check_fieldtrial.sh` now checks
+  the hub blocks.
 - One bounded DNS timeout retry: a lost UDP datagram gets a second attempt
   inside the existing 5s budget, while negative answers, policy blocks, and
   malformed replies remain final. `NETWEATHER_DNS_RETRIES` (0–2) and
@@ -172,6 +182,12 @@ changed between two images without it.
 
 ### Fixed
 
+- The shared "latest probe at this vantage" join now pins `probe_target_ts`, so
+  the 1000-target fleet's `/api/v1/targets`, `/map`, `/atlas`, and field-trial
+  checker stay fast as probe history grows. SQLite was choosing the
+  vantage-first index and rescanning each busy vantage's entire history once per
+  target, turning board reads into multi-minute queries at this fleet size. No
+  schema migration or version bump is involved.
 - Six field-trial service endpoints that were unjudgeable from the local egress
   (Turkish Airlines, HPE, Facebook, Best Buy, Uniqlo, and The Washington Post)
   now point at real public pages that answer with assessable HTML from the local
