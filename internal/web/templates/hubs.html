@@ -33,11 +33,50 @@
       not a schema column.
     </p>
 
+    {{if .USPoints}}
+    <section class="hub-projection" aria-labelledby="hub-projection-title"
+             data-testid="hub-projection">
+      <h2 id="hub-projection-title">Geographic projection</h2>
+      <p class="muted small">
+        The same city aggregates placed on a contiguous-US Albers equal-area
+        conic projection (Natural Earth 110m state outlines, public domain).
+        Each marker sits at the label's approximate city centre — never the
+        endpoint's measured hosting location. Colour is the city's worst
+        endpoint state and the number is its endpoint count; hover for the
+        detail, or click to jump to that city's block below.
+      </p>
+      <div class="projection-frame">
+        <img class="projection-base" src="/static/us-projection.svg" alt="" aria-hidden="true">
+        <div class="projection-layer">
+          {{range .USPoints}}
+          <a class="projection-marker hub-marker us-hub-marker {{.WorstCls}}"
+             data-testid="hub-map-marker"
+             style="left: {{.X}}%; top: {{.Y}}%;"
+             href="{{.Href}}" data-hub="{{.Label}}" data-count="{{.Count}}"
+             title="{{.Title}}" aria-label="{{.Title}}">
+            <span class="hub-glyph" aria-hidden="true">{{.Count}}</span>
+          </a>
+          {{end}}
+        </div>
+      </div>
+      <p class="muted small projection-legend">
+        <span class="legend-diamond">◆</span> worst city state;
+        <span aria-hidden="true">1–2</span> endpoints in that city
+      </p>
+      {{if .MapUnmapped}}
+      <p class="muted small" data-testid="hub-projection-unmapped">
+        {{.MapUnmapped}} hub city label(s) have no published city-centre anchor
+        and are not placed on the map.
+      </p>
+      {{end}}
+    </section>
+    {{end}}
+
     {{if .Sectors}}
     <section data-testid="hubs" aria-label="US hubs">
       <div data-testid="treemap" class="treemap hubs">
         {{range .Sectors}}
-        <section class="map-sector hub {{.WorstCls}}" data-testid="hub"
+        <section id="hub-{{.Anchor}}" class="map-sector hub {{.WorstCls}}" data-testid="hub"
                  data-city="{{.City}}" data-state="{{.WorstCls}}"
                  aria-label="{{.City}}, {{.State}}: {{.Count}} target(s), worst {{.Worst}}"
                  style="left:{{printf "%.2f" .X}}%;top:{{printf "%.2f" .Y}}%;width:{{printf "%.2f" .W}}%;height:{{printf "%.2f" .H}}%;">

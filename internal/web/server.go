@@ -2605,6 +2605,24 @@ type worldHubPoint struct {
 	Title    string
 }
 
+// hubUSPoint is one city marker on the /hubs contiguous-US projection. It shows
+// the same aggregate as the city block below, with the same explicit caveat:
+// the anchor is the label's approximate city centre, not the endpoint host.
+type hubUSPoint struct {
+	Label    string
+	City     string
+	State    string
+	X        string
+	Y        string
+	WorstCls string
+	Worst    string
+	Glyph    string
+	Count    int
+	Order    int
+	Href     string
+	Title    string
+}
+
 // Country anchors are geographic centres from the public mledoze/countries
 // dataset (cca2 + latlng), projected once to equirectangular percentages:
 // x = (lon + 180) / 360, y = (90 - lat) / 180. They place a marker; they do not
@@ -2633,9 +2651,17 @@ func parseProjectionData(data, sep string, upper bool) map[string][2]string {
 	return out
 }
 
+// The /hubs projection uses the same 34 city labels in a contiguous-US Albers
+// equal-area conic frame. Coordinates come from scripts/gen_us_projection.py,
+// which reads the approximate Natural Earth city centres above and projects
+// them through the same transform as static/us-projection.svg. They place a
+// marker, never a measured endpoint location.
+const hubUSProjectionData = `Dallas, TX:49.50:71.44|New York, NY:87.74:35.63|Newark, NJ:87.45:35.80|San Francisco, CA:5.32:42.92|Seattle, WA:11.48:8.73|Miami, FL:82.94:92.38|Houston, TX:52.24:82.47|Minneapolis, MN:55.37:26.92|Detroit, MI:72.24:34.29|Salt Lake City, UT:24.35:38.71|Phoenix, AZ:21.33:64.97|Raleigh, NC:82.06:55.99|Las Vegas, NV:16.91:53.57|Washington, DC:83.58:43.88|Orlando, FL:79.70:83.33|Baltimore, MD:84.08:42.31|Portland, OR:9.68:15.65|Birmingham, AL:67.98:67.38|Pittsburgh, PA:77.93:39.91|Memphis, TN:61.83:62.32|New Orleans, LA:62.49:81.05|Louisville, KY:68.83:50.03|Savannah, GA:79.04:70.65|Chattanooga, TN:70.51:61.35|Boston, MA:91.55:28.00|San Diego, CA:11.73:64.57|Los Angeles, CA:10.46:59.12|Chicago, IL:64.86:37.41|Cleveland, OH:74.76:36.88|Oklahoma City, OK:48.25:61.59|St. Louis, MO:60.96:49.65|Boise, ID:18.57:26.39|Austin, TX:47.65:80.47|Denver, CO:35.72:44.90`
+
 var (
 	countryProjection = parseProjectionData(countryProjectionData, " \t\n\r", true)
 	hubProjection     = parseProjectionData(hubProjectionData, "|", false)
+	hubUSProjection   = parseProjectionData(hubUSProjectionData, "|", false)
 )
 
 // Corridor label anchors use the same equirectangular projection as /world.
@@ -2959,8 +2985,12 @@ type hubsView struct {
 	// endpoints in that city. The geometry and hover data reuse /map.
 	Sectors []*mapSector
 	Tiles   []*mapTile
-	Other   int
-	Note    string
+	// USPoints are the same city aggregates placed on the Albers projection.
+	// MapUnmapped counts hub labels with no published city-centre anchor.
+	USPoints    []hubUSPoint
+	MapUnmapped int
+	Other       int
+	Note        string
 }
 
 // parseHubName reads the naming convention without a schema change. The state
@@ -2988,6 +3018,25 @@ func parseHubName(name string) (city, state, site string, ok bool) {
 		return "", "", "", false
 	}
 	return city, state, site, true
+}
+
+// hubAnchorID is the stable fragment id shared by the projection marker and the
+// city block in the treemap, so clicking a map marker scrolls to its aggregate.
+func hubAnchorID(cityState string) string {
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(cityState) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			dash = false
+			continue
+		}
+		if !dash {
+			b.WriteByte('-')
+			dash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }
 
 // hubMapTile turns one hub endpoint into the same tile contract the health map
@@ -3075,7 +3124,8 @@ func (s *server) handleHubs(w http.ResponseWriter, r *http.Request) {
 		}
 		sec := &mapSector{
 			Label: cityState, City: city, State: state,
-			Count: len(members), Color: tileStateColor(worst),
+			Anchor: hubAnchorID(cityState),
+			Count:  len(members), Color: tileStateColor(worst),
 			Order: board.SeverityRank(worst),
 			Worst: worst.Text(), WorstCls: worst.CSSClass(), Glyph: worst.Glyph(),
 			// The board's sector grouping is the closest existing drill-down:
@@ -3110,8 +3160,35 @@ func (s *server) handleHubs(w http.ResponseWriter, r *http.Request) {
 			sec.Up += tile.Up
 			sec.Down += tile.Down
 		}
+		// The projection is the same city aggregate in a geographic frame.
+		// Only labels with a published approximate city-centre anchor are
+		// placed; the rest are counted and reported rather than guessed.
+		if anchor, ok := hubUSProjection[cityState]; ok {
+			title := fmt.Sprintf("%s — %d endpoint(s), worst %s", cityState, len(members), worst.Text())
+			title += "; approximate city centre, endpoint hosting location is not measured"
+			view.USPoints = append(view.USPoints, hubUSPoint{
+				Label: cityState, City: city, State: state,
+				X: anchor[0], Y: anchor[1],
+				WorstCls: worst.CSSClass(), Worst: worst.Text(), Glyph: worst.Glyph(),
+				Count: len(members), Order: board.SeverityRank(worst),
+				Href:  "#hub-" + hubAnchorID(cityState),
+				Title: title,
+			})
+		} else {
+			view.MapUnmapped++
+		}
+
 		view.Sectors = append(view.Sectors, sec)
 	}
+
+	// Match the map marker order to the treemap: worst aggregate first.
+	sort.SliceStable(view.USPoints, func(i, j int) bool {
+		a, b := view.USPoints[i], view.USPoints[j]
+		if a.Order != b.Order {
+			return a.Order < b.Order
+		}
+		return a.Label < b.Label
+	})
 
 	// Keep the DOM/tab order in step with the picture: the unhealthiest city
 	// block is packed first, and its worst endpoint is the first link in it.

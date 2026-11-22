@@ -710,6 +710,33 @@ func TestHubsPageRenders(t *testing.T) {
 		ToHaveAttribute("data-city", "Dallas"); err != nil {
 		t.Fatalf("worst hub not first: %v", err)
 	}
+
+	// The US projection is above the treemap and plots the same two aggregates.
+	if err := expect.Locator(h.page.Locator(`[data-testid="hub-projection"]`)).ToBeVisible(); err != nil {
+		t.Fatalf("hub projection not visible: %v", err)
+	}
+	ordered, err := h.page.Evaluate(`() => {
+		const p = document.querySelector('[data-testid="hub-projection"]');
+		const t = document.querySelector('[data-testid="treemap"]');
+		return !!p && !!t && (p.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := ordered.(bool); !ok {
+		t.Fatal("hub projection must render above the treemap")
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="hub-map-marker"]`)).ToHaveCount(2); err != nil {
+		t.Fatalf("hub map marker count: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="hub-map-marker"]`).First()).
+		ToHaveAttribute("data-hub", "Dallas, TX"); err != nil {
+		t.Fatalf("worst hub not first on the map: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="hub-map-marker"]`).First()).
+		ToHaveAttribute("title", "Dallas, TX — 1 endpoint(s), worst Down; approximate city centre, endpoint hosting location is not measured"); err != nil {
+		t.Fatalf("hub marker title should state the caveat: %v", err)
+	}
 }
 
 func TestWorldProjectionRenders(t *testing.T) {

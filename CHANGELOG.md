@@ -10,6 +10,13 @@ changed between two images without it.
 
 ### Added
 
+- `/hubs` adds a contiguous-US Albers equal-area projection above the treemap.
+  The 34 city aggregates reuse their published approximate city-centre anchors,
+  now projected through the same frame as the same-origin Natural Earth 110m
+  state-outline SVG. Markers carry worst-state colour, endpoint count, and an
+  explicit "approximate city centre, not measured hosting location" hover title;
+  clicking one jumps to its city block. An unanchored label stays in the treemap
+  and is counted in a note. No scripts, third-party assets, or runtime fetches.
 - `/corridors` adds a self-contained equirectangular projection above the table.
   It places only the configured operator `from`/`to` labels at approximate
   city-centre anchors and draws a straight line between known pairs, split at

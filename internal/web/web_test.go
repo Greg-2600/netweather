@@ -1454,6 +1454,7 @@ func TestStaticAssets(t *testing.T) {
 		"/static/app.css":              "text/css",
 		"/static/app.js":               "javascript",
 		"/static/world-projection.svg": "image/svg+xml",
+		"/static/us-projection.svg":    "image/svg+xml",
 	} {
 		resp, err := http.Get(ts.URL + path) //nolint:bodyclose // body() closes it
 		if err != nil {

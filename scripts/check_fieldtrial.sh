@@ -100,6 +100,16 @@ pass() {
         hub_tiles="$(printf '%s' "$rendered_hubs" | grep -o 'data-testid="hub"' | wc -l | tr -d ' ')"
         check "/hubs cities" "$([ "$hub_tiles" -le "$EXPECTED_HUBS" ] && [ "$hub_tiles" -gt 0 ] && echo 0 || echo 1)" \
             "$hub_tiles city tiles (at most $EXPECTED_HUBS hubs)"
+        hub_map_markers="$(printf '%s' "$rendered_hubs" | grep -o 'data-testid="hub-map-marker"' | wc -l | tr -d ' ')"
+        check "/hubs projection" "$([ "$hub_map_markers" -gt 0 ] && echo 0 || echo 1)" \
+            "$hub_map_markers US hub map markers"
+        hub_projection_line="$(printf '%s' "$rendered_hubs" | grep -n -m1 'data-testid="hub-projection"' | cut -d: -f1 || true)"
+        hub_treemap_line="$(printf '%s' "$rendered_hubs" | grep -n -m1 'data-testid="treemap"' | cut -d: -f1 || true)"
+        check "/hubs map first" "$([ -n "$hub_projection_line" ] && [ -n "$hub_treemap_line" ] && [ "$hub_projection_line" -lt "$hub_treemap_line" ] && echo 0 || echo 1)" \
+            "projection line $hub_projection_line, treemap line $hub_treemap_line"
+        hub_asset_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$BASE_URL/static/us-projection.svg" 2>/dev/null || true)"
+        check "/hubs base map" "$([ "$hub_asset_code" = "200" ] && echo 0 || echo 1)" \
+            "same-origin SVG HTTP $hub_asset_code"
 
         # 4a-2. The world view keeps its country tiles and adds a geographic
         # projection with the same health plus approximate hub label anchors.

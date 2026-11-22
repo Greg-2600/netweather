@@ -69,6 +69,7 @@ type mapSector struct {
 	City     string
 	State    string
 	Href     string
+	Anchor   string // stable fragment id for the city block, linked from the map
 	Worst    string
 	WorstCls string
 	Glyph    string
