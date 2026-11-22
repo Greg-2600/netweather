@@ -18,6 +18,7 @@ func statuspageFixture(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/api/v2/summary.json", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
+		  "page": {"name": "Example Provider"},
 		  "status": {"indicator": "major", "description": "Partial Outage"},
 		  "incidents": [
 		    {"id": "inc-1", "name": "Elevated API errors", "status": "investigating",
@@ -70,6 +71,12 @@ func TestStatuspageFetchParsesIncidents(t *testing.T) {
 	}
 	if strings.Contains(second.Payload, "we are looking") {
 		t.Error("update history leaked into the stored payload")
+	}
+	if !strings.Contains(first.Payload, `"evidence":"provider-reported"`) {
+		t.Errorf("payload lost the evidence label: %s", first.Payload)
+	}
+	if !strings.Contains(first.Payload, `"provider":"Example Provider"`) {
+		t.Errorf("payload lost the page's own provider name: %s", first.Payload)
 	}
 }
 

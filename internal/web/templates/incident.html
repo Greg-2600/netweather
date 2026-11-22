@@ -63,12 +63,13 @@
       {{if .Corroboration}}
       <table class="probes" data-testid="incident-corroboration">
         <thead>
-          <tr><th>Feed</th><th>Kind</th><th>Place</th><th>Severity</th><th>Started</th><th>Ended</th></tr>
+          <tr><th>Feed</th><th>Evidence</th><th>Kind</th><th>Place</th><th>Severity</th><th>Started</th><th>Ended</th></tr>
         </thead>
         <tbody>
           {{range .Corroboration}}
           <tr data-testid="corroboration-row">
             <td>{{.Feed}}</td>
+            <td>{{.Evidence}}</td>
             <td>{{.Kind}}</td>
             <td class="mono">{{.Place}}</td>
             <td class="mono">{{.Severity}}</td>

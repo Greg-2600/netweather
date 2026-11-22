@@ -113,6 +113,9 @@ func (s *Statuspage) fetchPage(ctx context.Context, endpoint, host string, obser
 	}
 
 	var summary struct {
+		Page struct {
+			Name string `json:"name"`
+		} `json:"page"`
 		Incidents []map[string]any `json:"incidents"`
 	}
 	if err := json.Unmarshal(body, &summary); err != nil {
@@ -121,7 +124,7 @@ func (s *Statuspage) fetchPage(ctx context.Context, endpoint, host string, obser
 
 	events := make([]Event, 0, len(summary.Incidents))
 	for _, raw := range summary.Incidents {
-		event, ok := parseStatuspageIncident(host, raw, observed)
+		event, ok := parseStatuspageIncident(host, summary.Page.Name, raw, observed)
 		if !ok {
 			continue
 		}
@@ -130,7 +133,7 @@ func (s *Statuspage) fetchPage(ctx context.Context, endpoint, host string, obser
 	return events, nil
 }
 
-func parseStatuspageIncident(host string, raw map[string]any, observed time.Time) (Event, bool) {
+func parseStatuspageIncident(host, provider string, raw map[string]any, observed time.Time) (Event, bool) {
 	id := stringField(raw, "id")
 	name := stringField(raw, "name")
 	start, ok := timeField(raw, "created_at", "started_at", "updated_at")
@@ -152,10 +155,14 @@ func parseStatuspageIncident(host string, raw map[string]any, observed time.Time
 	// Keep the useful human fields and drop the update history, which can be
 	// long and is not part of the corroboration signal.
 	payload := map[string]any{
-		"name":   name,
-		"status": stringField(raw, "status"),
-		"impact": stringField(raw, "impact"),
-		"url":    stringField(raw, "shortlink"),
+		"name":     name,
+		"status":   stringField(raw, "status"),
+		"impact":   stringField(raw, "impact"),
+		"url":      stringField(raw, "shortlink"),
+		"evidence": "provider-reported",
+	}
+	if provider != "" {
+		payload["provider"] = provider
 	}
 	if encoded, err := json.Marshal(payload); err == nil {
 		event.Payload = capPayload(string(encoded), 8<<10)

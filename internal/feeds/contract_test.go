@@ -105,6 +105,9 @@ func TestFeedContractRISLive(t *testing.T) {
 	if !strings.Contains(first.Payload, `"prefix"`) {
 		t.Fatalf("payload lost the prefix: %s", first.Payload)
 	}
+	if !strings.Contains(first.Payload, `"evidence":"ip-routing-corroboration"`) {
+		t.Fatalf("payload lost the evidence label: %s", first.Payload)
+	}
 
 	second := events[1]
 	if second.Kind != "bgp_update" {

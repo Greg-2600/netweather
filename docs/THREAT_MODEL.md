@@ -186,6 +186,8 @@ This is the highest-severity area, because a mistake here turns the operator's I
 
 Residual: a public host that later *becomes* a private address after the operator's DNS is compromised is caught at dial time, not before. A target that is genuinely public but hostile can still return 32 KB of garbage — that is bounded, not prevented.
 
+Telephony-adjacent feeds do not add a trust path to a verdict. Statuspage JSON is the provider's own report and is labelled `provider-reported`; RIPEstat BGP updates are an outside view of an operator's IP network and are labelled `ip-routing-corroboration`. Both are stored in `external_event` and shown in feed panels, but neither is a measurement of SMS, voice, or PSTN health, and neither can move a target to `DOWN`.
+
 ### 5.3 Untrusted configuration and seeds (B4)
 
 | ID | Threat | Mitigation | Status |

@@ -335,6 +335,7 @@ func (r *RISLiveWS) parseFrame(frame []byte) (store.ExternalEvent, bool) {
 		"host": msg.Host, "id": msg.ID, "peer": msg.Peer,
 		"peer_asn": msg.PeerASN, "path": msg.Path,
 		"prefixes": prefixes, "withdrawals": msg.Withdrawals,
+		"evidence": "ip-routing-corroboration",
 	})
 
 	return store.ExternalEvent{

@@ -165,10 +165,11 @@ func (r *RISLive) fetchASN(ctx context.Context, base *url.URL, asn int, start, s
 			severity = 1.0
 		}
 		payload, _ := json.Marshal(map[string]any{
-			"asn":     asn,
-			"type":    u.Type,
-			"prefix":  u.Attrs.Prefix,
-			"as_path": u.Attrs.ASPath,
+			"asn":      asn,
+			"type":     u.Type,
+			"prefix":   u.Attrs.Prefix,
+			"as_path":  u.Attrs.ASPath,
+			"evidence": "ip-routing-corroboration",
 		})
 		out = append(out, Event{
 			ExternalID: fmt.Sprintf("ris:%d:%d:%s:%d", asn, int64(u.Timestamp), u.Type, i),

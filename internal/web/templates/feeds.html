@@ -26,7 +26,9 @@
     <h1 class="page-title">Feeds</h1>
     <p class="muted" data-testid="feeds-summary">
       External corroboration sources. A feed is evidence, not a verdict: it
-      never declares an outage on its own. A stale feed is a stated gap, not a
+      never declares an outage on its own. Provider-reported rows are an
+      operator's own status report; IP-routing rows are BGP observations.
+      Neither measures SMS or PSTN health. A stale feed is a stated gap, not a
       quiet "no known event".
     </p>
 
@@ -59,12 +61,13 @@
     <h2 class="page-title">Recent external events</h2>
     <table class="probes" data-testid="event-list">
       <thead>
-        <tr><th>Feed</th><th>Kind</th><th>Severity</th><th>Country</th><th>ASN</th><th>Started</th><th>Ended</th><th>Observed</th></tr>
+        <tr><th>Feed</th><th>Evidence</th><th>Kind</th><th>Severity</th><th>Country</th><th>ASN</th><th>Started</th><th>Ended</th><th>Observed</th></tr>
       </thead>
       <tbody>
         {{range .Events}}
         <tr data-testid="event-row">
           <td class="mono">{{.Feed}}</td>
+          <td>{{.Evidence}}</td>
           <td>{{.Kind}}</td>
           <td>{{printf "%.2f" .Severity}}</td>
           <td>{{if .Country}}{{.Country}}{{else}}-{{end}}</td>

@@ -465,14 +465,17 @@
       {{end}}
       {{if .Feeds.Events}}
       <table class="probes" data-testid="atlas-feed-events">
-        <thead><tr><th>Feed</th><th>Kind</th><th>Country</th><th>Observed</th></tr></thead>
+        <thead><tr><th>Feed</th><th>Evidence</th><th>Kind</th><th>Country</th><th>Observed</th></tr></thead>
         <tbody>
           {{range .Feeds.Events}}
-          <tr data-testid="atlas-feed-event"><td>{{.Feed}}</td><td>{{.Kind}}</td>
+          <tr data-testid="atlas-feed-event"><td>{{.Feed}}</td><td>{{.Evidence}}</td><td>{{.Kind}}</td>
             <td>{{.Country}}</td><td class="mono">{{.ObservedAt}}</td></tr>
           {{end}}
         </tbody>
       </table>
+      <p class="muted small">Provider-reported rows are an operator's own status
+        report; IP-routing rows are BGP observations. Neither measures SMS or
+        PSTN health.</p>
       {{else}}
       <p class="muted small" data-testid="atlas-no-feed-events">No recent external events.</p>
       {{end}}

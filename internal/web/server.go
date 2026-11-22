@@ -1674,11 +1674,27 @@ type vantageStateView struct {
 // targetCorroborationView is one feed event near the target's scope.
 type targetCorroborationView struct {
 	Feed      string
+	Evidence  string
 	Kind      string
 	Severity  string
 	Place     string
 	StartedAt string
 	EndedAt   string
+}
+
+// feedEvidenceLabel states what an external event actually is. Statuspage rows
+// are the operator's own report; RIS rows are IP-routing observations. Neither
+// is a measurement of SMS or PSTN health, so the label is shown wherever feed
+// evidence is rendered rather than left to a feed name to imply.
+func feedEvidenceLabel(feed string) string {
+	switch strings.ToLower(strings.TrimSpace(feed)) {
+	case "statuspage":
+		return "provider-reported"
+	case "ris", "ris-live", "ris-live-ws":
+		return "IP-routing corroboration"
+	default:
+		return "external corroboration"
+	}
 }
 
 // toCorroborationRows renders feed events for the drawer. The place is the
@@ -1687,7 +1703,7 @@ func toCorroborationRows(events []store.ExternalEvent) []targetCorroborationView
 	out := make([]targetCorroborationView, 0, len(events))
 	for _, e := range events {
 		row := targetCorroborationView{
-			Feed: e.Feed, Kind: e.Kind,
+			Feed: e.Feed, Evidence: feedEvidenceLabel(e.Feed), Kind: e.Kind,
 			Severity:  fmt.Sprintf("%.2f", e.Severity),
 			StartedAt: e.StartedAt.UTC().Format("2006-01-02 15:04"),
 		}
@@ -2101,6 +2117,7 @@ type incidentDetailView struct {
 // corroborationView is one external event that overlapped the incident.
 type corroborationView struct {
 	Feed      string
+	Evidence  string
 	Kind      string
 	Severity  string
 	Place     string
@@ -2229,7 +2246,7 @@ func (s *server) handleIncident(w http.ResponseWriter, r *http.Request) {
 		default:
 			for _, e := range events {
 				row := corroborationView{
-					Feed: e.Feed, Kind: e.Kind,
+					Feed: e.Feed, Evidence: feedEvidenceLabel(e.Feed), Kind: e.Kind,
 					Severity:  fmt.Sprintf("%.2f", e.Severity),
 					StartedAt: e.StartedAt.UTC().Format("2006-01-02 15:04"),
 				}
@@ -2373,6 +2390,7 @@ type feedStateView struct {
 
 type feedEventView struct {
 	Feed       string
+	Evidence   string
 	ExternalID string
 	Kind       string
 	Severity   float64
@@ -3805,7 +3823,8 @@ func (s *server) buildFeedsData(ctx context.Context, limit int) (feedsView, erro
 	eventRows := make([]feedEventView, 0, len(events))
 	for _, e := range events {
 		row := feedEventView{
-			Feed: e.Feed, ExternalID: e.ExternalID, Kind: e.Kind,
+			Feed: e.Feed, Evidence: feedEvidenceLabel(e.Feed),
+			ExternalID: e.ExternalID, Kind: e.Kind,
 			Severity: e.Severity, Country: e.Country, ASN: e.ASN,
 			StartedAt:  e.StartedAt.UTC().Format(time.RFC3339),
 			ObservedAt: e.ObservedAt.UTC().Format(time.RFC3339),

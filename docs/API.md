@@ -707,7 +707,7 @@ For browser `EventSource`, which cannot set an `Authorization` header, use the U
 
 ### 6.18 `GET /api/v1/feeds` — stable
 
-Auth: bearer. Feed health and recent external events. Feeds are opt-in (`NETWEATHER_FEEDS=ioda`, `ioda,radar`, `ioda,statuspage`, `aws-status`, `gcp-status`, or `azure-status`), because they are outbound calls to someone else's API. The Radar feed also needs `NETWEATHER_RADAR_TOKEN`; the statuspage feed needs `NETWEATHER_STATUSPAGE_URLS` (comma-separated). A feed without its configuration is skipped with a startup warning rather than polling unauthenticated.
+Auth: bearer. Feed health and recent external events. Feeds are opt-in (`NETWEATHER_FEEDS=ioda`, `ioda,radar`, `ioda,statuspage`, `aws-status`, `gcp-status`, `azure-status`, or `ris-live`), because they are outbound calls to someone else's API. The Radar feed also needs `NETWEATHER_RADAR_TOKEN`; the statuspage feed needs `NETWEATHER_STATUSPAGE_URLS` (comma-separated); the RIPEstat BGP poller needs `NETWEATHER_RIS_ASNS` (comma-separated public ASNs). A feed without its configuration is skipped with a startup warning rather than polling unauthenticated.
 
 | Parameter | Default | Notes |
 |---|---|---|
@@ -734,6 +734,7 @@ Auth: bearer. Feed health and recent external events. Feeds are opt-in (`NETWEAT
 - `stale` is true when the last success is older than 30 minutes, or when the feed has never succeeded. Staleness is computed on read, not stored, so a clock change cannot freeze it.
 - `last_ok_at` is preserved across failures: "stale since 09:58" is the useful fact.
 - `severity` is the feed's own score. It is evidence, not a verdict, and it never changes a target's state on its own.
+- Statuspage event payloads carry `"evidence": "provider-reported"` and the page's own `provider` name. RIS event payloads carry `"evidence": "ip-routing-corroboration"`. The UI renders the same labels. Neither kind measures SMS or PSTN health.
 - An unknown feed name in `NETWEATHER_FEEDS` is ignored rather than fatal; the list is operator input, not a security boundary.
 
 ### 6.19 `POST/GET /api/v1/debug/scopes`, `DELETE /api/v1/debug/scopes/{id}` — experimental

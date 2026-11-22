@@ -212,6 +212,20 @@ pass() {
             check "ioda-level feed" 1 "not present in /api/v1/feeds"
         fi
 
+        # 5b. Zero-infrastructure telephony-adjacent evidence feeds. Statuspage
+        # rows are provider-reported; RIS rows are IP-routing corroboration.
+        # A configured feed with no success yet is still a gap, like ioda-level.
+        for feed_name in statuspage ris-live; do
+            feed_line="$(printf '%s' "$feeds" | tr '}' '\n' | grep "\"feed\":\"$feed_name\"" | head -1)"
+            if [ -n "$feed_line" ] && printf '%s' "$feed_line" | grep -q '"last_ok_at"'; then
+                check "$feed_name feed" 0 "success recorded"
+            elif [ -n "$feed_line" ]; then
+                check "$feed_name feed" 1 "configured, no success yet: $feed_line"
+            else
+                check "$feed_name feed" 1 "not present in /api/v1/feeds"
+            fi
+        done
+
         # 6. Tor vantages came up. Prefer the doctor's live SOCKS probes; fall
         #    back to the board's budget when docker is not reachable from this
         #    shell (e.g. a Git Bash client on Windows). Each pinned exit gets

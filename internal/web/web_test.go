@@ -831,6 +831,44 @@ func TestFeedsPageLogsDistinctProviderFailures(t *testing.T) {
 	}
 }
 
+func TestFeedsPageLabelsEvidenceKinds(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	feeds := &fakeFeedHealth{
+		states: []store.FeedState{{Feed: "statuspage", LastOKAt: now}},
+		events: []store.ExternalEvent{
+			{
+				Feed: "statuspage", ExternalID: "status.twilio.com:inc-1", Kind: "statuspage",
+				Severity: 0.8, StartedAt: now, ObservedAt: now,
+			},
+			{
+				Feed: "ris-live", ExternalID: "ris:7018:1:W:0", Kind: "bgp_withdrawal",
+				Severity: 1, ASN: 7018, StartedAt: now, ObservedAt: now,
+			},
+		},
+	}
+
+	ts := newServerWithFeeds(t, testToken, fixture(), feeds)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/feeds") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	for _, want := range []string{
+		"provider-reported",
+		"IP-routing corroboration",
+		`data-testid="event-row"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("feeds page missing %q", want)
+		}
+	}
+}
+
 func TestBoardShowsFeedHealthAndStaleness(t *testing.T) {
 	t.Parallel()
 
@@ -3728,7 +3766,7 @@ func TestTargetDrawerShowsProviderStatus(t *testing.T) {
 	}
 	for _, want := range []string{
 		">Provider status<", "https://status.chase.com",
-		"statuspage", "0.80", "ongoing", "own report",
+		"statuspage", "provider-reported", "0.80", "ongoing", "own report",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("provider panel missing %q", want)

@@ -205,6 +205,24 @@ A user-supplied SOCKS5 endpoint is allowed if the operator owns it or has permis
 
 Only the primary vantage may declare `DOWN`. **Implemented by construction:** Tor probes are stored under `tor` or `tor-<cc>`, while the board, incidents, anomalies, and coverage all read the `local` vantage. A Tor failure is therefore evidence, never a verdict. The target drawer and API expose each corroborating vantage's verified country and continent so a regional disagreement can be read as such.
 
+### Provider status and BGP evidence feeds
+
+The field-trial overlay enables three verified public Statuspage JSON endpoints
+(Twilio, Telnyx, and Verizon) and the bounded RIPEstat BGP-updates poller for
+nine public operator ASNs. Both are read-only GETs to published endpoints; no
+numbers, SIMs, CPaaS credentials, webhooks, SMS, or voice traffic are involved.
+Statuspage rows are stored as `provider-reported` evidence: the operator's own
+statement about the components on that page. RIPEstat rows are stored as
+`ip-routing-corroboration`: an IP network's prefixes changed in BGP. Neither is
+a measured telephony health signal and neither can declare a target `DOWN`.
+Operator scope stays with the telecom fleet targets; unconfigured operators
+stay unconfigured rather than being guessed from a hostname.
+
+Verizon's publicly served Statuspage page currently labels its components as
+examples, so it is not mapped to a target's `status_url`; the target drawer only
+shows a Provider status panel where an operator-supplied page is declared. The
+real-time RIS WebSocket remains opt-in and is not enabled by the field trial.
+
 ### RIPE Atlas
 
 The optional `ripe-atlas` profile runs RIPE's software probe. That probe generates its own measurements for RIPE's network, from the operator's IP, under RIPE's terms - not netweather's target list and not netweather's rate limits. It is a separate trust domain and a separate agreement. Turning it on does not change anything in §2 or §3; turning it off does not affect probing.

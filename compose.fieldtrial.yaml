@@ -25,12 +25,27 @@ services:
       NETWEATHER_DNS_RETRY_DELAY_MS: "25"
       NETWEATHER_CONTACT: "field-trial-operator@example.invalid"
       NETWEATHER_UI_TOKEN_FILE: /run/secrets-prod/ui_token
-      # Bounded country-level overlay for /world. One ranked IODA summary poll
-      # every five minutes (at most 25 countries); the page never calls IODA.
-      # The real-time RIS WebSocket is opt-in via NETWEATHER_RIS_STREAM=true plus
-      # NETWEATHER_RIS_ASNS, so a field trial is not silently left holding an
-      # open connection to a third-party BGP firehose.
-      NETWEATHER_FEEDS: "ioda-level"
+      # Bounded country-level overlay for /world plus zero-infrastructure
+      # telephony-adjacent evidence. IODA polls one ranked summary every five
+      # minutes (at most 25 countries); Statuspage polls three verified public
+      # JSON feeds; RIS Live polls RIPEstat for the operator ASNs below. Pages
+      # never call any of them. The real-time RIS WebSocket stays opt-in via
+      # NETWEATHER_RIS_STREAM=true, so a field trial is not silently left
+      # holding an open connection to a third-party BGP firehose.
+      NETWEATHER_FEEDS: "ioda-level,statuspage,ris-live"
+      # Verified public Statuspage summary endpoints. Verizon's page lists
+      # example-scoped components, so it is kept as provider-reported evidence
+      # only and is not mapped to a target's status_url. No AT&T, T-Mobile,
+      # Telstra, Vodafone, Orange, Telefonica, Docomo, or SK Telecom JSON feed
+      # was verified, so none is guessed here.
+      NETWEATHER_STATUSPAGE_URLS: "https://status.twilio.com/api/v2/summary.json,https://status.telnyx.com/api/v2/summary.json,https://verizon.statuspage.io/api/v2/summary.json"
+      # Public ASNs verified through RIPEstat as-overview. These are operator
+      # IP networks, not SMS/PSTN infrastructure: BGP rows are IP-routing
+      # corroboration and never a measured voice or messaging health signal.
+      # 7018 AT&T, 701 Verizon Business, 21928 T-Mobile USA, 1221 Telstra,
+      # 5378 Vodafone Limited, 3215 Orange, 3352 Telefonica de Espana,
+      # 4713 NTT Docomo Business, 9644 SK Telecom.
+      NETWEATHER_RIS_ASNS: "7018,701,21928,1221,5378,3215,3352,4713,9644"
     volumes:
       - nw-fieldtrial-secret:/run/secrets-prod:ro
     depends_on:

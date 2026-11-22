@@ -10,6 +10,12 @@ changed between two images without it.
 
 ### Added
 
+- Zero-infrastructure telephony-adjacent evidence feeds: the field trial now
+  polls verified public Statuspage JSON from Twilio, Telnyx, and Verizon plus
+  RIPEstat BGP updates for nine verified public operator ASNs. Statuspage rows
+  are labelled provider-reported; RIS rows are labelled IP-routing
+  corroboration. Both stay in `external_event`/`feed_state`, never declare a
+  target `DOWN`, and are explicitly not SMS or PSTN health measurements.
 - The board gains a **Region** grouping lens and `?region=` filter. Continents
   are derived from each target's existing country code by a checked-in map
   generated from public-domain Natural Earth 10m data; there is no schema change,

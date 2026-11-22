@@ -763,6 +763,15 @@ default, and an opt-in real-time WebSocket stream over RIS Live itself.
   with "feed is not enabled" rather than fabricating routing health.
 - The adapter is read-only and spends no credits; it only reads RIPEstat.
 - A contract test with a recorded payload pins the wire shape.
+- **Field-trial scope:** `compose.fieldtrial.yaml` enables the poller for nine
+  public ASNs verified through RIPEstat as-overview: 7018 (AT&T), 701 (Verizon
+  Business), 21928 (T-Mobile USA), 1221 (Telstra), 5378 (Vodafone Limited),
+  3215 (Orange), 3352 (Telefónica de España), 4713 (NTT Docomo Business), and
+  9644 (SK Telecom). Each event carries
+  `"evidence": "ip-routing-corroboration"` in its stored payload and is rendered
+  with that label. It says an operator's IP network moved in the routing table;
+  it does **not** claim to measure SMS, voice, or PSTN health. The WebSocket
+  stream remains off unless separately opted in.
 
 **Real-time stream (opt-in).** `internal/feeds/rislive_ws.go` reads RIS Live at
 `wss://ris-live.ripe.net/v1/ws/?client=netweather` and subscribes to `UPDATE`
@@ -792,7 +801,9 @@ https://status.<company>.com/api/v2/summary.json
 
 Plus AWS (`status.aws.amazon.com/rss/all.rss`), GCP (`status.cloud.google.com/incidents.json`), Azure status feed.
 
-**Implemented:** `internal/feeds.Statuspage` polls any number of configured summary endpoints (`NETWEATHER_STATUSPAGE_URLS`, a base URL or a full `summary.json` URL) and stores one `statuspage` event per incident with its impact mapped to a severity, its start time, and its `resolved_at` when present. An empty incident list is a successful poll: "operational" is information, not absence. Update history is dropped from the stored payload because it is long and adds nothing to corroboration. `internal/feeds.AWSStatus` does the same for AWS service status RSS (`NETWEATHER_FEEDS=aws-status`), dropping "operating normally" items and mapping disruption/error-rate/degraded/maintenance wording to severity. `internal/feeds.GCPStatus` reads Google Cloud incidents JSON (`NETWEATHER_FEEDS=gcp-status`), maps `status_impact` and keeps the affected locations in the payload. `internal/feeds.NewAzureStatus` reuses the RSS adapter (`NETWEATHER_FEEDS=azure-status`); resolved and healthy items are dropped because RSS has no end time, and service-issue wording maps to 0.8. All four provider shapes named here are implemented.
+**Implemented:** `internal/feeds.Statuspage` polls any number of configured summary endpoints (`NETWEATHER_STATUSPAGE_URLS`, a base URL or a full `summary.json` URL) and stores one `statuspage` event per incident with its impact mapped to a severity, its start time, and its `resolved_at` when present. An empty incident list is a successful poll: "operational" is information, not absence. Update history is dropped from the stored payload because it is long and adds nothing to corroboration. Each event also stores the page's own `page.name` as `provider` and `"evidence": "provider-reported"`; both the feeds page and corroboration tables render that label. `internal/feeds.AWSStatus` does the same for AWS service status RSS (`NETWEATHER_FEEDS=aws-status`), dropping "operating normally" items and mapping disruption/error-rate/degraded/maintenance wording to severity. `internal/feeds.GCPStatus` reads Google Cloud incidents JSON (`NETWEATHER_FEEDS=gcp-status`), maps `status_impact` and keeps the affected locations in the payload. `internal/feeds.NewAzureStatus` reuses the RSS adapter (`NETWEATHER_FEEDS=azure-status`); resolved and healthy items are dropped because RSS has no end time, and service-issue wording maps to 0.8. All four provider shapes named here are implemented.
+
+**Field-trial scope:** the overlay polls three verified public Statuspage summary endpoints: Twilio (`status.twilio.com`), Telnyx (`status.telnyx.com`), and Verizon (`verizon.statuspage.io`). Verizon's publicly served page currently labels its two components as examples, so it is not mapped to a target's `status_url`; it is still a real provider-hosted JSON endpoint and is shown as provider-reported evidence only. No AT&T, T-Mobile, Telstra, Vodafone, Orange, Telefónica, Docomo, or SK Telecom public JSON endpoint was verified, so none is configured. These are operator statements about the services on those pages, not measured SMS or PSTN health, and they never change a target's verdict.
 
 Used for **corroboration**, producing the most interesting sentence in the product:
 

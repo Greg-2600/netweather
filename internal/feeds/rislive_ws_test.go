@@ -86,6 +86,9 @@ func TestRISLiveWSStreamsMapsAndReconnects(t *testing.T) {
 		if !strings.Contains(ev.Payload, "203.0.113.0/24") {
 			t.Errorf("payload missing the withdrawn prefix: %s", ev.Payload)
 		}
+		if !strings.Contains(ev.Payload, `"evidence":"ip-routing-corroboration"`) {
+			t.Errorf("payload missing the evidence label: %s", ev.Payload)
+		}
 	}
 	if !found {
 		t.Fatalf("the UPDATE event was not stored; got %+v", sink.events)
