@@ -29,7 +29,7 @@
     </p>
 
     {{if .Rows}}
-    <table class="probes" data-testid="corridors">
+    <table class="probes" id="corridor-table" data-testid="corridors">
       <thead>
         <tr>
           <th>Corridor</th><th>Path</th><th>RTT</th><th>Baseline</th>
@@ -40,8 +40,11 @@
       <tbody>
         {{range .Rows}}
         <tr data-testid="corridor-row" data-corridor="{{.ID}}" data-state="{{.State}}">
-          <td class="mono">{{.ID}}</td>
-          <td>{{.From}} → {{.To}}</td>
+          <td class="mono corridor-id-cell" title="{{.IDTitle}}" aria-label="{{.IDTitle}}">
+            <span class="corridor-name">{{.Name}}</span>
+            <span class="muted small corridor-id">{{.ID}}</span>
+          </td>
+          <td class="corridor-path" title="{{.PathTitle}}" aria-label="{{.PathTitle}}">{{.Path}}</td>
           <td class="mono">{{.RTT}}</td>
           <td class="mono">{{.Baseline}}</td>
           <td>{{if .Spark}}<span class="spark mono" data-testid="corridor-spark"
@@ -66,6 +69,57 @@
     {{end}}
     {{else}}
     <p class="muted" data-testid="no-corridors">{{.Note}}</p>
+    {{end}}
+
+    {{if or .MapPoints .MapLines}}
+    <section class="corridor-projection" aria-labelledby="corridor-projection-title"
+             data-testid="corridor-projection">
+      <h2 id="corridor-projection-title">Corridor label projection</h2>
+      <p class="muted small">
+        The configured <code>from</code> and <code>to</code> labels, placed on the
+        same self-contained equirectangular silhouette as the world view. A
+        circle is an approximate city-centre anchor for an operator label; a
+        line is a visual link between two labels, split at the antimeridian for
+        Pacific pairs. Neither is a verified hosting location, a measured route,
+        or a claim about a physical or undersea cable. Hover or focus a marker
+        or line for its identity and current corridor state.
+      </p>
+      <div class="projection-frame">
+        <img class="projection-base" src="/static/world-projection.svg" alt="" aria-hidden="true">
+        <svg class="projection-lines" viewBox="0 0 1000 500" preserveAspectRatio="none"
+             role="group" aria-label="Visual links between corridor label anchors">
+          {{range .MapLines}}
+          <g class="projection-line {{.StateCls}}" data-testid="corridor-map-line" data-corridor="{{.ID}}"
+             role="img" tabindex="0" aria-label="{{.Title}}">
+            <title>{{.Title}}</title>
+            {{range .Segments}}
+            <line x1="{{.X1}}" y1="{{.Y1}}" x2="{{.X2}}" y2="{{.Y2}}"></line>
+            {{end}}
+          </g>
+          {{end}}
+        </svg>
+        <div class="projection-layer" role="group" aria-label="Corridor label anchors">
+          {{range .MapPoints}}
+          <a class="projection-marker corridor-marker {{.StateCls}}"
+             style="left: {{.X}}%; top: {{.Y}}%;"
+             href="#corridor-table" data-testid="corridor-map-marker" data-code="{{.Code}}"
+             aria-label="{{.Title}}" title="{{.Title}}">
+            <span aria-hidden="true">{{.Glyph}}</span>
+          </a>
+          {{end}}
+        </div>
+      </div>
+      <p class="projection-legend muted small">
+        <span><span class="legend-line" aria-hidden="true">—</span> configured corridor</span>
+        <span><span class="legend-circle" aria-hidden="true">●</span> operator label anchor</span>
+        <span>Colour and glyph follow the corridor state in the table above.</span>
+      </p>
+      {{if .MapUnmapped}}
+      <p class="muted small" data-testid="corridor-map-unmapped">
+        {{.MapUnmapped}} corridor label occurrence(s) have no public city-centre anchor and are not placed on the projection.
+      </p>
+      {{end}}
+    </section>
     {{end}}
 
     <p class="muted small">

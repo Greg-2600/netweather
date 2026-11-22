@@ -112,6 +112,13 @@ a { color: var(--accent); }
   color: var(--muted);
 }
 
+/* Corridor identity: the configured label pair is the name, the id stays
+   visible as a stable key, and the real endpoint pair is one hover away. The
+   endpoint hosts are the measurement; the labels are operator text. */
+.corridor-name { display: block; font-weight: 600; }
+.corridor-id { display: block; font-size: 0.72rem; }
+.corridor-path { max-width: 24rem; overflow-wrap: anywhere; }
+
 ul.targets { margin: 0.25rem 0 1rem; padding-left: 1.1rem; }
 ul.targets li { margin: 0.1rem 0; }
 
@@ -309,6 +316,128 @@ body.auth {
 .tile.country .country-count {
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+/* The projection is a quiet geographic backdrop for the same country health
+   shown above. Markers are real links with text and glyph state, and the base
+   image is decorative so a failed image never looks like "no outages". */
+.world-projection { margin-top: 1.5rem; }
+.world-projection h2 { font-size: 1.05rem; margin: 0 0 0.35rem; }
+
+.projection-frame {
+  position: relative;
+  width: 100%;
+  max-width: 1000px;
+  aspect-ratio: 2 / 1;
+  border: 1px solid var(--line);
+  background: #0d1726;
+  overflow: hidden;
+}
+
+.projection-base {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.projection-layer { position: absolute; inset: 0; }
+
+.projection-marker {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  transform: translate(-50%, -50%);
+  border: 1px solid #0b0f14;
+  border-radius: 50%;
+  color: #0b0f14;
+  font-size: 9px;
+  line-height: 1;
+  text-decoration: none;
+  background: var(--unknown);
+}
+
+.projection-marker:hover,
+.projection-marker:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+  z-index: 4;
+}
+
+.projection-marker.state-up { background: var(--up); }
+.projection-marker.state-up_reachability { background: var(--up); }
+.projection-marker.state-degraded { background: var(--degraded); }
+.projection-marker.state-down { background: var(--down); color: #fff; }
+.projection-marker.state-blocked { background: var(--blocked); }
+.projection-marker.state-config_error { background: var(--config); color: #fff; }
+.projection-marker.state-unmeasurable { background: var(--blocked); opacity: 0.65; }
+.projection-marker.state-unknown { background: var(--unknown); }
+
+.projection-marker.hub-marker {
+  z-index: 3;
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  border-color: #0b0f14;
+  color: #fff;
+  font-size: 8px;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.hub-marker .hub-glyph { transform: rotate(-45deg); }
+.projection-marker.hub-marker.state-up,
+.projection-marker.hub-marker.state-up_reachability { background: #7ee2a8; color: #0b0f14; }
+.projection-marker.hub-marker.state-degraded { background: #f0b849; color: #0b0f14; }
+.projection-marker.hub-marker.state-down { background: #ff9c97; color: #4a0f0d; }
+.projection-marker.hub-marker.state-blocked { background: #b8c0c9; color: #0b0f14; }
+.projection-marker.hub-marker.state-config_error { background: #d2a8ff; color: #0b0f14; }
+
+.projection-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+  margin: 0.5rem 0 0;
+}
+.projection-legend .legend-circle { color: var(--accent); }
+.projection-legend .legend-diamond { color: #7ee2a8; }
+.projection-legend .legend-line { color: var(--accent); font-size: 1.1rem; }
+
+/* Corridor projection: the line is a visual link between operator labels, not
+   a route or cable geometry. It sits under the labelled anchors and inherits
+   the same state colours as the table. */
+.corridor-projection { margin-top: 1.5rem; }
+.corridor-projection h2 { font-size: 1.05rem; margin: 0 0 0.35rem; }
+.corridor-projection .projection-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+.corridor-projection .projection-layer { z-index: 2; }
+.projection-line { color: #7d94ae; }
+.projection-line line {
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: 0.72;
+}
+.projection-line:hover line,
+.projection-line:focus-visible line { stroke-width: 3.2; opacity: 1; }
+.projection-line:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.projection-line.state-up { color: var(--up); }
+.projection-line.state-down { color: var(--down); }
+.projection-line.state-unknown { color: var(--unknown); }
+.projection-marker.corridor-marker { z-index: 3; }
+
+@media (max-width: 600px) {
+  .projection-marker { width: 12px; height: 12px; font-size: 7px; }
+  .projection-marker.hub-marker { width: 8px; height: 8px; font-size: 6px; }
 }
 
 /* Hubs view: the /map treemap one level down. A city is a sector block and a
@@ -582,6 +711,24 @@ body.auth {
 .detail-state.state-up b { color: #7ee2a8; }
 .detail-state.state-degraded b { color: #f0b849; }
 
+/* The target drawer is a working page, not a login card. Keep the auth card's
+   26rem cap elsewhere, but let the metadata and evidence tables use the width
+   the reader actually has. */
+.target-card { max-width: 76rem; }
+
+.target-card .meta {
+  grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
+  gap: 0.25rem 1.25rem;
+  font-size: 0.95rem;
+}
+
+.target-card table.probes { font-size: 0.9rem; }
+
+.target-card table.probes th,
+.target-card table.probes td { padding: 0.45rem 0.65rem; }
+
+.target-card table.probes td.detail { max-width: 32rem; }
+
 .section-title {
   font-size: 0.85rem;
   text-transform: uppercase;
@@ -754,6 +901,18 @@ tr.low-coverage {
   border-radius: 4px;
   padding: 0 0.25rem;
   color: #f0b849;
+}
+
+/* A small denominator is not the same problem as a weak ratio. It gets a
+   quieter badge and no hatch: a 100%-measured five-target sector is thin, not
+   broken. */
+tr.small-coverage { color: var(--muted); }
+.small-coverage-badge {
+  font-size: 0.68rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 0.25rem;
+  color: var(--muted);
 }
 /* --- overview line (DESIGN.md 10.1) --------------------------------------- */
 

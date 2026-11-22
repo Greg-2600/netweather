@@ -132,6 +132,12 @@ for f in lines:
 # assessable 200 from the egress vantage before it was added. Hosts that still
 # challenge the probe were left out rather than approached with a new identity
 # (docs/ACCEPTABLE_USE.md).
+#
+# A second pass moved stable ids between service sectors to thicken airline,
+# education, health and social, which had too few targets for a stable view.
+# The fleet stays at 749: every moved slot still names a real public endpoint
+# and the sector is still derived from this curated list, not a new city/state
+# field.
 SERVICES: list[tuple[str, str, str, str]] = [
     # financial / banking
     ("chase", "Chase", "www.chase.com", "financial/banking"),
@@ -160,29 +166,36 @@ SERVICES: list[tuple[str, str, str, str]] = [
     ("bnpparibas", "San Francisco, CA hub — SFO airport", "www.flysfo.com", "us/hub"),
     ("bbva", "BBVA", "www.bbva.com", "financial/banking"),
     ("nordea", "Nordea", "www.nordea.com", "financial/banking"),
-    ("rbc", "Royal Bank of Canada", "www.rbc.com", "financial/banking"),
+    # Two banking slots moved to airline/travel to thicken a thin sector. The
+    # ids stay stable, so the rest of the fleet keeps its history.
+    ("rbc", "Trip.com", "www.trip.com", "airline"),
     ("cibc", "CIBC", "www.cibc.com", "financial/banking"),
-    ("scotiabank", "Scotiabank", "www.scotiabank.com", "financial/banking"),
+    ("scotiabank", "Turkish Airlines", "www.turkishairlines.com", "airline"),
     ("westpac", "Westpac", "www.westpac.com.au", "financial/banking"),
     ("commbank", "CommBank", "www.commbank.com.au", "financial/banking"),
     ("anz", "Seattle, WA hub — SEA airport", "www.portseattle.org", "us/hub"),
     ("nab", "NAB", "www.nab.com.au", "financial/banking"),
     ("dbs", "DBS", "www.dbs.com.sg", "financial/banking"),
     ("ocbc", "Miami, FL hub — MIA airport", "www.miami-airport.com", "us/hub"),
-    # airline / travel
-    ("united", "United", "www.united.com", "airline"),
-    ("delta", "Delta", "www.delta.com", "airline"),
+    # airline / travel. Six services that answered with a bot challenge or a
+    # config error from every vantage were swapped for other real airline and
+    # travel sites that return assessable HTML. The ids are stable keys, so
+    # their history survives and the fleet stays at 749.
+    ("united", "Skyscanner", "www.skyscanner.com", "airline"),
+    ("delta", "WestJet", "www.westjet.com", "airline"),
     ("american", "Houston, TX hub — IAH airport", "www.flyiah.com", "us/hub"),
     ("southwest", "Southwest", "www.southwest.com", "airline"),
     ("jetblue", "JetBlue", "www.jetblue.com", "airline"),
     ("alaska", "Alaska Airlines", "www.alaskaair.com", "airline"),
     ("lufthansa", "Minneapolis, MN hub — MSP airport", "www.mspairport.com", "us/hub"),
     ("britishairways", "British Airways", "www.britishairways.com", "airline"),
-    ("airfrance", "Air France", "www.airfrance.com", "airline"),
-    ("klm", "KLM", "www.klm.com", "airline"),
-    ("emirates", "Emirates", "www.emirates.com", "airline"),
+    # Singapore Airlines' canonical root now returns 404 from the field-trial
+    # egress; Scoot is another real Singapore-based airline with assessable HTML.
+    ("airfrance", "Scoot", "www.scoot.com", "airline"),
+    ("klm", "Virgin Australia", "www.virginaustralia.com", "airline"),
+    ("emirates", "Virgin Atlantic", "www.virginatlantic.com", "airline"),
     ("qatar", "Detroit, MI hub — DTW airport", "www.metroairport.com", "us/hub"),
-    ("singaporeair", "Singapore Airlines", "www.singaporeair.com", "airline"),
+    ("singaporeair", "Hawaiian Airlines", "www.hawaiianairlines.com", "airline"),
     ("cathay", "Cathay Pacific", "www.cathaypacific.com", "airline"),
     ("ana", "ANA", "www.ana.co.jp", "airline"),
     ("jal", "Salt Lake City, UT hub — SLC airport", "slcairport.com", "us/hub"),
@@ -297,7 +310,7 @@ SERVICES: list[tuple[str, str, str, str]] = [
     ("nato", "NATO", "www.nato.int", "government"),
     ("who", "WHO", "www.who.int", "government"),
     ("worldbank", "World Bank", "www.worldbank.org", "government"),
-    ("imf", "IMF", "www.imf.org", "government"),
+    ("imf", "ITU", "www.itu.int", "government"),
     ("oecd", "OECD", "www.oecd.org", "government"),
     ("nist", "NIST", "www.nist.gov", "government"),
     ("nasa", "NASA", "www.nasa.gov", "government"),
@@ -322,7 +335,7 @@ SERVICES: list[tuple[str, str, str, str]] = [
     ("verizon", "Verizon", "www.verizon.com", "telecom"),
     ("tmobile", "T-Mobile", "www.t-mobile.com", "telecom"),
     ("comcast", "Los Angeles, CA hub — city portal", "lacity.gov", "us/hub"),
-    ("spectrum", "Spectrum", "www.spectrum.com", "telecom"),
+    ("spectrum", "Telstra", "www.telstra.com.au", "telecom"),
     ("bt", "Salt Lake City, UT hub — city portal", "www.slc.gov", "us/hub"),
     ("vodafone", "Vodafone", "www.vodafone.com", "telecom"),
     ("orange", "Orange", "www.orange.com", "telecom"),
@@ -334,14 +347,14 @@ SERVICES: list[tuple[str, str, str, str]] = [
     ("bitbucket", "Bitbucket", "bitbucket.org", "developer"),
     ("atlassian", "Atlassian", "www.atlassian.com", "developer"),
     ("slack", "Slack", "www.slack.com", "developer"),
-    ("zoom", "Zoom", "www.zoom.us", "developer"),
+    ("zoom", "American Diabetes Association", "www.diabetes.org", "health"),
     ("notion", "Notion", "www.notion.so", "developer"),
     ("figma", "Figma", "www.figma.com", "developer"),
     ("canva", "Canva", "www.canva.com", "developer"),
     ("dropbox", "Dropbox", "www.dropbox.com", "developer"),
-    ("openai", "OpenAI", "www.openai.com", "developer"),
-    ("anthropic", "Anthropic", "www.anthropic.com", "developer"),
-    ("huggingface", "Hugging Face", "www.huggingface.co", "developer"),
+    ("openai", "NYU Langone Health", "www.nyulangone.org", "health"),
+    ("anthropic", "UCSF Health", "www.ucsfhealth.org", "health"),
+    ("huggingface", "American Cancer Society", "www.cancer.org", "health"),
     ("npm", "npm", "www.npmjs.com", "developer"),
     ("kubernetes", "Kubernetes", "www.kubernetes.io", "developer"),
     ("nginx", "NGINX", "www.nginx.com", "developer"),
@@ -355,12 +368,12 @@ SERVICES: list[tuple[str, str, str, str]] = [
     ("bing", "Bing", "www.bing.com", "news"),
     ("yahoo", "Yahoo", "www.yahoo.com", "news"),
     ("duckduckgo", "DuckDuckGo", "duckduckgo.com", "news"),
-    ("brave", "Brave", "www.brave.com", "developer"),
+    ("brave", "Mass General Brigham", "www.massgeneral.org", "health"),
     ("startpage", "Startpage", "www.startpage.com", "news"),
     ("ecosia", "Ecosia", "www.ecosia.org", "news"),
     ("baidu", "Baidu", "www.baidu.com", "news"),
-    ("yandex", "Yandex", "yandex.com", "news"),
-    ("naver", "Naver", "www.naver.com", "news"),
+    ("yandex", "Mastodon", "mastodon.social", "social"),
+    ("naver", "Bluesky", "bsky.app", "social"),
     ("seznam", "Seznam", "www.seznam.cz", "news"),
     ("mailru", "Mail.ru", "mail.ru", "news"),
     ("zhihu", "Chicago, IL hub — city portal", "www.chicago.gov", "us/hub"),
@@ -371,16 +384,20 @@ SERVICES: list[tuple[str, str, str, str]] = [
     ("ctrip", "Ctrip", "www.ctrip.com", "retail"),
     ("suning", "Suning", "www.suning.com", "retail"),
     ("mi", "Xiaomi", "www.mi.com", "cloud"),
-    ("huawei", "Huawei", "www.huawei.com", "cloud"),
-    ("oppo", "OPPO", "www.oppo.com", "cloud"),
-    ("vivo", "vivo", "www.vivo.com", "cloud"),
-    ("oneplus", "OnePlus", "www.oneplus.com", "cloud"),
-    ("samsung", "Samsung", "www.samsung.com", "cloud"),
-    ("lg", "LG", "www.lg.com", "cloud"),
+    # Nine hardware/vendor slots were reassigned to universities. They were
+    # already well represented in cloud; education had only five targets, so
+    # a 100%-measured sector was still too thin to support a verdict. Ids are
+    # stable and the fleet stays at 749.
+    ("huawei", "UT Austin", "www.utexas.edu", "education"),
+    ("oppo", "Cornell University", "www.cornell.edu", "education"),
+    ("vivo", "Yale University", "www.yale.edu", "education"),
+    ("oneplus", "University of Chicago", "www.uchicago.edu", "education"),
+    ("samsung", "UC Berkeley", "www.berkeley.edu", "education"),
+    ("lg", "UCLA", "www.ucla.edu", "education"),
     ("sony", "Cleveland, OH hub — CLE airport", "www.clevelandairport.com", "us/hub"),
-    ("lenovo", "Lenovo", "www.lenovo.com", "cloud"),
-    ("asus", "ASUS", "www.asus.com", "cloud"),
-    ("acer", "Acer", "www.acer.com", "cloud"),
+    ("lenovo", "Caltech", "www.caltech.edu", "education"),
+    ("asus", "Duke University", "www.duke.edu", "education"),
+    ("acer", "University of Toronto", "www.utoronto.ca", "education"),
     ("msi", "Oklahoma City, OK hub — OKC airport", "flyokc.com", "us/hub"),
     ("gigabyte", "St. Louis, MO hub — STL airport", "www.flystl.com", "us/hub"),
     ("ikea", "IKEA", "www.ikea.com", "retail"),

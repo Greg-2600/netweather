@@ -99,7 +99,7 @@ Want the full field-trial fleet (749 real targets + five-continent Tor corrobora
 
 ```sh
 ./scripts/deploy_fieldtrial.sh                # Linux/macOS/CI: same deploy
-./scripts/check_fieldtrial.sh                 # health, 749 targets, auth, map, hubs, feeds, Tor
+./scripts/check_fieldtrial.sh                 # health, 749 targets, auth, map, hubs, corridors, feeds, Tor
 ```
 
 ---
@@ -121,6 +121,15 @@ All shots are from the local field-trial deploy — 749 real targets, no mocked 
 | Dashboard | World |
 |---|---|
 | ![board](docs/screenshots/dashboard.png) | ![world](docs/screenshots/world.png) |
+
+The world view also places its country health markers on a self-contained
+equirectangular projection below the tiles, with approximate city anchors for
+the US hub labels. Those anchors are not verified hosting locations.
+
+`/corridors` uses the same projection below its table: configured operator
+labels become approximate city-centre anchors, and a straight line links each
+known pair, wrapping at the antimeridian. The line is a visual link only, not a
+measured route or a claim about any physical or undersea cable.
 
 Every page is server-rendered HTML + SSE — no JS framework, no build step.
 
@@ -292,7 +301,7 @@ The overlay enables the bounded `ioda-level` feed: one ranked summary poll every
 Verify or soak the running instance:
 
 ```sh
-./scripts/check_fieldtrial.sh                          # 7 checks
+./scripts/check_fieldtrial.sh                          # health, fleet, auth, map, hubs, corridors, feeds, Tor
 CYCLES=12 SLEEP=300 ./scripts/check_fieldtrial.sh     # ~1 hour soak
 ```
 

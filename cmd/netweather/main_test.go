@@ -1997,3 +1997,26 @@ func TestApplySeedEntriesRejectsTooMany(t *testing.T) {
 		t.Fatalf("a refused seed wrote %v", ids)
 	}
 }
+
+func TestConfiguredCorridorEndpoints(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "targets.yaml")
+	body := `version: 1
+corridors:
+  - id: nyc-lon
+    from: NYC
+    to: LON
+    endpoints: ["www.nytimes.com:443", "www.bbc.co.uk:443"]
+`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NETWEATHER_CONFIG", path)
+
+	got := configuredCorridorEndpoints(nil).CorridorEndpoints(context.Background())
+	if len(got) != 1 || len(got["nyc-lon"]) != 2 {
+		t.Fatalf("endpoints = %+v, want one configured pair", got)
+	}
+	if got["nyc-lon"][0] != "www.nytimes.com:443" || got["nyc-lon"][1] != "www.bbc.co.uk:443" {
+		t.Fatalf("endpoints = %+v, want the configured hosts", got)
+	}
+}

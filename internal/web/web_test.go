@@ -1173,6 +1173,7 @@ func TestWorldGroupsByCountry(t *testing.T) {
 		board.Target{ID: "2", Name: "United", Host: "united.com", Country: "US", State: board.StateDown},
 		board.Target{ID: "3", Name: "Deutsche", Host: "de.example", Country: "DE", State: board.StateUp},
 		board.Target{ID: "4", Name: "NoGeo", Host: "nogeo.example", State: board.StateUp},
+		board.Target{ID: "5", Name: "Dallas, TX hub — DFW airport", Host: "dfw.example", Country: "US", Sector: "us/hub", State: board.StateDown},
 	)
 
 	ts := newServer(t, testToken, m)
@@ -1204,6 +1205,36 @@ func TestWorldGroupsByCountry(t *testing.T) {
 	}
 	if !strings.Contains(page, `data-testid="world-unplaced"`) {
 		t.Error("a target with no country was not counted as unplaced")
+	}
+
+	// The projection places the same aggregates; hub diamonds are label
+	// anchors, not a claim that the endpoint is hosted in Dallas.
+	if !strings.Contains(page, `data-testid="world-projection"`) {
+		t.Fatal("geographic projection section missing")
+	}
+	if got := strings.Count(page, `data-testid="world-map-country"`); got != 2 {
+		t.Errorf("country projection markers = %d, want 2", got)
+	}
+	for _, want := range []string{
+		`/static/world-projection.svg`,
+		`data-testid="world-map-country" data-country="US"`,
+		`data-testid="world-map-country" data-country="DE"`,
+		`data-testid="world-map-hub" data-hub="Dallas, TX"`,
+		`left: 23.11%; top: 31.79%;`,
+		"Approximate city-centre coordinate; endpoint hosting location is not measured.",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("world projection missing %q", want)
+		}
+	}
+	for _, unwanted := range []string{"<script", `src="http`, `href="http`, "@import"} {
+		if strings.Contains(strings.ToLower(page), unwanted) {
+			t.Errorf("world page contains %q; the projection must stay same-origin and script-free", unwanted)
+		}
+	}
+	if csp := resp.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "default-src 'self'") ||
+		!strings.Contains(csp, "style-src 'self' 'unsafe-inline'") || strings.Contains(csp, "script-src") {
+		t.Errorf("world CSP = %q, want self-only defaults and the bounded inline-style exception", csp)
 	}
 
 	// Worst state first: the US bucket holds a DOWN target, so it precedes DE.
@@ -1417,8 +1448,9 @@ func TestStaticAssets(t *testing.T) {
 	ts := newServer(t, testToken, fixture())
 
 	for path, wantType := range map[string]string{
-		"/static/app.css": "text/css",
-		"/static/app.js":  "javascript",
+		"/static/app.css":              "text/css",
+		"/static/app.js":               "javascript",
+		"/static/world-projection.svg": "image/svg+xml",
 	} {
 		resp, err := http.Get(ts.URL + path) //nolint:bodyclose // body() closes it
 		if err != nil {
@@ -1903,6 +1935,7 @@ func TestCoveragePage(t *testing.T) {
 		Totals: store.CoverageTotals{Total: 100, Measurable: 80, Unmeasurable: 10},
 		Sectors: []store.CoverageBucket{
 			{Kind: "sector", Value: "airline", Total: 10, Measurable: 9},
+			{Kind: "sector", Value: "health", Total: 10, Measurable: 5},
 		},
 		BlindSpots: []store.CoverageBucket{
 			{Kind: "country", Value: "NL", Total: 10, Measurable: 2},
@@ -1929,7 +1962,8 @@ func TestCoveragePage(t *testing.T) {
 		`data-testid="blind-spot"`,
 		`data-value="NL"`,
 		"80 of 100 targets measurable",
-		"airline",
+		"airline", "data-testid=\"small-coverage\"",
+		"health", "data-testid=\"low-coverage\"",
 		"chase.com",
 		`data-testid="stale-row"`,
 	} {
@@ -2826,6 +2860,7 @@ func TestBoardDensityToggle(t *testing.T) {
 type fakeCorridorStatus struct {
 	statuses  []store.CorridorStatus
 	series    map[string][]store.CorridorSample
+	endpoints map[string][]string
 	err       error
 	seriesErr error
 }
@@ -2838,18 +2873,23 @@ func (f *fakeCorridorStatus) CorridorSeries(context.Context, time.Time) (map[str
 	return f.series, f.seriesErr
 }
 
-func newServerWithCorridors(t *testing.T, token string, m *board.Memory, corridors web.CorridorStatus) *httptest.Server {
+func (f *fakeCorridorStatus) CorridorEndpoints(context.Context) map[string][]string {
+	return f.endpoints
+}
+
+func newServerWithCorridors(t *testing.T, token string, m *board.Memory, corridors web.CorridorStatus, endpoints web.CorridorEndpoints) *httptest.Server {
 	t.Helper()
 
 	h, err := web.New(web.Deps{
-		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Source:    m,
-		Watcher:   m,
-		Corridors: corridors,
-		Vantage:   "local",
-		Token:     token,
-		Version:   "test",
-		StartedAt: time.Now(),
+		Logger:            slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Source:            m,
+		Watcher:           m,
+		Corridors:         corridors,
+		CorridorEndpoints: endpoints,
+		Vantage:           "local",
+		Token:             token,
+		Version:           "test",
+		StartedAt:         time.Now(),
 	})
 	if err != nil {
 		t.Fatalf("web.New: %v", err)
@@ -2887,9 +2927,13 @@ func TestCorridorPage(t *testing.T) {
 				{CorridorID: "nyc-lon", TS: started.Add(10 * time.Minute), RTTMS: 100, OK: true},
 			},
 		},
+		endpoints: map[string][]string{
+			"nyc-lon": {"www.nytimes.com:443", "www.bbc.co.uk:443"},
+			"lon-sin": {"www.bbc.co.uk:443", "www.straitstimes.com:443"},
+		},
 	}
 
-	ts := newServerWithCorridors(t, testToken, fixture(), corridors)
+	ts := newServerWithCorridors(t, testToken, fixture(), corridors, corridors)
 	client, _ := newClient(t)
 	login(t, ts, client, testToken)
 
@@ -2906,7 +2950,9 @@ func TestCorridorPage(t *testing.T) {
 		t.Fatalf("corridor table missing:\n%s", page)
 	}
 	for _, want := range []string{
-		"nyc-lon", "NYC → LON", "83 ms", "0%",
+		"nyc-lon", "NYC → LON", "www.nytimes.com → www.bbc.co.uk", "83 ms", "0%",
+		`title="Configured corridor id nyc-lon. Path labels: NYC → LON. Endpoints: www.nytimes.com:443 and www.bbc.co.uk:443."`,
+		`title="Configured endpoints: www.nytimes.com:443 → www.bbc.co.uk:443. NYC and LON are operator path labels, not measured locations; CDNs anycast."`,
 		"step change", "rtt_step", "rtt 190ms against 82ms",
 		"waiting for a sample", "LON → SIN",
 		// The baseline is the median of the window, not the latest sample.
@@ -2930,6 +2976,81 @@ func TestCorridorPage(t *testing.T) {
 	if strings.Count(page, `data-testid="corridor-spark"`) != 1 {
 		t.Errorf("spark shapes = %d, want only the sampled corridor", strings.Count(page, `data-testid="corridor-spark"`))
 	}
+
+	// The projection reuses the same rows: label anchors and one line per
+	// corridor, with no route or hosting-location claim.
+	for _, want := range []string{
+		`data-testid="corridor-projection"`,
+		`/static/world-projection.svg`,
+		`data-testid="corridor-map-line" data-corridor="nyc-lon"`,
+		`data-testid="corridor-map-line" data-corridor="lon-sin"`,
+		`data-testid="corridor-map-marker" data-code="NYC"`,
+		`data-testid="corridor-map-marker" data-code="LON"`,
+		`data-testid="corridor-map-marker" data-code="SIN"`,
+		`style="left: 29.45%; top: 27.38%;"`,
+		`x1="294.50" y1="136.90" x2="499.70" y2="106.95"`,
+		"Approximate city-centre coordinate; endpoint hosting location is not measured.",
+		"this straight line is not the physical or undersea-cable path",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("corridor projection missing %q", want)
+		}
+	}
+	for _, unwanted := range []string{"<script", `src="http`, `href="http`, "@import"} {
+		if strings.Contains(strings.ToLower(page), unwanted) {
+			t.Errorf("corridor page contains %q; the projection must stay same-origin and script-free", unwanted)
+		}
+	}
+	if csp := resp.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "default-src 'self'") ||
+		!strings.Contains(csp, "style-src 'self' 'unsafe-inline'") || strings.Contains(csp, "script-src") {
+		t.Errorf("corridor CSP = %q, want self-only defaults and the bounded inline-style exception", csp)
+	}
+}
+
+func TestCorridorProjectionWrapsAndCountsUnmappedLabels(t *testing.T) {
+	t.Parallel()
+
+	corridors := &fakeCorridorStatus{
+		statuses: []store.CorridorStatus{
+			{Corridor: store.Corridor{ID: "lax-tyo", From: "LAX", To: "TYO"}},
+			{Corridor: store.Corridor{ID: "xxx-lon", From: "XXX", To: "LON"}},
+		},
+	}
+	ts := newServerWithCorridors(t, testToken, fixture(), corridors, corridors)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/corridors") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	// A Pacific pair leaves one map edge and re-enters the other; it must not
+	// be drawn the short way across the Atlantic.
+	if got := strings.Count(page, `x2="0.00"`); got != 1 {
+		t.Errorf("left-edge segments = %d, want 1 antimeridian piece", got)
+	}
+	if got := strings.Count(page, `x1="1000.00"`); got != 1 {
+		t.Errorf("right-edge segments = %d, want 1 antimeridian piece", got)
+	}
+	for _, want := range []string{
+		`data-testid="corridor-map-marker" data-code="LAX"`,
+		`data-testid="corridor-map-marker" data-code="TYO"`,
+		`x1="171.60"`, `x2="0.00"`, `x1="1000.00"`, `x2="888.20"`,
+		`data-testid="corridor-map-unmapped"`,
+		"1 corridor label occurrence(s) have no public city-centre anchor",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("corridor projection missing %q", want)
+		}
+	}
+	if strings.Contains(page, `data-testid="corridor-map-marker" data-code="XXX"`) {
+		t.Error("an unmapped label was placed at an invented coordinate")
+	}
+	if strings.Contains(page, `data-testid="corridor-map-line" data-corridor="xxx-lon"`) {
+		t.Error("a line was drawn from an unmapped label")
+	}
 }
 
 func TestCorridorPageSeriesFailureIsStated(t *testing.T) {
@@ -2943,7 +3064,7 @@ func TestCorridorPageSeriesFailureIsStated(t *testing.T) {
 		seriesErr: errors.New("db down"),
 	}
 
-	ts := newServerWithCorridors(t, testToken, fixture(), corridors)
+	ts := newServerWithCorridors(t, testToken, fixture(), corridors, corridors)
 	client, _ := newClient(t)
 	login(t, ts, client, testToken)
 
@@ -2963,6 +3084,11 @@ func TestCorridorPageSeriesFailureIsStated(t *testing.T) {
 	}
 	if !strings.Contains(page, `data-testid="corridor-row"`) || !strings.Contains(page, "83 ms") {
 		t.Error("a series failure removed the current sample")
+	}
+	// No endpoints were supplied, so the page keeps the labels and says they
+	// are labels instead of inventing hostnames.
+	if !strings.Contains(page, "NYC → LON") || !strings.Contains(page, "Endpoint hosts are not available") {
+		t.Error("missing endpoints did not fall back to labelled path text")
 	}
 	if strings.Contains(page, `data-testid="corridor-spark"`) {
 		t.Error("a spark rendered without a series")
@@ -2985,7 +3111,7 @@ func TestCorridorPageNotes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			ts := newServerWithCorridors(t, testToken, fixture(), tc.corridors)
+			ts := newServerWithCorridors(t, testToken, fixture(), tc.corridors, nil)
 			client, _ := newClient(t)
 			login(t, ts, client, testToken)
 
@@ -3522,7 +3648,7 @@ func TestCorridorPageMarksOutOfBandBuckets(t *testing.T) {
 		series: map[string][]store.CorridorSample{"nyc-lon": samples},
 	}
 
-	ts := newServerWithCorridors(t, testToken, fixture(), corridors)
+	ts := newServerWithCorridors(t, testToken, fixture(), corridors, corridors)
 	client, _ := newClient(t)
 	login(t, ts, client, testToken)
 

@@ -28,7 +28,7 @@
     </p>
 
     {{if .Countries}}
-    <section class="board world-grid" aria-label="Countries" data-testid="world">
+    <section class="world-grid" aria-label="Countries" data-testid="world">
       {{range .Countries}}
       <a class="tile country {{.WorstCls}}" href="{{.Href}}"
          data-testid="country" data-country="{{.Code}}" data-state="{{.WorstCls}}"
@@ -55,6 +55,57 @@
     </p>
     {{end}}
 
+    {{if or .MapPoints .HubPoints}}
+    <section class="world-projection" aria-labelledby="world-projection-title"
+             data-testid="world-projection">
+      <h2 id="world-projection-title">Geographic projection</h2>
+      <p class="muted small">
+        The same country health, now placed on an equirectangular land silhouette
+        (Natural Earth 110m, public domain). Circles sit at approximate country
+        geographic centres; diamonds are approximate city-centre anchors for the
+        <code>City, ST hub — site</code> labels. Neither marker is a verified
+        hosting location: CDNs and anycast can serve an endpoint from anywhere.
+        Hover or focus a marker for its identity and status.
+      </p>
+      <div class="projection-frame">
+        <img class="projection-base" src="/static/world-projection.svg" alt="" aria-hidden="true">
+        <div class="projection-layer" role="group" aria-label="Country health and US hub label anchors">
+          {{range .MapPoints}}
+          <a class="projection-marker country-marker {{.WorstCls}}"
+             style="left: {{.X}}%; top: {{.Y}}%;"
+             href="{{.Href}}" data-testid="world-map-country" data-country="{{.Code}}"
+             aria-label="{{.Title}}" title="{{.Title}}">
+            <span aria-hidden="true">{{.Glyph}}</span>
+          </a>
+          {{end}}
+          {{range .HubPoints}}
+          <a class="projection-marker hub-marker {{.WorstCls}}"
+             style="left: {{.X}}%; top: {{.Y}}%;"
+             href="{{.Href}}" data-testid="world-map-hub" data-hub="{{.Label}}"
+             aria-label="{{.Title}}" title="{{.Title}}">
+            <span class="hub-glyph" aria-hidden="true">{{.Glyph}}</span>
+          </a>
+          {{end}}
+        </div>
+      </div>
+      <p class="projection-legend muted small">
+        <span><span class="legend-circle" aria-hidden="true">●</span> country aggregate</span>
+        <span><span class="legend-diamond" aria-hidden="true">◆</span> US hub label anchor</span>
+        <span>Colour and glyph follow the board's state language.</span>
+      </p>
+      {{if .MapUnmapped}}
+      <p class="muted small" data-testid="world-map-unmapped">
+        {{.MapUnmapped}} country bucket(s) have no public geographic centre and are not placed on the projection.
+      </p>
+      {{end}}
+      {{if .HubUnmapped}}
+      <p class="muted small" data-testid="world-map-hubs-unmapped">
+        {{.HubUnmapped}} US hub label(s) have no anchor coordinate and are not placed on the projection.
+      </p>
+      {{end}}
+    </section>
+    {{end}}
+
     {{if .OverlayNote}}
     <p class="muted small" data-testid="world-overlay-note">{{.OverlayNote}}</p>
     {{end}}
@@ -70,9 +121,10 @@
     {{end}}
 
     <p class="muted small">
-      This view answers "which countries look unhappy?". It is not a map and does
-      not claim a country-wide outage from one vantage: a tile with every target
-      DOWN is still one path's view of that country.
+      This view answers "which countries look unhappy?". A geographic projection,
+      when present, places those same aggregates rather than making a country-wide
+      outage claim from one vantage: a marker with every target DOWN is still one
+      path's view of that country.
     </p>
   </main>
 </body>

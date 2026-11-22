@@ -5,6 +5,7 @@
 package uitest_test
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/Greg-2600/netweather/internal/board"
 	"github.com/Greg-2600/netweather/internal/logging"
+	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/web"
 	"github.com/mxschmitt/playwright-go"
 )
@@ -106,6 +108,26 @@ func (f *fakeLogs) Diagnostics() logging.Diagnostics                    { return
 func (f *fakeLogs) ActiveScopes() []logging.Scope                       { return nil }
 func (f *fakeLogs) Subscribe() (<-chan logging.Record, func())          { return f.ch, func() {} }
 
+// fakeCorridors is the smallest real source the corridor page needs. It also
+// supplies configured endpoints so the UI test can assert the hover text.
+type fakeCorridors struct {
+	statuses  []store.CorridorStatus
+	series    map[string][]store.CorridorSample
+	endpoints map[string][]string
+}
+
+func (f *fakeCorridors) CorridorStatus(context.Context) ([]store.CorridorStatus, error) {
+	return f.statuses, nil
+}
+
+func (f *fakeCorridors) CorridorSeries(context.Context, time.Time) (map[string][]store.CorridorSample, error) {
+	return f.series, nil
+}
+
+func (f *fakeCorridors) CorridorEndpoints(context.Context) map[string][]string {
+	return f.endpoints
+}
+
 // newHarness starts the real handler on a random port and opens a page with a
 // console-error collector attached. Screenshots land in testdata/out on failure.
 func newHarness(t *testing.T) *harness {
@@ -117,9 +139,16 @@ func newHarness(t *testing.T) *harness {
 // need a fixture the shared three-target board cannot supply (such as /hubs).
 func newHarnessWithBoard(t *testing.T, m *board.Memory) *harness {
 	t.Helper()
+	return newHarnessWithDeps(t, m, nil)
+}
+
+// newHarnessWithDeps is the same harness with optional page dependencies, for
+// views the shared three-target board cannot supply (such as /corridors).
+func newHarnessWithDeps(t *testing.T, m *board.Memory, configure func(*web.Deps)) *harness {
+	t.Helper()
 
 	logs := &fakeLogs{ch: make(chan logging.Record, 8)}
-	h, err := web.New(web.Deps{
+	deps := web.Deps{
 		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Source:    m,
 		Watcher:   m,
@@ -127,7 +156,11 @@ func newHarnessWithBoard(t *testing.T, m *board.Memory) *harness {
 		Token:     testToken,
 		Version:   "test",
 		StartedAt: time.Now(),
-	})
+	}
+	if configure != nil {
+		configure(&deps)
+	}
+	h, err := web.New(deps)
 	if err != nil {
 		t.Fatalf("web.New: %v", err)
 	}
@@ -384,11 +417,91 @@ func TestTargetDetailNavigation(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// The drawer is a working page, not the narrow login card. At the harness
+	// width it should use most of the viewport, so a regression to the auth
+	// card's 26rem cap is visible here.
+	widthValue, err := h.page.Locator(`[data-testid="target-detail"]`).Evaluate("el => el.getBoundingClientRect().width", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	width, ok := toFloat(widthValue)
+	if !ok || width < 700 {
+		t.Fatalf("target detail width = %v, want at least 700px", widthValue)
+	}
+
 	if err := h.page.Locator("text=Back to the board").Click(); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.page.WaitForURL(h.baseURL + "/"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCorridorNameAndHover(t *testing.T) {
+	t.Parallel()
+
+	corridors := &fakeCorridors{
+		statuses: []store.CorridorStatus{{
+			Corridor: store.Corridor{ID: "nyc-lon", From: "NYC", To: "LON"},
+		}},
+		endpoints: map[string][]string{"nyc-lon": {"www.nytimes.com:443", "www.bbc.co.uk:443"}},
+	}
+	h := newHarnessWithDeps(t, fixture(), func(deps *web.Deps) {
+		deps.Corridors = corridors
+		deps.CorridorEndpoints = corridors
+	})
+	h.login(t)
+
+	if _, err := h.page.Goto(h.baseURL + "/corridors"); err != nil {
+		t.Fatal(err)
+	}
+	expect := playwright.NewPlaywrightAssertions(5000)
+	row := h.page.Locator(`[data-testid="corridor-row"][data-corridor="nyc-lon"]`)
+	if err := expect.Locator(row.Locator(".corridor-name")).ToHaveText("NYC → LON"); err != nil {
+		t.Fatal(err)
+	}
+	if err := expect.Locator(row.Locator(".corridor-id")).ToHaveText("nyc-lon"); err != nil {
+		t.Fatal(err)
+	}
+	if err := expect.Locator(row.Locator(".corridor-path")).ToHaveText("www.nytimes.com → www.bbc.co.uk"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, cell := range []struct{ selector, want string }{
+		{":nth-child(1)", "www.nytimes.com:443 and www.bbc.co.uk:443"},
+		{":nth-child(2)", "www.nytimes.com:443 → www.bbc.co.uk:443"},
+	} {
+		value, err := row.Locator("td"+cell.selector).Evaluate("el => el.getAttribute('title')", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		title, ok := value.(string)
+		if !ok || !strings.Contains(title, cell.want) {
+			t.Fatalf("hover title = %v, want it to contain %q", value, cell.want)
+		}
+	}
+
+	// The projection places only the operator labels and says plainly that the
+	// straight line is not a measured or physical path.
+	marker := h.page.Locator(`[data-testid="corridor-map-marker"][data-code="NYC"]`)
+	if err := expect.Locator(marker).ToBeVisible(); err != nil {
+		t.Fatal(err)
+	}
+	value, err := marker.Evaluate("el => el.getAttribute('title')", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	title, ok := value.(string)
+	if !ok || !strings.Contains(title, "Approximate city-centre coordinate; endpoint hosting location is not measured.") {
+		t.Fatalf("projection marker title = %v", value)
+	}
+	value, err = h.page.Locator(`[data-testid="corridor-map-line"][data-corridor="nyc-lon"]`).Evaluate("el => el.getAttribute('aria-label')", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lineTitle, ok := value.(string)
+	if !ok || !strings.Contains(lineTitle, "this straight line is not the physical or undersea-cable path") {
+		t.Fatalf("projection line title = %v", value)
 	}
 }
 
@@ -585,5 +698,41 @@ func TestHubsPageRenders(t *testing.T) {
 	if err := expect.Locator(h.page.Locator(`[data-testid="hub"]`).First()).
 		ToHaveAttribute("data-city", "Dallas"); err != nil {
 		t.Fatalf("worst hub not first: %v", err)
+	}
+}
+
+func TestWorldProjectionRenders(t *testing.T) {
+	t.Parallel()
+	h := newHarnessWithBoard(t, board.NewMemory(
+		board.Target{ID: "1", Name: "Chase", Host: "chase.com", Country: "US", State: board.StateDown},
+		board.Target{ID: "2", Name: "Deutsche", Host: "de.example", Country: "DE", State: board.StateUp},
+		board.Target{
+			ID: "3", Name: "Dallas, TX hub — DFW airport", Host: "dfw.example",
+			Country: "US", Sector: "us/hub", State: board.StateDown,
+		},
+	))
+	h.login(t)
+
+	expect := playwright.NewPlaywrightAssertions(5000)
+
+	if _, err := h.page.Goto(h.baseURL + "/world"); err != nil {
+		t.Fatalf("goto /world: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="world-projection"]`)).ToBeVisible(); err != nil {
+		t.Fatalf("projection section not visible: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="world-map-country"]`)).ToHaveCount(2); err != nil {
+		t.Fatalf("country marker count: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="world-map-hub"]`)).ToHaveCount(1); err != nil {
+		t.Fatalf("hub marker count: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="world-map-hub"]`)).
+		ToHaveAttribute("data-hub", "Dallas, TX"); err != nil {
+		t.Fatalf("hub marker label: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="world-map-hub"]`)).
+		ToHaveAttribute("title", "Dallas, TX hub label anchor — 1 endpoint(s), worst Down. Approximate city-centre coordinate; endpoint hosting location is not measured."); err != nil {
+		t.Fatalf("hub marker title should state the caveat: %v", err)
 	}
 }

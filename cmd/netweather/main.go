@@ -472,6 +472,7 @@ func serve(lg *logging.Logger) error {
 		CountryEvents:       st,
 		CountryLevels:       st,
 		Corridors:           st,
+		CorridorEndpoints:   configuredCorridorEndpoints(lg),
 		DNSObservations:     st,
 		Health:              health,
 		Verdict:             globalVerdict,
@@ -1769,6 +1770,39 @@ func enrichmentLoop(ctx context.Context, st *store.Store, lg *logging.Logger) {
 		case <-ticker.C:
 			run()
 		}
+	}
+}
+
+// corridorEndpointsFunc adapts a config reader to web.CorridorEndpoints.
+type corridorEndpointsFunc func(context.Context) map[string][]string
+
+func (f corridorEndpointsFunc) CorridorEndpoints(ctx context.Context) map[string][]string {
+	return f(ctx)
+}
+
+// configuredCorridorEndpoints reads the operator's corridor config on each
+// page render, so a reload cannot leave the UI naming stale endpoints. A read
+// failure leaves the page with its labels rather than invented hosts, and is
+// logged instead of shown as a fake measurement.
+func configuredCorridorEndpoints(lg *logging.Logger) corridorEndpointsFunc {
+	return func(context.Context) map[string][]string {
+		path := strings.TrimSpace(os.Getenv("NETWEATHER_CONFIG"))
+		if path == "" {
+			return nil
+		}
+		f, err := config.Load(path)
+		if err != nil {
+			if lg != nil {
+				lg.Warn("corridor endpoint config unavailable",
+					"event", "corridor_endpoint_config_failed", "component", "http", "error", err)
+			}
+			return nil
+		}
+		out := make(map[string][]string, len(f.Corridors))
+		for _, c := range f.Corridors {
+			out[c.ID] = append([]string(nil), c.Endpoints...)
+		}
+		return out
 	}
 }
 

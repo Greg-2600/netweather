@@ -2269,10 +2269,12 @@ type coverageRow struct {
 	Measured  int
 	Coverage  string
 	CoverageN float64
-	// Low marks the middle band from DESIGN.md §7.2: coverage below 0.80, or
-	// fewer than 20 measurable targets, is computed but noisy. It is a badge
-	// and a hatch, not a second colour scale.
-	Low bool
+	// Low is the genuinely weak middle band: coverage below 0.80. Small is a
+	// different advisory: fewer than 20 measurable targets, so the percentage
+	// is noisy even when every target answers. Keeping them separate stops a
+	// 100%-measured five-target sector from being called low.
+	Low   bool
+	Small bool
 }
 
 type staleRow struct {
@@ -2415,7 +2417,8 @@ func toCoverageRows(buckets []store.CoverageBucket) []coverageRow {
 		if b.Total > 0 {
 			row.CoverageN = float64(b.Measurable) / float64(b.Total)
 			row.Coverage = fmt.Sprintf("%.0f%%", row.CoverageN*100)
-			row.Low = row.CoverageN < 0.80 || b.Measurable < 20
+			row.Low = row.CoverageN < 0.80
+			row.Small = !row.Low && b.Measurable < 20
 		} else {
 			row.Coverage = "-"
 		}
@@ -2528,6 +2531,13 @@ type worldView struct {
 	CSRF      string
 	Countries []countryView
 	Unplaced  int
+	// MapPoints and HubPoints place the same aggregates on a quiet
+	// equirectangular projection. They are presentation data only: no learned
+	// country is changed and no location field is added to the schema.
+	MapPoints   []worldMapPoint
+	HubPoints   []worldHubPoint
+	MapUnmapped int
+	HubUnmapped int
 	// OverlayNote explains a missing or failed feed overlay, so an empty tile
 	// is not mistaken for "no known event".
 	OverlayNote string
@@ -2563,6 +2573,121 @@ type countryView struct {
 	FeedLevel    string
 	FeedLevelSrc string
 	FeedLevelRaw string
+}
+
+// worldMapPoint is one country marker on the /world projection. The projection
+// is an illustration of the same aggregate the tile grid already shows; it
+// adds no new measurement and no schema field.
+type worldMapPoint struct {
+	Code     string
+	X        string
+	Y        string
+	WorstCls string
+	Worst    string
+	Glyph    string
+	Count    int
+	Href     string
+	Title    string
+}
+
+// worldHubPoint is one city marker on the /world projection. City/state come
+// from the existing us/hub name convention, and the coordinate is an
+// approximate city-centre anchor, never a verified hosting location.
+type worldHubPoint struct {
+	Label    string
+	X        string
+	Y        string
+	WorstCls string
+	Worst    string
+	Glyph    string
+	Count    int
+	Href     string
+	Title    string
+}
+
+// Country anchors are geographic centres from the public mledoze/countries
+// dataset (cca2 + latlng), projected once to equirectangular percentages:
+// x = (lon + 180) / 360, y = (90 - lat) / 180. They place a marker; they do not
+// claim the measured target is hosted at the centre.
+const countryProjectionData = `AD:50.42:26.39 AE:65:36.67 AF:68.06:31.67 AG:32.83:40.53 AI:32.45:39.86 AL:55.56:27.22 AM:62.5:27.78 AO:55.14:56.94 AQ:50:100 AR:32.22:68.89 AS:2.78:57.96 AT:53.7:23.7 AU:86.94:65 AW:30.56:43.06 AX:55.53:16.6 AZ:63.19:27.5 BA:55:25.56 BB:33.46:42.69 BD:75:36.67 BE:51.11:21.76 BF:49.44:42.78 BG:56.94:26.11 BH:64.04:35.56 BI:58.33:51.94 BJ:50.63:44.72 BL:32.38:39.72 BM:32.01:32.04 BN:81.85:47.5 BO:31.94:59.44 BQ:31.04:43.23 BR:34.72:55.56 BS:28.89:36.53 BT:75.14:34.72 BV:50.94:80.24 BW:56.67:62.22 BY:57.78:20.56 BZ:25.35:40.42 CA:23.61:16.67 CC:76.9:56.94 CD:56.94:50 CF:55.83:46.11 CG:54.17:50.56 CH:52.22:23.89 CI:48.61:45.56 CK:5.62:61.8 CL:30.28:66.67 CM:53.33:46.67 CN:79.17:30.56 CO:30:47.78 CR:26.67:44.44 CU:27.78:38.06 CV:43.33:41.11 CW:30.85:43.27 CX:79.35:55.83 CY:59.17:30.56 CZ:54.31:22.36 DE:52.5:21.67 DJ:61.94:43.61 DK:52.78:18.89 DM:32.96:41.44 DO:30.37:39.44 DZ:50.83:34.44 EC:28.47:51.11 EE:57.22:17.22 EG:58.33:35 EH:46.39:36.39 ER:60.83:41.67 ES:48.89:27.78 ET:60.56:45.56 FI:57.22:14.44 FJ:98.61:60 FK:33.61:78.75 FM:93.96:46.16 FO:48.06:15.56 FR:50.56:24.44 GA:53.26:50.56 GB:49.44:20 GD:32.87:43.27 GE:62.08:26.67 GF:35.28:47.78 GG:49.28:22.52 GH:49.44:45.56 GI:48.51:29.93 GL:38.89:10 GM:45.4:42.52 GN:47.22:43.89 GP:32.89:40.97 GQ:52.78:48.89 GR:56.11:28.33 GS:39.72:80.28 GT:24.93:41.39 GU:90.22:42.52 GW:45.83:43.33 GY:33.61:47.22 HK:81.72:37.63 HM:70.14:79.5 HN:25.97:41.67 HR:54.31:24.91 HT:29.88:39.44 HU:55.56:23.89 ID:83.33:52.78 IE:47.78:20.56 IL:59.76:32.52 IM:48.75:19.86 IN:71.39:38.89 IO:69.86:53.33 IQ:62.22:31.67 IR:64.72:32.22 IS:45:13.89 IT:53.56:26.2 JE:49.4:22.64 JM:28.47:39.86 JO:60:32.78 JP:88.33:30 KE:60.56:49.44 KG:70.83:27.22 KH:79.17:42.78 KI:98.06:49.21 KM:62.29:56.76 KN:32.57:40.37 KP:85.28:27.78 KR:85.42:29.44 KW:62.71:33.61 KY:27.64:39.17 KZ:68.89:23.33 LA:79.17:40 LB:59.95:31.2 LC:33.06:42.29 LI:52.65:23.74 LK:72.5:46.11 LR:47.36:46.39 LS:57.92:66.39 LT:56.67:18.89 LU:51.71:22.36 LV:56.94:18.33 LY:54.72:36.11 MA:48.61:32.22 MC:52.06:25.7 MD:58.06:23.89 ME:55.36:26.39 MF:32.24:39.95 MG:63.06:61.11 MH:96.67:45 MK:56.11:26.76 ML:48.89:40.56 MM:77.22:37.78 MN:79.17:24.44 MO:81.54:37.69 MP:90.49:41.56 MQ:33.06:41.85 MR:46.67:38.89 MS:32.72:40.69 MT:54.05:30.09 MU:65.99:61.27 MV:70.28:48.19 MW:59.44:57.5 MX:21.67:37.22 MY:81.25:48.61 MZ:59.72:60.14 NA:54.72:62.22 NC:95.97:61.94 NE:52.22:41.11 NF:96.65:66.13 NG:52.22:44.44 NI:26.39:42.78 NL:51.6:20.83 NO:52.78:15.56 NP:73.33:34.44 NR:96.37:50.3 NU:2.81:60.57 NZ:98.33:72.78 OM:65.83:38.33 PA:27.78:45 PE:28.89:55.56 PF:11.11:58.33 PG:90.83:53.33 PH:83.89:42.78 PK:69.44:33.33 PL:55.56:21.11 PM:34.35:23.98 PN:13.86:63.93 PR:31.53:39.86 PS:59.78:32.28 PT:47.78:28.06 PW:87.36:45.83 PY:33.89:62.78 QA:64.24:35.83 RE:65.42:61.75 RO:56.94:24.44 RS:55.83:25.56 RU:77.78:16.67 RW:58.33:51.11 SA:62.5:36.11 SB:94.17:54.44 SC:65.46:52.55 SD:58.33:41.67 SE:54.17:15.56 SG:78.83:49.24 SH:48.41:58.86 SI:54.12:24.38 SJ:55.56:6.67 SK:55.42:22.96 SL:46.81:45.28 SM:53.45:25.69 SN:46.11:42.22 SO:63.61:44.44 SR:34.44:47.78 SS:58.33:46.11 ST:51.94:49.44 SV:25.3:42.31 SX:32.49:39.98 SY:60.56:30.56 SZ:58.75:64.72 TC:30.12:37.92 TD:55.28:41.67 TF:69.21:77.36 TG:50.32:45.56 TH:77.78:41.67 TJ:69.72:28.33 TK:2.22:55 TL:84.98:54.91 TM:66.67:27.78 TN:52.5:31.11 TO:1.39:61.11 TR:59.72:28.33 TT:33.06:43.89 TV:99.44:54.44 TW:83.61:36.94 TZ:59.72:53.33 UA:58.89:22.78 UG:58.89:49.44 UM:96.29:39.28 US:23.06:28.89 UY:34.44:68.33 UZ:67.78:27.22 VA:53.46:26.72 VC:33:42.64 VE:31.67:45.56 VG:32.05:39.76 VI:31.96:39.81 VN:79.95:41.02 VU:96.39:58.89 WF:1.06:57.39 WS:2.13:57.55 XK:55.88:26.3 YE:63.33:41.67 YT:62.55:57.13 ZA:56.67:66.11 ZM:58.33:58.33 ZW:58.33:61.11`
+
+// Hub anchors use city centres from Natural Earth's 10m populated places and
+// the same projection. They are placed from the configured City, ST label, so
+// a diamond marks the label's approximate city centre, not the endpoint's
+// hosting location.
+const hubProjectionData = `Dallas, TX:23.11:31.79|New York, NY:29.45:27.38|Newark, NJ:29.40:27.39|San Francisco, CA:16.00:29.01|Seattle, WA:16.02:23.56|Miami, FL:27.71:35.67|Houston, TX:23.51:33.48|Minneapolis, MN:24.10:25.01|Detroit, MI:26.93:26.48|Salt Lake City, UT:18.91:27.35|Phoenix, AZ:18.87:31.42|Raleigh, NC:28.15:30.13|Las Vegas, NV:18.01:29.91|Washington, DC:28.61:28.39|Orlando, FL:27.39:34.16|Baltimore, MD:28.72:28.18|Portland, OR:15.92:24.71|Birmingham, AL:25.88:31.37|Pittsburgh, PA:27.78:27.54|Memphis, TN:24.99:30.48|New Orleans, LA:24.98:33.35|Louisville, KY:26.18:28.76|Savannah, GA:27.47:32.21|Chattanooga, TN:26.32:30.52|Boston, MA:30.26:26.48|San Diego, CA:17.46:31.82|Los Angeles, CA:17.16:31.08|Chicago, IL:25.66:26.75|Cleveland, OH:27.31:26.96|Oklahoma City, OK:22.91:30.29|St. Louis, MO:24.93:28.54|Boise, ID:17.71:25.77|Austin, TX:22.85:33.18|Denver, CO:20.84:27.92`
+
+func parseProjectionData(data, sep string, upper bool) map[string][2]string {
+	out := make(map[string][2]string)
+	for _, item := range strings.FieldsFunc(data, func(r rune) bool { return strings.ContainsRune(sep, r) }) {
+		parts := strings.Split(item, ":")
+		if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+			continue
+		}
+		key := parts[0]
+		if upper {
+			key = strings.ToUpper(key)
+		}
+		out[key] = [2]string{parts[1], parts[2]}
+	}
+	return out
+}
+
+var (
+	countryProjection = parseProjectionData(countryProjectionData, " \t\n\r", true)
+	hubProjection     = parseProjectionData(hubProjectionData, "|", false)
+)
+
+// Corridor label anchors use the same equirectangular projection as /world.
+// Coordinates are city centres from Natural Earth 10m populated places, except
+// the three US cities already anchored for /hubs, which reuse those values so
+// a code does not move between the two pages. They place an operator label,
+// never an endpoint host or a measured network path.
+const corridorProjectionData = `NYC:29.45:27.38|LON:49.97:21.39|SIN:78.85:49.28|TYO:88.82:30.17|LAX:17.16:31.08|SYD:92.00:68.84|MRS:51.49:25.95|BOM:70.24:39.43|MIA:27.71:35.67|SAO:37.05:63.09|FRA:52.41:22.17|JNB:57.79:64.54|SFO:16.00:29.01`
+
+var corridorProjection = parseProjectionData(corridorProjectionData, "|", false)
+
+// corridorSegment is one straight piece of a corridor line in the SVG's
+// 1000x500 viewBox. A Pacific corridor produces two pieces: it leaves one edge
+// and re-enters the other, instead of drawing the wrong way across the map.
+type corridorSegment struct {
+	X1, Y1, X2, Y2 string
+}
+
+// corridorLineSegments projects a from/to pair and splits at the antimeridian
+// when the direct path is longer than half the world. Inputs are percentages
+// from corridorProjection; outputs are viewBox coordinates.
+func corridorLineSegments(from, to [2]float64) []corridorSegment {
+	x1, y1 := from[0], from[1]
+	x2, y2 := to[0], to[1]
+	dx := x2 - x1
+	if dx < 0 {
+		dx = -dx
+	}
+	if dx <= 50 {
+		return []corridorSegment{{
+			X1: fmt.Sprintf("%.2f", x1*10), Y1: fmt.Sprintf("%.2f", y1*5),
+			X2: fmt.Sprintf("%.2f", x2*10), Y2: fmt.Sprintf("%.2f", y2*5),
+		}}
+	}
+
+	var yCross float64
+	if x2 > x1 {
+		// Direct eastward jump is too long: travel west through -180.
+		unwrapped := x2 - 100
+		yCross = y1 + ((0-x1)/(unwrapped-x1))*(y2-y1)
+		return []corridorSegment{
+			{X1: fmt.Sprintf("%.2f", x1*10), Y1: fmt.Sprintf("%.2f", y1*5), X2: "0.00", Y2: fmt.Sprintf("%.2f", yCross*5)},
+			{X1: "1000.00", Y1: fmt.Sprintf("%.2f", yCross*5), X2: fmt.Sprintf("%.2f", x2*10), Y2: fmt.Sprintf("%.2f", y2*5)},
+		}
+	}
+	// Direct westward jump is too long: travel east through +180.
+	unwrapped := x2 + 100
+	yCross = y1 + ((100-x1)/(unwrapped-x1))*(y2-y1)
+	return []corridorSegment{
+		{X1: fmt.Sprintf("%.2f", x1*10), Y1: fmt.Sprintf("%.2f", y1*5), X2: "1000.00", Y2: fmt.Sprintf("%.2f", yCross*5)},
+		{X1: "0.00", Y1: fmt.Sprintf("%.2f", yCross*5), X2: fmt.Sprintf("%.2f", x2*10), Y2: fmt.Sprintf("%.2f", y2*5)},
+	}
 }
 
 // flagFor maps an ISO-3166-1 alpha-2 code to its regional-indicator pair. An
@@ -2611,6 +2736,20 @@ func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		byCountry[code] = append(byCountry[code], t)
+	}
+
+	// The projection reuses the same name convention as /hubs. A malformed
+	// name is skipped rather than pinned to a guessed city centre.
+	byHub := make(map[string][]board.Target)
+	for _, t := range targets {
+		if t.Sector != "us/hub" {
+			continue
+		}
+		city, state, _, ok := parseHubName(t.Name)
+		if !ok {
+			continue
+		}
+		byHub[city+", "+state] = append(byHub[city+", "+state], t)
 	}
 
 	csrf, _ := s.auth.csrfFrom(r)
@@ -2713,11 +2852,65 @@ func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
 		return view.Countries[i].Code < view.Countries[j].Code
 	})
 
+	// The projection is a second presentation of the rows above, not a second
+	// source of truth. A country without a public geographic centre is counted
+	// in a note rather than dropped from the tile grid.
+	for _, row := range view.Countries {
+		pos, ok := countryProjection[row.Code]
+		if !ok {
+			view.MapUnmapped++
+			continue
+		}
+		title := fmt.Sprintf("%s — %d target(s), worst %s", row.Code, row.Count, row.Worst)
+		if row.Feed != "" {
+			title += "; " + row.Feed
+		}
+		if row.FeedLevel != "" {
+			title += fmt.Sprintf("; %s relative level %s (raw %s)", row.FeedLevelSrc, row.FeedLevel, row.FeedLevelRaw)
+		}
+		view.MapPoints = append(view.MapPoints, worldMapPoint{
+			Code: row.Code, X: pos[0], Y: pos[1],
+			WorstCls: row.WorstCls, Worst: row.Worst, Glyph: row.Glyph,
+			Count: row.Count, Href: row.Href, Title: title,
+		})
+	}
+
+	for label, members := range byHub {
+		pos, ok := hubProjection[label]
+		if !ok {
+			view.HubUnmapped++
+			continue
+		}
+		worst := board.StateUp
+		for _, t := range members {
+			if board.SeverityRank(t.State) < board.SeverityRank(worst) {
+				worst = t.State
+			}
+		}
+		title := fmt.Sprintf("%s hub label anchor — %d endpoint(s), worst %s. Approximate city-centre coordinate; endpoint hosting location is not measured.",
+			label, len(members), worst.Text())
+		view.HubPoints = append(view.HubPoints, worldHubPoint{
+			Label: label, X: pos[0], Y: pos[1],
+			WorstCls: worst.CSSClass(), Worst: worst.Text(), Glyph: worst.Glyph(),
+			Count: len(members), Href: "/hubs", Title: title,
+		})
+	}
+	sort.SliceStable(view.HubPoints, func(i, j int) bool {
+		ri, rj := board.SeverityRank(worstStateFromClass(view.HubPoints[i].WorstCls)),
+			board.SeverityRank(worstStateFromClass(view.HubPoints[j].WorstCls))
+		if ri != rj {
+			return ri < rj
+		}
+		return view.HubPoints[i].Label < view.HubPoints[j].Label
+	})
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	view.Insecure = s.insecure(r)
 	view.NoAuth = s.auth.disabled()
+	// The projection positions markers with inline left/top percentages, the
+	// same bounded inline-style exception the /map and /hubs treemaps use.
 	w.Header().Set("Content-Security-Policy",
-		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+		"default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "world.html", view)
 }
 
@@ -2965,15 +3158,55 @@ type corridorsView struct {
 	Rows       []corridorRow
 	Note       string
 	SeriesNote string
+	// MapPoints and MapLines place only the configured operator labels on the
+	// shared equirectangular projection. They add no measured location and no
+	// claim about the physical path between endpoints.
+	MapPoints   []corridorMapPoint
+	MapLines    []corridorMapLine
+	MapUnmapped int
+}
+
+// corridorMapPoint is one label anchor shared by one or more corridors.
+type corridorMapPoint struct {
+	Code     string
+	X        string
+	Y        string
+	StateCls string
+	Glyph    string
+	Count    int
+	Title    string
+}
+
+// corridorMapLine is the visual link between two label anchors. Segments are
+// split at the antimeridian so a Pacific pair does not draw across the Atlantic.
+type corridorMapLine struct {
+	ID       string
+	StateCls string
+	Title    string
+	Segments []corridorSegment
+}
+
+type corridorPointAggregate struct {
+	state board.State
+	count int
 }
 
 type corridorRow struct {
-	ID       string
-	From     string
-	To       string
-	RTT      string
-	Baseline string
-	Spark    string
+	ID string
+	// From and To are the configured operator labels. They stay on the view
+	// so the projection never has to parse the human-readable Name back apart.
+	From string
+	To   string
+	// Name is the readable operator label pair; ID stays visible underneath.
+	Name string
+	// Path is the configured endpoint pair when config supplies it, otherwise
+	// the label pair. Hover text explains which one is the measurement.
+	Path      string
+	IDTitle   string
+	PathTitle string
+	RTT       string
+	Baseline  string
+	Spark     string
 	// Band marks each spark bucket against the six-hour baseline: · inside,
 	// ▲ above, ▼ below (DESIGN.md §10.4).
 	Band      string
@@ -2989,6 +3222,133 @@ type corridorRow struct {
 	Trace string
 }
 
+// corridorDisplay turns a configured corridor into a readable name, the real
+// endpoint pair, and two hover explanations. Endpoints come from config; From
+// and To stay labelled as operator text, never as measured locations
+// (DESIGN.md §9). Without endpoints the page falls back to the labels instead
+// of guessing a host.
+func corridorDisplay(id, from, to string, endpoints []string) (name, path, idTitle, pathTitle string) {
+	from = strings.TrimSpace(from)
+	to = strings.TrimSpace(to)
+	labels := from + " → " + to
+	if from == "" || to == "" {
+		labels = "configured path"
+	}
+	name = labels
+	path = labels
+
+	if len(endpoints) == 0 {
+		idTitle = fmt.Sprintf("Configured corridor id %s. Path labels: %s. Endpoint hosts are not available on this instance.", id, labels)
+		pathTitle = fmt.Sprintf("Operator path labels: %s. Endpoint hosts are the measurement; labels are approximate because CDNs anycast.", labels)
+		return name, path, idTitle, pathTitle
+	}
+
+	hosts := make([]string, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		hosts = append(hosts, corridorEndpointHost(endpoint))
+	}
+	path = strings.Join(hosts, " → ")
+	idTitle = fmt.Sprintf("Configured corridor id %s. Path labels: %s. Endpoints: %s.", id, labels, strings.Join(endpoints, " and "))
+	labelNote := fmt.Sprintf("%s and %s are operator path labels, not measured locations; CDNs anycast.", from, to)
+	if from == "" || to == "" {
+		labelNote = "These are operator path labels, not measured locations; CDNs anycast."
+	}
+	pathTitle = fmt.Sprintf("Configured endpoints: %s. %s", strings.Join(endpoints, " → "), labelNote)
+	return name, path, idTitle, pathTitle
+}
+
+// corridorEndpointHost drops the :443 suffix from a configured endpoint so the
+// path column reads as a host pair. The full host:port string stays in hover
+// text. Unknown shapes are shown as configured.
+func corridorEndpointHost(endpoint string) string {
+	if i := strings.LastIndex(endpoint, ":"); i > 0 {
+		return endpoint[:i]
+	}
+	return endpoint
+}
+
+// corridorProjectionPoint parses a stored percentage anchor. A bad constant is
+// skipped rather than rendered as a misleading marker at 0,0.
+func corridorProjectionPoint(code string) ([2]float64, bool) {
+	stored, ok := corridorProjection[strings.ToUpper(strings.TrimSpace(code))]
+	if !ok || len(stored) != 2 {
+		return [2]float64{}, false
+	}
+	x, errX := strconv.ParseFloat(stored[0], 64)
+	y, errY := strconv.ParseFloat(stored[1], 64)
+	if errX != nil || errY != nil {
+		return [2]float64{}, false
+	}
+	return [2]float64{x, y}, true
+}
+
+// buildCorridorMap derives the projection entirely from the rows already on
+// the page. It invents no geography and no route: a code must exist in the
+// public city-centre anchor table, and a line is drawn only when both of its
+// labels are known.
+func buildCorridorMap(view *corridorsView, endpoints map[string][]string) {
+	points := make(map[string]*corridorPointAggregate)
+	for _, row := range view.Rows {
+		state := worstStateFromClass(row.StateCls)
+		from, fromOK := corridorProjectionPoint(row.From)
+		to, toOK := corridorProjectionPoint(row.To)
+
+		for _, code := range []string{row.From, row.To} {
+			if _, ok := corridorProjection[strings.ToUpper(strings.TrimSpace(code))]; !ok {
+				view.MapUnmapped++
+				continue
+			}
+			code = strings.ToUpper(strings.TrimSpace(code))
+			agg := points[code]
+			if agg == nil {
+				agg = &corridorPointAggregate{state: state}
+				points[code] = agg
+			}
+			agg.count++
+			if board.SeverityRank(state) < board.SeverityRank(agg.state) {
+				agg.state = state
+			}
+		}
+
+		if !fromOK || !toOK {
+			continue
+		}
+		detail := "Endpoint hosts are not available on this instance."
+		if configured := endpoints[row.ID]; len(configured) > 0 {
+			detail = "Configured endpoints: " + strings.Join(configured, " → ") + "."
+		}
+		view.MapLines = append(view.MapLines, corridorMapLine{
+			ID: row.ID, StateCls: row.StateCls,
+			Segments: corridorLineSegments(from, to),
+			Title: fmt.Sprintf("Corridor %s: %s → %s, %s. %s Operator labels are approximate city-centre anchors, not measured locations; this straight line is not the physical or undersea-cable path.",
+				row.ID, row.From, row.To, row.State, detail),
+		})
+	}
+
+	for code, agg := range points {
+		pos, ok := corridorProjectionPoint(code)
+		if !ok {
+			continue
+		}
+		view.MapPoints = append(view.MapPoints, corridorMapPoint{
+			Code: code,
+			X:    fmt.Sprintf("%.2f", pos[0]), Y: fmt.Sprintf("%.2f", pos[1]),
+			StateCls: agg.state.CSSClass(), Glyph: agg.state.Glyph(),
+			Count: agg.count,
+			Title: fmt.Sprintf("%s — used by %d corridor label occurrence(s), worst state %s. Approximate city-centre coordinate; endpoint hosting location is not measured.",
+				code, agg.count, agg.state.Text()),
+		})
+	}
+	sort.SliceStable(view.MapPoints, func(i, j int) bool {
+		ri, rj := board.SeverityRank(worstStateFromClass(view.MapPoints[i].StateCls)),
+			board.SeverityRank(worstStateFromClass(view.MapPoints[j].StateCls))
+		if ri != rj {
+			return ri < rj
+		}
+		return view.MapPoints[i].Code < view.MapPoints[j].Code
+	})
+}
+
 func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
@@ -2998,6 +3358,11 @@ func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
 
 	csrf, _ := s.auth.csrfFrom(r)
 	view := corridorsView{Version: s.deps.Version, CSRF: csrf, Insecure: s.insecure(r)}
+
+	var endpoints map[string][]string
+	if s.deps.CorridorEndpoints != nil {
+		endpoints = s.deps.CorridorEndpoints.CorridorEndpoints(r.Context())
+	}
 
 	if s.deps.Corridors == nil {
 		view.Note = "Corridors are not configured on this instance."
@@ -3023,8 +3388,14 @@ func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
 			for _, status := range statuses {
 				samples := series[status.Corridor.ID]
 				spark, band := corridorShape(samples)
+				name, path, idTitle, pathTitle := corridorDisplay(
+					status.Corridor.ID, status.Corridor.From, status.Corridor.To,
+					endpoints[status.Corridor.ID])
 				row := corridorRow{
-					ID: status.Corridor.ID, From: status.Corridor.From, To: status.Corridor.To,
+					ID:   status.Corridor.ID,
+					From: status.Corridor.From, To: status.Corridor.To,
+					Name: name, Path: path,
+					IDTitle: idTitle, PathTitle: pathTitle,
 					State: "waiting for a sample", StateCls: "state-unknown",
 					RTT: "-", Baseline: baselineOf(samples), Spark: spark, Band: band,
 					Loss: "-", LossBar: lossBarOf(0),
@@ -3055,11 +3426,15 @@ func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	buildCorridorMap(&view, endpoints)
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	view.Insecure = s.insecure(r)
 	view.NoAuth = s.auth.disabled()
+	// The projection positions markers with inline left/top percentages, the
+	// same bounded inline-style exception used by /map, /hubs, and /world.
 	w.Header().Set("Content-Security-Policy",
-		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+		"default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "corridors.html", view)
 }
 

@@ -5128,14 +5128,14 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-rbc
-    name: "Royal Bank of Canada"
-    host: "www.rbc.com"
+    name: "Trip.com"
+    host: "www.trip.com"
     port: 443
     probe: http
     class: service
-    sector: "financial/banking"
-    tier: 1
-    interval_s: 120
+    sector: "airline"
+    tier: 2
+    interval_s: 300
   - id: svc-cibc
     name: "CIBC"
     host: "www.cibc.com"
@@ -5146,14 +5146,14 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-scotiabank
-    name: "Scotiabank"
-    host: "www.scotiabank.com"
+    name: "Turkish Airlines"
+    host: "www.turkishairlines.com"
     port: 443
     probe: http
     class: service
-    sector: "financial/banking"
-    tier: 1
-    interval_s: 120
+    sector: "airline"
+    tier: 2
+    interval_s: 300
   - id: svc-westpac
     name: "Westpac"
     host: "www.westpac.com.au"
@@ -5210,8 +5210,8 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-united
-    name: "United"
-    host: "www.united.com"
+    name: "Skyscanner"
+    host: "www.skyscanner.com"
     port: 443
     probe: http
     class: service
@@ -5219,8 +5219,8 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-delta
-    name: "Delta"
-    host: "www.delta.com"
+    name: "WestJet"
+    host: "www.westjet.com"
     port: 443
     probe: http
     class: service
@@ -5282,8 +5282,8 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-airfrance
-    name: "Air France"
-    host: "www.airfrance.com"
+    name: "Scoot"
+    host: "www.scoot.com"
     port: 443
     probe: http
     class: service
@@ -5291,8 +5291,8 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-klm
-    name: "KLM"
-    host: "www.klm.com"
+    name: "Virgin Australia"
+    host: "www.virginaustralia.com"
     port: 443
     probe: http
     class: service
@@ -5300,8 +5300,8 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-emirates
-    name: "Emirates"
-    host: "www.emirates.com"
+    name: "Virgin Atlantic"
+    host: "www.virginatlantic.com"
     port: 443
     probe: http
     class: service
@@ -5318,8 +5318,8 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-singaporeair
-    name: "Singapore Airlines"
-    host: "www.singaporeair.com"
+    name: "Hawaiian Airlines"
+    host: "www.hawaiianairlines.com"
     port: 443
     probe: http
     class: service
@@ -6256,8 +6256,8 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-imf
-    name: "IMF"
-    host: "www.imf.org"
+    name: "ITU"
+    host: "www.itu.int"
     port: 443
     probe: http
     class: service
@@ -6463,8 +6463,8 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-spectrum
-    name: "Spectrum"
-    host: "www.spectrum.com"
+    name: "Telstra"
+    host: "www.telstra.com.au"
     port: 443
     probe: http
     class: service
@@ -6562,14 +6562,14 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-zoom
-    name: "Zoom"
-    host: "www.zoom.us"
+    name: "American Diabetes Association"
+    host: "www.diabetes.org"
     port: 443
     probe: http
     class: service
-    sector: "developer"
-    tier: 1
-    interval_s: 120
+    sector: "health"
+    tier: 2
+    interval_s: 300
   - id: svc-notion
     name: "Notion"
     host: "www.notion.so"
@@ -6607,32 +6607,32 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-openai
-    name: "OpenAI"
-    host: "www.openai.com"
+    name: "NYU Langone Health"
+    host: "www.nyulangone.org"
     port: 443
     probe: http
     class: service
-    sector: "developer"
-    tier: 1
-    interval_s: 120
+    sector: "health"
+    tier: 2
+    interval_s: 300
   - id: svc-anthropic
-    name: "Anthropic"
-    host: "www.anthropic.com"
+    name: "UCSF Health"
+    host: "www.ucsfhealth.org"
     port: 443
     probe: http
     class: service
-    sector: "developer"
-    tier: 1
-    interval_s: 120
+    sector: "health"
+    tier: 2
+    interval_s: 300
   - id: svc-huggingface
-    name: "Hugging Face"
-    host: "www.huggingface.co"
+    name: "American Cancer Society"
+    host: "www.cancer.org"
     port: 443
     probe: http
     class: service
-    sector: "developer"
-    tier: 1
-    interval_s: 120
+    sector: "health"
+    tier: 2
+    interval_s: 300
   - id: svc-npm
     name: "npm"
     host: "www.npmjs.com"
@@ -6742,14 +6742,14 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-brave
-    name: "Brave"
-    host: "www.brave.com"
+    name: "Mass General Brigham"
+    host: "www.massgeneral.org"
     port: 443
     probe: http
     class: service
-    sector: "developer"
-    tier: 1
-    interval_s: 120
+    sector: "health"
+    tier: 2
+    interval_s: 300
   - id: svc-startpage
     name: "Startpage"
     host: "www.startpage.com"
@@ -6778,21 +6778,21 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-yandex
-    name: "Yandex"
-    host: "yandex.com"
+    name: "Mastodon"
+    host: "mastodon.social"
     port: 443
     probe: http
     class: service
-    sector: "news"
+    sector: "social"
     tier: 2
     interval_s: 300
   - id: svc-naver
-    name: "Naver"
-    host: "www.naver.com"
+    name: "Bluesky"
+    host: "bsky.app"
     port: 443
     probe: http
     class: service
-    sector: "news"
+    sector: "social"
     tier: 2
     interval_s: 300
   - id: svc-seznam
@@ -6887,59 +6887,59 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-huawei
-    name: "Huawei"
-    host: "www.huawei.com"
+    name: "UT Austin"
+    host: "www.utexas.edu"
     port: 443
     probe: http
     class: service
-    sector: "cloud"
-    tier: 1
-    interval_s: 120
+    sector: "education"
+    tier: 2
+    interval_s: 300
   - id: svc-oppo
-    name: "OPPO"
-    host: "www.oppo.com"
+    name: "Cornell University"
+    host: "www.cornell.edu"
     port: 443
     probe: http
     class: service
-    sector: "cloud"
-    tier: 1
-    interval_s: 120
+    sector: "education"
+    tier: 2
+    interval_s: 300
   - id: svc-vivo
-    name: "vivo"
-    host: "www.vivo.com"
+    name: "Yale University"
+    host: "www.yale.edu"
     port: 443
     probe: http
     class: service
-    sector: "cloud"
-    tier: 1
-    interval_s: 120
+    sector: "education"
+    tier: 2
+    interval_s: 300
   - id: svc-oneplus
-    name: "OnePlus"
-    host: "www.oneplus.com"
+    name: "University of Chicago"
+    host: "www.uchicago.edu"
     port: 443
     probe: http
     class: service
-    sector: "cloud"
-    tier: 1
-    interval_s: 120
+    sector: "education"
+    tier: 2
+    interval_s: 300
   - id: svc-samsung
-    name: "Samsung"
-    host: "www.samsung.com"
+    name: "UC Berkeley"
+    host: "www.berkeley.edu"
     port: 443
     probe: http
     class: service
-    sector: "cloud"
-    tier: 1
-    interval_s: 120
+    sector: "education"
+    tier: 2
+    interval_s: 300
   - id: svc-lg
-    name: "LG"
-    host: "www.lg.com"
+    name: "UCLA"
+    host: "www.ucla.edu"
     port: 443
     probe: http
     class: service
-    sector: "cloud"
-    tier: 1
-    interval_s: 120
+    sector: "education"
+    tier: 2
+    interval_s: 300
   - id: svc-sony
     name: "Cleveland, OH hub — CLE airport"
     host: "www.clevelandairport.com"
@@ -6950,32 +6950,32 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-lenovo
-    name: "Lenovo"
-    host: "www.lenovo.com"
+    name: "Caltech"
+    host: "www.caltech.edu"
     port: 443
     probe: http
     class: service
-    sector: "cloud"
-    tier: 1
-    interval_s: 120
+    sector: "education"
+    tier: 2
+    interval_s: 300
   - id: svc-asus
-    name: "ASUS"
-    host: "www.asus.com"
+    name: "Duke University"
+    host: "www.duke.edu"
     port: 443
     probe: http
     class: service
-    sector: "cloud"
-    tier: 1
-    interval_s: 120
+    sector: "education"
+    tier: 2
+    interval_s: 300
   - id: svc-acer
-    name: "Acer"
-    host: "www.acer.com"
+    name: "University of Toronto"
+    host: "www.utoronto.ca"
     port: 443
     probe: http
     class: service
-    sector: "cloud"
-    tier: 1
-    interval_s: 120
+    sector: "education"
+    tier: 2
+    interval_s: 300
   - id: svc-msi
     name: "Oklahoma City, OK hub — OKC airport"
     host: "flyokc.com"

@@ -55,6 +55,10 @@ type Deps struct {
 	CountryLevels CountryLevels
 	// Corridors supplies the corridor page. Nil shows a note, not an empty page.
 	Corridors CorridorStatus
+	// CorridorEndpoints names the real endpoint pair behind a corridor id, so
+	// the page can say what it measures instead of only showing a short code.
+	// Nil keeps the id/label-only display rather than inventing hosts.
+	CorridorEndpoints CorridorEndpoints
 	// Health computes the Internet Health Index for the board chip and the
 	// /ihi page. Nil omits both rather than showing a zero.
 	Health HealthIndex
@@ -224,6 +228,13 @@ type CountryLevels interface {
 type CorridorStatus interface {
 	CorridorStatus(ctx context.Context) ([]store.CorridorStatus, error)
 	CorridorSeries(ctx context.Context, since time.Time) (map[string][]store.CorridorSample, error)
+}
+
+// CorridorEndpoints maps a corridor id to its configured endpoint pair. The
+// page uses these real hosts as the readable path name and in hover text; the
+// From/To labels remain labelled as operator text, never as measured locations.
+type CorridorEndpoints interface {
+	CorridorEndpoints(ctx context.Context) map[string][]string
 }
 
 // HealthIndex computes the Internet Health Index (DESIGN.md §11). Nil omits the

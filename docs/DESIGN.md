@@ -586,7 +586,7 @@ So:
 
 The absolute floors matter as much as the ratio. A scope of 10 targets at `coverage = 1.0` has a perfect ratio and almost no information; `measurable < 8` is not a healthy scope, it is a scope that cannot support a verdict.
 
-**Implemented, the low-coverage band:** when `measurable < 20` or `coverage < 0.80`, the health detector's band is widened 1.5x before the trigger is evaluated, exactly as the middle row says. The widening is applied after the atypical-day widener and before `Detector.Push`, so a small or partly measurable scope needs a larger drop before it can alarm; the floors below still stop detection entirely. The coverage panel also marks the band: a sector row in it carries a `low` badge and a hatch, so a partly measurable scope is visible where the operator reads coverage rather than only as a quieter detector.
+**Implemented, the low-coverage band:** when `measurable < 20` or `coverage < 0.80`, the health detector's band is widened 1.5x before the trigger is evaluated, exactly as the middle row says. The widening is applied after the atypical-day widener and before `Detector.Push`, so a small or partly measurable scope needs a larger drop before it can alarm; the floors below still stop detection entirely. The coverage panel separates the two reasons: a row below 80% measurable carries a `low` badge and a hatch, while an adequately measured row with fewer than 20 measurable targets carries a quieter `small` badge instead. A 100%-measured five-target sector is thin, not weak; calling it `low` made the panel lie about what the detector was worried about.
 
 A collapse in coverage is itself an event: if `coverage` for a scope falls below `median - 3σ` of its own baseline, emit `COVERAGE_DROP` as an **advisory**, never `INCIDENT`. A mass bot-wall rollout and a mass outage look identical in the health number, and only the coverage line tells them apart.
 
@@ -940,6 +940,20 @@ One tile per country: ccTLD code + flag, coloured by reachability, with an IODA 
 
 **Implemented:** `/world` renders one tile per learned country, worst state first, with the target count and per-state chips; the code, state text, and glyph carry the meaning alongside colour. A target with no learned country is counted separately as "unplaced", never folded into a real code. Clicking a tile opens the board filtered to that country (`/?group=country&country=US`), and the board shows the active filter with a clear link that preserves the grouping lens and focus mode. A country tile also carries the highest-severity feed event for that country from the last 24 hours (`ioda outage 0.87`), with one query for the whole page; a missing reader, an empty window, and a failed query each state their case instead of leaving the tile looking quiet. The tile also carries the regional-indicator flag for the code, decorative only: the code is always rendered as text, so a platform without flag glyphs loses nothing.
 
+**Geographic projection (presentation only).** Below the tiles, the same country
+aggregates are placed on a quiet equirectangular land silhouette served from
+`internal/web/static/world-projection.svg` (simplified public-domain Natural
+Earth 110m land geometry; no script or third-party data fetch). Circle
+positions are precomputed from the geographic centres in the public
+`mledoze/countries` dataset; diamond positions come from Natural Earth 10m city
+centres matched to the existing `City, ST hub — site` name convention. They are
+placements for the eye, not measurements: a circle is a country aggregate, a
+diamond is a label anchor, and neither claims that a target is hosted at that
+coordinate or that CDNs anycast to it. The projection reuses each row's state
+class, glyph, count, feed reason, level, and drill-down link, so it adds no new
+schema field and no second source of truth. A bucket or hub without a public
+anchor is counted in a note rather than dropped or pinned to a guessed place.
+
 **Live per-country level (bounded, server-side).** The earlier objection to a
 live IODA overlay was the cost of IODA's per-entity signal endpoints: a page
 view would become an API-scraping loop. That is still true, so the world page
@@ -973,7 +987,19 @@ vantage.
 
 Ten rows: RTT sparkline, loss bar, baseline band, step-change highlight.
 
-**Implemented:** `/corridors` lists one row per configured corridor with its current RTT, its 24-hour baseline (the median successful RTT in the window the step rule compares against), a 24-hour RTT sparkline, a five-cell loss bar beside the exact percentage, sample time, state (`normal`, `no reply`, `step change`, or `waiting for a sample`), event kind, detail, and when the change started. The shapes are text glyphs rather than an image or a chart library, and the sparkline is omitted when there are fewer than two successful samples: a fabricated shape is worse than an empty cell. A failed history query is stated on the page and does not remove the current sample. A step-change row also carries the one traceroute captured when the event opened, collapsed behind a "trace" summary; a silent hop renders as `*` rather than as loss. Under the sparkline, the baseline band is drawn as markers on the same buckets: `·` inside the six-hour band (median ± max(3σ, 10%)), `▲` above it, `▼` below it. The newest bucket is excluded from its own band, mirroring the detector's persistence rule, so a spike cannot widen the band that is meant to catch it.
+**Implemented:** `/corridors` lists one row per configured corridor with its current RTT, its 24-hour baseline (the median successful RTT in the window the step rule compares against), a 24-hour RTT sparkline, a five-cell loss bar beside the exact percentage, sample time, state (`normal`, `no reply`, `step change`, or `waiting for a sample`), event kind, detail, and when the change started. The corridor column leads with the operator's readable `from → to` label and keeps the stable id underneath; the path column shows the configured endpoint hosts from the target file, with the full `host:port` pair in its hover text. Both cells carry the same explanation in hover text and an accessible label: endpoints are the measurement, city labels are approximate because CDNs anycast. With no configured endpoints the page keeps the labels and says hosts are unavailable, rather than guessing a host. The shapes are text glyphs rather than an image or a chart library, and the sparkline is omitted when there are fewer than two successful samples: a fabricated shape is worse than an empty cell. A failed history query is stated on the page and does not remove the current sample. A step-change row also carries the one traceroute captured when the event opened, collapsed behind a "trace" summary; a silent hop renders as `*` rather than as loss. Under the sparkline, the baseline band is drawn as markers on the same buckets: `·` inside the six-hour band (median ± max(3σ, 10%)), `▲` above it, `▼` below it. The newest bucket is excluded from its own band, mirroring the detector's persistence rule, so a spike cannot widen the band that is meant to catch it.
+
+**Projection:** the same page can place the configured `from`/`to` labels on the
+self-contained equirectangular silhouette used by `/world`. Coordinates are
+approximate city centres from public Natural Earth populated places; only codes
+already present in that bounded anchor table are placed, and unmapped labels are
+counted rather than pinned to invented geography. A straight line joins each
+known pair and is split at the antimeridian when the shorter visual link crosses
+the Pacific edge. It carries the corridor id, label pair, current state, and
+configured `host:port` endpoints in its hover/accessible text, followed by the
+explicit caveat that labels are not measured locations and the line is not the
+physical or undersea-cable path. The base image is a same-origin static asset;
+there is no script, third-party map service, or runtime data fetch.
 
 ### 10.5 Target drawer
 

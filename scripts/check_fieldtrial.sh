@@ -101,12 +101,41 @@ pass() {
         check "/hubs cities" "$([ "$hub_tiles" -le "$EXPECTED_HUBS" ] && [ "$hub_tiles" -gt 0 ] && echo 0 || echo 1)" \
             "$hub_tiles city tiles (at most $EXPECTED_HUBS hubs)"
 
+        # 4a-2. The world view keeps its country tiles and adds a geographic
+        # projection with the same health plus approximate hub label anchors.
+        rendered_world="$(ui_page "$jar" /world || true)"
+        world_projection="$(printf '%s' "$rendered_world" | grep -c 'data-testid="world-projection"' || true)"
+        world_country_markers="$(printf '%s' "$rendered_world" | grep -o 'data-testid="world-map-country"' | wc -l | tr -d ' ')"
+        world_hub_markers="$(printf '%s' "$rendered_world" | grep -o 'data-testid="world-map-hub"' | wc -l | tr -d ' ')"
+        check "/world projection" "$([ "$world_projection" -gt 0 ] && [ "$world_country_markers" -gt 0 ] && [ "$world_hub_markers" -gt 0 ] && echo 0 || echo 1)" \
+            "$world_country_markers country markers, $world_hub_markers hub label anchors"
+        world_asset_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$BASE_URL/static/world-projection.svg" 2>/dev/null || true)"
+        check "/world base map" "$([ "$world_asset_code" = "200" ] && echo 0 || echo 1)" \
+            "same-origin SVG HTTP $world_asset_code"
+        world_scripts="$(printf '%s' "$rendered_world" | grep -ci '<script' || true)"
+        check "/world no scripts" "$([ "$world_scripts" = "0" ] && echo 0 || echo 1)" \
+            "$world_scripts script tags"
+
         # 4b. Corridors are operator-supplied; confirm the configured pairs are
         #     actually sampled and rendered rather than leaving an empty page.
         rendered_corridors="$(ui_page "$jar" /corridors || true)"
         corridor_rows="$(printf '%s' "$rendered_corridors" | grep -o 'data-testid="corridor-row"' | wc -l | tr -d ' ')"
         check "/corridors rows" "$([ "$corridor_rows" = "$EXPECTED_CORRIDORS" ] && echo 0 || echo 1)" \
             "$corridor_rows rows (want $EXPECTED_CORRIDORS)"
+        corridor_names="$(printf '%s' "$rendered_corridors" | grep -o 'class="corridor-name"' | wc -l | tr -d ' ')"
+        check "/corridor names" "$([ "$corridor_names" = "$EXPECTED_CORRIDORS" ] && echo 0 || echo 1)" \
+            "$corridor_names readable names (want $EXPECTED_CORRIDORS)"
+        corridor_hovers="$(printf '%s' "$rendered_corridors" | grep -o 'title="Configured endpoints:' | wc -l | tr -d ' ')"
+        check "/corridor endpoint hovers" "$([ "$corridor_hovers" = "$EXPECTED_CORRIDORS" ] && echo 0 || echo 1)" \
+            "$corridor_hovers endpoint hovers (want $EXPECTED_CORRIDORS)"
+        corridor_projection="$(printf '%s' "$rendered_corridors" | grep -c 'data-testid="corridor-projection"' || true)"
+        corridor_markers="$(printf '%s' "$rendered_corridors" | grep -o 'data-testid="corridor-map-marker"' | wc -l | tr -d ' ')"
+        corridor_lines="$(printf '%s' "$rendered_corridors" | grep -o 'data-testid="corridor-map-line"' | wc -l | tr -d ' ')"
+        check "/corridor projection" "$([ "$corridor_projection" -gt 0 ] && [ "$corridor_markers" -gt 0 ] && [ "$corridor_lines" = "$EXPECTED_CORRIDORS" ] && echo 0 || echo 1)" \
+            "$corridor_markers label anchors, $corridor_lines lines (want $EXPECTED_CORRIDORS)"
+        corridor_scripts="$(printf '%s' "$rendered_corridors" | grep -ci '<script' || true)"
+        check "/corridor no scripts" "$([ "$corridor_scripts" = "0" ] && echo 0 || echo 1)" \
+            "$corridor_scripts script tags"
 
         # 5. Bounded IODA feed has a recorded success and no repeated failures.
         feeds="$(api /api/v1/feeds)"
