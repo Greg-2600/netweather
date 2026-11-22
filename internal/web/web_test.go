@@ -1212,6 +1212,9 @@ func TestWorldGroupsByCountry(t *testing.T) {
 	if !strings.Contains(page, `data-testid="world-projection"`) {
 		t.Fatal("geographic projection section missing")
 	}
+	if proj, grid := strings.Index(page, `data-testid="world-projection"`), strings.Index(page, `data-testid="world"`); proj < 0 || grid < 0 || proj >= grid {
+		t.Errorf("projection must precede the country grid: projection=%d grid=%d", proj, grid)
+	}
 	if got := strings.Count(page, `data-testid="world-map-country"`); got != 2 {
 		t.Errorf("country projection markers = %d, want 2", got)
 	}
@@ -2995,6 +2998,9 @@ func TestCorridorPage(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Errorf("corridor projection missing %q", want)
 		}
+	}
+	if proj, table := strings.Index(page, `data-testid="corridor-projection"`), strings.Index(page, `data-testid="corridors"`); proj < 0 || table < 0 || proj >= table {
+		t.Errorf("projection must precede the corridor table: projection=%d table=%d", proj, table)
 	}
 	for _, unwanted := range []string{"<script", `src="http`, `href="http`, "@import"} {
 		if strings.Contains(strings.ToLower(page), unwanted) {

@@ -940,7 +940,7 @@ One tile per country: ccTLD code + flag, coloured by reachability, with an IODA 
 
 **Implemented:** `/world` renders one tile per learned country, worst state first, with the target count and per-state chips; the code, state text, and glyph carry the meaning alongside colour. A target with no learned country is counted separately as "unplaced", never folded into a real code. Clicking a tile opens the board filtered to that country (`/?group=country&country=US`), and the board shows the active filter with a clear link that preserves the grouping lens and focus mode. A country tile also carries the highest-severity feed event for that country from the last 24 hours (`ioda outage 0.87`), with one query for the whole page; a missing reader, an empty window, and a failed query each state their case instead of leaving the tile looking quiet. The tile also carries the regional-indicator flag for the code, decorative only: the code is always rendered as text, so a platform without flag glyphs loses nothing.
 
-**Geographic projection (presentation only).** Below the tiles, the same country
+**Geographic projection (presentation only).** Above the tiles, the same country
 aggregates are placed on a quiet equirectangular land silhouette served from
 `internal/web/static/world-projection.svg` (simplified public-domain Natural
 Earth 110m land geometry; no script or third-party data fetch). Circle

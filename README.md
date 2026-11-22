@@ -123,10 +123,10 @@ All shots are from the local field-trial deploy — 749 real targets, no mocked 
 | ![board](docs/screenshots/dashboard.png) | ![world](docs/screenshots/world.png) |
 
 The world view also places its country health markers on a self-contained
-equirectangular projection below the tiles, with approximate city anchors for
+equirectangular projection above the tiles, with approximate city anchors for
 the US hub labels. Those anchors are not verified hosting locations.
 
-`/corridors` uses the same projection below its table: configured operator
+`/corridors` uses the same projection above its table: configured operator
 labels become approximate city-centre anchors, and a straight line links each
 known pair, wrapping at the antimeridian. The line is a visual link only, not a
 measured route or a claim about any physical or undersea cable.

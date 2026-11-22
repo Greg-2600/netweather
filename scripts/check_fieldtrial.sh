@@ -109,6 +109,10 @@ pass() {
         world_hub_markers="$(printf '%s' "$rendered_world" | grep -o 'data-testid="world-map-hub"' | wc -l | tr -d ' ')"
         check "/world projection" "$([ "$world_projection" -gt 0 ] && [ "$world_country_markers" -gt 0 ] && [ "$world_hub_markers" -gt 0 ] && echo 0 || echo 1)" \
             "$world_country_markers country markers, $world_hub_markers hub label anchors"
+        world_projection_line="$(printf '%s' "$rendered_world" | grep -n -m1 'data-testid="world-projection"' | cut -d: -f1 || true)"
+        world_grid_line="$(printf '%s' "$rendered_world" | grep -n -m1 'data-testid="world"' | cut -d: -f1 || true)"
+        check "/world map first" "$([ -n "$world_projection_line" ] && [ -n "$world_grid_line" ] && [ "$world_projection_line" -lt "$world_grid_line" ] && echo 0 || echo 1)" \
+            "projection line $world_projection_line, grid line $world_grid_line"
         world_asset_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$BASE_URL/static/world-projection.svg" 2>/dev/null || true)"
         check "/world base map" "$([ "$world_asset_code" = "200" ] && echo 0 || echo 1)" \
             "same-origin SVG HTTP $world_asset_code"
@@ -133,6 +137,10 @@ pass() {
         corridor_lines="$(printf '%s' "$rendered_corridors" | grep -o 'data-testid="corridor-map-line"' | wc -l | tr -d ' ')"
         check "/corridor projection" "$([ "$corridor_projection" -gt 0 ] && [ "$corridor_markers" -gt 0 ] && [ "$corridor_lines" = "$EXPECTED_CORRIDORS" ] && echo 0 || echo 1)" \
             "$corridor_markers label anchors, $corridor_lines lines (want $EXPECTED_CORRIDORS)"
+        corridor_projection_line="$(printf '%s' "$rendered_corridors" | grep -n -m1 'data-testid="corridor-projection"' | cut -d: -f1 || true)"
+        corridor_table_line="$(printf '%s' "$rendered_corridors" | grep -n -m1 'data-testid="corridors"' | cut -d: -f1 || true)"
+        check "/corridor map first" "$([ -n "$corridor_projection_line" ] && [ -n "$corridor_table_line" ] && [ "$corridor_projection_line" -lt "$corridor_table_line" ] && echo 0 || echo 1)" \
+            "projection line $corridor_projection_line, table line $corridor_table_line"
         corridor_scripts="$(printf '%s' "$rendered_corridors" | grep -ci '<script' || true)"
         check "/corridor no scripts" "$([ "$corridor_scripts" = "0" ] && echo 0 || echo 1)" \
             "$corridor_scripts script tags"

@@ -28,6 +28,57 @@
       single spike is noise.
     </p>
 
+    {{if or .MapPoints .MapLines}}
+    <section class="corridor-projection" aria-labelledby="corridor-projection-title"
+             data-testid="corridor-projection">
+      <h2 id="corridor-projection-title">Corridor label projection</h2>
+      <p class="muted small">
+        The configured <code>from</code> and <code>to</code> labels, placed on the
+        same self-contained equirectangular silhouette as the world view. A
+        circle is an approximate city-centre anchor for an operator label; a
+        line is a visual link between two labels, split at the antimeridian for
+        Pacific pairs. Neither is a verified hosting location, a measured route,
+        or a claim about a physical or undersea cable. Hover or focus a marker
+        or line for its identity and current corridor state.
+      </p>
+      <div class="projection-frame">
+        <img class="projection-base" src="/static/world-projection.svg" alt="" aria-hidden="true">
+        <svg class="projection-lines" viewBox="0 0 1000 500" preserveAspectRatio="none"
+             role="group" aria-label="Visual links between corridor label anchors">
+          {{range .MapLines}}
+          <g class="projection-line {{.StateCls}}" data-testid="corridor-map-line" data-corridor="{{.ID}}"
+             role="img" tabindex="0" aria-label="{{.Title}}">
+            <title>{{.Title}}</title>
+            {{range .Segments}}
+            <line x1="{{.X1}}" y1="{{.Y1}}" x2="{{.X2}}" y2="{{.Y2}}"></line>
+            {{end}}
+          </g>
+          {{end}}
+        </svg>
+        <div class="projection-layer" role="group" aria-label="Corridor label anchors">
+          {{range .MapPoints}}
+          <a class="projection-marker corridor-marker {{.StateCls}}"
+             style="left: {{.X}}%; top: {{.Y}}%;"
+             href="#corridor-table" data-testid="corridor-map-marker" data-code="{{.Code}}"
+             aria-label="{{.Title}}" title="{{.Title}}">
+            <span aria-hidden="true">{{.Glyph}}</span>
+          </a>
+          {{end}}
+        </div>
+      </div>
+      <p class="projection-legend muted small">
+        <span><span class="legend-line" aria-hidden="true">—</span> configured corridor</span>
+        <span><span class="legend-circle" aria-hidden="true">●</span> operator label anchor</span>
+        <span>Colour and glyph follow the corridor state in the table below.</span>
+      </p>
+      {{if .MapUnmapped}}
+      <p class="muted small" data-testid="corridor-map-unmapped">
+        {{.MapUnmapped}} corridor label occurrence(s) have no public city-centre anchor and are not placed on the projection.
+      </p>
+      {{end}}
+    </section>
+    {{end}}
+
     {{if .Rows}}
     <table class="probes" id="corridor-table" data-testid="corridors">
       <thead>
@@ -71,57 +122,6 @@
     <p class="muted" data-testid="no-corridors">{{.Note}}</p>
     {{end}}
 
-    {{if or .MapPoints .MapLines}}
-    <section class="corridor-projection" aria-labelledby="corridor-projection-title"
-             data-testid="corridor-projection">
-      <h2 id="corridor-projection-title">Corridor label projection</h2>
-      <p class="muted small">
-        The configured <code>from</code> and <code>to</code> labels, placed on the
-        same self-contained equirectangular silhouette as the world view. A
-        circle is an approximate city-centre anchor for an operator label; a
-        line is a visual link between two labels, split at the antimeridian for
-        Pacific pairs. Neither is a verified hosting location, a measured route,
-        or a claim about a physical or undersea cable. Hover or focus a marker
-        or line for its identity and current corridor state.
-      </p>
-      <div class="projection-frame">
-        <img class="projection-base" src="/static/world-projection.svg" alt="" aria-hidden="true">
-        <svg class="projection-lines" viewBox="0 0 1000 500" preserveAspectRatio="none"
-             role="group" aria-label="Visual links between corridor label anchors">
-          {{range .MapLines}}
-          <g class="projection-line {{.StateCls}}" data-testid="corridor-map-line" data-corridor="{{.ID}}"
-             role="img" tabindex="0" aria-label="{{.Title}}">
-            <title>{{.Title}}</title>
-            {{range .Segments}}
-            <line x1="{{.X1}}" y1="{{.Y1}}" x2="{{.X2}}" y2="{{.Y2}}"></line>
-            {{end}}
-          </g>
-          {{end}}
-        </svg>
-        <div class="projection-layer" role="group" aria-label="Corridor label anchors">
-          {{range .MapPoints}}
-          <a class="projection-marker corridor-marker {{.StateCls}}"
-             style="left: {{.X}}%; top: {{.Y}}%;"
-             href="#corridor-table" data-testid="corridor-map-marker" data-code="{{.Code}}"
-             aria-label="{{.Title}}" title="{{.Title}}">
-            <span aria-hidden="true">{{.Glyph}}</span>
-          </a>
-          {{end}}
-        </div>
-      </div>
-      <p class="projection-legend muted small">
-        <span><span class="legend-line" aria-hidden="true">—</span> configured corridor</span>
-        <span><span class="legend-circle" aria-hidden="true">●</span> operator label anchor</span>
-        <span>Colour and glyph follow the corridor state in the table above.</span>
-      </p>
-      {{if .MapUnmapped}}
-      <p class="muted small" data-testid="corridor-map-unmapped">
-        {{.MapUnmapped}} corridor label occurrence(s) have no public city-centre anchor and are not placed on the projection.
-      </p>
-      {{end}}
-    </section>
-    {{end}}
-
     <p class="muted small">
       A corridor is evidence about a path, never a target state. It never opens
       a target incident, and no traceroute is scheduled: a walk touches roughly
@@ -131,4 +131,3 @@
   </main>
 </body>
 </html>
-

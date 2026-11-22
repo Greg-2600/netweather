@@ -10,14 +10,14 @@ changed between two images without it.
 
 ### Added
 
-- `/corridors` adds a self-contained equirectangular projection below the table.
+- `/corridors` adds a self-contained equirectangular projection above the table.
   It places only the configured operator `from`/`to` labels at approximate
   city-centre anchors and draws a straight line between known pairs, split at
   the antimeridian for Pacific corridors. Hover or focus text repeats that the
   labels are not measured locations and the line is not a physical or undersea
   cable route. No scripts, third-party assets, or runtime map fetches are added.
 - `/world` keeps its country-tile grid and adds a self-contained equirectangular
-  projection below it. Country circles are placed at public geographic centres
+  projection above it. Country circles are placed at public geographic centres
   from `mledoze/countries`; diamonds are approximate city-centre anchors for the
   existing `City, ST hub — site` labels. Markers reuse the board's state classes
   and glyphs, and each has an accessible hover/focus label with its identity,

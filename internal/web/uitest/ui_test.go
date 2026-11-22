@@ -455,6 +455,17 @@ func TestCorridorNameAndHover(t *testing.T) {
 	if _, err := h.page.Goto(h.baseURL + "/corridors"); err != nil {
 		t.Fatal(err)
 	}
+	ordered, err := h.page.Evaluate(`() => {
+		const p = document.querySelector('[data-testid="corridor-projection"]');
+		const t = document.querySelector('[data-testid="corridors"]');
+		return !!p && !!t && (p.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := ordered.(bool); !ok {
+		t.Fatal("corridor projection must render above the table")
+	}
 	expect := playwright.NewPlaywrightAssertions(5000)
 	row := h.page.Locator(`[data-testid="corridor-row"][data-corridor="nyc-lon"]`)
 	if err := expect.Locator(row.Locator(".corridor-name")).ToHaveText("NYC → LON"); err != nil {
@@ -720,6 +731,17 @@ func TestWorldProjectionRenders(t *testing.T) {
 	}
 	if err := expect.Locator(h.page.Locator(`[data-testid="world-projection"]`)).ToBeVisible(); err != nil {
 		t.Fatalf("projection section not visible: %v", err)
+	}
+	ordered, err := h.page.Evaluate(`() => {
+		const p = document.querySelector('[data-testid="world-projection"]');
+		const g = document.querySelector('[data-testid="world"]');
+		return !!p && !!g && (p.compareDocumentPosition(g) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := ordered.(bool); !ok {
+		t.Fatal("world projection must render above the country grid")
 	}
 	if err := expect.Locator(h.page.Locator(`[data-testid="world-map-country"]`)).ToHaveCount(2); err != nil {
 		t.Fatalf("country marker count: %v", err)

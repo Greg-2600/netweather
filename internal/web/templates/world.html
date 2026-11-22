@@ -27,34 +27,6 @@
       Click a country to see its targets on the board.
     </p>
 
-    {{if .Countries}}
-    <section class="world-grid" aria-label="Countries" data-testid="world">
-      {{range .Countries}}
-      <a class="tile country {{.WorstCls}}" href="{{.Href}}"
-         data-testid="country" data-country="{{.Code}}" data-state="{{.WorstCls}}"
-         aria-label="{{.Code}}: {{.Count}} target(s), worst {{.Worst}}">
-        {{if .Flag}}<span class="flag" aria-hidden="true" data-testid="country-flag">{{.Flag}}</span>{{end}}
-        <span class="country-code">{{.Code}}</span>
-        <span class="country-count">{{.Count}} target(s)</span>
-        <span class="state"><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Worst}}</span>
-        {{if .FeedLevel}}
-        <span class="feed" data-testid="country-level" data-source="{{.FeedLevelSrc}}"
-              title="Relative level from {{.FeedLevelSrc}}, raw score {{.FeedLevelRaw}}">
-          {{.FeedLevelSrc}} level {{.FeedLevel}} ({{.FeedLevelRaw}})
-        </span>
-        {{end}}
-        {{if .Feed}}
-        <span class="feed" data-testid="country-feed" data-feed="{{.Feed}}">{{.Feed}} {{.FeedSeverity}}</span>
-        {{end}}
-      </a>
-      {{end}}
-    </section>
-    {{else}}
-    <p class="empty" data-testid="empty-world">
-      No target has a learned country yet. Enrichment fills this in on the first pass.
-    </p>
-    {{end}}
-
     {{if or .MapPoints .HubPoints}}
     <section class="world-projection" aria-labelledby="world-projection-title"
              data-testid="world-projection">
@@ -106,6 +78,34 @@
     </section>
     {{end}}
 
+    {{if .Countries}}
+    <section class="world-grid" aria-label="Countries" data-testid="world">
+      {{range .Countries}}
+      <a class="tile country {{.WorstCls}}" href="{{.Href}}"
+         data-testid="country" data-country="{{.Code}}" data-state="{{.WorstCls}}"
+         aria-label="{{.Code}}: {{.Count}} target(s), worst {{.Worst}}">
+        {{if .Flag}}<span class="flag" aria-hidden="true" data-testid="country-flag">{{.Flag}}</span>{{end}}
+        <span class="country-code">{{.Code}}</span>
+        <span class="country-count">{{.Count}} target(s)</span>
+        <span class="state"><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Worst}}</span>
+        {{if .FeedLevel}}
+        <span class="feed" data-testid="country-level" data-source="{{.FeedLevelSrc}}"
+              title="Relative level from {{.FeedLevelSrc}}, raw score {{.FeedLevelRaw}}">
+          {{.FeedLevelSrc}} level {{.FeedLevel}} ({{.FeedLevelRaw}})
+        </span>
+        {{end}}
+        {{if .Feed}}
+        <span class="feed" data-testid="country-feed" data-feed="{{.Feed}}">{{.Feed}} {{.FeedSeverity}}</span>
+        {{end}}
+      </a>
+      {{end}}
+    </section>
+    {{else}}
+    <p class="empty" data-testid="empty-world">
+      No target has a learned country yet. Enrichment fills this in on the first pass.
+    </p>
+    {{end}}
+
     {{if .OverlayNote}}
     <p class="muted small" data-testid="world-overlay-note">{{.OverlayNote}}</p>
     {{end}}
@@ -129,4 +129,3 @@
   </main>
 </body>
 </html>
-
