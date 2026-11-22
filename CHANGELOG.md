@@ -39,6 +39,15 @@ changed between two images without it.
   is not a verified hosting location. The base map is a simplified public-domain
   Natural Earth silhouette served from `/static`, so no third-party script, map
   service, or data fetch is needed.
+- `/atlas` adds a map-first "Everything, all tabs" page. Its hero combines the
+  country, US-hub-label, and corridor projections on the same self-origin world
+  silhouette; below it are the board, treemap, countries, hubs, corridors,
+  coverage, incidents, feeds, IHI, and diagnostics data. The page consumes the
+  same extracted server-side builders as the individual routes, so a number on
+  the atlas cannot drift from its source page. Server-rendered hover text and a
+  small same-origin `/static/atlas.js` provide CSS hover cards and click-to-pin
+  detail; optional readers say when they are unavailable. No external scripts,
+  inline scripts, third-party map services, or runtime data fetches are added.
 - `/hubs` maps real US airport and city-portal targets with the same health
   treemap as `/map`: one city block per `City, ST hub — site` group on sector
   `us/hub`, one box per endpoint, worst cities and sites first. The 42 targets
@@ -64,8 +73,8 @@ changed between two images without it.
   RIPEstat poller, with per-ASN `UPDATE` subscriptions, batched events,
   ping/pong, bounded reconnect backoff, and egress-policy dialing.
 - `scripts/deploy_fieldtrial.sh` (POSIX deploy) and `scripts/check_fieldtrial.sh`
-  (health, fleet, auth, /map, /hubs, /corridors, feed, and Tor verification plus soak)
-  for the field trial, mirroring the Windows deploy script.
+  (health, fleet, auth, /map, /world, /atlas, /hubs, /corridors, feed, and Tor
+  verification plus soak) for the field trial, mirroring the Windows deploy script.
 - Ten operator-supplied corridors in the field-trial config (and its generator):
   real public TCP:443 endpoint pairs for the design's path pairs, each verified
   to connect before inclusion. `/corridors` now shows live RTT and loss samples.

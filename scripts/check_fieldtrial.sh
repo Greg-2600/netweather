@@ -138,6 +138,42 @@ pass() {
         check "/world no scripts" "$([ "$world_scripts" = "0" ] && echo 0 || echo 1)" \
             "$world_scripts script tags"
 
+        # 4a-3. /atlas is the combined map-first view. It must carry the whole
+        # fleet, all three projection layers, every tab section, and only
+        # same-origin assets; the pin script is the one deliberate addition.
+        rendered_atlas="$(ui_page "$jar" /atlas || true)"
+        atlas_subtitle="$(printf '%s' "$rendered_atlas" | grep -c 'Everything, all tabs' || true)"
+        check "/atlas subtitle" "$([ "$atlas_subtitle" -gt 0 ] && echo 0 || echo 1)" \
+            "$atlas_subtitle 'Everything, all tabs' label(s)"
+        atlas_tiles="$(printf '%s' "$rendered_atlas" | grep -o 'data-testid="map-tile"' | wc -l | tr -d ' ')"
+        check "/atlas fleet tiles" "$([ "$atlas_tiles" = "$EXPECTED_TARGETS" ] && echo 0 || echo 1)" \
+            "$atlas_tiles tiles (want $EXPECTED_TARGETS)"
+        atlas_countries="$(printf '%s' "$rendered_atlas" | grep -o 'data-testid="atlas-map-country"' | wc -l | tr -d ' ')"
+        atlas_hubs="$(printf '%s' "$rendered_atlas" | grep -o 'data-testid="atlas-map-hub"' | wc -l | tr -d ' ')"
+        atlas_lines="$(printf '%s' "$rendered_atlas" | grep -o 'data-testid="atlas-map-line"' | wc -l | tr -d ' ')"
+        check "/atlas hero layers" "$([ "$atlas_countries" -gt 0 ] && [ "$atlas_hubs" -gt 0 ] && [ "$atlas_lines" = "$EXPECTED_CORRIDORS" ] && echo 0 || echo 1)" \
+            "$atlas_countries countries, $atlas_hubs hubs, $atlas_lines lines (want $EXPECTED_CORRIDORS)"
+        atlas_sections="$(printf '%s' "$rendered_atlas" | grep -oE 'data-testid="atlas-(glance|board|map|world|hubs|corridors|coverage|incidents|feeds|ihi|diagnostics)"' | wc -l | tr -d ' ')"
+        check "/atlas all tabs" "$([ "$atlas_sections" -ge 11 ] && echo 0 || echo 1)" \
+            "$atlas_sections detail sections"
+        atlas_projection_line="$(printf '%s' "$rendered_atlas" | grep -n -m1 'data-testid="atlas-projection"' | cut -d: -f1 || true)"
+        atlas_detail_line="$(printf '%s' "$rendered_atlas" | grep -n -m1 'data-testid="atlas-glance"' | cut -d: -f1 || true)"
+        check "/atlas map first" "$([ -n "$atlas_projection_line" ] && [ -n "$atlas_detail_line" ] && [ "$atlas_projection_line" -lt "$atlas_detail_line" ] && echo 0 || echo 1)" \
+            "projection line $atlas_projection_line, detail line $atlas_detail_line"
+        atlas_pin="$(printf '%s' "$rendered_atlas" | grep -c 'data-testid="atlas-pin"' || true)"
+        check "/atlas pin panel" "$([ "$atlas_pin" -gt 0 ] && echo 0 || echo 1)" \
+            "$atlas_pin pin panel(s)"
+        atlas_script_tags="$(printf '%s' "$rendered_atlas" | grep -ci '<script' || true)"
+        atlas_script_src="$(printf '%s' "$rendered_atlas" | grep -ci '<script[^>]*src=' || true)"
+        atlas_inline=$((atlas_script_tags - atlas_script_src))
+        if [ "$atlas_inline" -lt 0 ]; then atlas_inline=0; fi
+        atlas_external="$(printf '%s' "$rendered_atlas" | grep -ciE '(src|href)="https?://' || true)"
+        check "/atlas no inline/external" "$([ "$atlas_inline" = "0" ] && [ "$atlas_external" = "0" ] && echo 0 || echo 1)" \
+            "$atlas_inline inline scripts ($atlas_script_tags tags, $atlas_script_src with src), $atlas_external external refs"
+        atlas_asset_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$BASE_URL/static/atlas.js" 2>/dev/null || true)"
+        check "/atlas pin asset" "$([ "$atlas_asset_code" = "200" ] && echo 0 || echo 1)" \
+            "same-origin JS HTTP $atlas_asset_code"
+
         # 4b. Corridors are operator-supplied; confirm the configured pairs are
         #     actually sampled and rendered rather than leaving an empty page.
         rendered_corridors="$(ui_page "$jar" /corridors || true)"

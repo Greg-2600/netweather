@@ -887,7 +887,7 @@ Endpoints: prefer RIPE Atlas anchors (stable, distributed). Fallback: country an
 ## 10. UI
 
 
-Four screens plus a drawer. Server-rendered HTML + SSE; a small `EventSource` script applies one state snapshot on connect and then deltas. No JS framework, no build step. Served on `:2600` - port and bind rationale in `NETWORKING.md` §7.1. HTMX is optional and has not earned its place yet: the board needs one stream and no partial swaps.
+Server-rendered pages plus a drawer. The board, map, world, hubs, corridors, coverage, incidents, feeds, IHI, diagnostics, and the combined `/atlas` all read the store; SSE plus a small `EventSource` script applies one state snapshot on connect and then deltas to the board. No JS framework, no build step. Served on `:2600` - port and bind rationale in `NETWORKING.md` §7.1. HTMX is optional and has not earned its place yet: the board needs one stream and no partial swaps.
 
 The same state is exposed machine-readably under `/api/v1`; the contract, envelope, error codes, and stability tiers are in [`API.md`](API.md). The UI is a client of the store, not of its own API - but the two must never disagree about a state, so both read the same rows.
 
@@ -1017,6 +1017,39 @@ configured `host:port` endpoints in its hover/accessible text, followed by the
 explicit caveat that labels are not measured locations and the line is not the
 physical or undersea-cable path. The base image is a same-origin static asset;
 there is no script, third-party map service, or runtime data fetch.
+
+### 10.4a Atlas (all tabs, map first)
+
+`/atlas` is the combined reading surface: **"Everything, all tabs"** on one
+page. It is not a second data source. Each existing handler now calls a shared
+builder (`buildBoardView`, `buildMapData`, `buildWorldData`, `buildHubsData`,
+`buildCorridorsData`, `buildCoverageData`, `buildIncidentsData`,
+`buildFeedsData`, `buildIHIView`, `buildDiagnosticsView`); `/atlas` calls those
+same builders, so its counts, states, notes, and drill-down links cannot drift
+from the pages they summarise. The board lens defaults to sector; the atlas has
+its own nav links back to every full view.
+
+The hero is the largest element: one equirectangular silhouette carries country
+circles, US hub-label diamonds, and corridor-label markers plus the configured
+corridor links. It inherits the caveats already established for those pages —
+country and city positions come from checked-in public geography, a hub is a
+label anchor rather than a measured hosting location, and a corridor line is a
+visual link between operator conventions rather than a physical route. The
+lower sections repeat the individual pages in the order: at a glance, board
+groups, health treemap, country grid, hub treemap, corridor table, coverage,
+incidents, feeds, IHI, and a bounded diagnostics sample. A missing or failed
+optional reader is stated in its section; an empty section never pretends to be
+a healthy one.
+
+Hover and focus cards are CSS-only: the server renders the explanation into
+`title`, `aria-label`, and `data-*` attributes, so hovering a marker costs no
+request. Clicking a marker or corridor line pins that same server-rendered text
+into one detail panel via `/static/atlas.js`; the panel's link opens the full
+view. The script is same-origin, contains no fetch, and builds no per-marker
+DOM. The page uses two same-origin script tags (`/static/map.js` for the
+treemap cards and `/static/atlas.js` for pinning), no inline script, no external
+reference, and the same bounded CSP as the other projection pages:
+`default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`.
 
 ### 10.5 Target drawer
 

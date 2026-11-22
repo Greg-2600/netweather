@@ -38,6 +38,15 @@ type server struct {
 	streams *streamlimit.Limiter
 }
 
+// Optional-provider failures keep their original browser text and event names
+// after the shared-builder extraction so existing alerting still matches.
+var (
+	errIncidentLogNotConfigured = errors.New("incident log is not configured")
+	errCoverageNotConfigured    = errors.New("coverage is not configured")
+	errFeedStatesFailed         = errors.New("feed states failed")
+	errFeedEventsFailed         = errors.New("external events failed")
+)
+
 // New builds the browser-facing handler: login, board, target detail, and the
 // SSE stream. The API is mounted separately; the two share the read model.
 func New(deps Deps) (http.Handler, error) {
@@ -81,6 +90,7 @@ func New(deps Deps) (http.Handler, error) {
 	mux.HandleFunc("/corridors", s.requireSession(http.HandlerFunc(s.handleCorridors)).ServeHTTP)
 	mux.HandleFunc("/feeds", s.requireSession(http.HandlerFunc(s.handleFeeds)).ServeHTTP)
 	mux.HandleFunc("/map", s.requireSession(http.HandlerFunc(s.handleMap)).ServeHTTP)
+	mux.HandleFunc("/atlas", s.requireSession(http.HandlerFunc(s.handleAtlas)).ServeHTTP)
 	mux.HandleFunc("/ihi", s.requireSession(http.HandlerFunc(s.handleIHI)).ServeHTTP)
 	mux.HandleFunc("/diagnostics", s.requireSession(http.HandlerFunc(s.handleDiagnostics)).ServeHTTP)
 	mux.HandleFunc("/icon/", s.requireSession(http.HandlerFunc(s.handleIcon)).ServeHTTP)
@@ -889,21 +899,13 @@ func worstRank(g groupView) int {
 	return 99
 }
 
-func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.Header().Set("Allow", "GET, HEAD")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	targets, err := s.deps.Source.Snapshot(r.Context())
+// buildBoardView assembles the board's read model without writing a response.
+// / and /atlas share this builder so the combined page cannot drift from the
+// board's grouping, advisories, or state summary.
+func (s *server) buildBoardView(ctx context.Context, params boardParams) (boardView, error) {
+	targets, err := s.deps.Source.Snapshot(ctx)
 	if err != nil {
-		s.deps.Logger.Error("board snapshot failed",
-			"event", "board_failed", "component", "http",
-			"request_id", requestIDFrom(r), "error", err)
-		s.renderError(w, r, http.StatusServiceUnavailable,
-			"The board could not be read. The server log has the details for this request.")
-		return
+		return boardView{}, err
 	}
 	// Failures first: the grid answers "what is down?", not "what is alphabetical".
 	targets = board.Order(targets)
@@ -929,10 +931,8 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	unknownTargets := counts[board.StateUnknown]
 	coldStart := totalTargets > 0 && unknownTargets*2 >= totalTargets
 
-	focus := false
-	switch r.URL.Query().Get("focus") {
-	case "problems", "problem":
-		focus = true
+	focus := params.Focus
+	if focus {
 		filtered := make([]board.Target, 0, len(targets))
 		for _, t := range targets {
 			if t.State == board.StateDown || t.State == board.StateDegraded {
@@ -944,7 +944,7 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 
 	// A country filter is what a world-view tile links to. It is applied after
 	// the counts so the summary still describes the whole fleet.
-	country := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("country")))
+	country := params.Country
 	if country != "" {
 		filtered := make([]board.Target, 0, len(targets))
 		for _, t := range targets {
@@ -958,7 +958,7 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	// Region is a second, coarser lens. It is derived from the same country
 	// code, and an unknown code has its own filter value rather than being
 	// folded into a real continent. An invalid value is ignored, not guessed.
-	regionFilter := region.Normalise(r.URL.Query().Get("region"))
+	regionFilter := params.Region
 	if regionFilter != "" {
 		filtered := make([]board.Target, 0, len(targets))
 		for _, t := range targets {
@@ -969,15 +969,6 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		targets = filtered
 	}
 
-	csrf, _ := s.auth.csrfFrom(r)
-	params := boardParams{
-		Group:   normaliseGroupMode(r.URL.Query().Get("group")),
-		Focus:   focus,
-		Country: country,
-		Region:  regionFilter,
-		Density: normaliseDensity(r.URL.Query().Get("density")),
-		Show:    parseShow(r.URL.Query().Get("show")),
-	}
 	// Unmeasurable targets are a visibility fact, not a failure: give them their
 	// own quiet section at the bottom instead of letting them sit among a
 	// sector's problems (DESIGN.md §10.2).
@@ -1006,9 +997,7 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view := boardView{
-		Insecure:       s.insecure(r),
 		Version:        s.deps.Version,
-		CSRF:           csrf,
 		Groups:         groups,
 		Control:        s.deps.Control != nil,
 		Focus:          focus,
@@ -1052,7 +1041,7 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		}
 		now := time.Now().UTC()
 		series, err := s.deps.SeriesBatch.SeriesForTargets(
-			r.Context(), ids, vantage, "1h", now.Add(-24*time.Hour), now)
+			ctx, ids, vantage, "1h", now.Add(-24*time.Hour), now)
 		if err != nil {
 			s.deps.Logger.Warn("board sparkline history failed",
 				"event", "board_spark_failed", "component", "http", "error", err)
@@ -1085,7 +1074,7 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	if s.deps.Feeds == nil {
 		view.FeedNote = "Feed health is not configured on this instance."
 	} else {
-		states, err := s.deps.Feeds.FeedStates(r.Context())
+		states, err := s.deps.Feeds.FeedStates(ctx)
 		switch {
 		case err != nil:
 			s.deps.Logger.Warn("feed health failed",
@@ -1149,7 +1138,7 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	// rollout must not read as a mass outage (DESIGN.md §7.2). The newest one
 	// inside six hours gets a line; older advisories stay in the API.
 	if s.deps.Anomalies != nil {
-		anomalies, err := s.deps.Anomalies.Anomalies(r.Context(), 20)
+		anomalies, err := s.deps.Anomalies.Anomalies(ctx, 20)
 		if err != nil {
 			s.deps.Logger.Warn("anomalies failed",
 				"event", "anomalies_failed", "component", "http", "error", err)
@@ -1172,7 +1161,7 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	// The DNS divergence strip is collapsed by design: an advisory is not a
 	// board colour, and a failure here must not hide the board.
 	if s.deps.DNSObservations != nil {
-		records, err := s.deps.DNSObservations.RecentDNSDivergences(r.Context(), 10)
+		records, err := s.deps.DNSObservations.RecentDNSDivergences(ctx, 10)
 		switch {
 		case err != nil:
 			s.deps.Logger.Warn("dns observations failed",
@@ -1192,13 +1181,13 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	// The index is a summary with its parts attached. A missing builder omits
 	// the chip; a builder with nothing scoreable says so instead of showing 0.
 	if s.deps.Health != nil {
-		view.Health = toHealthView(s.deps.Health.Build(r.Context()))
+		view.Health = toHealthView(s.deps.Health.Build(ctx))
 	}
 
 	// The one global verdict (DESIGN.md §3.3). It is a summary of signals that
 	// are already on the page, so it is computed after they are read.
 	if s.deps.Verdict != nil {
-		view.Verdict = s.deps.Verdict.Build(r.Context())
+		view.Verdict = s.deps.Verdict.Build(ctx)
 	}
 
 	// The overview line (DESIGN.md §10.1): judged health, its learned band, and
@@ -1210,7 +1199,7 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 			fleetVantage = "local"
 		}
 		now := s.now()
-		fleet, err := s.deps.Fleet.FleetHealth(r.Context(), fleetVantage, now)
+		fleet, err := s.deps.Fleet.FleetHealth(ctx, fleetVantage, now)
 		if err != nil {
 			s.deps.Logger.Warn("fleet health failed",
 				"event", "fleet_health_failed", "component", "http", "error", err)
@@ -1227,7 +1216,7 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	if s.deps.Incidents == nil {
 		view.HappeningNote = "The incident log is not configured on this instance."
 	} else {
-		open, err := s.deps.Incidents.Incidents(r.Context(), true, 3)
+		open, err := s.deps.Incidents.Incidents(ctx, true, 3)
 		switch {
 		case err != nil:
 			s.deps.Logger.Warn("board incidents failed",
@@ -1269,7 +1258,7 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	// board says so plainly rather than leaving the reader to wonder why the
 	// numbers moved (DESIGN.md §7.5). The note expires after a day.
 	if s.deps.VantageChanges != nil {
-		change, ok, err := s.deps.VantageChanges.LatestVantageChange(r.Context())
+		change, ok, err := s.deps.VantageChanges.LatestVantageChange(ctx)
 		switch {
 		case err != nil:
 			s.deps.Logger.Warn("vantage change read failed",
@@ -1290,9 +1279,47 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	return view, nil
+}
+
+// handleBoard renders the board from the same builder /atlas uses. Request
+// parsing and response headers stay at the edge so the builder has no HTTP
+// concerns of its own.
+func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	q := r.URL.Query()
+	focus := false
+	switch q.Get("focus") {
+	case "problems", "problem":
+		focus = true
+	}
+	params := boardParams{
+		Group:   normaliseGroupMode(q.Get("group")),
+		Focus:   focus,
+		Country: strings.ToUpper(strings.TrimSpace(q.Get("country"))),
+		Region:  region.Normalise(q.Get("region")),
+		Density: normaliseDensity(q.Get("density")),
+		Show:    parseShow(q.Get("show")),
+	}
+	view, err := s.buildBoardView(r.Context(), params)
+	if err != nil {
+		s.deps.Logger.Error("board snapshot failed",
+			"event", "board_failed", "component", "http",
+			"request_id", requestIDFrom(r), "error", err)
+		s.renderError(w, r, http.StatusServiceUnavailable,
+			"The board could not be read. The server log has the details for this request.")
+		return
+	}
+	csrf, _ := s.auth.csrfFrom(r)
+	view.CSRF = csrf
 	view.Insecure = s.insecure(r)
 	view.NoAuth = s.auth.disabled()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "board.html", view)
@@ -2081,25 +2108,18 @@ type corroborationView struct {
 	EndedAt   string
 }
 
-func (s *server) handleIncidents(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.Header().Set("Allow", "GET, HEAD")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+// buildIncidentsData assembles the incident list. The atlas shows the same rows
+// and states a missing or failed log in its own section.
+func (s *server) buildIncidentsData(ctx context.Context) (incidentListView, error) {
 	if s.deps.Incidents == nil {
-		http.Error(w, "incident log is not configured", http.StatusServiceUnavailable)
-		return
+		return incidentListView{}, errIncidentLogNotConfigured
 	}
-
-	rows, err := s.deps.Incidents.Incidents(r.Context(), false, 100)
+	rows, err := s.deps.Incidents.Incidents(ctx, false, 100)
 	if err != nil {
-		s.deps.Logger.Error("incident list failed", "event", "incident_list_failed", "component", "http", "error", err)
-		http.Error(w, "incident log unavailable", http.StatusServiceUnavailable)
-		return
+		return incidentListView{}, err
 	}
 
-	view := incidentListView{Incidents: make([]incidentRow, 0, len(rows)), Insecure: s.insecure(r)}
+	view := incidentListView{Incidents: make([]incidentRow, 0, len(rows))}
 	for _, inc := range rows {
 		row := incidentRow{
 			ID: inc.ID, OpenedAt: inc.OpenedAt.UTC().Format("2006-01-02 15:04"),
@@ -2112,10 +2132,28 @@ func (s *server) handleIncidents(w http.ResponseWriter, r *http.Request) {
 		}
 		view.Incidents = append(view.Incidents, row)
 	}
+	return view, nil
+}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+func (s *server) handleIncidents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	view, err := s.buildIncidentsData(r.Context())
+	if err != nil {
+		if errors.Is(err, errIncidentLogNotConfigured) {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		s.deps.Logger.Error("incident list failed", "event", "incident_list_failed", "component", "http", "error", err)
+		http.Error(w, "incident log unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	view.Insecure = s.insecure(r)
 	view.NoAuth = s.auth.disabled()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "incidents.html", view)
@@ -2471,15 +2509,11 @@ func toCoverageRows(buckets []store.CoverageBucket) []coverageRow {
 
 // handleCoverage renders the blind-spot panel for humans. It is the same data as
 // GET /api/v1/coverage: measurement, not health.
-func (s *server) handleCoverage(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.Header().Set("Allow", "GET, HEAD")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+// buildCoverageData assembles the blind-spot panel. The atlas renders the same
+// totals and concentration, and states a missing provider in its own section.
+func (s *server) buildCoverageData(ctx context.Context) (coverageView, error) {
 	if s.deps.Coverage == nil {
-		http.Error(w, "coverage is not configured", http.StatusServiceUnavailable)
-		return
+		return coverageView{}, errCoverageNotConfigured
 	}
 
 	vantage := s.deps.Vantage
@@ -2488,15 +2522,12 @@ func (s *server) handleCoverage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	cov, err := s.deps.Coverage.Coverage(r.Context(), vantage, now)
+	cov, err := s.deps.Coverage.Coverage(ctx, vantage, now)
 	if err != nil {
-		s.deps.Logger.Error("coverage read failed", "event", "coverage_failed", "component", "http", "error", err)
-		http.Error(w, "coverage unavailable", http.StatusServiceUnavailable)
-		return
+		return coverageView{}, err
 	}
 
 	view := coverageView{
-		Insecure:     s.insecure(r),
 		Total:        cov.Totals.Total,
 		Measurable:   cov.Totals.Measurable,
 		Unmeasurable: cov.Totals.Unmeasurable,
@@ -2537,7 +2568,7 @@ func (s *server) handleCoverage(w http.ResponseWriter, r *http.Request) {
 	if s.deps.CoverageTrend == nil {
 		view.TrendNote = "Coverage history is not configured on this instance."
 	} else {
-		points, err := s.deps.CoverageTrend.CoverageHistory(r.Context(), "global", "", 14)
+		points, err := s.deps.CoverageTrend.CoverageHistory(ctx, "global", "", 14)
 		if err != nil {
 			s.deps.Logger.Warn("coverage history failed",
 				"event", "coverage_history_failed", "component", "http", "error", err)
@@ -2549,9 +2580,29 @@ func (s *server) handleCoverage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	return view, nil
+}
+
+// handleCoverage renders the same coverage data the atlas embeds.
+func (s *server) handleCoverage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	view, err := s.buildCoverageData(r.Context())
+	if err != nil {
+		if errors.Is(err, errCoverageNotConfigured) {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		s.deps.Logger.Error("coverage read failed", "event", "coverage_failed", "component", "http", "error", err)
+		http.Error(w, "coverage unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	view.Insecure = s.insecure(r)
 	view.NoAuth = s.auth.disabled()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "coverage.html", view)
@@ -2775,21 +2826,12 @@ func flagFor(code string) string {
 // handleWorld aggregates the board by country. A target with no learned
 // country is counted separately rather than folded into a real code, because
 // "unknown" is not a country.
-func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.Header().Set("Allow", "GET, HEAD")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	targets, err := s.deps.Source.Snapshot(r.Context())
+// buildWorldData assembles the country tiles and the geographic projection.
+// The atlas reuses every marker and note from this builder.
+func (s *server) buildWorldData(ctx context.Context) (worldView, error) {
+	targets, err := s.deps.Source.Snapshot(ctx)
 	if err != nil {
-		s.deps.Logger.Error("world snapshot failed",
-			"event", "world_failed", "component", "http",
-			"request_id", requestIDFrom(r), "error", err)
-		s.renderError(w, r, http.StatusServiceUnavailable,
-			"The world view could not be read. The server log has the details for this request.")
-		return
+		return worldView{}, err
 	}
 
 	byCountry := make(map[string][]board.Target)
@@ -2817,8 +2859,7 @@ func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
 		byHub[city+", "+state] = append(byHub[city+", "+state], t)
 	}
 
-	csrf, _ := s.auth.csrfFrom(r)
-	view := worldView{Version: s.deps.Version, CSRF: csrf, Unplaced: unplaced, Insecure: s.insecure(r)}
+	view := worldView{Version: s.deps.Version, Unplaced: unplaced}
 
 	// The overlay is one query for the whole page. A missing reader or a failed
 	// query is stated, never rendered as "no known event".
@@ -2827,7 +2868,7 @@ func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
 		view.OverlayNote = "Feed overlay is not configured on this instance."
 	} else {
 		events, err := s.deps.CountryEvents.RecentCountryEvents(
-			r.Context(), time.Now().UTC().Add(-24*time.Hour))
+			ctx, time.Now().UTC().Add(-24*time.Hour))
 		switch {
 		case err != nil:
 			s.deps.Logger.Warn("world overlay failed",
@@ -2847,7 +2888,7 @@ func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
 	if s.deps.CountryLevels == nil {
 		view.LevelNote = "Bounded country level is not configured on this instance."
 	} else {
-		stored, err := s.deps.CountryLevels.CountryLevels(r.Context())
+		stored, err := s.deps.CountryLevels.CountryLevels(ctx)
 		switch {
 		case err != nil:
 			s.deps.Logger.Warn("world level snapshot failed",
@@ -2969,11 +3010,29 @@ func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
 		return view.HubPoints[i].Label < view.HubPoints[j].Label
 	})
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	return view, nil
+}
+
+// handleWorld renders the country and projection view the atlas also embeds.
+func (s *server) handleWorld(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	view, err := s.buildWorldData(r.Context())
+	if err != nil {
+		s.deps.Logger.Error("world snapshot failed",
+			"event", "world_failed", "component", "http",
+			"request_id", requestIDFrom(r), "error", err)
+		s.renderError(w, r, http.StatusServiceUnavailable,
+			"The world view could not be read. The server log has the details for this request.")
+		return
+	}
+	csrf, _ := s.auth.csrfFrom(r)
+	view.CSRF = csrf
 	view.Insecure = s.insecure(r)
 	view.NoAuth = s.auth.disabled()
-	// The projection positions markers with inline left/top percentages, the
-	// same bounded inline-style exception the /map and /hubs treemaps use.
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "world.html", view)
@@ -3111,21 +3170,12 @@ func hubMapTile(t board.Target, cityState, site, title string, now time.Time) *m
 // endpoints are large, come first in the DOM, and keep their own hover detail.
 // Unplaced hub targets are counted in a note, never folded into a guessed
 // location.
-func (s *server) handleHubs(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.Header().Set("Allow", "GET, HEAD")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	targets, err := s.deps.Source.Snapshot(r.Context())
+// buildHubsData assembles the US hub projection and city treemap from the
+// naming convention, with no new schema column. The atlas shares this view.
+func (s *server) buildHubsData(ctx context.Context) (hubsView, error) {
+	targets, err := s.deps.Source.Snapshot(ctx)
 	if err != nil {
-		s.deps.Logger.Error("hubs snapshot failed",
-			"event", "hubs_failed", "component", "http",
-			"request_id", requestIDFrom(r), "error", err)
-		s.renderError(w, r, http.StatusServiceUnavailable,
-			"The hub view could not be read. The server log has the details for this request.")
-		return
+		return hubsView{}, err
 	}
 
 	byHub := make(map[string][]board.Target)
@@ -3142,15 +3192,8 @@ func (s *server) handleHubs(w http.ResponseWriter, r *http.Request) {
 		byHub[city+", "+state] = append(byHub[city+", "+state], t)
 	}
 
-	csrf, _ := s.auth.csrfFrom(r)
 	now := time.Now()
-	view := hubsView{
-		Version:  s.deps.Version,
-		CSRF:     csrf,
-		Insecure: s.insecure(r),
-		NoAuth:   s.auth.disabled(),
-		Other:    other,
-	}
+	view := hubsView{Version: s.deps.Version, Other: other}
 
 	for _, members := range byHub {
 		city, state, _, _ := parseHubName(members[0].Name)
@@ -3253,7 +3296,29 @@ func (s *server) handleHubs(w http.ResponseWriter, r *http.Request) {
 		view.Note = fmt.Sprintf("%d us/hub target(s) do not follow the city/state name convention and are not placed.", other)
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	return view, nil
+}
+
+// handleHubs renders the hub view shared with the atlas.
+func (s *server) handleHubs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	view, err := s.buildHubsData(r.Context())
+	if err != nil {
+		s.deps.Logger.Error("hubs snapshot failed",
+			"event", "hubs_failed", "component", "http",
+			"request_id", requestIDFrom(r), "error", err)
+		s.renderError(w, r, http.StatusServiceUnavailable,
+			"The hub view could not be read. The server log has the details for this request.")
+		return
+	}
+	csrf, _ := s.auth.csrfFrom(r)
+	view.CSRF = csrf
+	view.Insecure = s.insecure(r)
+	view.NoAuth = s.auth.disabled()
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "hubs.html", view)
@@ -3465,25 +3530,20 @@ func buildCorridorMap(view *corridorsView, endpoints map[string][]string) {
 	})
 }
 
-func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.Header().Set("Allow", "GET, HEAD")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	csrf, _ := s.auth.csrfFrom(r)
-	view := corridorsView{Version: s.deps.Version, CSRF: csrf, Insecure: s.insecure(r)}
+// buildCorridorsData assembles the corridor table and its shared projection.
+// The atlas uses the same rows so its overlay cannot disagree with the table.
+func (s *server) buildCorridorsData(ctx context.Context) (corridorsView, error) {
+	view := corridorsView{Version: s.deps.Version}
 
 	var endpoints map[string][]string
 	if s.deps.CorridorEndpoints != nil {
-		endpoints = s.deps.CorridorEndpoints.CorridorEndpoints(r.Context())
+		endpoints = s.deps.CorridorEndpoints.CorridorEndpoints(ctx)
 	}
 
 	if s.deps.Corridors == nil {
 		view.Note = "Corridors are not configured on this instance."
 	} else {
-		statuses, err := s.deps.Corridors.CorridorStatus(r.Context())
+		statuses, err := s.deps.Corridors.CorridorStatus(ctx)
 		switch {
 		case err != nil:
 			s.deps.Logger.Warn("corridor page failed",
@@ -3493,7 +3553,7 @@ func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
 			view.Note = "No corridors are configured. Add a `corridors:` section to the target file."
 		default:
 			series, seriesErr := s.deps.Corridors.CorridorSeries(
-				r.Context(), time.Now().UTC().Add(-24*time.Hour))
+				ctx, time.Now().UTC().Add(-24*time.Hour))
 			if seriesErr != nil {
 				s.deps.Logger.Warn("corridor series failed",
 					"event", "corridor_series_failed", "component", "http", "error", seriesErr)
@@ -3544,11 +3604,27 @@ func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
 
 	buildCorridorMap(&view, endpoints)
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	return view, nil
+}
+
+// handleCorridors renders the corridor view shared with the atlas.
+func (s *server) handleCorridors(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	view, err := s.buildCorridorsData(r.Context())
+	if err != nil {
+		// The builder currently records provider failures as notes; keep the
+		// page renderable and log here only if a hard failure is introduced.
+		s.deps.Logger.Warn("corridor page failed",
+			"event", "corridor_page_failed", "component", "http", "error", err)
+	}
+	csrf, _ := s.auth.csrfFrom(r)
+	view.CSRF = csrf
 	view.Insecure = s.insecure(r)
 	view.NoAuth = s.auth.disabled()
-	// The projection positions markers with inline left/top percentages, the
-	// same bounded inline-style exception used by /map, /hubs, and /world.
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "corridors.html", view)
@@ -3600,6 +3676,18 @@ type ihiView struct {
 	Note    string
 }
 
+// buildIHIView assembles the index and its component breakdown. The atlas
+// shows the same number and the same explicit "not configured" note.
+func (s *server) buildIHIView(ctx context.Context) ihiView {
+	view := ihiView{Version: s.deps.Version}
+	if s.deps.Health == nil {
+		view.Note = "The health index is not configured on this instance."
+	} else {
+		view.Health = toHealthView(s.deps.Health.Build(ctx))
+	}
+	return view
+}
+
 // handleIHI is the page behind the board's index chip. It carries the same
 // number plus the weights, timestamps, and dropped components, because
 // DESIGN.md §11 says the components are always one click away.
@@ -3609,17 +3697,9 @@ func (s *server) handleIHI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
+	view := s.buildIHIView(r.Context())
 	csrf, _ := s.auth.csrfFrom(r)
-	view := ihiView{Version: s.deps.Version, CSRF: csrf, Insecure: s.insecure(r)}
-
-	if s.deps.Health == nil {
-		view.Note = "The health index is not configured on this instance."
-	} else {
-		view.Health = toHealthView(s.deps.Health.Build(r.Context()))
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	view.CSRF = csrf
 	view.Insecure = s.insecure(r)
 	view.NoAuth = s.auth.disabled()
 	w.Header().Set("Content-Security-Policy",
@@ -3627,15 +3707,10 @@ func (s *server) handleIHI(w http.ResponseWriter, r *http.Request) {
 	_ = s.tmpl.ExecuteTemplate(w, "ihi.html", view)
 }
 
-func (s *server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.Header().Set("Allow", "GET, HEAD")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	csrf, _ := s.auth.csrfFrom(r)
-	view := diagnosticsView{Version: s.deps.Version, CSRF: csrf, Insecure: s.insecure(r)}
+// buildDiagnosticsView assembles the log-ring summary. The atlas shows the
+// same counters and states a missing ring rather than drawing empty statistics.
+func (s *server) buildDiagnosticsView() diagnosticsView {
+	view := diagnosticsView{Version: s.deps.Version}
 
 	if s.deps.Logs == nil {
 		view.Note = "The log ring is not wired on this instance."
@@ -3672,7 +3747,18 @@ func (s *server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	return view
+}
+
+func (s *server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	view := s.buildDiagnosticsView()
+	csrf, _ := s.auth.csrfFrom(r)
+	view.CSRF = csrf
 	view.Insecure = s.insecure(r)
 	view.NoAuth = s.auth.disabled()
 	w.Header().Set("Content-Security-Policy",
@@ -3680,40 +3766,21 @@ func (s *server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 	_ = s.tmpl.ExecuteTemplate(w, "diagnostics.html", view)
 }
 
-func (s *server) handleFeeds(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.Header().Set("Allow", "GET, HEAD")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+// buildFeedsData assembles feed state and bounded recent events. The atlas
+// asks for a shorter event list than /feeds but reads the same provider.
+func (s *server) buildFeedsData(ctx context.Context, limit int) (feedsView, error) {
 	var states []store.FeedState
 	var events []store.ExternalEvent
 	if s.deps.Feeds != nil {
-		got, err := s.deps.Feeds.FeedStates(r.Context())
+		got, err := s.deps.Feeds.FeedStates(ctx)
 		if err != nil {
-			s.deps.Logger.Error("feed states failed", "event", "feed_states_failed", "component", "http", "error", err)
-			http.Error(w, "feeds unavailable", http.StatusServiceUnavailable)
-			return
+			return feedsView{}, fmt.Errorf("%w: %w", errFeedStatesFailed, err)
 		}
 		states = got
 
-		limit := 50
-		if v := r.URL.Query().Get("limit"); v != "" {
-			n, err := strconv.Atoi(v)
-			if err != nil || n <= 0 {
-				http.Error(w, "invalid limit", http.StatusBadRequest)
-				return
-			}
-			if n > 200 {
-				n = 200
-			}
-			limit = n
-		}
-		ev, err := s.deps.Feeds.ExternalEvents(r.Context(), limit)
+		ev, err := s.deps.Feeds.ExternalEvents(ctx, limit)
 		if err != nil {
-			s.deps.Logger.Error("external events failed", "event", "feed_events_failed", "component", "http", "error", err)
-			http.Error(w, "feeds unavailable", http.StatusServiceUnavailable)
-			return
+			return feedsView{}, fmt.Errorf("%w: %w", errFeedEventsFailed, err)
 		}
 		events = ev
 	}
@@ -3749,40 +3816,61 @@ func (s *server) handleFeeds(w http.ResponseWriter, r *http.Request) {
 		eventRows = append(eventRows, row)
 	}
 
-	csrf, _ := s.auth.csrfFrom(r)
-	view := feedsView{
-		Insecure: s.insecure(r),
-		NoAuth:   s.auth.disabled(),
-		Version:  s.deps.Version,
-		CSRF:     csrf,
-		Feeds:    rows,
-		Events:   eventRows,
-	}
-	_ = s.tmpl.ExecuteTemplate(w, "feeds.html", view)
+	return feedsView{Version: s.deps.Version, Feeds: rows, Events: eventRows}, nil
 }
 
-func (s *server) handleMap(w http.ResponseWriter, r *http.Request) {
+// handleFeeds renders the feed view shared with the atlas.
+func (s *server) handleFeeds(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	by := r.URL.Query().Get("by")
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			http.Error(w, "invalid limit", http.StatusBadRequest)
+			return
+		}
+		if n > 200 {
+			n = 200
+		}
+		limit = n
+	}
+	view, err := s.buildFeedsData(r.Context(), limit)
+	if err != nil {
+		switch {
+		case errors.Is(err, errFeedStatesFailed):
+			s.deps.Logger.Error("feed states failed", "event", "feed_states_failed", "component", "http", "error", err)
+		case errors.Is(err, errFeedEventsFailed):
+			s.deps.Logger.Error("external events failed", "event", "feed_events_failed", "component", "http", "error", err)
+		default:
+			s.deps.Logger.Error("feed page failed", "event", "feed_page_failed", "component", "http", "error", err)
+		}
+		http.Error(w, "feeds unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	csrf, _ := s.auth.csrfFrom(r)
+	view.CSRF = csrf
+	view.Insecure = s.insecure(r)
+	view.NoAuth = s.auth.disabled()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = s.tmpl.ExecuteTemplate(w, "feeds.html", view)
+}
+
+// buildMapData assembles the health treemap. /map and the atlas hero use the
+// same clusters, weights, and hover explanations.
+func (s *server) buildMapData(ctx context.Context, by string) (mapView, error) {
 	switch by {
 	case "health", "sector", "country", "asn":
 	default:
 		by = "health"
 	}
 
-	if s.deps.Source == nil {
-		http.Error(w, "map unavailable", http.StatusServiceUnavailable)
-		return
-	}
-	targets, err := s.deps.Source.Snapshot(r.Context())
+	targets, err := s.deps.Source.Snapshot(ctx)
 	if err != nil {
-		s.deps.Logger.Error("map snapshot failed", "event", "map_snapshot_failed", "component", "http", "error", err)
-		http.Error(w, "map unavailable", http.StatusServiceUnavailable)
-		return
+		return mapView{}, err
 	}
 
 	now := time.Now()
@@ -3923,19 +4011,34 @@ func (s *server) handleMap(w http.ResponseWriter, r *http.Request) {
 		flat = append(flat, sec.Tiles...)
 	}
 
+	return mapView{
+		Version: s.deps.Version,
+		By:      by,
+		Tiles:   flat,
+		Sectors: sectors,
+		Health:  health,
+	}, nil
+}
+
+// handleMap renders the same treemap the atlas embeds.
+func (s *server) handleMap(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	view, err := s.buildMapData(r.Context(), r.URL.Query().Get("by"))
+	if err != nil {
+		s.deps.Logger.Error("map snapshot failed", "event", "map_snapshot_failed", "component", "http", "error", err)
+		http.Error(w, "map unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	csrf, _ := s.auth.csrfFrom(r)
+	view.CSRF = csrf
+	view.Insecure = s.insecure(r)
+	view.NoAuth = s.auth.disabled()
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
-	view := mapView{
-		Insecure: s.insecure(r),
-		NoAuth:   s.auth.disabled(),
-		Version:  s.deps.Version,
-		CSRF:     csrf,
-		By:       by,
-		Tiles:    flat,
-		Sectors:  sectors,
-		Health:   health,
-	}
 	_ = s.tmpl.ExecuteTemplate(w, "map.html", view)
 }
 

@@ -416,6 +416,7 @@ What it asserts, and nothing more:
 | `TestKeyboardReachesTiles` | tiles are in the tab order |
 | `TestTargetDetailNavigation` | tile → detail → back works |
 | `TestMobileViewportDoesNotOverflow` | no horizontal overflow at 390 px |
+| `TestAtlasMapFirstHoverAndPin` | `/atlas` renders the combined projection above every detail section, the server-rendered hover card appears on hover, click-to-pin fills the detail panel, unpin restores it, and the page has only same-origin scripts and no external refs |
 
 It also fails on any `console.error` or uncaught page error, with one documented exception: the deliberate `401` from a failed login, which is asserted by the error box instead.
 
@@ -430,6 +431,9 @@ It also fails on any `console.error` or uncaught page error, with one documented
 | `connection` | live/paused indicator (`data-state=live\|retrying`) |
 | `target-detail`, `target-state` | detail page |
 | `empty-board` | no targets configured |
+| `atlas`, `atlas-projection`, `atlas-pin`, `atlas-unpin` | combined map-first page and pin panel |
+| `atlas-map-country`, `atlas-map-hub`, `atlas-map-corridor`, `atlas-map-line` | markers and links sharing the hero projection |
+| `atlas-group`, `atlas-coverage`, `atlas-incident`, `atlas-feed`, `atlas-ihi`, `atlas-diagnostics` | the detail sections that must stay on one page |
 
 Renaming a test id is a deliberate act; changing a class is not. That asymmetry is the point.
 
@@ -443,7 +447,7 @@ Renaming a test id is a deliberate act; changing a class is not. That asymmetry 
 
 **Accessibility.** The suite already asserts accessible names and glyph presence; the plan is `axe-core` via `page.AddScriptTag` for a rules pass on board, login, and detail. Not in the first cut: axe findings need a triage policy, and an un-triaged accessibility gate gets muted.
 
-**Cost.** ~4 s locally for six tests, ~40 s in CI including browser install. Acceptable for what it catches.
+**Cost.** A few seconds locally for the suite, ~40 s in CI including browser install. Acceptable for what it catches.
 
 ---
 

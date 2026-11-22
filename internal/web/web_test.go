@@ -783,6 +783,54 @@ func newServerWithFeeds(t *testing.T, token string, m *board.Memory, feeds web.F
 	return ts
 }
 
+func TestFeedsPageLogsDistinctProviderFailures(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		event string
+		feeds *fakeFeedHealth
+	}{
+		{"states", "feed_states_failed", &fakeFeedHealth{statesErr: errors.New("boom")}},
+		{"events", "feed_events_failed", &fakeFeedHealth{eventsErr: errors.New("boom")}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var logs strings.Builder
+			m := fixture()
+			h, err := web.New(web.Deps{
+				Logger:    slog.New(slog.NewJSONHandler(&logs, nil)),
+				Source:    m,
+				Watcher:   m,
+				Feeds:     tc.feeds,
+				Token:     testToken,
+				Version:   "test",
+				StartedAt: time.Now(),
+			})
+			if err != nil {
+				t.Fatalf("web.New: %v", err)
+			}
+			ts := httptest.NewServer(h)
+			t.Cleanup(ts.Close)
+			client, _ := newClient(t)
+			login(t, ts, client, testToken)
+
+			resp, err := client.Get(ts.URL + "/feeds") //nolint:bodyclose // body() closes it
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = body(t, resp)
+			if resp.StatusCode != http.StatusServiceUnavailable {
+				t.Fatalf("status = %d, want 503", resp.StatusCode)
+			}
+			if !strings.Contains(logs.String(), `"event":"`+tc.event+`"`) {
+				t.Fatalf("alerting event %q missing from logs: %s", tc.event, logs.String())
+			}
+		})
+	}
+}
+
 func TestBoardShowsFeedHealthAndStaleness(t *testing.T) {
 	t.Parallel()
 
@@ -2093,9 +2141,12 @@ func TestCoveragePageUnavailableWithoutSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = body(t, resp)
+	page := body(t, resp)
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", resp.StatusCode)
+	}
+	if !strings.Contains(page, "coverage is not configured") {
+		t.Fatalf("missing provider changed the browser text: %q", page)
 	}
 }
 
@@ -2180,6 +2231,26 @@ func TestPauseRequiresSession(t *testing.T) {
 	_ = body(t, resp)
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("status = %d, want a redirect to login", resp.StatusCode)
+	}
+}
+
+func TestIncidentsPageUnavailableWithoutSource(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testToken, fixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/incidents") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.StatusCode)
+	}
+	if !strings.Contains(page, "incident log is not configured") {
+		t.Fatalf("missing provider changed the browser text: %q", page)
 	}
 }
 

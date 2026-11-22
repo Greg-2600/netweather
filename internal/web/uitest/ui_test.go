@@ -834,3 +834,124 @@ func TestWorldProjectionRenders(t *testing.T) {
 		t.Fatalf("hub marker title should state the caveat: %v", err)
 	}
 }
+
+func TestAtlasMapFirstHoverAndPin(t *testing.T) {
+	t.Parallel()
+	h := newHarnessWithBoard(t, board.NewMemory(
+		board.Target{
+			ID: "1", Name: "Chase", Host: "chase.com", Country: "US",
+			Sector: "financial/banking", State: board.StateUp,
+		},
+		board.Target{
+			ID: "2", Name: "United", Host: "united.com", Country: "DE",
+			Sector: "airline", State: board.StateDown,
+		},
+		board.Target{
+			ID: "3", Name: "Dallas, TX hub — DFW airport", Host: "dfw.example",
+			Country: "US", Sector: "us/hub", State: board.StateDown,
+		},
+	))
+	h.login(t)
+
+	expect := playwright.NewPlaywrightAssertions(5000)
+
+	if _, err := h.page.Goto(h.baseURL + "/atlas"); err != nil {
+		t.Fatalf("goto /atlas: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator("h1")).ToHaveText("Atlas"); err != nil {
+		t.Fatalf("heading = %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="atlas-subtitle"]`)).
+		ToHaveText("Everything, all tabs"); err != nil {
+		t.Fatalf("subtitle = %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="atlas-projection"]`)).ToBeVisible(); err != nil {
+		t.Fatalf("atlas projection not visible: %v", err)
+	}
+
+	ordered, err := h.page.Evaluate(`() => {
+		const p = document.querySelector('[data-testid="atlas-projection"]');
+		const g = document.querySelector('[data-testid="atlas-groups"]');
+		return !!p && !!g && (p.compareDocumentPosition(g) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := ordered.(bool); !ok {
+		t.Fatal("atlas projection must render above the detail sections")
+	}
+
+	if err := expect.Locator(h.page.Locator(`[data-testid="atlas-map-country"]`)).ToHaveCount(2); err != nil {
+		t.Fatalf("country marker count: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="atlas-map-hub"]`)).ToHaveCount(1); err != nil {
+		t.Fatalf("hub marker count: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="treemap"]`)).ToBeVisible(); err != nil {
+		t.Fatalf("atlas treemap not visible: %v", err)
+	}
+
+	// The hover card is CSS-only: the server rendered its text, and no script
+	// creates it. Focus/hover reveals it; clicking pins the same text below.
+	marker := h.page.Locator(`[data-testid="atlas-map-country"][data-atlas-title="US"]`)
+	card := marker.Locator(".atlas-hover")
+	if err := expect.Locator(card).ToBeHidden(); err != nil {
+		t.Fatalf("hover card should start hidden: %v", err)
+	}
+	if err := marker.Hover(); err != nil {
+		t.Fatalf("hover marker: %v", err)
+	}
+	if err := expect.Locator(card).ToBeVisible(); err != nil {
+		t.Fatalf("hover card did not appear: %v", err)
+	}
+
+	panel := h.page.Locator(`[data-testid="atlas-pin"]`)
+	if err := marker.Click(); err != nil {
+		t.Fatalf("click marker: %v", err)
+	}
+	if err := expect.Locator(panel).ToHaveAttribute("data-pinned", "true"); err != nil {
+		t.Fatalf("pin state: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="atlas-pin-title"]`)).
+		ToHaveText("Country · US"); err != nil {
+		t.Fatalf("pinned title = %v", err)
+	}
+	href, err := h.page.Locator(`[data-testid="atlas-pin-link"]`).GetAttribute("href")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(href, "/") {
+		t.Fatalf("pinned link should be a same-origin path, got %q", href)
+	}
+	if err := h.page.Locator(`[data-testid="atlas-unpin"]`).Click(); err != nil {
+		t.Fatalf("unpin: %v", err)
+	}
+	if err := expect.Locator(panel).ToHaveAttribute("data-pinned", "false"); err != nil {
+		t.Fatalf("unpin state: %v", err)
+	}
+
+	assets, err := h.page.Evaluate(`() => {
+		const scripts = Array.from(document.scripts);
+		return {
+			inline: scripts.filter((s) => !s.src).length,
+			external: scripts.filter((s) => s.src && !s.src.startsWith(location.origin + '/static/')).length,
+			refs: Array.from(document.querySelectorAll('[src],[href]')).filter((el) => {
+				const v = el.getAttribute('src') || el.getAttribute('href') || '';
+				return /^https?:\/\//i.test(v);
+			}).length
+		};
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	counts, ok := assets.(map[string]any)
+	if !ok {
+		t.Fatalf("asset audit = %v", assets)
+	}
+	for _, key := range []string{"inline", "external", "refs"} {
+		got, ok := toFloat(counts[key])
+		if !ok || got != 0 {
+			t.Fatalf("atlas asset audit = %v, want only same-origin scripts and no external refs", assets)
+		}
+	}
+}

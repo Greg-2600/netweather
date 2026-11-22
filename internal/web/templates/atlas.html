@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Atlas · netweather</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  {{template "insecure" .}}
+  <header class="bar">
+    <a class="brand" href="/">netweather</a>
+    <a class="nav current" href="/atlas">Atlas</a>
+    <a class="nav" href="/">Board</a>
+    <a class="nav" href="/map">Map</a>
+    <a class="nav" href="/world">World</a>
+    <a class="nav" href="/hubs">Hubs</a>
+    <a class="nav" href="/corridors">Corridors</a>
+    <a class="nav" href="/coverage">Coverage</a>
+    <a class="nav" href="/incidents">Incidents</a>
+    <a class="nav" href="/feeds">Feeds</a>
+    <a class="nav" href="/ihi">IHI</a>
+    <a class="nav" href="/diagnostics">Diagnostics</a>
+    {{if .CSRF}}
+    <div class="controls">
+      <form method="post" action="/logout">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button type="submit" class="link" data-testid="logout">Sign out</button>
+      </form>
+    </div>
+    {{end}}
+  </header>
+
+  <main data-testid="atlas">
+    <div class="atlas-title">
+      <h1>Atlas</h1>
+      <p class="atlas-subtitle" data-testid="atlas-subtitle">Everything, all tabs</p>
+    </div>
+
+    <section class="atlas-projection" data-testid="atlas-projection"
+             aria-labelledby="atlas-projection-title">
+      <div class="atlas-hero-head">
+        <h2 id="atlas-projection-title">One map, every view</h2>
+        <p class="muted small">
+          Country aggregates, US hub label anchors, and configured corridor
+          labels on one self-contained equirectangular silhouette. Hover or
+          focus a marker for its identity; click a marker or corridor line to
+          pin its detail below. Colour and glyph follow the board's state
+          language. A country marker is one path's view of a country; a circle
+          or diamond is an approximate geographic anchor, never a measured
+          hosting location or a verified network path.
+        </p>
+      </div>
+
+      {{if or .World.MapPoints .World.HubPoints .Corridors.MapPoints .Corridors.MapLines}}
+      <div class="projection-frame atlas-frame">
+        <img class="projection-base" src="/static/world-projection.svg" alt="" aria-hidden="true">
+        <svg class="projection-lines" viewBox="0 0 1000 500" preserveAspectRatio="none"
+             role="group" aria-label="Visual links between corridor label anchors">
+          {{range .Corridors.MapLines}}
+          <g class="projection-line atlas-line {{.StateCls}}" data-testid="atlas-map-line"
+             data-atlas-kind="Corridor link" data-atlas-title="{{.ID}}" data-atlas-detail="{{.Title}}"
+             data-atlas-href="#atlas-corridors" role="img" tabindex="0" aria-label="{{.Title}}">
+            <title>{{.Title}}</title>
+            {{range .Segments}}
+            <line x1="{{.X1}}" y1="{{.Y1}}" x2="{{.X2}}" y2="{{.Y2}}"></line>
+            {{end}}
+          </g>
+          {{end}}
+        </svg>
+        <div class="projection-layer" role="group"
+             aria-label="Country health, US hub label anchors, and corridor label anchors">
+          {{range .World.MapPoints}}
+          <a class="projection-marker atlas-marker country-marker {{.WorstCls}}"
+             style="left: {{.X}}%; top: {{.Y}}%;" href="{{.Href}}"
+             data-testid="atlas-map-country" data-atlas-kind="Country" data-atlas-title="{{.Code}}"
+             data-atlas-detail="{{.Title}}" data-atlas-href="{{.Href}}"
+             aria-label="{{.Title}}" title="{{.Title}}">
+            <span aria-hidden="true">{{.Glyph}}</span>
+            <span class="atlas-hover" role="tooltip"><b>{{.Code}}</b> — {{.Title}}</span>
+          </a>
+          {{end}}
+          {{range .World.HubPoints}}
+          <a class="projection-marker atlas-marker hub-marker {{.WorstCls}}"
+             style="left: {{.X}}%; top: {{.Y}}%;" href="{{.Href}}"
+             data-testid="atlas-map-hub" data-atlas-kind="US hub label" data-atlas-title="{{.Label}}"
+             data-atlas-detail="{{.Title}}" data-atlas-href="{{.Href}}"
+             aria-label="{{.Title}}" title="{{.Title}}">
+            <span class="hub-glyph" aria-hidden="true">{{.Glyph}}</span>
+            <span class="atlas-hover" role="tooltip"><b>{{.Label}}</b> — {{.Title}}</span>
+          </a>
+          {{end}}
+          {{range .Corridors.MapPoints}}
+          <a class="projection-marker atlas-marker corridor-marker {{.StateCls}}"
+             style="left: {{.X}}%; top: {{.Y}}%;" href="#atlas-corridors"
+             data-testid="atlas-map-corridor" data-atlas-kind="Corridor label" data-atlas-title="{{.Code}}"
+             data-atlas-detail="{{.Title}}" data-atlas-href="#atlas-corridors"
+             aria-label="{{.Title}}" title="{{.Title}}">
+            <span aria-hidden="true">{{.Glyph}}</span>
+            <span class="atlas-hover" role="tooltip"><b>{{.Code}}</b> — {{.Title}}</span>
+          </a>
+          {{end}}
+        </div>
+      </div>
+      <p class="projection-legend muted small">
+        <span><span class="legend-circle" aria-hidden="true">●</span> country aggregate</span>
+        <span><span class="legend-diamond" aria-hidden="true">◆</span> US hub label anchor</span>
+        <span><span class="legend-line" aria-hidden="true">—</span> configured corridor label</span>
+        <span>Projections are illustrations of the same read model, not location measurements.</span>
+      </p>
+      {{else}}
+      <p class="muted" data-testid="atlas-empty-map">
+        No geographic aggregate is available yet. The sections below still carry
+        every tab's data without placing anything on the silhouette.
+      </p>
+      {{end}}
+
+      <div class="atlas-pin" data-testid="atlas-pin" data-pinned="false" aria-live="polite">
+        <div class="atlas-pin-head">
+          <strong data-testid="atlas-pin-title">Nothing pinned</strong>
+          <button type="button" class="link" data-testid="atlas-unpin" hidden>Unpin</button>
+        </div>
+        <p class="muted small" data-testid="atlas-pin-detail">
+          Hover or focus a marker to read it. Click a marker or corridor line to
+          pin its detail here; the link opens the full view.
+        </p>
+        <a class="nav" data-testid="atlas-pin-link" href="#" hidden>Open the full view</a>
+      </div>
+    </section>
+
+    <section class="atlas-section" data-testid="atlas-glance" aria-labelledby="atlas-glance-title">
+      <h2 id="atlas-glance-title">At a glance</h2>
+      <div class="summary" aria-label="State summary">
+        {{range .Board.Counts}}
+        <span class="chip {{.Class}}" data-count-state="{{.State}}" data-testid="atlas-count-{{.State}}">
+          <span class="glyph" aria-hidden="true">{{.Glyph}}</span>
+          <span class="label">{{.Label}}</span><b>{{.Count}}</b>
+        </span>
+        {{end}}
+        {{if .Board.Verdict.Verdict}}
+        <span class="verdict verdict-{{.Board.Verdict.Verdict}}" data-testid="atlas-verdict"
+              title="{{.Board.Verdict.Detail}}">{{.Board.Verdict.Verdict}}</span>
+        {{end}}
+        {{if .IHI.Health.OK}}
+        <a class="nav ihi-chip" href="/ihi" data-testid="atlas-ihi-chip"
+           data-score="{{.IHI.Health.Score}}">IHI {{.IHI.Health.Score}}</a>
+        {{else if .IHI.Health.Note}}
+        <a class="nav ihi-chip" href="/ihi" data-testid="atlas-ihi-chip"
+           title="{{.IHI.Health.Note}}">IHI -</a>
+        {{end}}
+      </div>
+      {{if .Board.Fleet.OK}}
+      <p class="fleet">
+        Health <b class="mono">{{.Board.Fleet.Health}}</b>
+        {{if .Board.Fleet.Band}}<span class="muted small">(normal {{.Board.Fleet.Band}})</span>{{end}}
+        <span class="muted small">{{.Board.Fleet.Detail}}</span>
+      </p>
+      {{else if .Board.Fleet.Note}}
+      <p class="muted small">{{.Board.Fleet.Note}}</p>
+      {{end}}
+      {{with .Map.Health}}
+      <p class="muted small">
+        <b data-testid="atlas-reachable">{{.HealthyPct}}%</b> reachable of {{.Total}} targets;
+        <span class="sev-down">{{.Down}} down</span>, {{.Blocked}} blocked,
+        {{.Impaired}} degraded or config error, {{.NoData}} no data.
+        {{if .Longest}}Longest outage {{.Longest}}.{{end}}
+      </p>
+      {{end}}
+      {{if .Board.Incidents}}
+      <ul class="atlas-inline">
+        {{range .Board.Incidents}}
+        <li><a href="/incidents/{{.ID}}">{{.Headline}}</a>
+          <span class="muted small">{{.Scope}} · {{.OpenedAt}} UTC</span></li>
+        {{end}}
+      </ul>
+      {{else if .Board.HappeningNote}}
+      <p class="muted small">{{.Board.HappeningNote}}</p>
+      {{end}}
+    </section>
+
+    <section class="atlas-section" data-testid="atlas-board" aria-labelledby="atlas-board-title">
+      <h2 id="atlas-board-title">Board groups <span class="muted small">— <a href="/">open board</a></span></h2>
+      <nav class="grouping" aria-label="Group targets by" data-testid="atlas-group-toggle">
+        <span class="muted small">Group by</span>
+        {{range .Board.GroupOptions}}
+        <a class="group-link{{if .Active}} active{{end}}" href="{{.Href}}"
+           data-testid="atlas-group-{{.Key}}" data-group="{{.Key}}"
+           {{if .Active}}aria-current="true"{{end}}>{{.Label}}</a>
+        {{end}}
+      </nav>
+      {{if .Board.Groups}}
+      <table class="probes" data-testid="atlas-groups">
+        <thead><tr><th>Group</th><th>Targets</th><th>Worst</th><th>Link</th></tr></thead>
+        <tbody>
+          {{range .Board.Groups}}
+          <tr data-testid="atlas-group" data-sector="{{.Name}}" data-state="{{.WorstCls}}">
+            <td><span class="glyph {{.WorstCls}}" aria-hidden="true">{{.Glyph}}</span> {{.Label}}</td>
+            <td class="mono">{{.Count}}</td>
+            <td class="{{.WorstCls}}">{{.Worst}}</td>
+            <td><a href="/?group={{$.Board.Group}}">board lens</a></td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="muted" data-testid="atlas-empty-board">No targets are grouped yet.</p>
+      {{end}}
+      {{if .Board.ConfigNote}}<p class="muted small">{{.Board.ConfigNote}}</p>{{end}}
+      {{if .Board.VantageNote}}<p class="muted small">{{.Board.VantageNote}}</p>{{end}}
+    </section>
+
+    <section class="atlas-section" data-testid="atlas-map" aria-labelledby="atlas-map-title">
+      <h2 id="atlas-map-title">Health treemap <span class="muted small">— <a href="/map">open map</a></span></h2>
+      <p class="muted small">
+        Clustered by health: outages first, then blocked, degraded and healthy.
+        Box area is severity × time in state. Hover a box for the target, the raw
+        signal, and why the classifier gave it that state; click it for the
+        target drawer.
+      </p>
+      {{with .Map.Health}}
+      {{if .Top}}
+      <div class="atlas-worst">
+        <h3>Worst right now</h3>
+        {{range $i, $t := .Top}}
+        <a class="worst-row" href="/targets/{{$t.Target}}" data-testid="atlas-worst-row">
+          <span class="worst-rank">{{$i}}</span>
+          <span class="worst-name" title="{{$t.Label}}">{{$t.Label}}</span>
+          <span class="worst-state">{{$t.StateLabel}}</span>
+          <span class="worst-detail">{{$t.Detail}}</span>
+          <span class="worst-duration">{{$t.Duration}}</span>
+        </a>
+        {{end}}
+      </div>
+      {{end}}
+      {{end}}
+      <div data-testid="treemap" class="treemap atlas-treemap">
+        {{range .Map.Sectors}}
+        <section class="map-sector" data-testid="atlas-map-sector" data-group="{{.Label}}"
+                 style="left:{{printf "%.2f" .X}}%;top:{{printf "%.2f" .Y}}%;width:{{printf "%.2f" .W}}%;height:{{printf "%.2f" .H}}%;">
+          {{if .ShowHead}}
+          <header class="map-sector-head" style="background:{{.Color}};">
+            <span class="map-sector-name" title="{{.Label}}">{{.Label}}</span>
+            <span class="map-sector-stat">{{.Count}} · {{.Up}} up / {{.Down}} down</span>
+          </header>
+          {{end}}
+          <div class="map-sector-body">
+            {{range .Tiles}}
+            <a href="/targets/{{.Target}}" data-testid="map-tile" class="map-tile"
+               aria-label="{{.Tip}}" title="{{.Tip}}"
+               data-tip-name="{{.Label}}" data-tip-kind="{{.Kind}}"
+               data-tip-endpoint="{{.Endpoint}}" data-tip-state="{{.StateLabel}}"
+               data-tip-detail="{{.Detail}}" data-tip-why="{{.Why}}"
+               data-tip-duration="{{.Duration}}" data-tip-group="{{.Group}}"
+               style="left:{{printf "%.2f" .X}}%;top:{{printf "%.2f" .Y}}%;width:{{printf "%.2f" .W}}%;height:{{printf "%.2f" .H}}%;background:{{.Color}};">
+              {{if .ShowFull}}<span class="map-tile-name">{{.Label}}</span>
+              {{else if .ShowTicker}}<span class="map-tile-ticker">{{.Ticker}}</span>{{end}}
+              {{if .ShowSub}}<span class="map-tile-sub">{{.Duration}}</span>{{end}}
+            </a>
+            {{end}}
+          </div>
+        </section>
+        {{end}}
+        {{if not .Map.Tiles}}
+        <p class="muted" data-testid="atlas-no-map-tiles" style="padding:1rem;">No targets to map yet.</p>
+        {{end}}
+      </div>
+      <div class="map-tip" data-testid="map-tip" role="tooltip" hidden aria-hidden="true">
+        <div class="map-tip-head">
+          <strong data-tip-field="name"></strong>
+          <span class="map-tip-state" data-tip-field="state"></span>
+        </div>
+        <p class="map-tip-kind" data-tip-field="kind"></p>
+        <dl class="map-tip-facts">
+          <dt>Endpoint</dt><dd data-tip-field="endpoint"></dd>
+          <dt>Signal</dt><dd data-tip-field="detail"></dd>
+          <dt>In state</dt><dd data-tip-field="duration"></dd>
+          <dt>Cluster</dt><dd data-tip-field="group"></dd>
+        </dl>
+        <p class="map-tip-why" data-tip-field="why"></p>
+        <p class="map-tip-hint">Click to open the target drawer</p>
+      </div>
+    </section>
+
+    <section class="atlas-section" data-testid="atlas-world" aria-labelledby="atlas-world-title">
+      <h2 id="atlas-world-title">Countries <span class="muted small">— <a href="/world">open world</a></span></h2>
+      {{if .World.Countries}}
+      <div class="world-grid" data-testid="atlas-country-grid">
+        {{range .World.Countries}}
+        <a class="tile country {{.WorstCls}}" href="{{.Href}}"
+           data-testid="atlas-country" data-country="{{.Code}}" data-state="{{.WorstCls}}"
+           aria-label="{{.Code}}: {{.Count}} target(s), worst {{.Worst}}">
+          {{if .Flag}}<span class="flag" aria-hidden="true">{{.Flag}}</span>{{end}}
+          <span class="country-code">{{.Code}}</span>
+          <span class="country-count">{{.Count}} target(s)</span>
+          <span class="state"><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Worst}}</span>
+          {{if .FeedLevel}}<span class="feed" title="Relative level from {{.FeedLevelSrc}}, raw score {{.FeedLevelRaw}}">{{.FeedLevelSrc}} level {{.FeedLevel}} ({{.FeedLevelRaw}})</span>{{end}}
+          {{if .Feed}}<span class="feed">{{.Feed}} {{.FeedSeverity}}</span>{{end}}
+        </a>
+        {{end}}
+      </div>
+      {{else}}
+      <p class="muted" data-testid="atlas-empty-world">No country has a learned target yet.</p>
+      {{end}}
+      {{if .World.OverlayNote}}<p class="muted small">{{.World.OverlayNote}}</p>{{end}}
+      {{if .World.LevelNote}}<p class="muted small">{{.World.LevelNote}}</p>{{end}}
+      {{if .World.Unplaced}}<p class="muted small">{{.World.Unplaced}} target(s) have no learned country.</p>{{end}}
+      {{if .World.MapUnmapped}}<p class="muted small">{{.World.MapUnmapped}} country bucket(s) have no public geographic centre.</p>{{end}}
+      {{if .World.HubUnmapped}}<p class="muted small">{{.World.HubUnmapped}} hub label(s) have no anchor coordinate.</p>{{end}}
+    </section>
+
+    <section class="atlas-section" data-testid="atlas-hubs" aria-labelledby="atlas-hubs-title">
+      <h2 id="atlas-hubs-title">US hubs <span class="muted small">— <a href="/hubs">open hubs</a></span></h2>
+      <p class="muted small">
+        City and state come from the existing <code>City, ST hub — site</code>
+        name convention, not a schema column. Every marker is a label anchor,
+        never a measured hosting location.
+      </p>
+      {{if .Hubs.Sectors}}
+      <div class="treemap hubs" data-testid="atlas-hub-treemap">
+        {{range .Hubs.Sectors}}
+        <section class="map-sector hub {{.WorstCls}}" data-testid="atlas-hub"
+                 data-city="{{.City}}" data-state="{{.WorstCls}}"
+                 style="left:{{printf "%.2f" .X}}%;top:{{printf "%.2f" .Y}}%;width:{{printf "%.2f" .W}}%;height:{{printf "%.2f" .H}}%;">
+          {{if .ShowHead}}
+          <header class="map-sector-head" style="background:{{.Color}};">
+            <a class="map-sector-name" href="{{.Href}}" title="{{.Label}}">{{.Label}}</a>
+            <span class="map-sector-stat">{{.Worst}} · {{.Count}}</span>
+          </header>
+          {{end}}
+          <div class="map-sector-body">
+            {{range .Tiles}}
+            <a href="/targets/{{.Target}}" data-testid="atlas-hub-tile" class="map-tile hub-endpoint"
+               title="{{.Tip}}" aria-label="{{.Tip}}"
+               style="left:{{printf "%.2f" .X}}%;top:{{printf "%.2f" .Y}}%;width:{{printf "%.2f" .W}}%;height:{{printf "%.2f" .H}}%;background:{{.Color}};">
+              {{if .ShowFull}}<span class="map-tile-name">{{.Label}}</span>
+              {{else if .ShowTicker}}<span class="map-tile-ticker">{{.Ticker}}</span>{{end}}
+              {{if .ShowSub}}<span class="map-tile-sub">{{.Duration}}</span>{{end}}
+            </a>
+            {{end}}
+          </div>
+        </section>
+        {{end}}
+      </div>
+      {{else}}
+      <p class="muted" data-testid="atlas-empty-hubs">No US hub targets are placed yet.</p>
+      {{end}}
+      {{if .Hubs.Note}}<p class="muted small">{{.Hubs.Note}}</p>{{end}}
+    </section>
+
+    <section class="atlas-section" id="atlas-corridors" data-testid="atlas-corridors"
+             aria-labelledby="atlas-corridors-title">
+      <h2 id="atlas-corridors-title">Corridors <span class="muted small">— <a href="/corridors">open corridors</a></span></h2>
+      <p class="muted small">
+        A corridor is evidence about a configured path label pair, never a target
+        state. Labels are operator conventions, not measured locations or a
+        physical route. A step change must persist for two samples against the
+        corridor's own six-hour baseline.
+      </p>
+      {{if .Corridors.Rows}}
+      <table class="probes" data-testid="atlas-corridor-table">
+        <thead><tr><th>Corridor</th><th>Path</th><th>RTT</th><th>Baseline</th>
+          <th>Loss</th><th>State</th><th>Since</th><th>Detail</th></tr></thead>
+        <tbody>
+          {{range .Corridors.Rows}}
+          <tr data-testid="corridor-row" data-corridor="{{.ID}}" data-state="{{.State}}">
+            <td class="mono" title="{{.IDTitle}}"><span class="corridor-name">{{.Name}}</span><br><span class="muted small">{{.ID}}</span></td>
+            <td class="corridor-path" title="{{.PathTitle}}">{{.Path}}</td>
+            <td class="mono">{{.RTT}}</td>
+            <td class="mono">{{.Baseline}}</td>
+            <td class="mono">{{.Loss}}</td>
+            <td class="{{.StateCls}}">{{.State}}{{if .Kind}} ({{.Kind}}){{end}}</td>
+            <td class="mono">{{.Since}}</td>
+            <td class="detail">{{.Detail}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{if .Corridors.SeriesNote}}<p class="muted small">{{.Corridors.SeriesNote}}</p>{{end}}
+      {{else}}
+      <p class="muted" data-testid="atlas-no-corridors">{{.Corridors.Note}}</p>
+      {{end}}
+    </section>
+
+    <section class="atlas-section" data-testid="atlas-coverage" aria-labelledby="atlas-coverage-title">
+      <h2 id="atlas-coverage-title">Coverage <span class="muted small">— <a href="/coverage">open coverage</a></span></h2>
+      {{if .CoverageNote}}
+      <p class="muted" data-testid="atlas-coverage-note">{{.CoverageNote}}</p>
+      {{else}}
+      <p class="muted small">
+        {{.Coverage.Measurable}} measurable of {{.Coverage.Total}} targets
+        ({{.Coverage.Coverage}}); {{.Coverage.Unmeasurable}} unmeasurable.
+        Concentration: {{.Coverage.Concentration.ASNs}} ASNs,
+        {{.Coverage.Concentration.Countries}} countries,
+        top ASN {{.Coverage.Concentration.TopASN}} ({{.Coverage.Concentration.TopASNShare}}),
+        top 10 {{.Coverage.Concentration.Top10Share}}.
+      </p>
+      {{if .Coverage.Sectors}}
+      <table class="probes" data-testid="atlas-coverage-sectors">
+        <thead><tr><th>Sector</th><th>Measured</th><th>Coverage</th></tr></thead>
+        <tbody>
+          {{range .Coverage.Sectors}}
+          <tr data-testid="atlas-coverage-row" data-value="{{.Value}}">
+            <td>{{.Value}}</td><td class="mono">{{.Measured}}/{{.Total}}</td>
+            <td class="mono">{{.Coverage}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{end}}
+      {{if .Coverage.BlindSpots}}
+      <ul class="atlas-inline">
+        {{range .Coverage.BlindSpots}}
+        <li data-testid="atlas-blind-spot">{{.Kind}} {{.Value}}: {{.Coverage}}</li>
+        {{end}}
+      </ul>
+      {{end}}
+      {{if .Coverage.TrendNote}}<p class="muted small">{{.Coverage.TrendNote}}</p>{{end}}
+      {{if .Coverage.Trend}}
+      <div class="atlas-trend mono" data-testid="atlas-trend">
+        {{range .Coverage.Trend}}<span title="{{.Day}}: {{.Coverage}}">{{.Bar}} {{.Coverage}}</span>{{end}}
+      </div>
+      {{end}}
+      {{end}}
+    </section>
+
+    <section class="atlas-section" data-testid="atlas-incidents" aria-labelledby="atlas-incidents-title">
+      <h2 id="atlas-incidents-title">Incidents <span class="muted small">— <a href="/incidents">open incidents</a></span></h2>
+      {{if .IncidentsNote}}
+      <p class="muted" data-testid="atlas-incidents-note">{{.IncidentsNote}}</p>
+      {{else if .Incidents.Incidents}}
+      <table class="probes">
+        <thead><tr><th>Opened</th><th>Scope</th><th>Headline</th><th>Confidence</th><th>State</th></tr></thead>
+        <tbody>
+          {{range .Incidents.Incidents}}
+          <tr data-testid="atlas-incident" data-incident="{{.ID}}">
+            <td class="mono">{{.OpenedAt}}</td>
+            <td>{{.Scope}} {{.ScopeValue}}</td>
+            <td><a href="/incidents/{{.ID}}">{{.Headline}}</a></td>
+            <td>{{.Confidence}}</td>
+            <td>{{if .Open}}open{{else}}closed{{end}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="muted" data-testid="atlas-no-incidents">No incidents are recorded.</p>
+      {{end}}
+    </section>
+
+    <section class="atlas-section" data-testid="atlas-feeds" aria-labelledby="atlas-feeds-title">
+      <h2 id="atlas-feeds-title">Feeds <span class="muted small">— <a href="/feeds">open feeds</a></span></h2>
+      {{if .FeedsNote}}
+      <p class="muted" data-testid="atlas-feeds-note">{{.FeedsNote}}</p>
+      {{else}}
+      {{if .Feeds.Feeds}}
+      <div class="feeds" data-testid="atlas-feed-health">
+        {{range .Feeds.Feeds}}
+        <span class="feed{{if .Stale}} stale{{end}}" data-testid="atlas-feed" data-feed="{{.Feed}}"
+              title="{{.LastErr}}">{{.Feed}}{{if .LastOKAt}} last OK {{.LastOKAt}}{{end}}{{if .ConsecutiveFailures}} · {{.ConsecutiveFailures}} failures{{end}}</span>
+        {{end}}
+      </div>
+      {{else}}
+      <p class="muted small" data-testid="atlas-no-feeds">No external feeds are enabled.</p>
+      {{end}}
+      {{if .Feeds.Events}}
+      <table class="probes" data-testid="atlas-feed-events">
+        <thead><tr><th>Feed</th><th>Kind</th><th>Country</th><th>Observed</th></tr></thead>
+        <tbody>
+          {{range .Feeds.Events}}
+          <tr data-testid="atlas-feed-event"><td>{{.Feed}}</td><td>{{.Kind}}</td>
+            <td>{{.Country}}</td><td class="mono">{{.ObservedAt}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="muted small" data-testid="atlas-no-feed-events">No recent external events.</p>
+      {{end}}
+      {{end}}
+    </section>
+
+    <section class="atlas-section" data-testid="atlas-ihi" aria-labelledby="atlas-ihi-title">
+      <h2 id="atlas-ihi-title">Internet Health Index <span class="muted small">— <a href="/ihi">open IHI</a></span></h2>
+      {{if .IHI.Note}}
+      <p class="muted" data-testid="atlas-ihi-note">{{.IHI.Note}}</p>
+      {{else}}
+      <p><b class="mono" data-testid="atlas-ihi-score">{{.IHI.Health.Score}}</b> of 100</p>
+      {{if .IHI.Health.Parts}}
+      <table class="probes">
+        <thead><tr><th>Component</th><th>Score</th><th>Weight</th><th>At</th></tr></thead>
+        <tbody>
+          {{range .IHI.Health.Parts}}
+          <tr data-testid="atlas-ihi-part"><td>{{.Name}}</td><td class="mono">{{.Score}}</td>
+            <td>{{.Weight}}</td><td class="mono">{{.At}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{end}}
+      {{if .IHI.Health.Dropped}}
+      <ul class="atlas-inline">
+        {{range .IHI.Health.Dropped}}<li data-testid="atlas-ihi-dropped">{{.Name}}: {{.Reason}}</li>{{end}}
+      </ul>
+      {{end}}
+      {{if .IHI.Health.Note}}<p class="muted small">{{.IHI.Health.Note}}</p>{{end}}
+      {{end}}
+    </section>
+
+    <section class="atlas-section" data-testid="atlas-diagnostics" aria-labelledby="atlas-diagnostics-title">
+      <h2 id="atlas-diagnostics-title">Diagnostics <span class="muted small">— <a href="/diagnostics">open diagnostics</a></span></h2>
+      {{if .Diagnostics.Note}}
+      <p class="muted">{{.Diagnostics.Note}}</p>
+      {{else}}
+      <div class="atlas-inline mono">
+        {{range .Diagnostics.Stats}}<span data-testid="atlas-diagnostic-stat">{{.Label}}: {{.Value}}</span>{{end}}
+      </div>
+      {{if .RecordSample}}
+      <div class="atlas-logs mono" data-testid="atlas-log-sample">
+        {{range .RecordSample}}<div data-testid="atlas-log-line"><b>{{.Time}}</b> {{.Level}} {{.Message}} {{.Attrs}}</div>{{end}}
+      </div>
+      {{else if .Diagnostics.RecordsNote}}
+      <p class="muted small">{{.Diagnostics.RecordsNote}}</p>
+      {{end}}
+      {{if .Diagnostics.Scopes}}
+      <p class="muted small">Active debug scopes:
+        {{range .Diagnostics.Scopes}}<span data-testid="atlas-scope">{{.Selector}} ({{.Level}}) until {{.Expires}}</span>{{end}}
+      </p>
+      {{end}}
+      {{end}}
+    </section>
+
+    <section class="atlas-section" aria-labelledby="atlas-links-title">
+      <h2 id="atlas-links-title">Every tab, on its own page</h2>
+      <nav class="atlas-links" aria-label="All views">
+        <a class="nav" href="/">Board</a>
+        <a class="nav" href="/map">Map</a>
+        <a class="nav" href="/world">World</a>
+        <a class="nav" href="/hubs">Hubs</a>
+        <a class="nav" href="/corridors">Corridors</a>
+        <a class="nav" href="/coverage">Coverage</a>
+        <a class="nav" href="/incidents">Incidents</a>
+        <a class="nav" href="/feeds">Feeds</a>
+        <a class="nav" href="/ihi">IHI</a>
+        <a class="nav" href="/diagnostics">Diagnostics</a>
+      </nav>
+    </section>
+  </main>
+  <script src="/static/map.js" defer></script>
+  <script src="/static/atlas.js" defer></script>
+</body>
+</html>
