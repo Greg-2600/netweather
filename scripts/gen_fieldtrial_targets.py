@@ -170,7 +170,10 @@ SERVICES: list[tuple[str, str, str, str]] = [
     # ids stay stable, so the rest of the fleet keeps its history.
     ("rbc", "Trip.com", "www.trip.com", "airline"),
     ("cibc", "CIBC", "www.cibc.com", "financial/banking"),
-    ("scotiabank", "Turkish Airlines", "www.turkishairlines.com", "airline"),
+    # Turkish Airlines ends in HTTP/2 INTERNAL_ERROR from the field-trial egress
+    # and all six Tor exits. Finnair is another real airline whose public page
+    # answers with assessable HTML from every vantage. The id stays stable.
+    ("scotiabank", "Finnair", "www.finnair.com", "airline"),
     ("westpac", "Westpac", "www.westpac.com.au", "financial/banking"),
     ("commbank", "CommBank", "www.commbank.com.au", "financial/banking"),
     ("anz", "Seattle, WA hub — SEA airport", "www.portseattle.org", "us/hub"),
@@ -239,7 +242,11 @@ SERVICES: list[tuple[str, str, str, str]] = [
     ("vmware", "VMware", "www.vmware.com", "cloud"),
     ("cisco", "Cisco", "www.cisco.com", "cloud"),
     ("dell", "Dell", "www.dell.com", "cloud"),
-    ("hpe", "HPE", "www.hpe.com", "cloud"),
+    # HPE times out awaiting HTTP/2 response headers. Oracle Cloud answers 206
+    # with assessable HTML from the local egress and all six Tor exits. This is a
+    # different host from the existing svc-oracle airport target, so every
+    # target keeps a distinct (host, port, probe, qname) identity.
+    ("hpe", "Oracle Cloud", "cloud.oracle.com", "cloud"),
     ("intel", "Intel", "www.intel.com", "cloud"),
     ("nvidia", "NVIDIA", "www.nvidia.com", "cloud"),
     ("apple", "Apple", "www.apple.com", "cloud"),
@@ -249,7 +256,10 @@ SERVICES: list[tuple[str, str, str, str]] = [
     ("canonical", "Canonical", "www.canonical.com", "developer"),
     ("docker", "Docker", "www.docker.com", "developer"),
     # social / media
-    ("facebook", "Facebook", "www.facebook.com", "social"),
+    # Facebook is bot-walled from the field-trial egress. Flickr is a real public
+    # social endpoint that answers 206 from the local egress and all six exits.
+    # The id stays stable so the target keeps its history.
+    ("facebook", "Flickr", "www.flickr.com", "social"),
     ("instagram", "Instagram", "www.instagram.com", "social"),
     ("x", "X", "x.com", "social"),
     ("linkedin", "LinkedIn", "www.linkedin.com", "social"),
@@ -270,7 +280,12 @@ SERVICES: list[tuple[str, str, str, str]] = [
     ("walmart", "Pittsburgh, PA hub — PIT airport", "flypittsburgh.com", "us/hub"),
     ("target", "Target", "www.target.com", "retail"),
     ("costco", "Costco", "www.costco.com", "retail"),
-    ("bestbuy", "Best Buy", "www.bestbuy.com", "retail"),
+    # Best Buy ends in HTTP/2 stream errors. Sam's Club and Walmart Canada
+    # answer 200 to a normal probe but Akamai returns 418 to netweather's
+    # identifying User-Agent with the explicit :443 Host that targetURL builds.
+    # Dollarama answers 200 from the local egress and all six Tor exits.
+    # Stable id, retail sector unchanged.
+    ("bestbuy", "Dollarama", "www.dollarama.com", "retail"),
     ("homedepot", "Memphis, TN hub — MEM airport", "flymemphis.com", "us/hub"),
     ("lowes", "Lowe's", "www.lowes.com", "retail"),
     ("macys", "New Orleans, LA hub — MSY airport", "flymsy.com", "us/hub"),
@@ -284,7 +299,10 @@ SERVICES: list[tuple[str, str, str, str]] = [
     ("rakuten", "Rakuten", "www.rakuten.com", "retail"),
     ("wayfair", "Wayfair", "www.wayfair.com", "retail"),
     ("zara", "Savannah, GA hub — SAV airport", "savannahairport.com", "us/hub"),
-    ("uniqlo", "Uniqlo", "www.uniqlo.com", "retail"),
+    # Uniqlo also fails HTTP/2 stream setup. Barnes & Noble answers 200 from
+    # the local egress and all six Tor exits with the production UA and URL
+    # shape. Stable id, retail sector unchanged.
+    ("uniqlo", "Barnes & Noble", "www.barnesandnoble.com", "retail"),
     ("nike", "Nike", "www.nike.com", "retail"),
     ("adidas", "Chattanooga, TN hub — CHA airport", "www.flycha.com", "us/hub"),
     # news / reference content
@@ -295,7 +313,9 @@ SERVICES: list[tuple[str, str, str, str]] = [
     ("cnn", "CNN", "www.cnn.com", "news"),
     ("nytimes", "Boston, MA hub — city portal", "www.boston.gov", "us/hub"),
     ("guardian", "The Guardian", "www.theguardian.com", "news"),
-    ("washingtonpost", "Washington Post", "www.washingtonpost.com", "news"),
+    # The Washington Post times out behind a bot wall. CBS News answers 206 with
+    # assessable HTML from the local egress and all six Tor exits. Id stable.
+    ("washingtonpost", "CBS News", "www.cbsnews.com", "news"),
     ("wsj", "Seattle, WA hub — city portal", "www.seattle.gov", "us/hub"),
     ("ft", "Financial Times", "www.ft.com", "news"),
     ("npr", "NPR", "www.npr.org", "news"),

@@ -157,6 +157,14 @@ changed between two images without it.
 
 ### Fixed
 
+- Six field-trial service endpoints that were unjudgeable from the local egress
+  (Turkish Airlines, HPE, Facebook, Best Buy, Uniqlo, and The Washington Post)
+  now point at real public pages that answer with assessable HTML from the local
+  egress and all six pinned Tor exits with the production User-Agent and URL
+  shape: Finnair, Oracle Cloud, Flickr, Dollarama, Barnes & Noble, and CBS News
+  respectively. Stable ids, sectors, and the 749-target fleet are unchanged.
+  Sam's Club and Walmart Canada were rejected after Akamai returned 418 when
+  the Host header carried the explicit `:443` that netweather probes use.
 - `REGIONAL` now requires the **primary** vantage to be down while a
   corroborating vantage is up, matching the target drawer and `DESIGN.md`.
   Previously any down/up split across two vantages lit the top-bar badge, so a

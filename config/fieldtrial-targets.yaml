@@ -5146,8 +5146,8 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-scotiabank
-    name: "Turkish Airlines"
-    host: "www.turkishairlines.com"
+    name: "Finnair"
+    host: "www.finnair.com"
     port: 443
     probe: http
     class: service
@@ -5608,8 +5608,8 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-hpe
-    name: "HPE"
-    host: "www.hpe.com"
+    name: "Oracle Cloud"
+    host: "cloud.oracle.com"
     port: 443
     probe: http
     class: service
@@ -5689,8 +5689,8 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-facebook
-    name: "Facebook"
-    host: "www.facebook.com"
+    name: "Flickr"
+    host: "www.flickr.com"
     port: 443
     probe: http
     class: service
@@ -5869,8 +5869,8 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-bestbuy
-    name: "Best Buy"
-    host: "www.bestbuy.com"
+    name: "Dollarama"
+    host: "www.dollarama.com"
     port: 443
     probe: http
     class: service
@@ -5995,8 +5995,8 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-uniqlo
-    name: "Uniqlo"
-    host: "www.uniqlo.com"
+    name: "Barnes & Noble"
+    host: "www.barnesandnoble.com"
     port: 443
     probe: http
     class: service
@@ -6085,8 +6085,8 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-washingtonpost
-    name: "Washington Post"
-    host: "www.washingtonpost.com"
+    name: "CBS News"
+    host: "www.cbsnews.com"
     port: 443
     probe: http
     class: service
