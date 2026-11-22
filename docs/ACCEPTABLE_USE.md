@@ -76,7 +76,7 @@ These are the limits a reviewer should check first. Each is enforced at the stat
 | Max targets | 2000 | Config/seed validation, reject not truncate |
 | Max redirects | 5 | Redirect policy |
 | Max body read | 32 KB | `io.LimitReader` + decompression cap |
-| Per-stage deadline | DNS 5s, TCP connect 5s, TLS handshake 5s, TTFB 10s, total 15s | Instrument contexts and transport timeouts |
+| Per-stage deadline | DNS 5s total, TCP connect 5s, TLS handshake 5s, TTFB 10s, total 15s | Instrument contexts and transport timeouts. One DNS timeout retry is enabled by default inside the same 5s window (`NETWEATHER_DNS_RETRIES`, 0–2; `NETWEATHER_DNS_RETRY_DELAY_MS`, 0–200). Only a timeout is retried — negative answers, policy blocks, and malformed replies are final — so lost UDP datagrams do not flip a healthy anchor while request volume stays bounded |
 | Traceroute | ≤10 runs/hour, on demand only | Rate limiter, no scheduler path |
 | Tor vantages | ≤25 targets and ≥2s spacing per exit, daily MB budget per exit | Vantage policy |
 | Daily egress budget | 2 GB default, hard stop | Byte counter in the dialer. **Implemented:** `NETWEATHER_DAILY_MB` (default 2048, `0` disables) wraps the direct vantage's dialer, so every probe and self-check counts; once spent, the agent stops until UTC midnight and the board carries a banner naming the limit |

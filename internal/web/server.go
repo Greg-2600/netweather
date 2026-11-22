@@ -76,6 +76,7 @@ func New(deps Deps) (http.Handler, error) {
 	mux.HandleFunc("/incidents/", s.requireSession(http.HandlerFunc(s.handleIncident)).ServeHTTP)
 	mux.HandleFunc("/coverage", s.requireSession(http.HandlerFunc(s.handleCoverage)).ServeHTTP)
 	mux.HandleFunc("/world", s.requireSession(http.HandlerFunc(s.handleWorld)).ServeHTTP)
+	mux.HandleFunc("/hubs", s.requireSession(http.HandlerFunc(s.handleHubs)).ServeHTTP)
 	mux.HandleFunc("/corridors", s.requireSession(http.HandlerFunc(s.handleCorridors)).ServeHTTP)
 	mux.HandleFunc("/feeds", s.requireSession(http.HandlerFunc(s.handleFeeds)).ServeHTTP)
 	mux.HandleFunc("/map", s.requireSession(http.HandlerFunc(s.handleMap)).ServeHTTP)
@@ -2749,6 +2750,205 @@ func worstStateFromClass(class string) board.State {
 		}
 	}
 	return board.StateUnknown
+}
+
+// --- hubs ------------------------------------------------------------------
+
+// hubsView is the US hub board. City and state come from the target name
+// convention "<City>, <ST> hub — <site>" on sector "us/hub". It deliberately
+// uses no schema field, so the stored schema stays at version 25.
+type hubsView struct {
+	Insecure bool
+	NoAuth   bool
+	Version  string
+	CSRF     string
+	Hubs     []hubView
+	Other    int
+	Note     string
+}
+
+// hubView is one city/state tile. Sites carry their own identity and state
+// reason in a title, so a tile with a bad endpoint is explainable on hover.
+type hubView struct {
+	City     string
+	State    string
+	Count    int
+	Worst    string
+	WorstCls string
+	Glyph    string
+	Counts   []countView
+	Href     string
+	Sites    []hubSiteView
+}
+
+type hubSiteView struct {
+	Name  string
+	State string
+	Glyph string
+	Class string
+	Href  string
+	Title string
+}
+
+// parseHubName reads the naming convention without a schema change. The state
+// must be a two-letter uppercase code, so a malformed name is reported rather
+// than silently grouped under a guessed city.
+func parseHubName(name string) (city, state, site string, ok bool) {
+	comma := strings.Index(name, ", ")
+	if comma <= 0 {
+		return "", "", "", false
+	}
+	rest := name[comma+2:]
+	marker := " hub — "
+	idx := strings.Index(rest, marker)
+	if idx != 2 {
+		return "", "", "", false
+	}
+	state = rest[:idx]
+	for _, r := range state {
+		if r < 'A' || r > 'Z' {
+			return "", "", "", false
+		}
+	}
+	city, site = name[:comma], rest[idx+len(marker):]
+	if city == "" || site == "" {
+		return "", "", "", false
+	}
+	return city, state, site, true
+}
+
+// handleHubs groups the configured us/hub targets by city and state. Unplaced
+// hub targets are counted in a note, never folded into a guessed location.
+func (s *server) handleHubs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	targets, err := s.deps.Source.Snapshot(r.Context())
+	if err != nil {
+		s.deps.Logger.Error("hubs snapshot failed",
+			"event", "hubs_failed", "component", "http",
+			"request_id", requestIDFrom(r), "error", err)
+		s.renderError(w, r, http.StatusServiceUnavailable,
+			"The hub view could not be read. The server log has the details for this request.")
+		return
+	}
+
+	byHub := make(map[string][]board.Target)
+	other := 0
+	for _, t := range targets {
+		if t.Sector != "us/hub" {
+			continue
+		}
+		city, state, _, ok := parseHubName(t.Name)
+		if !ok {
+			other++
+			continue
+		}
+		byHub[city+", "+state] = append(byHub[city+", "+state], t)
+	}
+
+	csrf, _ := s.auth.csrfFrom(r)
+	view := hubsView{
+		Version:  s.deps.Version,
+		CSRF:     csrf,
+		Insecure: s.insecure(r),
+		NoAuth:   s.auth.disabled(),
+		Other:    other,
+	}
+
+	for _, members := range byHub {
+		city, state, _, _ := parseHubName(members[0].Name)
+		counts := make(map[board.State]int)
+		worst := board.StateUp
+		for _, t := range members {
+			counts[t.State]++
+			if board.SeverityRank(t.State) < board.SeverityRank(worst) {
+				worst = t.State
+			}
+		}
+		row := hubView{
+			City:     city,
+			State:    state,
+			Count:    len(members),
+			Worst:    worst.Text(),
+			WorstCls: worst.CSSClass(),
+			Glyph:    worst.Glyph(),
+			// The board's sector grouping is the closest existing drill-down:
+			// there is no city column in schema 25, so no fake filter is added.
+			Href: "/?group=sector",
+		}
+		for _, st := range []board.State{
+			board.StateDown, board.StateDegraded, board.StateBlocked,
+			board.StateUnknown, board.StateConfigError, board.StateUnmeasurable,
+			board.StateUpReachability, board.StateUp,
+		} {
+			if n := counts[st]; n > 0 {
+				row.Counts = append(row.Counts, countView{
+					State: string(st), Label: st.Text(), Glyph: st.Glyph(),
+					Class: st.CSSClass(), Count: n,
+				})
+			}
+		}
+
+		sites := append([]board.Target(nil), members...)
+		sort.SliceStable(sites, func(i, j int) bool {
+			ri, rj := board.SeverityRank(sites[i].State), board.SeverityRank(sites[j].State)
+			if ri != rj {
+				return ri < rj
+			}
+			return sites[i].Name < sites[j].Name
+		})
+		for _, t := range sites {
+			_, _, site, ok := parseHubName(t.Name)
+			if !ok {
+				site = t.Name
+			}
+			reason := t.ErrorClass
+			if reason == "" {
+				reason = t.Stage
+			}
+			title := site + " — " + t.State.Text()
+			if reason != "" {
+				title += " — " + reason
+			}
+			row.Sites = append(row.Sites, hubSiteView{
+				Name:  site,
+				State: t.State.Text(),
+				Glyph: t.State.Glyph(),
+				Class: t.State.CSSClass(),
+				Href:  "/targets/" + url.PathEscape(t.ID),
+				Title: title,
+			})
+		}
+		view.Hubs = append(view.Hubs, row)
+	}
+
+	sort.SliceStable(view.Hubs, func(i, j int) bool {
+		ri := board.SeverityRank(worstStateFromClass(view.Hubs[i].WorstCls))
+		rj := board.SeverityRank(worstStateFromClass(view.Hubs[j].WorstCls))
+		if ri != rj {
+			return ri < rj
+		}
+		if view.Hubs[i].State != view.Hubs[j].State {
+			return view.Hubs[i].State < view.Hubs[j].State
+		}
+		return view.Hubs[i].City < view.Hubs[j].City
+	})
+
+	switch {
+	case len(view.Hubs) == 0 && other == 0:
+		view.Note = "No us/hub targets are configured."
+	case other > 0:
+		view.Note = fmt.Sprintf("%d us/hub target(s) do not follow the city/state name convention and are not placed.", other)
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+	_ = s.tmpl.ExecuteTemplate(w, "hubs.html", view)
 }
 
 // --- corridors -------------------------------------------------------------

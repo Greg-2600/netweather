@@ -311,6 +311,42 @@ body.auth {
   font-size: 0.78rem;
 }
 
+/* Hubs view: one compact city card, with the sites as separate links so site
+   identity and state reason stay clickable without nesting anchors. */
+.hub-grid {
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+}
+
+.tile.country.hub {
+  gap: 0.3rem;
+  overflow-wrap: anywhere;
+}
+
+.tile.hub .hub-city {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.hub-sites {
+  display: grid;
+  gap: 0.1rem;
+  margin-top: 0.2rem;
+}
+
+.hub-site {
+  color: var(--text);
+  font-size: 0.76rem;
+  line-height: 1.25;
+  text-decoration: none;
+}
+
+.hub-site:hover,
+.hub-site:focus-visible {
+  text-decoration: underline;
+}
+
 /* Feed staleness: text and border, not only colour (DESIGN.md P5, 10.7). */
 .feeds {
   display: flex;

@@ -46,6 +46,14 @@ func (r DNSResult) Failed() bool { return r.Err != nil || r.ErrorClass != "" }
 type DNS struct {
 	Dial    DialFunc
 	Timeout time.Duration
+	// Retries is the number of extra UDP attempts after a timeout. Only a
+	// timeout is retried: NXDOMAIN, NODATA, SERVFAIL, REFUSED, policy blocks,
+	// and malformed answers are answers, not lost packets. Zero keeps the
+	// historical single-exchange behavior. Values above 2 are capped.
+	Retries int
+	// RetryDelay is the pause between timed-out attempts. It is bounded so a
+	// flapping anchor cannot turn one probe into a long burst of traffic.
+	RetryDelay time.Duration
 }
 
 // NewDNS returns a DNS instrument over the guarded dialer. UDP is used because
@@ -56,6 +64,41 @@ func NewDNS(d DialFunc) *DNS {
 		d = (&net.Dialer{Timeout: 5 * time.Second}).DialContext
 	}
 	return &DNS{Dial: d, Timeout: 5 * time.Second}
+}
+
+// retryAttempts returns the total number of UDP attempts, including the first.
+func (p *DNS) retryAttempts() int {
+	if p.Retries <= 0 {
+		return 1
+	}
+	if p.Retries > 2 {
+		return 2
+	}
+	return p.Retries + 1
+}
+
+func (p *DNS) retryDelay() time.Duration {
+	if p.RetryDelay <= 0 {
+		return 0
+	}
+	if p.RetryDelay > 200*time.Millisecond {
+		return 200 * time.Millisecond
+	}
+	return p.RetryDelay
+}
+
+// attemptTimeout divides the total DNS budget across attempts. Retrying cannot
+// extend the documented 5s probe deadline: a lost datagram gets another chance
+// inside the same window, so cadence and acceptable-use limits stay unchanged.
+func attemptTimeout(total time.Duration, attempts int) time.Duration {
+	if attempts <= 1 {
+		return total
+	}
+	per := total / time.Duration(attempts)
+	if per < time.Millisecond {
+		per = time.Millisecond
+	}
+	return per
 }
 
 // Do queries name's A records against server ("host:53"). It never falls back
@@ -92,21 +135,45 @@ func (p *DNS) do(ctx context.Context, server, name string, qtype dnsmessage.Type
 		return out
 	}
 
-	query, err := packQueryType(qname, qtype)
-	if err != nil {
-		out.Latency = time.Since(start)
-		out.ErrorClass = "dns_config"
-		out.Err = err
-		return out
-	}
+	attempts := p.retryAttempts()
+	perAttempt := attemptTimeout(timeout, attempts)
+	delay := p.retryDelay()
 
-	raw, err := exchange(lookupCtx, dial, "udp", server, query)
-	out.Latency = time.Since(start)
-	if err != nil {
-		out.ErrorClass = classifyExchangeError(err)
-		out.Err = err
-		return out
+	var query, raw []byte
+	for attempt := 0; attempt < attempts; attempt++ {
+		// A fresh ID per attempt stops a late answer to an earlier datagram
+		// from being mistaken for the reply to the retry.
+		query, err = packQueryType(qname, qtype)
+		if err != nil {
+			out.Latency = time.Since(start)
+			out.ErrorClass = "dns_config"
+			out.Err = err
+			return out
+		}
+		attemptCtx, cancelAttempt := context.WithTimeout(lookupCtx, perAttempt)
+		raw, err = exchange(attemptCtx, dial, "udp", server, query)
+		cancelAttempt()
+		if err == nil {
+			break
+		}
+		class := classifyExchangeError(err)
+		last := attempt == attempts-1
+		if class != "dns_timeout" || errors.Is(err, context.Canceled) || lookupCtx.Err() != nil || last {
+			out.Latency = time.Since(start)
+			out.ErrorClass = class
+			out.Err = err
+			return out
+		}
+		select {
+		case <-time.After(delay):
+		case <-lookupCtx.Done():
+			out.Latency = time.Since(start)
+			out.ErrorClass = "dns_timeout"
+			out.Err = lookupCtx.Err()
+			return out
+		}
 	}
+	out.Latency = time.Since(start)
 
 	msg, err := unpackResponse(raw, queryID(query))
 	if err != nil {
@@ -448,19 +515,40 @@ func (p *DNS) DoNS(ctx context.Context, server, name string) NSResult {
 		out.Err = fmt.Errorf("probe: qname %q: %w", name, err)
 		return out
 	}
-	query, err := packQueryType(qname, dnsmessage.TypeNS)
-	if err != nil {
-		out.ErrorClass = "dns_config"
-		out.Err = err
-		return out
+	attempts := p.retryAttempts()
+	perAttempt := attemptTimeout(timeout, attempts)
+	delay := p.retryDelay()
+
+	var query, raw []byte
+	for attempt := 0; attempt < attempts; attempt++ {
+		query, err = packQueryType(qname, dnsmessage.TypeNS)
+		if err != nil {
+			out.ErrorClass = "dns_config"
+			out.Err = err
+			return out
+		}
+		attemptCtx, cancelAttempt := context.WithTimeout(lookupCtx, perAttempt)
+		raw, err = exchange(attemptCtx, dial, "udp", server, query)
+		cancelAttempt()
+		if err == nil {
+			break
+		}
+		class := classifyExchangeError(err)
+		last := attempt == attempts-1
+		if class != "dns_timeout" || errors.Is(err, context.Canceled) || lookupCtx.Err() != nil || last {
+			out.ErrorClass = class
+			out.Err = err
+			return out
+		}
+		select {
+		case <-time.After(delay):
+		case <-lookupCtx.Done():
+			out.ErrorClass = "dns_timeout"
+			out.Err = lookupCtx.Err()
+			return out
+		}
 	}
 
-	raw, err := exchange(lookupCtx, dial, "udp", server, query)
-	if err != nil {
-		out.ErrorClass = classifyExchangeError(err)
-		out.Err = err
-		return out
-	}
 	msg, err := unpackResponse(raw, queryID(query))
 	if err != nil {
 		out.ErrorClass = "dns_error"

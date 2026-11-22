@@ -110,8 +110,14 @@ func (f *fakeLogs) Subscribe() (<-chan logging.Record, func())          { return
 // console-error collector attached. Screenshots land in testdata/out on failure.
 func newHarness(t *testing.T) *harness {
 	t.Helper()
+	return newHarnessWithBoard(t, fixture())
+}
 
-	m := fixture()
+// newHarnessWithBoard is the same harness with an explicit board, for views that
+// need a fixture the shared three-target board cannot supply (such as /hubs).
+func newHarnessWithBoard(t *testing.T, m *board.Memory) *harness {
+	t.Helper()
+
 	logs := &fakeLogs{ch: make(chan logging.Record, 8)}
 	h, err := web.New(web.Deps{
 		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -539,5 +545,39 @@ func TestMapPageRenders(t *testing.T) {
 	}
 	if err := expect.Locator(h.page.Locator(`[data-testid="treemap"]`)).ToBeVisible(); err != nil {
 		t.Fatalf("treemap not visible: %v", err)
+	}
+}
+
+func TestHubsPageRenders(t *testing.T) {
+	t.Parallel()
+	h := newHarnessWithBoard(t, board.NewMemory(
+		board.Target{
+			ID: "hub-1", Name: "Dallas, TX hub — DFW airport", Host: "dfw.example",
+			Sector: "us/hub", State: board.StateDown, ErrorClass: "http_timeout",
+		},
+		board.Target{
+			ID: "hub-2", Name: "Boston, MA hub — city portal", Host: "bos.example",
+			Sector: "us/hub", State: board.StateUp,
+		},
+	))
+	h.login(t)
+
+	expect := playwright.NewPlaywrightAssertions(5000)
+
+	if _, err := h.page.Goto(h.baseURL + "/hubs"); err != nil {
+		t.Fatalf("goto /hubs: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator("h1")).ToHaveText("US hubs"); err != nil {
+		t.Fatalf("heading = %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="hubs-summary"]`)).ToBeVisible(); err != nil {
+		t.Fatalf("summary not visible: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="hub"]`)).ToHaveCount(2); err != nil {
+		t.Fatalf("hub tile count: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="hub"]`).First()).
+		ToHaveAttribute("data-city", "Dallas"); err != nil {
+		t.Fatalf("worst hub not first: %v", err)
 	}
 }

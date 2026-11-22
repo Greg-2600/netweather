@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hubs · netweather</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  {{template "insecure" .}}
+  <header class="bar">
+    <a class="brand" href="/">netweather</a>
+    <a class="nav" href="/world">World</a>
+    <a class="nav" href="/hubs">Hubs</a>
+    <a class="nav" href="/corridors">Corridors</a>
+    <a class="nav" href="/coverage">Coverage</a>
+    <a class="nav" href="/incidents">Incidents</a>
+    <a class="nav" href="/feeds">Feeds</a>
+    <a class="nav" href="/map">Map</a>
+  </header>
+
+  <main>
+    <h1 class="page-title">US hubs</h1>
+    <p class="muted" data-testid="hubs-summary">
+      One tile per US hub city, worst state first. City and state come from the
+      target name convention “City, ST hub — site”; a site’s title gives its
+      identity, state, and status reason. This is naming metadata, not a new
+      location column.
+    </p>
+
+    {{if .Hubs}}
+    <section class="board world-grid hub-grid" aria-label="US hubs" data-testid="hubs">
+      {{range .Hubs}}
+      <div class="tile country hub {{.WorstCls}}" data-testid="hub"
+           data-city="{{.City}}" data-state="{{.WorstCls}}"
+           aria-label="{{.City}}, {{.State}}: {{.Count}} target(s), worst {{.Worst}}">
+        <a class="hub-city" href="{{.Href}}">{{.City}}</a>
+        <span class="country-count">{{.State}} · {{.Count}} target(s)</span>
+        <span class="state"><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Worst}}</span>
+        <div class="hub-sites">
+          {{range .Sites}}
+          <a class="hub-site {{.Class}}" href="{{.Href}}" title="{{.Title}}"
+             aria-label="{{.Title}}"><span class="glyph" aria-hidden="true">{{.Glyph}}</span> {{.Name}}</a>
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+    </section>
+    {{else}}
+    <p class="empty" data-testid="empty-hubs">No US hub targets are placed yet.</p>
+    {{end}}
+
+    {{if .Note}}
+    <p class="muted small" data-testid="hubs-note">{{.Note}}</p>
+    {{end}}
+
+    <p class="muted small">
+      This view answers “which hub cities look unhappy?” from this vantage. It is
+      not a claim about a city-wide outage: one tile is one set of public
+      endpoints, and every site keeps its own state on the target drawer.
+    </p>
+  </main>
+</body>
+</html>

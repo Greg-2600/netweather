@@ -4993,14 +4993,14 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-mastercard
-    name: "Mastercard"
-    host: "www.mastercard.com"
+    name: "Dallas, TX hub — DFW airport"
+    host: "www.dfwairport.com"
     port: 443
     probe: http
     class: service
-    sector: "financial/banking"
-    tier: 1
-    interval_s: 120
+    sector: "us/hub"
+    tier: 2
+    interval_s: 300
   - id: svc-visa
     name: "Visa"
     host: "www.visa.com"
@@ -5011,14 +5011,14 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-paypal
-    name: "PayPal"
-    host: "www.paypal.com"
+    name: "New York, NY hub — LGA airport"
+    host: "www.laguardiaairport.com"
     port: 443
     probe: http
     class: service
-    sector: "financial/banking"
-    tier: 1
-    interval_s: 120
+    sector: "us/hub"
+    tier: 2
+    interval_s: 300
   - id: svc-stripe
     name: "Stripe"
     host: "stripe.com"
@@ -5083,14 +5083,14 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-santander
-    name: "Santander"
-    host: "www.santander.com"
+    name: "Newark, NJ hub — EWR airport"
+    host: "www.newarkairport.com"
     port: 443
     probe: http
     class: service
-    sector: "financial/banking"
-    tier: 1
-    interval_s: 120
+    sector: "us/hub"
+    tier: 2
+    interval_s: 300
   - id: svc-deutschebank
     name: "Deutsche Bank"
     host: "www.deutsche-bank.de"
@@ -5101,14 +5101,14 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-bnpparibas
-    name: "BNP Paribas"
-    host: "www.bnpparibas.com"
+    name: "San Francisco, CA hub — SFO airport"
+    host: "www.flysfo.com"
     port: 443
     probe: http
     class: service
-    sector: "financial/banking"
-    tier: 1
-    interval_s: 120
+    sector: "us/hub"
+    tier: 2
+    interval_s: 300
   - id: svc-bbva
     name: "BBVA"
     host: "www.bbva.com"
@@ -5173,14 +5173,15 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-anz
-    name: "ANZ"
-    host: "www.anz.com"
+    name: "Seattle, WA hub — SEA airport"
+    host: "www.portseattle.org"
     port: 443
     probe: http
+    path: "/sea"
     class: service
-    sector: "financial/banking"
-    tier: 1
-    interval_s: 120
+    sector: "us/hub"
+    tier: 2
+    interval_s: 300
   - id: svc-nab
     name: "NAB"
     host: "www.nab.com.au"
@@ -5200,14 +5201,14 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-ocbc
-    name: "OCBC"
-    host: "www.ocbc.com"
+    name: "Miami, FL hub — MIA airport"
+    host: "www.miami-airport.com"
     port: 443
     probe: http
     class: service
-    sector: "financial/banking"
-    tier: 1
-    interval_s: 120
+    sector: "us/hub"
+    tier: 2
+    interval_s: 300
   - id: svc-united
     name: "United"
     host: "www.united.com"
@@ -5227,12 +5228,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-american
-    name: "American Airlines"
-    host: "www.aa.com"
+    name: "Houston, TX hub — IAH airport"
+    host: "www.flyiah.com"
     port: 443
     probe: http
     class: service
-    sector: "airline"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-southwest
@@ -5263,12 +5264,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-lufthansa
-    name: "Lufthansa"
-    host: "www.lufthansa.com"
+    name: "Minneapolis, MN hub — MSP airport"
+    host: "www.mspairport.com"
     port: 443
     probe: http
     class: service
-    sector: "airline"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-britishairways
@@ -5308,12 +5309,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-qatar
-    name: "Qatar Airways"
-    host: "www.qatarairways.com"
+    name: "Detroit, MI hub — DTW airport"
+    host: "www.metroairport.com"
     port: 443
     probe: http
     class: service
-    sector: "airline"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-singaporeair
@@ -5345,12 +5346,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-jal
-    name: "Japan Airlines"
-    host: "www.jal.co.jp"
+    name: "Salt Lake City, UT hub — SLC airport"
+    host: "slcairport.com"
     port: 443
     probe: http
     class: service
-    sector: "airline"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-qantas
@@ -5363,12 +5364,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-aircanada
-    name: "Air Canada"
-    host: "www.aircanada.com"
+    name: "Phoenix, AZ hub — PHX airport"
+    host: "www.skyharbor.com"
     port: 443
     probe: http
     class: service
-    sector: "airline"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-spirit
@@ -5382,21 +5383,21 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-frontier
-    name: "Frontier"
-    host: "www.flyfrontier.com"
+    name: "Raleigh, NC hub — RDU airport"
+    host: "www.rdu.com"
     port: 443
     probe: http
     class: service
-    sector: "airline"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-easyjet
-    name: "easyJet"
-    host: "www.easyjet.com"
+    name: "Las Vegas, NV hub — LAS airport"
+    host: "www.harryreidairport.com"
     port: 443
     probe: http
     class: service
-    sector: "airline"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-ryanair
@@ -5427,12 +5428,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-expedia
-    name: "Expedia"
-    host: "www.expedia.com"
+    name: "Washington, DC hub — IAD airport"
+    host: "www.flydulles.com"
     port: 443
     probe: http
     class: service
-    sector: "airline"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-aws
@@ -5499,14 +5500,14 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-oracle
-    name: "Oracle"
-    host: "www.oracle.com"
+    name: "Orlando, FL hub — MCO airport"
+    host: "flymco.com"
     port: 443
     probe: http
     class: service
-    sector: "cloud"
-    tier: 1
-    interval_s: 120
+    sector: "us/hub"
+    tier: 2
+    interval_s: 300
   - id: svc-digitalocean
     name: "DigitalOcean"
     host: "www.digitalocean.com"
@@ -5553,14 +5554,14 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-akamai
-    name: "Akamai"
-    host: "www.akamai.com"
+    name: "Baltimore, MD hub — BWI airport"
+    host: "bwiairport.com"
     port: 443
     probe: http
     class: service
-    sector: "cloud"
-    tier: 1
-    interval_s: 120
+    sector: "us/hub"
+    tier: 2
+    interval_s: 300
   - id: svc-salesforce
     name: "Salesforce"
     host: "www.salesforce.com"
@@ -5571,14 +5572,14 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-sap
-    name: "SAP"
-    host: "www.sap.com"
+    name: "Portland, OR hub — PDX airport"
+    host: "www.flypdx.com"
     port: 443
     probe: http
     class: service
-    sector: "cloud"
-    tier: 1
-    interval_s: 120
+    sector: "us/hub"
+    tier: 2
+    interval_s: 300
   - id: svc-vmware
     name: "VMware"
     host: "www.vmware.com"
@@ -5814,12 +5815,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-medium
-    name: "Medium"
-    host: "www.medium.com"
+    name: "Houston, TX hub — city portal"
+    host: "www.houstontx.gov"
     port: 443
     probe: http
     class: service
-    sector: "social"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-amazon
@@ -5832,21 +5833,21 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-ebay
-    name: "eBay"
-    host: "www.ebay.com"
+    name: "Birmingham, AL hub — BHM airport"
+    host: "www.flybirmingham.com"
     port: 443
     probe: http
     class: service
-    sector: "retail"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-walmart
-    name: "Walmart"
-    host: "www.walmart.com"
+    name: "Pittsburgh, PA hub — PIT airport"
+    host: "flypittsburgh.com"
     port: 443
     probe: http
     class: service
-    sector: "retail"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-target
@@ -5877,12 +5878,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-homedepot
-    name: "Home Depot"
-    host: "www.homedepot.com"
+    name: "Memphis, TN hub — MEM airport"
+    host: "flymemphis.com"
     port: 443
     probe: http
     class: service
-    sector: "retail"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-lowes
@@ -5895,12 +5896,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-macys
-    name: "Macy's"
-    host: "www.macys.com"
+    name: "New Orleans, LA hub — MSY airport"
+    host: "flymsy.com"
     port: 443
     probe: http
     class: service
-    sector: "retail"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-nordstrom
@@ -5922,12 +5923,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-etsy
-    name: "Etsy"
-    host: "www.etsy.com"
+    name: "Louisville, KY hub — SDF airport"
+    host: "www.flylouisville.com"
     port: 443
     probe: http
     class: service
-    sector: "retail"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-aliexpress
@@ -5985,12 +5986,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-zara
-    name: "Zara"
-    host: "www.zara.com"
+    name: "Savannah, GA hub — SAV airport"
+    host: "savannahairport.com"
     port: 443
     probe: http
     class: service
-    sector: "retail"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-uniqlo
@@ -6012,12 +6013,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-adidas
-    name: "Adidas"
-    host: "www.adidas.com"
+    name: "Chattanooga, TN hub — CHA airport"
+    host: "www.flycha.com"
     port: 443
     probe: http
     class: service
-    sector: "retail"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-wikipedia
@@ -6039,12 +6040,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-reuters
-    name: "Reuters"
-    host: "www.reuters.com"
+    name: "Phoenix, AZ hub — city portal"
+    host: "www.phoenix.gov"
     port: 443
     probe: http
     class: service
-    sector: "news"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-bbc
@@ -6066,12 +6067,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-nytimes
-    name: "New York Times"
-    host: "www.nytimes.com"
+    name: "Boston, MA hub — city portal"
+    host: "www.boston.gov"
     port: 443
     probe: http
     class: service
-    sector: "news"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-guardian
@@ -6093,12 +6094,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-wsj
-    name: "Wall Street Journal"
-    host: "www.wsj.com"
+    name: "Seattle, WA hub — city portal"
+    host: "www.seattle.gov"
     port: 443
     probe: http
     class: service
-    sector: "news"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-ft
@@ -6120,12 +6121,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-ap
-    name: "Associated Press"
-    host: "www.apnews.com"
+    name: "San Francisco, CA hub — city portal"
+    host: "www.sf.gov"
     port: 443
     probe: http
     class: service
-    sector: "news"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-aljazeera
@@ -6291,12 +6292,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-noaa
-    name: "NOAA"
-    host: "www.noaa.gov"
+    name: "New York, NY hub — JFK airport"
+    host: "www.jfkairport.com"
     port: 443
     probe: http
     class: service
-    sector: "government"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-mit
@@ -6372,12 +6373,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-mayoclinic
-    name: "Mayo Clinic"
-    host: "www.mayoclinic.org"
+    name: "San Diego, CA hub — city portal"
+    host: "www.sandiego.gov"
     port: 443
     probe: http
     class: service
-    sector: "health"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-clevelandclinic
@@ -6453,12 +6454,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-comcast
-    name: "Comcast"
-    host: "www.comcast.net"
+    name: "Los Angeles, CA hub — city portal"
+    host: "lacity.gov"
     port: 443
     probe: http
     class: service
-    sector: "telecom"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-spectrum
@@ -6471,12 +6472,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-bt
-    name: "BT"
-    host: "www.bt.com"
+    name: "Salt Lake City, UT hub — city portal"
+    host: "www.slc.gov"
     port: 443
     probe: http
     class: service
-    sector: "telecom"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-vodafone
@@ -6678,14 +6679,14 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-mysql
-    name: "MySQL"
-    host: "www.mysql.com"
+    name: "Portland, OR hub — city portal"
+    host: "www.portland.gov"
     port: 443
     probe: http
     class: service
-    sector: "developer"
-    tier: 1
-    interval_s: 120
+    sector: "us/hub"
+    tier: 2
+    interval_s: 300
   - id: svc-python
     name: "Python"
     host: "www.python.org"
@@ -6813,12 +6814,13 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-zhihu
-    name: "Zhihu"
-    host: "www.zhihu.com"
+    name: "Chicago, IL hub — city portal"
+    host: "www.chicago.gov"
     port: 443
     probe: http
+    path: "/city/en.html"
     class: service
-    sector: "social"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-bilibili
@@ -6939,14 +6941,14 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-sony
-    name: "Sony"
-    host: "www.sony.com"
+    name: "Cleveland, OH hub — CLE airport"
+    host: "www.clevelandairport.com"
     port: 443
     probe: http
     class: service
-    sector: "cloud"
-    tier: 1
-    interval_s: 120
+    sector: "us/hub"
+    tier: 2
+    interval_s: 300
   - id: svc-lenovo
     name: "Lenovo"
     host: "www.lenovo.com"
@@ -6975,23 +6977,23 @@ targets:
     tier: 1
     interval_s: 120
   - id: svc-msi
-    name: "MSI"
-    host: "www.msi.com"
+    name: "Oklahoma City, OK hub — OKC airport"
+    host: "flyokc.com"
     port: 443
     probe: http
     class: service
-    sector: "cloud"
-    tier: 1
-    interval_s: 120
+    sector: "us/hub"
+    tier: 2
+    interval_s: 300
   - id: svc-gigabyte
-    name: "GIGABYTE"
-    host: "www.gigabyte.com"
+    name: "St. Louis, MO hub — STL airport"
+    host: "www.flystl.com"
     port: 443
     probe: http
     class: service
-    sector: "cloud"
-    tier: 1
-    interval_s: 120
+    sector: "us/hub"
+    tier: 2
+    interval_s: 300
   - id: svc-ikea
     name: "IKEA"
     host: "www.ikea.com"
@@ -7002,30 +7004,31 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-carrefour
-    name: "Carrefour"
-    host: "www.carrefour.com"
+    name: "Boise, ID hub — BOI airport"
+    host: "www.flyboise.com"
     port: 443
     probe: http
     class: service
-    sector: "retail"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-tesco
-    name: "Tesco"
-    host: "www.tesco.com"
+    name: "Austin, TX hub — city portal"
+    host: "www.austintexas.gov"
     port: 443
     probe: http
     class: service
-    sector: "retail"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-sainsburys
-    name: "Sainsbury's"
-    host: "www.sainsburys.co.uk"
+    name: "Denver, CO hub — city portal"
+    host: "www.denvergov.org"
     port: 443
     probe: http
+    path: "/Home"
     class: service
-    sector: "retail"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-mercadolibre
@@ -7038,12 +7041,12 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-latam
-    name: "LATAM"
-    host: "www.latam.com"
+    name: "Washington, DC hub — DCA airport"
+    host: "www.flyreagan.com"
     port: 443
     probe: http
     class: service
-    sector: "airline"
+    sector: "us/hub"
     tier: 2
     interval_s: 300
   - id: svc-airnewzealand

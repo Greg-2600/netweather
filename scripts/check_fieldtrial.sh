@@ -9,7 +9,7 @@
 #
 # Token resolution (first match wins): NETWEATHER_UI_TOKEN, TOKEN_FILE, then the
 # nw-fieldtrial-secret Docker volume written by deploy_fieldtrial.sh.
-#   EXPECTED_TARGETS=749 EXPECTED_CORRIDORS=10 BASE_URL=http://localhost:2600  (overridable)
+#   EXPECTED_TARGETS=749 EXPECTED_CORRIDORS=10 EXPECTED_HUBS=42 BASE_URL=http://localhost:2600  (overridable)
 
 set -uo pipefail
 
@@ -18,6 +18,7 @@ cd "$(dirname "$0")/.."
 BASE_URL="${BASE_URL:-http://localhost:2600}"
 EXPECTED_TARGETS="${EXPECTED_TARGETS:-749}"
 EXPECTED_CORRIDORS="${EXPECTED_CORRIDORS:-10}"
+EXPECTED_HUBS="${EXPECTED_HUBS:-42}"
 SECRET="${SECRET:-nw-fieldtrial-secret}"
 CYCLES="${CYCLES:-1}"
 SLEEP="${SLEEP:-60}"
@@ -92,6 +93,13 @@ pass() {
         rendered_map="$(ui_page "$jar" /map || true)"
         tiles="$(printf '%s' "$rendered_map" | grep -o 'data-testid="map-tile"' | wc -l | tr -d ' ')"
         check "/map tiles" "$([ "$tiles" = "$EXPECTED_TARGETS" ] && echo 0 || echo 1)" "$tiles tiles"
+
+        # 4a. US hubs are named targets, not a schema column; confirm they are
+        #     grouped into the expected city tiles rather than an empty page.
+        rendered_hubs="$(ui_page "$jar" /hubs || true)"
+        hub_tiles="$(printf '%s' "$rendered_hubs" | grep -o 'data-testid="hub"' | wc -l | tr -d ' ')"
+        check "/hubs cities" "$([ "$hub_tiles" -le "$EXPECTED_HUBS" ] && [ "$hub_tiles" -gt 0 ] && echo 0 || echo 1)" \
+            "$hub_tiles city tiles (at most $EXPECTED_HUBS hubs)"
 
         # 4b. Corridors are operator-supplied; confirm the configured pairs are
         #     actually sampled and rendered rather than leaving an empty page.

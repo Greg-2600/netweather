@@ -66,6 +66,7 @@ Everything builds and tests with one command: **`go run ./internal/devtool verif
 | | Capability | What it gives you |
 |:--:|---|---|
 | 🗺️ | **Health treemap** | `/map` clusters long-running outages → recent outages → blocked → degraded → no data → healthy, packed most-urgent first. Area grows with severity × duration; hover cards explain *why* a tile has its status. |
+| 🏙️ | **US hubs** | `/hubs` groups real airport and city-portal targets by city and state using a name convention — no schema change. Worst city first; each site keeps its own identity and state reason. |
 | 🧭 | **Vantages** | `direct` (your connection) plus optional `socks5` Tor corroboration, including multiple pinned exit countries across continents. Only the primary vantage may declare `DOWN`. |
 | 🔬 | **Honest classification** | `UP` · `UP_REACHABILITY` · `DEGRADED` · `DOWN` · `BLOCKED` · `UNKNOWN` · `CONFIG_ERROR` · `UNMEASURABLE`. The last three never count against health — that is what keeps the board from being permanently on fire. |
 | 🌐 | **External intelligence** | IODA, Cloudflare Radar, the Statuspage family (AWS/GCP/Azure), RIPE RIS Live, Atlas, PeeringDB. All optional; the core works with zero feeds. |
@@ -98,7 +99,7 @@ Want the full field-trial fleet (749 real targets + five-continent Tor corrobora
 
 ```sh
 ./scripts/deploy_fieldtrial.sh                # Linux/macOS/CI: same deploy
-./scripts/check_fieldtrial.sh                 # health, 749 targets, auth, map, feeds, Tor
+./scripts/check_fieldtrial.sh                 # health, 749 targets, auth, map, hubs, feeds, Tor
 ```
 
 ---
@@ -211,6 +212,8 @@ Every environment variable the binary reads, including the ones that exist for a
 | `NETWEATHER_INCIDENT_INTERVAL` | `5m` | incident and anomaly evaluation cadence |
 | `NETWEATHER_DAILY_MB` | `2048` | direct vantage's daily egress budget; `0` disables it |
 | `NETWEATHER_RATE_LIMIT` | `20` | global probe ceiling in req/s (fractional allowed; cold ramp starts at 2 req/s for 10 min) |
+| `NETWEATHER_DNS_RETRIES` | `1` | extra UDP DNS attempts on timeout, clamped 0–2; shares the 5s budget, never retries answers |
+| `NETWEATHER_DNS_RETRY_DELAY_MS` | `25` | pause between DNS attempts, clamped 0–200ms |
 | `NETWEATHER_ENRICH` | on | `false` disables ASN, prefix, and CDN learning |
 | `NETWEATHER_PEERINGDB` / `NETWEATHER_PEERINGDB_URL` | on | exchange-membership labels; `_URL` points at a mirror |
 | `NETWEATHER_FEEDS` | none | comma list of `ioda`, `ioda-level`, `radar`, `statuspage`, `aws-status`, `gcp-status`, `azure-status`, `ris-live`/`ris` |

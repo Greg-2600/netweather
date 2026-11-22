@@ -10,6 +10,15 @@ changed between two images without it.
 
 ### Added
 
+- `/hubs` groups real US airport and city-portal targets by city and state from
+  the `City, ST hub — site` name convention on sector `us/hub`. The 42 targets
+  that stayed blocked from every vantage were replaced with egress-verified
+  public endpoints under their original ids; the fleet stays at 749 and the
+  schema stays at 25. `scripts/check_fieldtrial.sh` now checks the hub tiles.
+- One bounded DNS timeout retry: a lost UDP datagram gets a second attempt
+  inside the existing 5s budget, while negative answers, policy blocks, and
+  malformed replies remain final. `NETWEATHER_DNS_RETRIES` (0–2) and
+  `NETWEATHER_DNS_RETRY_DELAY_MS` (0–200) are the opt-out/tuning knobs.
 - Multi-continent Tor corroboration: `NETWEATHER_TOR_VANTAGES` runs several
   client-only Tor sidecars with pinned exits (DE, JP, AU, SG, CL, MX in the
   field trial). Each exit's real country is verified through its own SOCKS hop,
@@ -25,7 +34,7 @@ changed between two images without it.
   RIPEstat poller, with per-ASN `UPDATE` subscriptions, batched events,
   ping/pong, bounded reconnect backoff, and egress-policy dialing.
 - `scripts/deploy_fieldtrial.sh` (POSIX deploy) and `scripts/check_fieldtrial.sh`
-  (health, fleet, auth, /map, /corridors, feed, and Tor verification plus soak)
+  (health, fleet, auth, /map, /hubs, /corridors, feed, and Tor verification plus soak)
   for the field trial, mirroring the Windows deploy script.
 - Ten operator-supplied corridors in the field-trial config (and its generator):
   real public TCP:443 endpoint pairs for the design's path pairs, each verified

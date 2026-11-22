@@ -60,7 +60,7 @@ A lone failure from a corroborating vantage is not even a signal. Tor exits are 
 | `dns_nodata` | RCODE 0, 0 answers, no authoritative NS/SOA | DOWN | **Implemented.** Name exists but has no A/AAAA and the answerer is not a zone authority |
 | `dns_servfail` | RCODE 2 | DOWN | **Implemented.** The wire client reads the RCODE instead of collapsing it |
 | `dns_refused` | RCODE 5 | DOWN | **Implemented.** The resolver answered, so the path works |
-| `dns_timeout` | no response in the target timeout | DOWN | **Implemented.** Default 5s. `UNMEASURABLE` instead while the `port53` self-check reports this vantage's egress port 53 blocked |
+| `dns_timeout` | no response in the target timeout | DOWN | **Implemented.** Default 5s total; one retry on timeout shares that window. `UNMEASURABLE` instead while the `port53` self-check reports this vantage's egress port 53 blocked |
 | `dns_divergence` | answer outside that resolver's own baseline | **DNS_ANOMALY**; `TAMPER` only with a second signal | **Implemented** for address sets and RCODEs; see §3.2 |
 
 The port-53 gate is a narrow, honest exception: a timeout or transport error while our own `:53` is unreachable measures the vantage, not the destination. It never applies to `dns_nxdomain`, `dns_nodata`, `dns_servfail`, or `dns_refused`, because those are answers rather than silence. A resolver that replied has proven the path works.

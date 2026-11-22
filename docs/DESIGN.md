@@ -953,6 +953,18 @@ event overlay and the level snapshot have separate notes: an event feed can be
 healthy while the level feed is not, and neither silence is allowed to look
 like "no level".
 
+### 10.3a US hubs
+
+City/state detail is metadata, not a schema column. The field-trial generator
+names its 42 US hub targets as `City, ST hub — site` in sector `us/hub`, so
+`/hubs` can group them without a migration: the stored schema stays at version
+25. One tile per city, worst state first, with per-state chips. A malformed name
+is reported as unplaced rather than grouped under a guessed city, and a
+non-`us/hub` target never appears. Each site is a separate link to its target
+drawer with the site identity, state, and status reason in its title; clicking
+the city opens the board's sector grouping. The view is a naming convention for
+large US hubs, not a claim of city-wide outage truth from one vantage.
+
 ### 10.4 Corridors
 
 Ten rows: RTT sparkline, loss bar, baseline band, step-change highlight.

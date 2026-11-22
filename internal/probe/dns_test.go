@@ -1306,3 +1306,253 @@ func TestDNSNeverFallsBackToTheHostResolver(t *testing.T) {
 		}
 	}
 }
+
+// retryScriptConn answers the query it was given, or times out once when fail
+// is set. It gives the retry tests deterministic transport behavior.
+type retryScriptConn struct {
+	mu    sync.Mutex
+	query []byte
+	fail  bool
+}
+
+func (c *retryScriptConn) Read(b []byte) (int, error) {
+	if c.fail {
+		return 0, os.ErrDeadlineExceeded
+	}
+	c.mu.Lock()
+	query := append([]byte(nil), c.query...)
+	c.mu.Unlock()
+	msg, ok := decodeQuery(query)
+	if !ok || len(msg.Questions) != 1 {
+		return 0, errors.New("bad DNS query")
+	}
+	if msg.Questions[0].Type == dnsmessage.TypeNS {
+		ns, err := dnsmessage.NewName("ns1.example.net.")
+		if err != nil {
+			return 0, err
+		}
+		msg.Response = true
+		msg.RecursionAvailable = true
+		msg.Answers = []dnsmessage.Resource{{
+			Header: dnsmessage.ResourceHeader{
+				Name: msg.Questions[0].Name, Type: dnsmessage.TypeNS,
+				Class: dnsmessage.ClassINET, TTL: 60,
+			},
+			Body: &dnsmessage.NSResource{NS: ns},
+		}}
+		return copy(b, packMessage(msg)), nil
+	}
+	return copy(b, dnsResponse(query, 0, "192.0.2.10")), nil
+}
+
+func (c *retryScriptConn) Write(b []byte) (int, error) {
+	c.mu.Lock()
+	c.query = append([]byte(nil), b...)
+	c.mu.Unlock()
+	return len(b), nil
+}
+func (c *retryScriptConn) Close() error                     { return nil }
+func (c *retryScriptConn) LocalAddr() net.Addr              { return &net.UDPAddr{} }
+func (c *retryScriptConn) RemoteAddr() net.Addr             { return &net.UDPAddr{} }
+func (c *retryScriptConn) SetDeadline(time.Time) error      { return nil }
+func (c *retryScriptConn) SetReadDeadline(time.Time) error  { return nil }
+func (c *retryScriptConn) SetWriteDeadline(time.Time) error { return nil }
+
+func TestDNSTimeoutIsRetriedOnce(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	calls := 0
+	p := probe.NewDNS(func(context.Context, string, string) (net.Conn, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		if calls == 1 {
+			return &retryScriptConn{fail: true}, nil
+		}
+		return &retryScriptConn{}, nil
+	})
+	p.Timeout = 200 * time.Millisecond
+	p.Retries = 1
+
+	res := p.Do(context.Background(), "127.0.0.1:53", "example.com")
+	if res.Failed() {
+		t.Fatalf("retry should have succeeded: %s: %v", res.ErrorClass, res.Err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 2 {
+		t.Fatalf("UDP exchanges = %d, want 2", calls)
+	}
+}
+
+func TestDNSDoNSTimeoutIsRetriedOnce(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	calls := 0
+	p := probe.NewDNS(func(context.Context, string, string) (net.Conn, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		if calls == 1 {
+			return &retryScriptConn{fail: true}, nil
+		}
+		return &retryScriptConn{}, nil
+	})
+	p.Timeout = 200 * time.Millisecond
+	p.Retries = 1
+
+	res := p.DoNS(context.Background(), "127.0.0.1:53", "example.com")
+	if res.Failed() {
+		t.Fatalf("retry should have succeeded: %s: %v", res.ErrorClass, res.Err)
+	}
+	if len(res.Names) != 1 || res.Names[0] != "ns1.example.net" {
+		t.Fatalf("names = %v", res.Names)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 2 {
+		t.Fatalf("UDP exchanges = %d, want 2", calls)
+	}
+}
+
+func TestDNSNegativeAnswersAreNotRetried(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		rcode int
+		want  string
+	}{
+		{3, "dns_nxdomain"},
+		{0, "dns_nodata"},
+		{2, "dns_servfail"},
+		{5, "dns_refused"},
+	} {
+		tc := tc
+		t.Run(tc.want, func(t *testing.T) {
+			t.Parallel()
+			var mu sync.Mutex
+			calls := 0
+			server := startDNSResponder(t, func(query []byte) []byte {
+				mu.Lock()
+				calls++
+				mu.Unlock()
+				return dnsResponse(query, tc.rcode, "")
+			})
+			p := probe.NewDNS(nil)
+			p.Timeout = 200 * time.Millisecond
+			p.Retries = 2
+
+			res := p.Do(context.Background(), server, "example.com")
+			if res.ErrorClass != tc.want {
+				t.Fatalf("class = %q, want %q", res.ErrorClass, tc.want)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if calls != 1 {
+				t.Fatalf("UDP exchanges = %d, want 1 for an answer", calls)
+			}
+		})
+	}
+}
+
+func TestDNSRetryStaysInsideTheTotalBudget(t *testing.T) {
+	t.Parallel()
+
+	server := startDNSResponder(t, func([]byte) []byte { return nil })
+	p := probe.NewDNS(nil)
+	p.Timeout = 120 * time.Millisecond
+	p.Retries = 1
+	p.RetryDelay = 10 * time.Millisecond
+
+	start := time.Now()
+	res := p.Do(context.Background(), server, "example.com")
+	if res.ErrorClass != "dns_timeout" {
+		t.Fatalf("class = %q, want dns_timeout", res.ErrorClass)
+	}
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Fatalf("retry took %v, expected to fit inside the 120ms budget", elapsed)
+	}
+}
+
+func TestDNSRetriesAreCapped(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	calls := 0
+	p := probe.NewDNS(func(context.Context, string, string) (net.Conn, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		return &retryScriptConn{fail: true}, nil
+	})
+	p.Timeout = 80 * time.Millisecond
+	p.Retries = 9 // above the documented maximum; must be clamped
+
+	res := p.Do(context.Background(), "127.0.0.1:53", "example.com")
+	if res.ErrorClass != "dns_timeout" {
+		t.Fatalf("class = %q, want dns_timeout (%v)", res.ErrorClass, res.Err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 2 {
+		t.Fatalf("UDP exchanges = %d, want the 2-attempt cap", calls)
+	}
+}
+
+func TestDNSRetryDelayIsCapped(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	calls := 0
+	p := probe.NewDNS(func(context.Context, string, string) (net.Conn, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		return &retryScriptConn{fail: calls == 1}, nil
+	})
+	p.Timeout = 500 * time.Millisecond
+	p.Retries = 1
+	p.RetryDelay = 2 * time.Second // above the documented maximum; must be clamped
+
+	start := time.Now()
+	res := p.Do(context.Background(), "127.0.0.1:53", "example.com")
+	if res.Failed() {
+		t.Fatalf("retry should have succeeded: %s: %v", res.ErrorClass, res.Err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("retry waited %v; the delay cap should keep it well under a second", elapsed)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 2 {
+		t.Fatalf("UDP exchanges = %d, want 2", calls)
+	}
+}
+
+func TestDNSRetryStopsWhenBudgetExpiresBetweenAttempts(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	calls := 0
+	p := probe.NewDNS(func(context.Context, string, string) (net.Conn, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		return &retryScriptConn{fail: true}, nil
+	})
+	p.Timeout = 80 * time.Millisecond
+	p.Retries = 1
+	p.RetryDelay = 500 * time.Millisecond // longer than the whole lookup budget
+
+	res := p.Do(context.Background(), "127.0.0.1:53", "example.com")
+	if res.ErrorClass != "dns_timeout" {
+		t.Fatalf("class = %q, want dns_timeout (%v)", res.ErrorClass, res.Err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("UDP exchanges = %d, want 1; the retry must not start after the budget ends", calls)
+	}
+}

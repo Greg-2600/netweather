@@ -1382,6 +1382,37 @@ func newInstruments() agent.Instruments {
 		probe.BuildUserAgent(version.Version, os.Getenv("NETWEATHER_CONTACT")))
 }
 
+// configureDNSRetry enables one extra UDP attempt inside the existing 5s DNS
+// budget. An occasional lost datagram should not flip a healthy anchor to DOWN;
+// negative answers and policy blocks are never retried (internal/probe/dns.go).
+// Env vars keep the behavior tunable without widening the config schema.
+func configureDNSRetry(p *probe.DNS) {
+	p.Retries = 1
+	p.RetryDelay = 25 * time.Millisecond
+	if raw := os.Getenv("NETWEATHER_DNS_RETRIES"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil {
+			if n < 0 {
+				n = 0
+			}
+			if n > 2 {
+				n = 2
+			}
+			p.Retries = n
+		}
+	}
+	if raw := os.Getenv("NETWEATHER_DNS_RETRY_DELAY_MS"); raw != "" {
+		if ms, err := strconv.Atoi(raw); err == nil {
+			if ms < 0 {
+				ms = 0
+			}
+			if ms > 200 {
+				ms = 200
+			}
+			p.RetryDelay = time.Duration(ms) * time.Millisecond
+		}
+	}
+}
+
 // newInstrumentsWithDialer builds the instruments over one guarded dialer, so
 // the agent and the self-checks share the same egress path and the same byte
 // budget.
@@ -1410,11 +1441,14 @@ func newInstrumentsWithDialer(dialer *netx.Dialer, userAgent string) agent.Instr
 
 	quicProbe := probe.NewQUIC(dialer.DialContext)
 
+	dnsProbe := probe.NewDNS(dialer.DialContext)
+	configureDNSRetry(dnsProbe)
+
 	return agent.Instruments{
 		HTTP: httpProbe,
 		TLS:  probe.NewTLS(dialer),
 		TCP:  probe.NewTCP(dialer),
-		DNS:  probe.NewDNS(dialer.DialContext),
+		DNS:  dnsProbe,
 		DoH:  dohProbe,
 		DoT:  dotProbe,
 		QUIC: quicProbe,
