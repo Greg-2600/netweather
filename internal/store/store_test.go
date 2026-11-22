@@ -3234,6 +3234,61 @@ func TestCrossVantageDisagreement(t *testing.T) {
 	}
 }
 
+func TestCrossVantageDisagreementNeedsPrimaryDown(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openTest(t)
+	seed(t, s)
+	ctx := context.Background()
+
+	if err := s.EnsureVantage(ctx, "tor-1", "socks5", "corroboration"); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"t2", "t3"} {
+		if err := s.UpsertTarget(ctx, store.Target{
+			ID: id, Host: id + ".example", Port: 443, Probe: "http",
+			Name: id, Class: "service", Tier: 2, IntervalS: 300,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	base := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+
+	// t2: the corroborator is down while the primary is reachable. The board
+	// shows UP, so this is not the primary's local path problem and must not
+	// light up REGIONAL in the top bar while the drawer says nothing.
+	if err := s.Record(ctx, []store.Probe{
+		{TargetID: "t2", VantageID: "local", TS: base, State: state.Up, Stage: "http", Confidence: "high"},
+		{TargetID: "t2", VantageID: "tor-1", TS: base, State: state.Down, Stage: "http", Confidence: "high"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cross, err := s.CrossVantageDisagreement(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cross {
+		t.Fatal("a healthy primary with a down corroborator must not be REGIONAL")
+	}
+
+	// t3: the documented split. Both vantages see the target for the first
+	// time, so no confirmation streak is needed (DESIGN.md §7.4).
+	if err := s.Record(ctx, []store.Probe{
+		{TargetID: "t3", VantageID: "local", TS: base, State: state.Down, Stage: "http", Confidence: "high"},
+		{TargetID: "t3", VantageID: "tor-1", TS: base, State: state.Up, Stage: "http", Confidence: "high"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cross, err = s.CrossVantageDisagreement(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cross {
+		t.Fatal("primary down with corroborator up was not REGIONAL")
+	}
+}
+
 func TestScopeCoverageHistory(t *testing.T) {
 	t.Parallel()
 

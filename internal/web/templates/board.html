@@ -129,6 +129,13 @@
     </p>
     {{end}}
 
+    {{if .Region}}
+    <p class="filter-note" data-testid="region-filter">
+      Region filter: <b class="mono">{{.Region}}</b>
+      <a href="{{.RegionOff}}" data-testid="clear-region">clear</a>
+    </p>
+    {{end}}
+
     {{if .Feeds}}
     <p class="feeds" aria-label="Feed health" data-testid="feed-health">
       {{range .Feeds}}

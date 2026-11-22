@@ -59,21 +59,29 @@ func (s *Store) ReferenceStates(ctx context.Context, vantageID string) (map[stat
 	return out, nil
 }
 
-// CrossVantageDisagreement reports a target that is DOWN from one vantage and
-// reachable from another. That is the only evidence that separates "the
-// service" from "this path" from "this country" (DESIGN.md §3.3, REGIONAL).
+// CrossVantageDisagreement reports a target that is DOWN from the primary
+// vantage and reachable from a corroborating one. That is the only evidence
+// that separates "the service" from "this path" from "this country"
+// (DESIGN.md §3.3, REGIONAL).
 //
-// A target with only one vantage cannot disagree with itself, so a single
-// vantage instance answers false rather than guessing.
+// The roles matter. An up primary with a down corroborator is not REGIONAL:
+// what the board shows is healthy, so there is no local path problem to
+// explain. This is the same rule the target drawer uses, so the top-bar badge
+// and the drawer note cannot disagree. A target with only one vantage cannot
+// disagree with itself, so a single-vantage instance answers false.
 func (s *Store) CrossVantageDisagreement(ctx context.Context) (bool, error) {
 	var found int
 	err := s.reader.QueryRowContext(ctx, `
 		SELECT EXISTS (
 			SELECT 1
 			FROM target_state down
+			JOIN vantage down_v ON down_v.id = down.vantage_id
 			JOIN target_state up
 			  ON up.target_id = down.target_id AND up.vantage_id <> down.vantage_id
-			WHERE down.state = 'down'
+			JOIN vantage up_v ON up_v.id = up.vantage_id
+			WHERE down_v.role = 'primary'
+			  AND down.state = 'down'
+			  AND up_v.role = 'corroboration'
 			  AND up.state IN ('up', 'up_reachability')
 		)`).Scan(&found)
 	if err != nil {

@@ -22,6 +22,7 @@ import (
 	"github.com/Greg-2600/netweather/internal/ihi"
 	"github.com/Greg-2600/netweather/internal/logging"
 	"github.com/Greg-2600/netweather/internal/netx"
+	"github.com/Greg-2600/netweather/internal/region"
 	"github.com/Greg-2600/netweather/internal/state"
 	"github.com/Greg-2600/netweather/internal/store"
 	"github.com/Greg-2600/netweather/internal/streamlimit"
@@ -370,6 +371,10 @@ type boardView struct {
 	// The clear link drops it without dropping focus or the grouping lens.
 	Country    string
 	CountryOff string
+	// Region is the active continent filter. It is derived from each target's
+	// country code, never a stored location. RegionOff clears only this filter.
+	Region    string
+	RegionOff string
 	// Focus hides everything that is not DOWN or DEGRADED. The counts still
 	// describe the whole fleet, so the summary does not lie about what is
 	// hidden.
@@ -579,11 +584,12 @@ const (
 
 // boardParams is the view state every toggle link must preserve. Building hrefs
 // from one struct is what stops the grouping toggle from dropping the country
-// filter, or the density toggle from dropping focus mode.
+// or region filter, or the density toggle from dropping focus mode.
 type boardParams struct {
 	Group   string
 	Focus   bool
 	Country string
+	Region  string
 	Density string
 	// Show is how many tiles each group may render, keyed by group name. It is
 	// only meaningful in comfortable density, where the documented rule is
@@ -603,6 +609,9 @@ func (p boardParams) href() string {
 	}
 	if p.Country != "" {
 		href += "&country=" + url.QueryEscape(p.Country)
+	}
+	if p.Region != "" {
+		href += "&region=" + url.QueryEscape(p.Region)
 	}
 	if p.Density != "" && p.Density != densityCompact {
 		href += "&density=" + p.Density
@@ -708,7 +717,7 @@ func densityOptions(active string, params boardParams) []toggleOption {
 
 // groupModes is the documented toggle order (DESIGN.md §10.2): sector is the
 // default, then the lenses that answer "is it one host, one network, one
-// country, or one broken stage?".
+// country, one continent, or one broken stage?".
 var groupModes = []struct {
 	Key   string
 	Label string
@@ -718,6 +727,7 @@ var groupModes = []struct {
 	{"cdn", "CDN"},
 	{"asn", "ASN"},
 	{"country", "Country"},
+	{"region", "Region"},
 	{"stage", "Stage"},
 }
 
@@ -830,6 +840,14 @@ func groupKey(t board.Target, mode string) (name, label string) {
 			return "none", "Country unknown"
 		}
 		return t.Country, t.Country
+	case "region":
+		// Derived from the existing country code. No schema field and no
+		// measured location: Unknown is a bucket, not a guess.
+		name := region.ForCountry(t.Country)
+		if name == region.Unknown {
+			return "unknown", "Region unknown"
+		}
+		return strings.ToLower(strings.ReplaceAll(name, " ", "-")), name
 	case "stage":
 		if t.Stage == "" {
 			return "none", "No stage recorded"
@@ -844,8 +862,8 @@ func groupKey(t board.Target, mode string) (name, label string) {
 }
 
 // groupOptions builds the toggle with the active entry marked. Focus mode and
-// the country filter are preserved when switching lenses, because the controls
-// answer different questions and silently resetting one is hostile.
+// the country/region filters are preserved when switching lenses, because the
+// controls answer different questions and silently resetting one is hostile.
 func groupOptions(active string, params boardParams) []toggleOption {
 	out := make([]toggleOption, 0, len(groupModes))
 	for _, m := range groupModes {
@@ -937,11 +955,26 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		targets = filtered
 	}
 
+	// Region is a second, coarser lens. It is derived from the same country
+	// code, and an unknown code has its own filter value rather than being
+	// folded into a real continent. An invalid value is ignored, not guessed.
+	regionFilter := region.Normalise(r.URL.Query().Get("region"))
+	if regionFilter != "" {
+		filtered := make([]board.Target, 0, len(targets))
+		for _, t := range targets {
+			if region.ForCountry(t.Country) == regionFilter {
+				filtered = append(filtered, t)
+			}
+		}
+		targets = filtered
+	}
+
 	csrf, _ := s.auth.csrfFrom(r)
 	params := boardParams{
 		Group:   normaliseGroupMode(r.URL.Query().Get("group")),
 		Focus:   focus,
 		Country: country,
+		Region:  regionFilter,
 		Density: normaliseDensity(r.URL.Query().Get("density")),
 		Show:    parseShow(r.URL.Query().Get("show")),
 	}
@@ -984,6 +1017,7 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		Density:        params.Density,
 		DensityOptions: densityOptions(params.Density, params),
 		Country:        country,
+		Region:         regionFilter,
 	}
 	if coldStart {
 		view.ColdStartNote = "First probes are still being scheduled across each target's interval, so most of the board is unknown for the first few minutes. Baselines need about 28 weeks of history before anomaly detection runs; until then the health line stays in learning mode."
@@ -992,6 +1026,11 @@ func (s *server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		clear := params
 		clear.Country = ""
 		view.CountryOff = clear.href()
+	}
+	if regionFilter != "" {
+		clear := params
+		clear.Region = ""
+		view.RegionOff = clear.href()
 	}
 	if s.deps.Control != nil {
 		view.Paused = s.deps.Control.Paused()

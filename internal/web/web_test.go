@@ -1047,6 +1047,12 @@ func TestBoardGroupingToggle(t *testing.T) {
 			ID: "3", Name: "Cloudflare", Host: "cloudflare.com", Sector: "cloud",
 			State: board.StateUp, CDN: "cloudflare", ASN: 13335, Country: "DE",
 		},
+		// Shares every other lens with target 1 so only the region lens
+		// introduces a fourth, explicitly unknown bucket.
+		board.Target{
+			ID: "4", Name: "Unplaced", Host: "unplaced.example", Sector: "financial/banking",
+			State: board.StateUp, CDN: "akamai", ASN: 20940, Stage: "dns",
+		},
 	)
 	ts := newServer(t, testToken, m)
 	client, _ := newClient(t)
@@ -1068,7 +1074,8 @@ func TestBoardGroupingToggle(t *testing.T) {
 	}
 	for _, want := range []string{
 		`data-group="sector"`, `data-group="state"`, `data-group="cdn"`,
-		`data-group="asn"`, `data-group="country"`, `data-group="stage"`,
+		`data-group="asn"`, `data-group="country"`, `data-group="region"`,
+		`data-group="stage"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("toggle missing %q", want)
@@ -1109,6 +1116,20 @@ func TestBoardGroupingToggle(t *testing.T) {
 	}
 	if !strings.Contains(page, "No stage recorded") {
 		t.Error("a target with no stage was not given an explicit bucket")
+	}
+
+	// Region grouping derives a continent from the existing country code. The
+	// two US targets and the German one must land in separate buckets, and a
+	// target with no country gets an explicit unknown bucket.
+	page = get("/?group=region")
+	if !strings.Contains(page, `data-sector="north-america"`) || !strings.Contains(page, ">North America<") {
+		t.Error("region group missing North America")
+	}
+	if !strings.Contains(page, `data-sector="europe"`) {
+		t.Error("region group missing Europe")
+	}
+	if !strings.Contains(page, `data-sector="unknown"`) || !strings.Contains(page, "Region unknown") {
+		t.Error("a target with no country was not given an explicit region bucket")
 	}
 
 	// State grouping uses the state text as its label.
@@ -1346,6 +1367,69 @@ func TestBoardCountryFilterWithNoMatches(t *testing.T) {
 	}
 	if !strings.Contains(page, `data-testid="country-filter"`) {
 		t.Error("an empty result hid the active filter")
+	}
+}
+
+func TestBoardRegionFilter(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(
+		board.Target{ID: "1", Name: "Chase", Host: "chase.com", Country: "US", State: board.StateUp},
+		board.Target{ID: "2", Name: "Deutsche", Host: "de.example", Country: "DE", State: board.StateUp},
+		board.Target{ID: "3", Name: "IDN", Host: "xn.example", Country: "XN", State: board.StateUp},
+	)
+	ts := newServer(t, testToken, m)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	// The compact URL form is normalised to the canonical continent name.
+	resp, err := client.Get(ts.URL + "/?region=north-america") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	if !strings.Contains(page, `data-testid="region-filter"`) || !strings.Contains(page, ">North America<") {
+		t.Fatalf("region filter chip missing:\n%s", page)
+	}
+	if !strings.Contains(page, `data-target="chase.com"`) {
+		t.Error("the filtered-in target is missing")
+	}
+	if strings.Contains(page, `data-target="de.example"`) || strings.Contains(page, `data-target="xn.example"`) {
+		t.Error("a target outside the region filter rendered")
+	}
+	if !strings.Contains(page, `data-testid="clear-region"`) {
+		t.Error("the region filter cannot be cleared")
+	}
+
+	// Unknown is a filterable bucket, not a silent drop of unplaced targets.
+	resp, err = client.Get(ts.URL + "/?region=unknown") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = body(t, resp)
+	if !strings.Contains(page, `data-target="xn.example"`) || strings.Contains(page, `data-target="chase.com"`) {
+		t.Error("the unknown-region bucket was not filtered correctly")
+	}
+
+	// Clearing only the region keeps the grouping lens, focus mode and the
+	// country filter intact.
+	resp, err = client.Get(ts.URL + "/?region=europe&group=cdn&focus=problems&country=DE") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = body(t, resp)
+	if !strings.Contains(page, `href="/?group=cdn&amp;focus=problems&amp;country=DE"`) {
+		t.Fatalf("clear-region link dropped the other view state:\n%s", page)
+	}
+
+	// An invalid region is ignored rather than becoming a different filter.
+	resp, err = client.Get(ts.URL + "/?region=mars") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = body(t, resp)
+	if !strings.Contains(page, `data-target="chase.com"`) || strings.Contains(page, `data-testid="region-filter"`) {
+		t.Error("an invalid region filter changed the board")
 	}
 }
 

@@ -205,7 +205,9 @@ Table-driven, `t.Parallel()`, no network, no disk, no sleep.
 | `internal/classify` | Every rule in `CLASSIFIER.md` — one case per row, with the expected value beside the input |
 | `internal/probe` | The ladder: which stage failed, with a fake dialer; the transport's per-host cap and TLS floor |
 | `internal/schedule` | Tiering, jitter bounds, per-host semaphore, backoff, missed ticks (fake clock) |
-| `internal/correlate` | LOCAL, REGIONAL, attribution scoring, anomaly thresholds (fixture datasets) |
+| `internal/correlate` | LOCAL, attribution scoring, anomaly thresholds (fixture datasets) |
+| `internal/verdict` | Every board verdict; the store test covers REGIONAL's primary-down/corroborator-up rule |
+| `internal/region` | Country-to-continent mapping, filter normalisation, and unknown-code handling |
 | `internal/config` | TXT/YAML parsing, sector inference from paths, validation errors, reload-state clearing |
 | `internal/calendar` | Strict date and region parsing, the absent-file case, and the exclusion's reach |
 | `internal/store` | Migrations, pre-migration backup, retention pruning, rollup math, provenance and re-enable |

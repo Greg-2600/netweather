@@ -362,7 +362,7 @@ CREATE TABLE incident (
     id            TEXT PRIMARY KEY,           -- ULID
     opened_at     INTEGER NOT NULL,
     closed_at     INTEGER,
-    verdict       TEXT NOT NULL,              -- 'INCIDENT','REGIONAL','TAMPER'
+    verdict       TEXT NOT NULL,              -- 'INCIDENT'; REGIONAL is a board verdict, not an incident
     scope         TEXT NOT NULL,
     scope_value   TEXT,
     headline      TEXT NOT NULL,

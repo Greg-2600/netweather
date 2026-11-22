@@ -94,7 +94,15 @@ pass() {
         tiles="$(printf '%s' "$rendered_map" | grep -o 'data-testid="map-tile"' | wc -l | tr -d ' ')"
         check "/map tiles" "$([ "$tiles" = "$EXPECTED_TARGETS" ] && echo 0 || echo 1)" "$tiles tiles"
 
-        # 4a. US hubs are named targets, not a schema column; confirm they are
+        # 4a. The board's region lens is derived from country codes, with no
+        #     schema field. Confirm the toggle exists and produces real buckets.
+        rendered_board="$(ui_page "$jar" '/?group=region' || true)"
+        region_toggle="$(printf '%s' "$rendered_board" | grep -o 'data-group="region"' | wc -l | tr -d ' ')"
+        region_buckets="$(printf '%s' "$rendered_board" | grep -o 'data-sector="[a-z-]*"' | wc -l | tr -d ' ')"
+        check "board region lens" "$([ "$region_toggle" = "1" ] && [ "$region_buckets" -gt 1 ] && echo 0 || echo 1)" \
+            "$region_toggle toggle, $region_buckets region buckets"
+
+        # 4b. US hubs are named targets, not a schema column; confirm they are
         #     grouped into the expected city tiles rather than an empty page.
         rendered_hubs="$(ui_page "$jar" /hubs || true)"
         hub_tiles="$(printf '%s' "$rendered_hubs" | grep -o 'data-testid="hub"' | wc -l | tr -d ' ')"

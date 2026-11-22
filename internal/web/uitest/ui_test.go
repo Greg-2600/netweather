@@ -307,6 +307,55 @@ func TestBoardRendersStatesAccessibly(t *testing.T) {
 	}
 }
 
+func TestBoardRegionGroupingAndFilter(t *testing.T) {
+	t.Parallel()
+
+	m := board.NewMemory(
+		board.Target{ID: "1", Name: "Chase", Host: "chase.com", Country: "US", State: board.StateUp},
+		board.Target{ID: "2", Name: "Deutsche", Host: "de.example", Country: "DE", State: board.StateUp},
+		board.Target{ID: "3", Name: "IDN", Host: "xn.example", Country: "XN", State: board.StateUp},
+		board.Target{ID: "4", Name: "Unplaced", Host: "unplaced.example", State: board.StateUp},
+	)
+	h := newHarnessWithBoard(t, m)
+	h.login(t)
+
+	expect := playwright.NewPlaywrightAssertions(5000)
+	if _, err := h.page.Goto(h.baseURL + "/?group=region"); err != nil {
+		t.Fatalf("goto region grouping: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-group="region"]`)).ToHaveAttribute("aria-current", "true"); err != nil {
+		t.Fatalf("region lens is not active: %v", err)
+	}
+	for _, bucket := range []string{"north-america", "europe", "unknown"} {
+		if err := expect.Locator(h.page.Locator(`[data-sector="` + bucket + `"]`)).ToHaveCount(1); err != nil {
+			t.Errorf("region bucket %q missing: %v", bucket, err)
+		}
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="tile"]`)).ToHaveCount(4); err != nil {
+		t.Errorf("region grouping lost a target: %v", err)
+	}
+
+	// The filter is a real control: an unknown code and an absent country share
+	// the explicit unknown bucket, and the clear link keeps the chosen lens.
+	if _, err := h.page.Goto(h.baseURL + "/?group=region&region=unknown"); err != nil {
+		t.Fatalf("goto unknown-region filter: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="region-filter"]`)).ToBeVisible(); err != nil {
+		t.Errorf("region filter chip missing: %v", err)
+	}
+	if err := expect.Locator(h.page.Locator(`[data-testid="tile"]`)).ToHaveCount(2); err != nil {
+		t.Errorf("unknown-region filter did not isolate both unplaced targets: %v", err)
+	}
+	clear := h.page.Locator(`[data-testid="clear-region"]`)
+	href, err := clear.GetAttribute("href")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if href != "/?group=region" {
+		t.Errorf("clear-region href = %q, want %q", href, "/?group=region")
+	}
+}
+
 func TestLiveUpdateArrivesOverSSE(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

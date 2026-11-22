@@ -10,6 +10,12 @@ changed between two images without it.
 
 ### Added
 
+- The board gains a **Region** grouping lens and `?region=` filter. Continents
+  are derived from each target's existing country code by a checked-in map
+  generated from public-domain Natural Earth 10m data; there is no schema change,
+  no config field, and no runtime fetch. Unmapped and non-geographic codes get
+  an explicit "Region unknown" bucket. The label is a grouping fact, not a
+  measured hosting location.
 - `/hubs` adds a contiguous-US Albers equal-area projection above the treemap.
   The 34 city aggregates reuse their published approximate city-centre anchors,
   now projected through the same frame as the same-origin Natural Earth 110m
@@ -151,6 +157,12 @@ changed between two images without it.
 
 ### Fixed
 
+- `REGIONAL` now requires the **primary** vantage to be down while a
+  corroborating vantage is up, matching the target drawer and `DESIGN.md`.
+  Previously any down/up split across two vantages lit the top-bar badge, so a
+  healthy primary with a down corroborator could show `REGIONAL` with no drawer
+  explanation. Stale schema/quality doc references to REGIONAL as an incident
+  verdict or a correlate test were corrected.
 - A bare Imperva `x-iinfo` response header no longer marks a healthy page as
   `BLOCKED`. Imperva stamps that header on every reply, including a 200/206 with
   assessable content; the classifier now treats it as a challenge signature only
