@@ -145,6 +145,36 @@ func TestStatusTable(t *testing.T) {
 	}
 }
 
+func TestIncapsulaHeaderOnSuccessIsNotAChallenge(t *testing.T) {
+	t.Parallel()
+
+	// Imperva sets x-iinfo on every response. A healthy 200/206 with a body
+	// must classify on its status, not as a permanent BLOCKED challenge.
+	for _, status := range []int{200, 206} {
+		got := classify.Decide(classify.Expected{PartialOK: status == 206}, classify.Response{
+			Status: status,
+			Header: http.Header{"X-Iinfo": {"51-40739329-40725576 pNNy RT(1 2) q(0 0 0 4) r(1 1) U24"}},
+			Body:   []byte("<html><body>Boston city portal</body></html>"),
+		})
+		if got.State != state.UpReachability {
+			t.Errorf("status %d with x-iinfo: got %s (%s), want up_reachability",
+				status, got.State, got.Reason)
+		}
+	}
+
+	// A real Incapsula block still wins: the status is a 403, so the header
+	// remains a corroborating signature alongside the status mapping.
+	got := classify.Decide(classify.Expected{}, classify.Response{
+		Status: 403,
+		Header: http.Header{"X-Iinfo": {"51-40739329-40725576 pNNy RT(1 2) q(0 0 0 4) r(1 1) U24"}},
+		Body:   []byte("Request unsuccessful. Incapsula incident ID: 123"),
+	})
+	if got.State != state.Blocked {
+		t.Errorf("403 with x-iinfo and incident body: got %s (%s), want blocked",
+			got.State, got.Reason)
+	}
+}
+
 func TestChallengeBeatsStatusAndSemantic(t *testing.T) {
 	t.Parallel()
 

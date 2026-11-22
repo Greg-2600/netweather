@@ -2170,6 +2170,9 @@ func TestIncidentDetailPage(t *testing.T) {
 		"83%",
 		"svc-united",
 		"svc-delta",
+		// A working detail page, not the narrow login card: this is the
+		// wide class the target drawer uses for its evidence tables.
+		`class="card target-card" data-testid="incident-detail"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("detail missing %q", want)

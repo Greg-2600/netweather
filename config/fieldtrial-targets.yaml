@@ -5273,8 +5273,8 @@ targets:
     tier: 2
     interval_s: 300
   - id: svc-britishairways
-    name: "British Airways"
-    host: "www.britishairways.com"
+    name: "Ethiopian Airlines"
+    host: "www.ethiopianairlines.com"
     port: 443
     probe: http
     class: service

@@ -711,9 +711,9 @@ body.auth {
 .detail-state.state-up b { color: #7ee2a8; }
 .detail-state.state-degraded b { color: #f0b849; }
 
-/* The target drawer is a working page, not a login card. Keep the auth card's
-   26rem cap elsewhere, but let the metadata and evidence tables use the width
-   the reader actually has. */
+/* Detail working pages are not login cards. Keep the auth card's 26rem cap
+   elsewhere, but let the target and incident metadata and evidence tables use
+   the width the reader actually has. */
 .target-card { max-width: 76rem; }
 
 .target-card .meta {

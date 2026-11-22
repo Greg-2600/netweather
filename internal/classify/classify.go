@@ -330,10 +330,19 @@ func challengeSignatures(r Response) []string {
 		case "challenge", "captcha":
 			add("header:x-amzn-waf-action")
 		}
-		for _, k := range []string{"x-iinfo", "x-datadome", "x-sucuri-block"} {
+		for _, k := range []string{"x-datadome", "x-sucuri-block"} {
 			if h.Get(k) != "" {
 				add("header:" + k)
 			}
+		}
+		// Imperva/Incapsula stamps x-iinfo on every response, including a
+		// healthy 200 or a ranged 206. A bare x-iinfo on a successful reply is
+		// therefore noise, not a challenge: real challenges carry a 403/429/503
+		// plus a body or redirect marker, each of which is detected below.
+		// Gating on status keeps those detections while letting an assessable
+		// Imperva-fronted page reach reachability instead of BLOCKED forever.
+		if h.Get("x-iinfo") != "" && (r.Status < 200 || r.Status >= 300) {
+			add("header:x-iinfo")
 		}
 		for k := range h {
 			lk := strings.ToLower(k)

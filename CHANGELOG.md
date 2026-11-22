@@ -144,6 +144,19 @@ changed between two images without it.
 
 ### Fixed
 
+- A bare Imperva `x-iinfo` response header no longer marks a healthy page as
+  `BLOCKED`. Imperva stamps that header on every reply, including a 200/206 with
+  assessable content; the classifier now treats it as a challenge signature only
+  on a non-2xx status. Real challenge bodies, redirects and statuses still win.
+  The US hub portals behind `svc-nytimes` and `svc-tesco` can now reach
+  `up_reachability` instead of being permanently unmeasurable.
+- `svc-britishairways` now points at Ethiopian Airlines' public page under the
+  same stable id. British Airways' apex times out awaiting HTTP/2 response
+  headers from three of the six Tor exits on both `/` and `/robots.txt`, so no
+  path override could make it measurable. Ethiopian Airlines returned assessable
+  HTML from all six exits; the fleet stays at 749.
+- `/incidents/{id}` uses the wide target-detail card instead of the narrow login
+  card, so attribution, corroboration and archived-probe tables are readable.
 - Service slots that consistently produced stream errors, `202`, bot challenges,
   or configuration errors were replaced with assessable public pages under the
   same ids: airline/travel, ITU, Telstra, diabetes, hospital and university

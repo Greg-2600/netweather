@@ -188,7 +188,12 @@ SERVICES: list[tuple[str, str, str, str]] = [
     ("jetblue", "JetBlue", "www.jetblue.com", "airline"),
     ("alaska", "Alaska Airlines", "www.alaskaair.com", "airline"),
     ("lufthansa", "Minneapolis, MN hub — MSP airport", "www.mspairport.com", "us/hub"),
-    ("britishairways", "British Airways", "www.britishairways.com", "airline"),
+    # British Airways' apex times out awaiting HTTP/2 response headers from
+    # three of the six Tor exits (DE, JP and SG answer; CL, AU and MX do not),
+    # on both / and /robots.txt, so a path override cannot fix it. Ethiopian
+    # Airlines is another real public airline page that returned 206 with
+    # assessable HTML from all six exits. The id stays stable for history.
+    ("britishairways", "Ethiopian Airlines", "www.ethiopianairlines.com", "airline"),
     # Singapore Airlines' canonical root now returns 404 from the field-trial
     # egress; Scoot is another real Singapore-based airline with assessable HTML.
     ("airfrance", "Scoot", "www.scoot.com", "airline"),

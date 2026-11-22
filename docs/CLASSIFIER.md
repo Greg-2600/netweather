@@ -299,7 +299,7 @@ A redirect target matching any of these means the chain was challenged:
 |---|---|
 | `cf-mitigated: challenge` | Cloudflare |
 | `x-amzn-waf-action: challenge` \| `captcha` | AWS WAF |
-| `x-iinfo` present | Imperva |
+| `x-iinfo` present **and** status is not 2xx | Imperva (a bare `x-iinfo` on a 200/206 is normal; a real challenge also has a body/redirect marker or a blocking status) |
 | `x-datadome` present | DataDome |
 | `x-px-*` present | PerimeterX / HUMAN |
 | `x-kpsdk-*` present | Kasada |
