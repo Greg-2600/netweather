@@ -16,8 +16,8 @@ import (
 //
 // It is a label, never a monitoring signal (DESIGN.md §8.5). One ASN can sit
 // behind hundreds of targets, so the answer is cached per ASN for the lifetime
-// of the process: a fleet of 750 targets costs one request per distinct ASN,
-// not one per target.
+// of the process: a fleet this size costs one request per distinct ASN, not one
+// per target.
 type PeerDB struct {
 	// BaseURL is the API root, injectable for tests.
 	BaseURL string

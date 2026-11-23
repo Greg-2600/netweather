@@ -51,7 +51,9 @@ func TestDoCapturesResponse(t *testing.T) {
 	if got.FinalURL != srv.URL {
 		t.Fatalf("FinalURL = %q", got.FinalURL)
 	}
-	if got.Latency <= 0 {
+	// Latency is measured on loopback, where a coarse platform timer can read
+	// zero. The assertion is that it is not negative, not that it is non-zero.
+	if got.Latency < 0 {
 		t.Fatalf("latency = %v", got.Latency)
 	}
 }

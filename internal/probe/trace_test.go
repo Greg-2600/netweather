@@ -186,11 +186,12 @@ func TestTraceDefaultTransportAndHopCeiling(t *testing.T) {
 
 	dst := netip.MustParseAddr("192.0.2.9")
 
-	// A nil Open installs the raw-socket transport. Whether this environment
-	// grants CAP_NET_RAW decides between trace_send and trace_unavailable;
-	// either way the default branch itself must be reachable.
+	// A nil Open installs the raw-socket transport. It may be unavailable
+	// (no CAP_NET_RAW), may fail to send, or may genuinely reach the destination
+	// on hosts with an ICMP responder. All three exercise the default branch;
+	// only an unexpected error class is a failure.
 	zero := &probe.Trace{MaxHops: 1, Timeout: 10 * time.Millisecond}
-	if got := zero.Run(context.Background(), dst); got.ErrorClass != "trace_send" && got.ErrorClass != "trace_unavailable" && got.Reached {
+	if got := zero.Run(context.Background(), dst); got.ErrorClass != "" && got.ErrorClass != "trace_send" && got.ErrorClass != "trace_unavailable" {
 		t.Fatalf("unexpected default-transport result: %+v", got)
 	}
 

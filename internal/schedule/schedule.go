@@ -74,7 +74,7 @@ func Next(interval time.Duration, pct float64, rnd func() float64) time.Duration
 }
 
 // FirstRun returns the cold-start offset: uniformly spread across the first
-// interval so 750 targets do not fire in the same second.
+// interval so the whole fleet does not fire in the same second.
 func FirstRun(interval time.Duration, rnd func() float64) time.Duration {
 	interval = clampFloor(interval)
 	return time.Duration(float64(interval) * 0.95 * unit(rnd))

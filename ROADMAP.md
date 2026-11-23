@@ -135,7 +135,8 @@ repository, and a broken build never replaces a working one.
   `netweather-deploy` task is `Ready`, trigger `PT2H`, and its action now calls
   `scripts\deploy_fieldtrial.ps1`. A real run rebuilt both images, recreated
   the stack, tagged `netweather:fieldtrial-rollback`, and exited 0 with
-  `/healthz` returning 200, `targets=749`, and `vantages=local,tor`.
+  `/healthz` returning 200, `targets=749` at the time (1000 after the fleet
+  expansion), and `vantages=local,tor`.
 - The two-hour cadence is deliberately short: the build is reproducible
   (`devtool repro`) and the container starts in seconds, so a fresh image is
   cheap; a broken one is caught by the health gate before it serves traffic.

@@ -8,10 +8,10 @@ import (
 // Limiter suppresses repeated identical events.
 //
 // A mass outage produces the same line for hundreds of targets in the same
-// second; 750 copies of "tls handshake failed" is not more information than one,
-// it is a denial of service against the operator reading the log. The first
-// `max` events per key per window are emitted; the rest are counted and can be
-// reported once as a summary.
+// second; hundreds of copies of "tls handshake failed" are not more
+// information than one, they are a denial of service against the operator
+// reading the log. The first `max` events per key per window are emitted; the
+// rest are counted and can be reported once as a summary.
 type Limiter struct {
 	mu     sync.Mutex
 	window time.Duration

@@ -45,8 +45,8 @@ type Coverage struct {
 
 // CoverageConcentration is the concentration block from DESIGN.md §10.6: how
 // much of the fleet sits behind a few networks, and how thin the anchor
-// coverage is. It is the difference between "750 targets" and "750 targets
-// behind 341 ASNs, a fifth of them behind one".
+// coverage is. It is the difference between "N targets" and "N targets behind
+// a handful of ASNs".
 type CoverageConcentration struct {
 	ASNCount     int
 	CountryCount int

@@ -523,7 +523,7 @@ func (s *Store) Series(ctx context.Context, targetID, vantageID, resolution stri
 // SeriesForTargets reads one resolution for many targets in a single query.
 //
 // The board's comfortable density needs a shape per tile, and one query per
-// target would turn a 750-target page into 750 reads. The map is keyed by
+// target would turn a 1000-target page into 1000 reads. The map is keyed by
 // target id; a target with no rollups is simply absent.
 func (s *Store) SeriesForTargets(ctx context.Context, targetIDs []string, vantageID, resolution string, from, to time.Time) (map[string][]Rollup, error) {
 	out := make(map[string][]Rollup, len(targetIDs))

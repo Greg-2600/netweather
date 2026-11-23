@@ -34,13 +34,13 @@ Levels are inclusive: `debug` also emits `info` and above.
 
 `TRACE` is a custom level rather than a `debug` sub-flag because it is *scoped*, not merely louder (§5). Rendering it as `DEBUG-4` (slog's default) would hide that distinction, so the level name is rewritten to `TRACE`.
 
-### Volume at 750 targets
+### Volume at 1000 targets
 
 | Level | Lines/day | Approx. size | Verdict |
 |---|---|---|---|
 | `info` | < 5,000 | ~2 MB | the normal operating point |
-| `debug` | ~430,000 | ~95 MB | temporary; enable, reproduce, disable |
-| `trace` (global) | ~430,000 × 5–10 stages | 0.5–1 GB | **not a sane steady state** |
+| `debug` | ~586,000 | ~130 MB | temporary; enable, reproduce, disable |
+| `trace` (global) | ~586,000 × 5–10 stages | 0.7–1.4 GB | **not a sane steady state** |
 | `trace` (one target) | ~1,500 | ~1 MB | the intended use |
 
 Flipping to `trace` globally logs a startup warning with that estimate. It is allowed for a bounded session and discouraged by the numbers, not by a prohibition the operator will route around.

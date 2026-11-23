@@ -52,8 +52,10 @@ func TestTLSReadsTheCertificate(t *testing.T) {
 	if res.NotAfter.IsZero() {
 		t.Fatal("NotAfter zero")
 	}
-	if res.Latency <= 0 {
-		t.Fatal("latency not measured")
+	// Latency is measured on loopback, where a coarse platform timer can read
+	// zero. The assertion is that it is not negative, not that it is non-zero.
+	if res.Latency < 0 {
+		t.Fatalf("latency = %v", res.Latency)
 	}
 }
 

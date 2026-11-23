@@ -910,7 +910,7 @@ All action endpoints are **implemented**: the debug scopes in §6.19, the tracer
 
 - It is a different contract with its own versioning conventions.
 - It is scraped by machines that do not speak JSON.
-- It carries aggregates only — `netweather_targets{state="down"}` and `netweather_incidents_open` — never per-target labels, or cardinality explodes at 750 targets.
+- It carries aggregates only — `netweather_targets{state="down"}` and `netweather_incidents_open` — never per-target labels, or cardinality explodes at 1000 targets.
 
 Off by default: set `NETWEATHER_METRICS=true` to mount it. When a UI token is configured the route requires the same bearer token, because the aggregates still describe the operator's fleet.
 

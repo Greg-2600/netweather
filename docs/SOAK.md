@@ -56,8 +56,8 @@ cannot live in a pull-request gate.
 ## Pass criteria
 
 - The process does not restart and exits cleanly on `docker compose down`.
-- Database growth is within the `SCHEMA.md` §16 estimate (roughly 480 MB steady
-  state at 750 targets; a few hundred MB at most for a real fleet).
+- Database growth is within the `SCHEMA.md` §16 estimate (roughly 640 MB steady
+  state at 1000 targets; a few hundred MB at most for a real fleet).
 - `dropped` and `write_errors` stay at zero.
 - No state flapping beyond the classifier's own low-confidence rule.
 - The probe rate is stable to within 10% across the run.

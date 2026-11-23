@@ -1,6 +1,7 @@
 // Package metrics exposes aggregate Prometheus text. It deliberately has no
-// per-target labels: 750 targets times several labels is a cardinality incident,
-// and the point of the endpoint is fleet-level health, not a second board.
+// per-target labels: labels multiplied across the fleet are a cardinality
+// incident, and the point of the endpoint is fleet-level health, not a second
+// board.
 package metrics
 
 import (

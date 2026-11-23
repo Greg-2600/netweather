@@ -700,7 +700,7 @@ func cloneShow(in map[string]int) map[string]int {
 }
 
 // normaliseDensity maps an unknown or empty value to the default. Compact is
-// the documented default: at 750 targets the wall of tiles must fit.
+// the documented default: at fleet scale the wall of tiles must fit.
 func normaliseDensity(density string) string {
 	if strings.EqualFold(strings.TrimSpace(density), densityComfortable) {
 		return densityComfortable

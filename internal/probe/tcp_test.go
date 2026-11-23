@@ -55,7 +55,9 @@ func TestTCPSucceedsOnConnect(t *testing.T) {
 	if res.Failed() {
 		t.Fatalf("Failed: %s", res.Err)
 	}
-	if res.Latency <= 0 {
+	// Latency is measured on loopback, where a coarse platform timer can read
+	// zero. The assertion is that it is not negative, not that it is non-zero.
+	if res.Latency < 0 {
 		t.Fatalf("latency = %v", res.Latency)
 	}
 }

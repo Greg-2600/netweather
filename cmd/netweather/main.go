@@ -135,7 +135,7 @@ func run(args []string, stdout io.Writer) error {
 		if cfg.Level == logging.LevelTrace {
 			lg.Warn("global TRACE is enabled",
 				"event", "log_volume_warning",
-				"estimate", "0.5-1 GB/day at 750 targets",
+				"estimate", "0.7-1.4 GB/day at 1000 targets",
 				"advice", "scope it instead: netweather debug enable --target <host> --level trace --for 10m (docs/LOGGING.md §5)",
 			)
 		}

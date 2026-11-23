@@ -565,7 +565,7 @@ body.auth {
 }
 
 /* Density: the comfortable lens trades screen count for readability
-   (DESIGN.md §10.2). Compact stays the default because 750 targets must fit. */
+   (DESIGN.md §10.2). Compact stays the default because the whole fleet must fit. */
 .board.density-comfortable .tiles {
   grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
   gap: 0.8rem;

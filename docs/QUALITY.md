@@ -304,7 +304,7 @@ Still specified: driving the **compiled binary** through the fake internet via i
 
 ### 5.4 E2E — real endpoints, as small as possible
 
-Six targets. Not 750. Runtime under ~10 seconds. Loose assertions, because the internet is not deterministic.
+Six targets. Not 1000. Runtime under ~10 seconds. Loose assertions, because the internet is not deterministic.
 
 | Target | Probe | Expectation |
 |---|---|---|

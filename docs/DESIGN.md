@@ -375,7 +375,7 @@ Hard constraints, all enforced in code:
 | **Separate baseline** | Tor RTT is 300ms–3s with huge variance; mixing corrupts every threshold |
 | **Expect 40–70% `BLOCKED`** | Exits are widely blocklisted; Cloudflare, banks, airlines refuse them outright |
 | **Never `primary`** | Tor cannot be a health authority |
-| **Target cap (default 25)** | 750 probes through exits is abusive to exit operators |
+| **Target cap (default 25)** | Probing the full fleet through exits is abusive to exit operators |
 | **Rate cap (default 1 probe / 2s)** | "Slowly" is a correctness requirement here, not politeness |
 | **Long timeouts (15–30s)** | Default 8s fails on slow circuits and produces false `DOWN`. The Tor runner bounds each probe at 30s, and the sequential loop means an unbounded circuit would stall every later target |
 | **Daily bandwidth budget, hard stop** | Prevents a runaway loop from becoming an incident |
@@ -489,7 +489,7 @@ The floor is applied **after** jitter, as a final clamp.
 ### 6.2 Concurrency and pacing
 
 - A 1-second dispatcher tick calls one deterministic `Step`; probes run one at a time, in due order, with per-host serialization and the global ceiling below
-- **Deliberately not a worker pool.** The earlier sketch had 64 workers and a `probe.workers` setting. The shipped loop is a single step so the scheduler rules are testable with an injected clock and no sleeping, and 750 targets at their intervals need a few probes per second, well inside the ceiling; a pool would add nondeterminism without buying throughput the workload needs
+- **Deliberately not a worker pool.** The earlier sketch had 64 workers and a `probe.workers` setting. The shipped loop is a single step so the scheduler rules are testable with an injected clock and no sleeping, and 1000 targets at their intervals need under seven probes per second, well inside the ceiling; a pool would add nondeterminism without buying throughput the workload needs
 - **Per-host semaphore = 1**, keyed by registrable domain, so `chase.com` and `www.chase.com` share a slot
 - **Global token bucket** ceiling (default 20 req/s) - a bad config cannot melt your connection or look like an attack. **Implemented:** the agent spaces probes by `1/rate`, with the rate from `schedule.RampRate`; `NETWEATHER_RATE_LIMIT` sets the ceiling (fractional values allowed, malformed or non-positive refuses startup), the first probe starts immediately, and a probe slower than the gap simply lowers the effective rate
 - **Single-flight per target** — never two probes of the same target concurrently
@@ -507,13 +507,13 @@ The floor is applied **after** jitter, as a final clamp.
 `netweather doctor` prints, and `/metrics` exports:
 
 ```
-targets: 750 (service 400, country 250, network 100, reference 10)
-effective rate: 4.1 probes/s
-blocked share: 11.2%   unmeasurable: 38
-asn coverage: 341   countries: 96   top-ASN share: 14.3% (Cloudflare)
+targets: 1000 (service 406, country 459, network 125, reference 10)
+effective rate: 6.8 probes/s
+blocked share: 0.2%   unmeasurable: 0
+asn coverage: 204   countries: 249   top-ASN share: 3.5% (DoD)
 ```
 
-This exists because at 750 targets, **interval choice is the whole ballgame**, and users will get it wrong.
+This exists because at this fleet size, **interval choice is the whole ballgame**, and users will get it wrong.
 
 **Implemented:** `netweather doctor` opens the database read-only (no migration, no write pool) and prints a three-line fleet block: target count by class, scheduled probes per second (sum of 1/interval), blocked share, unmeasurable count, distinct ASN and country coverage, and the most common ASN with its share. A host with no database yet says so instead of failing. `/metrics` exports the same numbers as `netweather_targets_class{class=...}`, `netweather_probe_rate_per_second`, `netweather_blocked_share`, `netweather_unmeasurable_targets`, `netweather_asn_coverage`, `netweather_countries`, `netweather_top_asn_share`, and a single `netweather_top_asn{asn,name}` series.
 
@@ -523,7 +523,7 @@ The sketch's `peak concurrency` is deliberately absent: the shipped probe loop i
 
 Two problems, both solved at `t=0`.
 
-**No burst.** 750 targets due at the same instant is a 750-probe spike: it saturates the pool, blows a minute of egress budget, and is the single most scan-like thing this tool ever does. Initial scheduling is spread uniformly across the first interval:
+**No burst.** 1000 targets due at the same instant is a 1000-probe spike: it saturates the pool, blows a minute of egress budget, and is the single most scan-like thing this tool ever does. Initial scheduling is spread uniformly across the first interval:
 
 ```
 first_run(t) = now + rand(0, 0.95 * interval(t))
@@ -614,7 +614,7 @@ trigger when:  health < median - 3 * 1.4826 * MAD
 
 Probe cadence and detection cadence are different things, and conflating them is the bug this section exists to prevent.
 
-Tier 2 targets are probed every 300–600s. If scope health were computed by counting probes that landed inside a 5-minute bucket, a 600s target would contribute one observation to one bucket and zero to the next, and health would oscillate purely from sampling. At 750 targets that produces a sawtooth that looks exactly like a slow-motion incident.
+Tier 2 targets are probed every 300–600s. If scope health were computed by counting probes that landed inside a 5-minute bucket, a 600s target would contribute one observation to one bucket and zero to the next, and health would oscillate purely from sampling. At 1000 targets that produces a sawtooth that looks exactly like a slow-motion incident.
 
 So:
 
@@ -638,7 +638,7 @@ Consequences, stated plainly:
 - `rollup_5m` is kept for per-target history, the drawer, and coverage trends. It is **not** the correlation input.
 - `probe.bucket_30s` survives because attribution uses it to show two fast-tier failures shared a 30-second window; slow-tier targets are attributed by state, never by bucket.
 
-Why baseline-relative: with 750 public targets, **3–10 are genuinely unreachable at any moment.** A fixed threshold screams daily. A Tuesday 14:00 dip is not a Saturday 03:00 dip.
+Why baseline-relative: with hundreds of public targets, **3–10 are genuinely unreachable at any moment.** A fixed threshold screams daily. A Tuesday 14:00 dip is not a Saturday 03:00 dip.
 
 A bucket needs at least **21 of 28** samples before it is usable; below that the scope stays in `LEARNING` (§6.5). Two consecutive missing buckets (a restart, a suspend) are tolerated by dropping the bucket, not by imputing it.
 
@@ -917,7 +917,7 @@ The same state is exposed machine-readably under `/api/v1`; the contract, envelo
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ ● Internet healthy        Health 98.7%  (normal 97.9–99.2%)  │
-│   last cycle 12s ago · 750 targets · 38 unmeasurable          │
+│   last cycle 12s ago · 1000 targets · 0 unmeasurable          │
 ├──────────────────────────────────────────────────────────────┤
 │ IHI 94  ▁▂▁▃▂▁▁▂▃▁▁▂▁▁▂▁▁▂▁▁▂▁▁▂▁▁▂▁▁▂▁▁▂▁▁▂ 24h           │
 ├──────────────────────────────────────────────────────────────┤
@@ -948,7 +948,7 @@ The wall of favicons. Grouping is a toggle: **sector (default)** · state · CDN
 
 **Implemented:** tiles render a generated square icon per target (`/icon/{id}.svg`): the name's initial on a colour derived from the host. It is generated rather than fetched, because pulling `/favicon.ico` from every target would add requests with no measurement justification (`ACCEPTABLE_USE.md`). The icon is session-protected like the board, and each tile keeps its state colour, text, corner stage badge, and accessible name.
 
-- **Compact** (default at 750+): 40-48px tiles, ring colour + corner stage badge (`DNS`/`TLS`/`403`/`429`). ~760 per screen, so 750 targets is about one screen - no virtualisation needed.
+- **Compact** (default at 750+): 40-48px tiles, ring colour + corner stage badge (`DNS`/`TLS`/`403`/`429`). ~760 per screen, so 1000 targets is just over one screen — still no virtualisation needed.
 - **Comfortable**: 96px tiles, name + 24h sparkline. Paginated by group, never all at once.
 
 **Implemented:** both densities exist as a toggle (`/?density=comfortable`). Compact is the default; comfortable widens the grid and enlarges the tile, name, and icon. Every toggle link preserves the other view state (grouping lens, focus mode, country and region filters, density), so switching one control cannot silently reset another. An unknown density falls back to compact rather than returning an error. Comfortable density also draws a 24-hour availability shape per tile, from one batch rollup query for the visible set rather than one query per target; a target with no history, a failed query, or a deployment without the batch reader simply omits the shape instead of fabricating one. It is decorative and hidden from assistive technology, because the state text already carries the meaning. Comfortable density pages each group: the first page renders 60 tiles, and a group with more says how many are behind it with "Show more" and "Show all" links. The page sizes travel in `?show=<group>:<n>,…`, so any group can be paged independently and every link preserves the other view controls; a malformed value falls back to the first page rather than returning an error, and compact never pages because it is the lens designed to fit.
@@ -1092,13 +1092,13 @@ Click any tile:
 The blind-spot report. Required, not optional:
 
 ```
-ASNs: 341    Countries: 96
-Top-ASN share: 14.3% (Cloudflare)  ✓
-Top-10 share:  41.2%               ✓
-Measurable:    94.9% (712/750)     ✓
-⚠ 12 countries have a single anchor — no redundancy
-⚠ 38 targets are unmeasurable (bot-walled)
-⚠ 2 sectors below 50% measurable — health UNKNOWN
+ASNs: 204    Countries: 249
+Top-ASN share: 3.5% (DoD)          ✓
+Top-10 share:  12.7%               ✓
+Measurable:    99.5% (995/1000)    ✓
+⚠ 208 countries have a single anchor — no redundancy
+⚠ 0 targets are marked unmeasurable
+⚠ 0 sectors below 50% measurable — health UNKNOWN
 ```
 
 **Implemented:** `/coverage` carries the concentration block above the tables: distinct ASNs and countries, the top ASN with its share and the top-10 share, a count of countries with exactly one country anchor, a count of sectors below 50% measurable, and the unmeasurable total. `store.Coverage` computes it in the same read as the rest of the panel (one query for the distinct counts, one for the ten largest ASNs, one for single-anchor countries), so the page cannot show a total that disagrees with the concentration beside it. `GET /api/v1/coverage` exposes the same block as `concentration`.
@@ -1158,22 +1158,22 @@ Every probe and rollup row carries `vantage_id`, and rollups are keyed `(target_
 
 | Tier | Retention | Est. size |
 |---|---|---|
-| Raw probes | 72h | ~170 MB |
+| Raw probes | 72h | ~230 MB |
 | Incident-pinned raw probes | 1y | small (bounded by incident count) |
-| 5-minute rollups | 7d | ~80 MB |
-| Hourly rollups | 30d | ~32 MB |
-| Daily rollups | 1y | ~16 MB |
-| Scope samples (the hour-of-week baseline) | 28 weeks | ~140 MB |
+| 5-minute rollups | 7d | ~110 MB |
+| Hourly rollups | 30d | ~44 MB |
+| Daily rollups | 1y | ~21 MB |
+| Scope samples (the hour-of-week baseline) | 28 weeks | ~190 MB |
 | Incidents | forever | small |
 | Anomalies, external events, egress moves | 90d | small |
 | Self-checks | 30d | small |
 | Atypical days (baseline calendar) | forever | one row per day per scope |
 
-Steady state ≈ **480 MB** for 750 targets at ~430k probes/day, with a hard ceiling well under 1 GB. The maintenance tick (ten minutes) folds and prunes in batches of ≤5000 rows, and **one write transaction per dispatcher tick** — never one fsync per probe.
+Steady state ≈ **640 MB** for the 1000-target field-trial fleet at ~586k probes/day, with a hard ceiling well under 1 GB. The maintenance tick (ten minutes) folds and prunes in batches of ≤5000 rows, and **one write transaction per dispatcher tick** — never one fsync per probe.
 
 **Implemented, the prune:** `store.Prune` deletes raw probes in 5,000-row batches, then the archive at one year, then the three rollup tiers at 7/30/365 days, then `anomaly`, `external_event`, and `vantage_change` at 90 days, `self_check` at 30 days, and `scope_sample` at the 28-week baseline window. Feed events are aged on `observed_at`, so an event a feed is still reporting keeps refreshing and a long outage is not deleted while it is current; an anomaly is aged on its own timestamp, and an egress move on `changed_at`. Incidents and the atypical-day calendar are never pruned.
 
-**Rollups are incremented, never recomputed.** Each tick upserts into the current 5-minute bucket; hourly is folded from 5-minute at bucket close; daily from hourly. Recomputing a 5-minute rollup by scanning raw probes is the one query that would make this design slow at 750 targets.
+**Rollups are incremented, never recomputed.** Each tick upserts into the current 5-minute bucket; hourly is folded from 5-minute at bucket close; daily from hourly. Recomputing a 5-minute rollup by scanning raw probes is the one query that would make this design slow at this fleet size.
 
 Rollup latency columns are **EWMA, not percentiles**, and are named `ewma50_ms` / `ewma95_ms` in the schema. Calling an EWMA a p95 is the kind of quiet lie this project exists to avoid.
 
@@ -1221,7 +1221,7 @@ networks:
       com.docker.network.driver.mtu: 1400
 ```
 
-- ~20 MB image, ~80 MB RSS at 750 targets
+- ~20 MB image, ~80 MB RSS at field-trial scale
 - Multi-arch: linux/amd64, linux/arm64
 - Egress only; no inbound required except the UI port (2600)
 - **Ships with 14 targets.** `netweather seed` generates sector/country lists for users who want scale

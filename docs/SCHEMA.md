@@ -1,6 +1,6 @@
 # netweather — Storage schema
 
-> SQLite, WAL, `modernc.org/sqlite` (pure Go). One writer, many readers, append-only raw probes, incremental rollups. Sized for 750 targets at steady state in ~340 MB.
+> SQLite, WAL, `modernc.org/sqlite` (pure Go). One writer, many readers, append-only raw probes, incremental rollups. Sized for the 1000-target field-trial fleet; §16 estimates ~640 MB steady state.
 
 ---
 
@@ -10,7 +10,7 @@
 2. **Raw probes are the only append-only truth.** Every other table is derived and can be rebuilt from raw probes plus archives. This is what makes a rollup bug recoverable instead of permanent.
 3. **One writer.** A single dedicated connection owns every write. Readers are separate connections with `query_only=1`, so a slow dashboard query cannot block an insert.
 4. **UTC everywhere, milliseconds, integer.** No `TEXT` timestamps, no local time in storage. Local time exists only at render.
-5. **Rollups are incremented, never recomputed.** Scanning raw probes to rebuild a 5-minute bucket is the one query that would make this design slow at 750 targets.
+5. **Rollups are incremented, never recomputed.** Scanning raw probes to rebuild a 5-minute bucket is the one query that would make this design slow at this fleet size.
 6. **Stable identity.** A target's ID is a ULID keyed on `(host, port, probe)`. If that triple changes, it is a new target; the old row is disabled, never deleted, so history survives a config edit.
 7. **Bodies are never stored.** `probe.detail` holds one human-readable line, capped at 200 bytes. Recorded responses live in `testdata/`, not in the database.
 
@@ -672,7 +672,7 @@ A day listed in the operator's calendar, or one the both-direction rule marks wh
 | `external_event` | 90d | 10 min | |
 | `vantage_change` | 90d | 10 min | The board reads the newest row and shows it for 24h |
 | `atypical_day` | forever | - | One row per day per excluded scope; the baseline calendar |
-| `coverage_snapshot` | forever | - | 750 rows/day worst case |
+| `coverage_snapshot` | forever | - | 1000 rows/day worst case |
 
 Deletion is batched and never a single unbounded `DELETE`:
 
@@ -705,7 +705,7 @@ BEGIN IMMEDIATE
 COMMIT
 ```
 
-At 750 targets the tick completes ~4 rows/s. That is trivial for SQLite; the failure mode to avoid is per-probe commits, which turn ~4 fsyncs/s into ~4 fsyncs *per probe* under load.
+At 1000 targets the tick completes ~6.8 rows/s. That is trivial for SQLite; the failure mode to avoid is per-probe commits, which turn ~6.8 fsyncs/s into ~6.8 fsyncs *per probe* under load.
 
 `BEGIN IMMEDIATE` takes the write lock up front, which avoids the deferred-transaction upgrade deadlock that produces `SQLITE_BUSY` under concurrent readers.
 
@@ -823,23 +823,23 @@ WHERE t.enabled = 1;
 
 ## 16. Sizing
 
-At 750 targets, ~5 probes/s, ~430k probes/day:
+At the 1000-target field-trial fleet, ~6.8 probes/s, ~586k probes/day:
 
 | Table | Rows/day | Bytes/row | Steady size |
 |---|---|---|---|
-| `probe` | 430,000 | ~55 + ~75 across indexes | ~170 MB at 72h |
-| `rollup_5m` | ~190,000 | ~60 | ~80 MB at 7d |
-| `rollup_1h` | ~17,500 | ~60 | ~32 MB at 30d |
-| `rollup_1d` | 750 | ~60 | ~16 MB at 1y |
-| `state_change` | ~200 | ~80 | ~5 MB at 1y |
-| `scope_sample` | ~1,900 | ~70 | ~140 MB at 28 weeks (the hour-of-week window) |
-| `self_check` | ~1,300 | ~60 | ~2 MB at 30d |
+| `probe` | 586,000 | ~55 + ~75 across indexes | ~230 MB at 72h |
+| `rollup_5m` | ~260,000 | ~60 | ~110 MB at 7d |
+| `rollup_1h` | ~24,000 | ~60 | ~44 MB at 30d |
+| `rollup_1d` | 1000 | ~60 | ~21 MB at 1y |
+| `state_change` | ~270 | ~80 | ~7 MB at 1y |
+| `scope_sample` | ~2,500 | ~70 | ~190 MB at 28 weeks (the hour-of-week window) |
+| `self_check` | ~1,700 | ~60 | ~3 MB at 30d |
 | `external_event` | < 200 | ~1 KB | ~18 MB at 90d |
-| `coverage_snapshot` | 750 | ~60 | ~16 MB at 1y |
+| `coverage_snapshot` | 1000 | ~60 | ~21 MB at 1y |
 
-Steady state ≈ **480 MB**, with a hard ceiling well under 1 GB. If a deployment exceeds that, the first suspect is a rollup job recomputing instead of incrementing (§6.1). The scope samples are the largest single addition over the raw-probe estimate: 28 weeks of hourly health per scope is what the baseline reads, so the window is policy rather than an accident.
+Steady state ≈ **640 MB**, with a hard ceiling well under 1 GB. If a deployment exceeds that, the first suspect is a rollup job recomputing instead of incrementing (§6.1). The scope samples are the largest single addition over the raw-probe estimate: 28 weeks of hourly health per scope is what the baseline reads, so the window is policy rather than an accident.
 
-The row counts follow from `DESIGN.md` §6.1: tier 0 at 30s, tiers 1 and 3 at 120s, tier 2 at a 450s midpoint. If an operator shortens intervals, storage scales linearly and the ceiling arrives sooner — which is why the interval floor is enforced in code rather than trusted to config.
+The row counts follow from `DESIGN.md` §6.1: references at 600s, tiers 1 and 3 at 120s, tier 2 at 300s. If an operator shortens intervals, storage scales linearly and the ceiling arrives sooner — which is why the interval floor is enforced in code rather than trusted to config.
 
 ---
 
@@ -877,7 +877,7 @@ Stale targets leave numerator and denominator and reduce `coverage`, which is co
 ### 18.2 Open
 
 1. **Latency percentiles.** §6.2 chose EWMA over true percentiles and renamed the columns. If `DEGRADED` needs real p95s, add a 16-bucket histogram BLOB.
-2. **Partition raw probes by day** into attached databases. Unnecessary at 340 MB; would make 72h retention a file drop. Revisit only above ~5 GB.
+2. **Partition raw probes by day** into attached databases. Unnecessary at ~640 MB; would make 72h retention a file drop. Revisit only above ~5 GB.
 3. **`WITHOUT ROWID` on `probe`.** Rejected: rowid is the cursor for pagination and gives free insert ordering.
 4. **Should `target_state` be rebuilt on startup** from `state_change`, or trusted as authoritative with a repair job? Currently trusted, rebuilt only on `VANTAGE_CHANGED` or a schema migration.
 5. **Dual-stack rows.** `probe.family` exists so a v6-only failure can be represented without a migration, but the state semantics are still open (`DESIGN.md` §16 item 7).

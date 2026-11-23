@@ -848,8 +848,8 @@ func (a *Agent) primeLocked(now time.Time) {
 		if _, ok := a.next[t.ID]; ok {
 			continue
 		}
-		// Cold start: spread first runs across the first interval so 750 targets
-		// do not fire in the same second (DESIGN.md §6.5).
+		// Cold start: spread first runs across the first interval so the whole
+		// fleet does not fire in the same second (DESIGN.md §6.5).
 		a.next[t.ID] = now.Add(schedule.FirstRun(t.Interval, a.Rand))
 	}
 }
