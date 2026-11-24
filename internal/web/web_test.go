@@ -2057,7 +2057,7 @@ func TestCoverageTrend(t *testing.T) {
 	}
 
 	if got := strings.Count(page, `data-testid="trend-row"`); got != 2 {
-		t.Fatalf("trend rows = %d, want 2", got)
+		t.Fatalf("trend rows = %d, want 2, body=%q", got, page)
 	}
 	for _, want := range []string{"2026-11-15", "2026-11-16", "100%", "80%", "80/100"} {
 		if !strings.Contains(page, want) {
@@ -2135,7 +2135,7 @@ func TestCoveragePage(t *testing.T) {
 		`data-testid="stale-row"`,
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("coverage page missing %q", want)
+			t.Errorf("coverage page missing %q, body=%q", want, page)
 		}
 	}
 }
@@ -4598,7 +4598,7 @@ func TestCoveragePanelMarksTheLowCoverageBand(t *testing.T) {
 	// Only the 2-of-10 sector is in the documented middle band; the 22-of-25
 	// sector clears both the ratio and the absolute floor.
 	if got := strings.Count(page, `data-testid="low-coverage"`); got != 1 {
-		t.Fatalf("low-coverage markers = %d, want 1:\n%s", got, page)
+		t.Fatalf("low-coverage markers = %d, want 1, body=%q", got, page)
 	}
 	if !strings.Contains(page, `class="low-coverage"`) {
 		t.Error("the low-coverage row does not carry the hatch class")
@@ -4864,7 +4864,7 @@ func TestCoveragePanelShowsTheConcentrationBlock(t *testing.T) {
 		`data-testid="coverage-unmeasurable"`, "11 targets are unmeasurable",
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("coverage block missing %q", want)
+			t.Errorf("coverage block missing %q, body=%q", want, page)
 		}
 	}
 }
