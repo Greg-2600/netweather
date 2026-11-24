@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Coverage · netweather</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  {{template "insecure" .}}
+  <header class="bar">
+    <a class="brand" href="/">netweather</a>
+    <a class="nav" href="/atlas">Atlas</a>
+    <a class="nav" href="/world">World</a>
+    <a class="nav" href="/corridors">Corridors</a>
+    <a class="nav" href="/coverage">Coverage</a>
+    <a class="nav" href="/incidents">Incidents</a>
+    <a class="nav" href="/feeds">Feeds</a>
+    <a class="nav" href="/hubs">Hubs</a>
+    <a class="nav" href="/map">Map</a>
+  </header>
+
+  <main>
+    <h1 class="page-title">Coverage</h1>
+    <p class="muted" data-testid="coverage-summary">
+      {{.Measurable}} of {{.Total}} targets measurable ({{.Coverage}}).
+      This panel reports what the monitor can see, not what is healthy.
+    </p>
+
+    <div class="concentration" data-testid="coverage-concentration">
+      <p>
+        <span data-testid="concentration-asns">ASNs: {{.Concentration.ASNs}}</span>
+        <span class="muted" aria-hidden="true">·</span>
+        <span data-testid="concentration-countries">Countries: {{.Concentration.Countries}}</span>
+      </p>
+      {{if .Concentration.TopASN}}
+      <p class="muted small">
+        Top-ASN share: <span data-testid="top-asn-share">{{.Concentration.TopASNShare}}</span>
+        ({{.Concentration.TopASN}})
+        <span aria-hidden="true">·</span>
+        Top-10 share: <span data-testid="top10-share">{{.Concentration.Top10Share}}</span>
+      </p>
+      {{end}}
+      {{if .Concentration.SingleAnchor}}
+      <p class="warn" data-testid="single-anchor">
+        {{.Concentration.SingleAnchor}} countries have a single anchor - no redundancy
+      </p>
+      {{end}}
+      {{if .Concentration.ThinSectors}}
+      <p class="warn" data-testid="thin-sectors">
+        {{.Concentration.ThinSectors}} sectors below 50% measurable - health UNKNOWN
+      </p>
+      {{end}}
+      {{if .Unmeasurable}}
+      <p class="muted small" data-testid="coverage-unmeasurable">
+        {{.Unmeasurable}} targets are unmeasurable (bot-walled)
+      </p>
+      {{end}}
+    </div>
+
+    <h2 class="section-title">Trend</h2>
+    {{if .Trend}}
+    <table class="probes" data-testid="coverage-trend">
+      <thead><tr><th>Day</th><th>Coverage</th><th>Measured</th></tr></thead>
+      <tbody>
+        {{range .Trend}}
+        <tr data-testid="trend-row">
+          <td class="mono">{{.Day}}</td>
+          <td><span class="trend-bar mono" aria-hidden="true">{{.Bar}}</span> {{.Coverage}}</td>
+          <td class="mono">{{.Measured}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="muted" data-testid="no-trend">{{.TrendNote}}</p>
+    {{end}}
+
+    <h2 class="section-title">Blind spots</h2>
+    {{if .BlindSpots}}
+    <table class="probes" data-testid="blind-spots">
+      <thead><tr><th>Kind</th><th>Value</th><th>Measured</th><th>Total</th><th>Coverage</th></tr></thead>
+      <tbody>
+        {{range .BlindSpots}}
+        <tr data-testid="blind-spot" data-kind="{{.Kind}}" data-value="{{.Value}}">
+          <td>{{.Kind}}</td>
+          <td class="mono">{{.Value}}</td>
+          <td>{{.Measured}}</td>
+          <td>{{.Total}}</td>
+          <td data-coverage="{{.Coverage}}">{{.Coverage}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="muted" data-testid="no-blind-spots">
+      No country or ASN bucket has five or more targets with under 50% measurable.
+    </p>
+    {{end}}
+    <p class="muted small">
+      A sector marked <b>low</b> is under 80% measurable; <b>small</b> means an
+      adequately measured sector with fewer than 20 measurable targets, so its
+      percentage is noisy rather than weak.
+    </p>
+
+    <h2 class="section-title">Sectors</h2>
+    {{if .Sectors}}
+    <table class="probes" data-testid="sector-coverage">
+      <thead><tr><th>Sector</th><th>Measured</th><th>Total</th><th>Coverage</th></tr></thead>
+      <tbody>
+        {{range .Sectors}}
+        <tr data-testid="sector-row" data-measurable="{{.Measured}}"{{if .Low}} class="low-coverage"{{else if .Small}} class="small-coverage"{{end}}>
+          <td>{{.Value}}</td>
+          <td>{{.Measured}}</td>
+          <td>{{.Total}}</td>
+          <td>{{.Coverage}}{{if .Low}} <span class="low-coverage-badge" data-testid="low-coverage" title="Under 80% measurable; this coverage is genuinely weak.">low</span>{{else if .Small}} <span class="small-coverage-badge" data-testid="small-coverage" title="Fewer than 20 measurable targets; the percentage is noisy even at 100%.">small</span>{{end}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="muted">No sectors configured.</p>
+    {{end}}
+
+    <h2 class="section-title">Stale targets</h2>
+    {{if .Stale}}
+    <table class="probes" data-testid="stale-targets">
+      <thead><tr><th>Host</th><th>State</th><th>Last probe</th><th>Age</th></tr></thead>
+      <tbody>
+        {{range .Stale}}
+        <tr data-testid="stale-row">
+          <td class="mono"><a href="/targets/{{.ID}}">{{.Host}}</a></td>
+          <td>{{.State}}</td>
+          <td class="mono">{{.LastProbe}}</td>
+          <td>{{.Age}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="muted" data-testid="no-stale">
+      Every target has been probed within three of its own intervals.
+    </p>
+    {{end}}
+  </main>
+</body>
+</html>
+

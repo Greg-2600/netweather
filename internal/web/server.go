@@ -2644,7 +2644,7 @@ func (s *server) handleCoverage(w http.ResponseWriter, r *http.Request) {
 	if err := s.tmpl.ExecuteTemplate(&rendered, "coverage.html", view); err != nil {
 		s.deps.Logger.Error("coverage template failed",
 			"event", "template_failed", "component", "http", "template", "coverage.html", "error", err)
-		http.Error(w, fmt.Sprintf("coverage unavailable: %v", err), http.StatusInternalServerError)
+		http.Error(w, "coverage unavailable", http.StatusInternalServerError)
 		return
 	}
 	_, _ = w.Write(rendered.Bytes())
