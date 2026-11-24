@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: If you use this software, please cite it using the metadata from 'CITATION.cff'.
+type: software
+title: netweather
+version: 1.0.0
+date-released: '2026-11-24'
+license: Apache-2.0
+repository-code: 'https://github.com/Greg-2600/netweather'
+abstract: >-
+  Self-hosted internet weather station in Go that probes the public internet
+  (HTTP, TLS, TCP, DNS, DoH, DoT, QUIC, NTP, ICMP) from a single hardened
+  container and classifies whether an outage is widespread, limited to a
+  service, or local to your connection.
+authors:
+  - given-names: Greg
+    family-names: Baker
+    alias: Greg-2600
+    orcid: 'https://orcid.org/0009-0002-3931-8799'
+keywords:
+  - internet measurement
+  - outage detection
+  - Go
+  - Docker
+  - network monitoring
+  - DNS
+  - self-hosted
