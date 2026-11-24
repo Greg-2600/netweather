@@ -32,12 +32,10 @@ services:
       # shipped seed list is used.
       # NETWEATHER_CONFIG: /config/targets.yaml
       #
-      # Tor is a separate profile (compose --profile tor) and off by default.
-      # The sidecar is useless without the client, and the client fails loudly
-      # when the sidecar is missing. The socks endpoint names the service
-      # because the sidecar is another container; it is inert until
-      # NETWEATHER_TOR is true.
-      # NETWEATHER_TOR: "true"
+      # The app enables this unpinned Tor vantage at startup:
+      # NETWEATHER_TOR=true. The deployment sets it explicitly. The sidecars
+      # below exist only under --profile tor and fail loudly if their service
+      # is missing. Their SOCKS endpoints must match the same service names.
       NETWEATHER_TOR_SOCKS: tor:9050
       # Daily volume budget for the tor vantage. Counted on the SOCKS
       # connection; 0 disables it.
@@ -82,6 +80,9 @@ services:
   # pinned exit country, then `NETWEATHER_TOR_VANTAGES` names the SOCKS
   # endpoints. A country label is only trusted after the monitor checks the
   # real exit through that proxy (docs/ACCEPTABLE_USE.md §8).
+  # Field-trial list:
+  # DE=tor-de:9050,JP=tor-jp:9050,AU=tor-au:9050,
+  # SG=tor-sg:9050,CL=tor-cl:9050,MX=tor-mx:9050
   tor:
     # Built from this repository's Dockerfile.tor, not a third-party image: the
     # client-only torrc is baked in, so an operator cannot turn the proxy into

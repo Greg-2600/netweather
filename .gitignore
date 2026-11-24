@@ -22,7 +22,7 @@ backup-*.db
 /testdata/tmp/
 /testdata/out/
 coverage.out
-coverage.html
+/coverage.html
 
 # Editors and OS
 .idea/

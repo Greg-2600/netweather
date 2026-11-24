@@ -1,0 +1,7 @@
+title = "netweather gitleaks allowlist"
+
+[allowlist]
+description = "Tor control configuration contains a deliberately non-secret hashed control password used by the client-only sidecar."
+paths = [
+  '''(?i)(^|/)torrc$''',
+]

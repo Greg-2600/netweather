@@ -117,6 +117,9 @@ func (p *DoT) do(ctx context.Context, server, name string, qtype dnsmessage.Type
 	if err := tlsConn.HandshakeContext(lookupCtx); err != nil {
 		out.Latency = time.Since(start)
 		out.ErrorClass = "dot_tls"
+		if lookupCtx.Err() != nil || classifyExchangeError(err) == "dns_timeout" {
+			out.ErrorClass = "dot_timeout"
+		}
 		out.Err = err
 		return out
 	}

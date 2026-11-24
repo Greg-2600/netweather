@@ -27,6 +27,16 @@
       <p class="muted" data-testid="incident-closed">Closed {{.ClosedAt}} — {{.ClosedReason}}</p>
       {{end}}
 
+      <h2 class="section-title">Timeline</h2>
+      <ol class="incident-timeline" data-testid="incident-timeline">
+        {{range .Timeline}}
+        <li class="incident-timeline-{{.State}}">
+          <time class="mono">{{.Time}}</time>
+          <span>{{.Text}}</span>
+        </li>
+        {{end}}
+      </ol>
+
       <h2 class="section-title">Attribution</h2>
       {{if .Attribution}}
       <table class="probes" data-testid="attribution">

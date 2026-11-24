@@ -303,7 +303,9 @@ Degradation is mandatory:
 
 ### 5.6 Vantage points
 
-A vantage point is **where a probe originates**. Today there is exactly one (your container). That is the project's biggest limitation: one box cannot distinguish "down" from "down for me."
+A vantage point is **where a probe originates**. The direct container path is
+always `local`; the Tor stack may add corroborating vantages but never the
+primary health verdict.
 
 Vantages make that explicit, and let you add more without shipping a second container to a friend's house.
 
@@ -335,7 +337,9 @@ Rules:
 - Instruments are declared per vantage, because a vantage may not support all of them (§5.7).
 - **Timeouts are per-vantage.** A Tor handshake routinely exceeds the 8s that is generous on a direct path.
 
-**Implemented, the shipped configuration surface:** the target file has no `vantages:` block. The direct vantage is implicit (`local`, `direct`, `primary`), and the Tor vantage is enabled by environment: `NETWEATHER_TOR=true`, `NETWEATHER_TOR_SOCKS` (default `tor:9050`), an optional verified `NETWEATHER_TOR_EXIT_COUNTRY`, `NETWEATHER_TOR_MAX` (default 25 targets), and `NETWEATHER_TOR_DAILY_MB` (default 50 MB). The agent applies the 2s pace and ten-minute interval floor from §5.7. The YAML above is the intended general shape, not input the binary accepts today: a second source of truth for the same knobs is the drift `DESIGN.md` §13.2 rejects. The rules still hold — a non-primary vantage is stored under its own vantage id and can never move a target to `DOWN`.
+**Implemented, the shipped configuration surface:** the target file has no `vantages:` block. The direct vantage is implicit (`local`, `direct`, `primary`). The app enables the unpinned Tor vantage with `NETWEATHER_TOR=true` and uses `tor:9050` in Compose. `NETWEATHER_TOR_EXIT_COUNTRY` enables one pinned exit; `NETWEATHER_TOR_VANTAGES` enables several with `CC=host:port` entries:
+`DE=tor-de:9050,JP=tor-jp:9050,AU=tor-au:9050,SG=tor-sg:9050,CL=tor-cl:9050,MX=tor-mx:9050`.
+`NETWEATHER_TOR_MAX` defaults to 25 targets per exit and `NETWEATHER_TOR_DAILY_MB` defaults to 50 MB per exit. The agent applies the 2s pace and ten-minute interval floor from §5.7. The YAML above is the intended general shape, not input the binary accepts today: a second source of truth for the same knobs is the drift `DESIGN.md` §13.2 rejects. The rules still hold — a non-primary vantage is stored under its own vantage id and can never move a target to `DOWN`.
 
 #### The abstraction: one dialer
 
@@ -397,6 +401,14 @@ Point at **any** SOCKS5 endpoint — Tor, an SSH tunnel, a VPN, a corporate prox
 ```
 
 This keeps the main image small, keeps Tor security updates independent of the release cycle, and lets users reuse a proxy they already run. The sidecar is built from this repository's `Dockerfile.tor` so the client-only `torrc` is baked in rather than mounted: a forgotten mount cannot turn the proxy into an exit relay. An all-in-one image with `tor` + `s6-overlay` is acceptable as an optional variant, but it is not the default.
+
+Every Tor service is behind `profiles: ["tor"]`, so `docker compose up -d`
+does not create it. `docker compose --profile tor up -d` starts seven local
+images: `netweather-tor:local` plus
+`netweather-tor-de/jp/au/sg/cl/mx:local`. None publishes a port. The six pinned
+sidecars stay idle until `NETWEATHER_TOR_VANTAGES` is set to the exact
+service-name list above. A pinned label is trusted only after exit verification
+through that proxy.
 
 #### Client-only torrc
 
@@ -686,6 +698,12 @@ CDN inference comes free from response headers even on failure:
 | `x-iinfo`, `visid_incap` | Imperva |
 
 Attribution is the highest-value output of the whole system. "8 sites down" is noise; "17 of 21 Akamai targets down" is an incident report.
+
+**Implemented, public incident timeline:** `/incidents/{id}` renders a short
+chronological timeline from the incident row: opened, closed with reason, and
+operator annotation. It uses no separate status-page model or migration. The
+existing attribution, affected targets, feed corroboration, archived probes,
+and ground-truth annotation remain as supporting detail.
 
 ### 7.4 Confirmation rules
 
@@ -1220,6 +1238,13 @@ networks:
     driver_opts:
       com.docker.network.driver.mtu: 1400
 ```
+
+`secrets/ui_token` is a startup dependency. It must be mode `600` and owned
+by UID/GID `65532:65532`; the app refuses a readable-by-group-or-world token
+file and a wrong bind-mount owner or mode can cause it to crash-loop. Deploy
+scripts copy the token into a secret volume with those permissions. Docker
+Desktop bind mounts cannot carry Unix ownership, so manual Windows deploys
+should use a named volume or secret.
 
 - ~20 MB image, ~80 MB RSS at field-trial scale
 - Multi-arch: linux/amd64, linux/arm64

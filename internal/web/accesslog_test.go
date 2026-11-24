@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -77,6 +78,25 @@ func TestBoardRequestsAreLogged(t *testing.T) {
 	}
 	if method, _ := rec["method"].(string); method != http.MethodGet {
 		t.Errorf("method = %v", rec["method"])
+	}
+}
+
+func TestAppStylesUseReadableNativeFont(t *testing.T) {
+	t.Parallel()
+
+	css, err := os.ReadFile("static/app.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(css)
+	for _, want := range []string{
+		"font: 16px/1.5",
+		"text-rendering: optimizeLegibility",
+		"-webkit-font-smoothing: antialiased",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("app.css missing %q", want)
+		}
 	}
 }
 
