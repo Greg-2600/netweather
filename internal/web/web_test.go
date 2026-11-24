@@ -2036,8 +2036,6 @@ func newServerWithCoverageTrend(t *testing.T, token string, m *board.Memory, cov
 }
 
 func TestCoverageTrend(t *testing.T) {
-	t.Parallel()
-
 	cov := &fakeCoverage{cov: store.Coverage{
 		Totals: store.CoverageTotals{Total: 100, Measurable: 80},
 	}}
@@ -2067,8 +2065,6 @@ func TestCoverageTrend(t *testing.T) {
 }
 
 func TestCoverageTrendEmptyAndUnavailable(t *testing.T) {
-	t.Parallel()
-
 	cov := &fakeCoverage{cov: store.Coverage{Totals: store.CoverageTotals{Total: 10, Measurable: 9}}}
 
 	ts := newServerWithCoverageTrend(t, testToken, fixture(), cov, &fakeCoverageHistory{})
@@ -2103,8 +2099,6 @@ func TestCoverageTrendEmptyAndUnavailable(t *testing.T) {
 }
 
 func TestCoveragePage(t *testing.T) {
-	t.Parallel()
-
 	cov := &fakeCoverage{cov: store.Coverage{
 		Totals: store.CoverageTotals{Total: 100, Measurable: 80, Unmeasurable: 10},
 		Sectors: []store.CoverageBucket{
@@ -2148,8 +2142,6 @@ func TestCoveragePage(t *testing.T) {
 }
 
 func TestCoveragePageEmptyStates(t *testing.T) {
-	t.Parallel()
-
 	ts := newServerWithCoverage(t, testToken, fixture(), &fakeCoverage{})
 	client, _ := newClient(t)
 	login(t, ts, client, testToken)
@@ -2169,8 +2161,6 @@ func TestCoveragePageEmptyStates(t *testing.T) {
 }
 
 func TestCoveragePageUnavailableWithoutSource(t *testing.T) {
-	t.Parallel()
-
 	ts := newServer(t, testToken, fixture())
 	client, _ := newClient(t)
 	login(t, ts, client, testToken)
@@ -4486,8 +4476,6 @@ func newServerWithAnomalies(t *testing.T, token string, m *board.Memory, anomali
 }
 
 func TestBoardShowsTheCoverageAdvisory(t *testing.T) {
-	t.Parallel()
-
 	at := time.Now().UTC().Add(-30 * time.Minute)
 	ts := newServerWithAnomalies(t, testToken, fixture(), &fakeAnomalies{rows: []store.Anomaly{
 		{
@@ -4515,8 +4503,6 @@ func TestBoardShowsTheCoverageAdvisory(t *testing.T) {
 }
 
 func TestBoardOmitsStaleAndNonCoverageAdvisories(t *testing.T) {
-	t.Parallel()
-
 	now := time.Now().UTC()
 	cases := []struct {
 		name string
@@ -4592,8 +4578,6 @@ func TestLocalVerdictMutesDownTiles(t *testing.T) {
 }
 
 func TestCoveragePanelMarksTheLowCoverageBand(t *testing.T) {
-	t.Parallel()
-
 	cov := &fakeCoverage{cov: store.Coverage{
 		Totals: store.CoverageTotals{Total: 35, Measurable: 24, Unmeasurable: 11},
 		Sectors: []store.CoverageBucket{
@@ -4849,8 +4833,6 @@ func TestBoardFleetLineAbsentOrEmpty(t *testing.T) {
 }
 
 func TestCoveragePanelShowsTheConcentrationBlock(t *testing.T) {
-	t.Parallel()
-
 	cov := &fakeCoverage{cov: store.Coverage{
 		Totals: store.CoverageTotals{Total: 35, Measurable: 24, Unmeasurable: 11},
 		Concentration: store.CoverageConcentration{
