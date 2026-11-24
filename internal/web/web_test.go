@@ -1983,7 +1983,7 @@ func (f *fakeCoverage) Coverage(context.Context, string, time.Time) (store.Cover
 	return f.cov, f.err
 }
 
-func newServerWithCoverage(t *testing.T, token string, m *board.Memory, cov web.Coverage) *httptest.Server {
+func newServerWithCoverage(t *testing.T, m *board.Memory, cov web.Coverage) *httptest.Server {
 	t.Helper()
 
 	h, err := web.New(web.Deps{
@@ -1991,7 +1991,7 @@ func newServerWithCoverage(t *testing.T, token string, m *board.Memory, cov web.
 		Source:    m,
 		Watcher:   m,
 		Coverage:  cov,
-		Token:     token,
+		Token:     "",
 		Version:   "test",
 		StartedAt: time.Now(),
 	})
@@ -2013,7 +2013,7 @@ func (f *fakeCoverageHistory) CoverageHistory(context.Context, string, string, i
 	return f.points, f.err
 }
 
-func newServerWithCoverageTrend(t *testing.T, token string, m *board.Memory, cov web.Coverage, trend web.CoverageHistory) *httptest.Server {
+func newServerWithCoverageTrend(t *testing.T, m *board.Memory, cov web.Coverage, trend web.CoverageHistory) *httptest.Server {
 	t.Helper()
 
 	h, err := web.New(web.Deps{
@@ -2022,7 +2022,7 @@ func newServerWithCoverageTrend(t *testing.T, token string, m *board.Memory, cov
 		Watcher:       m,
 		Coverage:      cov,
 		CoverageTrend: trend,
-		Token:         token,
+		Token:         "",
 		Version:       "test",
 		StartedAt:     time.Now(),
 	})
@@ -2044,9 +2044,8 @@ func TestCoverageTrend(t *testing.T) {
 		{Bucket: time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC), Scope: "global", Total: 100, Measurable: 80},
 	}}
 
-	ts := newServerWithCoverageTrend(t, testToken, fixture(), cov, trend)
+	ts := newServerWithCoverageTrend(t, fixture(), cov, trend)
 	client, _ := newClient(t)
-	login(t, ts, client, testToken)
 
 	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
 	if err != nil {
@@ -2067,9 +2066,8 @@ func TestCoverageTrend(t *testing.T) {
 func TestCoverageTrendEmptyAndUnavailable(t *testing.T) {
 	cov := &fakeCoverage{cov: store.Coverage{Totals: store.CoverageTotals{Total: 10, Measurable: 9}}}
 
-	ts := newServerWithCoverageTrend(t, testToken, fixture(), cov, &fakeCoverageHistory{})
+	ts := newServerWithCoverageTrend(t, fixture(), cov, &fakeCoverageHistory{})
 	client, _ := newClient(t)
-	login(t, ts, client, testToken)
 
 	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
 	if err != nil {
@@ -2080,10 +2078,9 @@ func TestCoverageTrendEmptyAndUnavailable(t *testing.T) {
 		t.Error("empty history did not say so")
 	}
 
-	ts2 := newServerWithCoverageTrend(t, testToken, fixture(), cov,
+	ts2 := newServerWithCoverageTrend(t, fixture(), cov,
 		&fakeCoverageHistory{err: errors.New("db down")})
 	client2, _ := newClient(t)
-	login(t, ts2, client2, testToken)
 
 	resp, err = client2.Get(ts2.URL + "/coverage") //nolint:bodyclose // body() closes it
 	if err != nil {
@@ -2113,9 +2110,8 @@ func TestCoveragePage(t *testing.T) {
 		},
 	}}
 
-	ts := newServerWithCoverage(t, testToken, fixture(), cov)
+	ts := newServerWithCoverage(t, fixture(), cov)
 	client, _ := newClient(t)
-	login(t, ts, client, testToken)
 
 	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
 	if err != nil {
@@ -2142,9 +2138,8 @@ func TestCoveragePage(t *testing.T) {
 }
 
 func TestCoveragePageEmptyStates(t *testing.T) {
-	ts := newServerWithCoverage(t, testToken, fixture(), &fakeCoverage{})
+	ts := newServerWithCoverage(t, fixture(), &fakeCoverage{})
 	client, _ := newClient(t)
-	login(t, ts, client, testToken)
 
 	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
 	if err != nil {
@@ -4585,9 +4580,8 @@ func TestCoveragePanelMarksTheLowCoverageBand(t *testing.T) {
 			{Kind: "sector", Value: "cloud", Total: 25, Measurable: 22, Unmeasurable: 3},
 		},
 	}}
-	ts := newServerWithCoverage(t, testToken, fixture(), cov)
+	ts := newServerWithCoverage(t, fixture(), cov)
 	client, _ := newClient(t)
-	login(t, ts, client, testToken)
 
 	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
 	if err != nil {
@@ -4841,9 +4835,8 @@ func TestCoveragePanelShowsTheConcentrationBlock(t *testing.T) {
 			SingleAnchor: 3, ThinSectors: 2,
 		},
 	}}
-	ts := newServerWithCoverage(t, testToken, fixture(), cov)
+	ts := newServerWithCoverage(t, fixture(), cov)
 	client, _ := newClient(t)
-	login(t, ts, client, testToken)
 
 	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
 	if err != nil {
