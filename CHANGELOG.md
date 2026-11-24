@@ -10,6 +10,16 @@ changed between two images without it.
 
 ### Added
 
+- Added `devtool lint-all` for local Go, Dockerfile, and full-history secret linting.
+- Incident detail pages now show a chronological timeline with open, closed,
+  and operator-annotation milestones. The timeline uses existing incident
+  records and adds no storage or dependency.
+- The UI font now uses a larger native sans-serif stack with improved
+  text rendering; no font download or runtime asset is added.
+- Startup logs include the build date, and HTTP access logs record a default
+  `200` status for handlers that return without an explicit write or status.
+- RIS Live shutdown and EOF paths now drain queued frames before flushing,
+  preventing a disconnect from dropping the last BGP events.
 - The field-trial fleet grows from 749 to 1000 quality-gated real targets while
   preserving every existing id. The 251 additions are 60 second ccTLD NS
   anchors from the IANA root zone, 25 distinct root-zone glue IPs, and 166

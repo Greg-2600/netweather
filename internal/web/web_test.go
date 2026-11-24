@@ -2324,6 +2324,34 @@ func TestIncidentsPage(t *testing.T) {
 	}
 }
 
+func TestIncidentDetailTimelineClosed(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithIncidents(t, testToken, fixture(), incidentsFixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/incidents/inc-closed") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	for _, want := range []string{
+		`data-testid="incident-timeline"`,
+		"Incident opened",
+		"Incident closed",
+		"cluster cleared",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("closed incident page missing %q", want)
+		}
+	}
+}
+
 func TestIncidentsPageEmptyState(t *testing.T) {
 	t.Parallel()
 
@@ -2364,6 +2392,8 @@ func TestIncidentDetailPage(t *testing.T) {
 		"83%",
 		"svc-united",
 		"svc-delta",
+		`data-testid="incident-timeline"`,
+		"Incident opened",
 		// A working detail page, not the narrow login card: this is the
 		// wide class the target drawer uses for its evidence tables.
 		`class="card target-card" data-testid="incident-detail"`,
@@ -2502,6 +2532,9 @@ func TestIncidentPageAnnotatesGroundTruth(t *testing.T) {
 	}
 	if !strings.Contains(page, "AWS us-east-1, confirmed") {
 		t.Fatal("annotation text missing after save")
+	}
+	if !strings.Contains(page, "Operator annotation recorded") {
+		t.Fatal("annotation milestone missing from incident timeline")
 	}
 
 	id, text := annotator.last()

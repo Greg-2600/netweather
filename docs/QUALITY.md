@@ -527,6 +527,17 @@ Always `-race -covermode=atomic`. Coverage is uploaded per-PR and diffed, so a P
 
 Pre-commit hook runs format + vet + test. Install it once per clone with `git config core.hooksPath .githooks`; the hook itself is `.githooks/pre-commit`. Everything else is CI. Go tool versions live in `go.mod`; external scanners (gitleaks, hadolint, Playwright) are pinned to an explicit version in the workflow, never a floating tag.
 
+For the same external lint surface locally:
+
+```sh
+go run ./internal/devtool lint-all
+```
+
+It runs pinned `golangci-lint`, Hadolint for both Dockerfiles, and full-history
+Gitleaks using `.gitleaks.toml`. Docker is required for the two Hadolint
+checks. It is separate from `verify` because Docker is intentionally optional
+for the Go development loop.
+
 ---
 
 ## 9. Deliberately not doing

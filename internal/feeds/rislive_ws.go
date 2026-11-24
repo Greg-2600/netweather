@@ -245,12 +245,48 @@ func (r *RISLiveWS) runOnce(ctx context.Context, logger *slog.Logger) (time.Dura
 	ticker := time.NewTicker(r.flushEvery())
 	defer ticker.Stop()
 
+	processFrame := func(frame []byte) error {
+		// RIS can send an application-level ping; answer it so the server
+		// does not drop an otherwise quiet subscription.
+		var envelope struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(frame, &envelope) == nil && envelope.Type == "ping" {
+			if _, err := conn.Write([]byte(`{"type":"pong","data":null}`)); err != nil {
+				return fmt.Errorf("feeds: ris-live-ws pong: %w", err)
+			}
+			return nil
+		}
+		event, ok := r.parseFrame(frame)
+		if ok {
+			batch = append(batch, event)
+			if len(batch) >= r.maxBatch() {
+				return flush()
+			}
+		}
+		return nil
+	}
+	drainFrames := func() error {
+		for {
+			select {
+			case frame := <-frames:
+				if err := processFrame(frame); err != nil {
+					return err
+				}
+			default:
+				return nil
+			}
+		}
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
+			_ = drainFrames()
 			_ = flush()
 			return r.now().Sub(start), ctx.Err()
 		case err := <-readErr:
+			_ = drainFrames()
 			_ = flush()
 			return r.now().Sub(start), fmt.Errorf("feeds: ris-live-ws read: %w", err)
 		case <-ticker.C:
@@ -258,25 +294,8 @@ func (r *RISLiveWS) runOnce(ctx context.Context, logger *slog.Logger) (time.Dura
 				return r.now().Sub(start), err
 			}
 		case frame := <-frames:
-			// RIS can send an application-level ping; answer it so the server
-			// does not drop an otherwise quiet subscription.
-			var envelope struct {
-				Type string `json:"type"`
-			}
-			if json.Unmarshal(frame, &envelope) == nil && envelope.Type == "ping" {
-				if _, err := conn.Write([]byte(`{"type":"pong","data":null}`)); err != nil {
-					return r.now().Sub(start), fmt.Errorf("feeds: ris-live-ws pong: %w", err)
-				}
-				continue
-			}
-			event, ok := r.parseFrame(frame)
-			if ok {
-				batch = append(batch, event)
-				if len(batch) >= r.maxBatch() {
-					if err := flush(); err != nil {
-						return r.now().Sub(start), err
-					}
-				}
+			if err := processFrame(frame); err != nil {
+				return r.now().Sub(start), err
 			}
 		}
 	}

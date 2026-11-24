@@ -122,6 +122,7 @@ func run(args []string, stdout io.Writer) error {
 			"event", "startup",
 			"version", version.Version,
 			"commit", version.Commit,
+			"build_date", version.Date,
 			"log_level", logging.LevelName(cfg.Level),
 			"log_format", cfg.Format,
 			"log_file", cfg.File,

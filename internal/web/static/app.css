@@ -20,7 +20,9 @@ body {
   padding: 0 1.25rem 3rem;
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 16px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
 a { color: var(--accent); }
@@ -165,6 +167,24 @@ button.link:hover { color: var(--text); }
 }
 
 .annotate button { justify-self: start; }
+
+.incident-timeline {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.4rem 0 1.25rem;
+  padding: 0;
+  list-style: none;
+}
+
+.incident-timeline li {
+  display: grid;
+  grid-template-columns: 12rem 1fr;
+  gap: 0.75rem;
+}
+
+.incident-timeline time { color: var(--muted); }
+.incident-timeline-open span { color: var(--bad); }
+.incident-timeline-closed span { color: var(--ok); }
 
 /* --- login --------------------------------------------------------------- */
 

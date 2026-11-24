@@ -2100,6 +2100,7 @@ type incidentDetailView struct {
 	Closed            bool
 	ClosedAt          string
 	ClosedReason      string
+	Timeline          []incidentTimelineView
 	Attribution       []attributionView
 	Targets           []string
 	Corroboration     []corroborationView
@@ -2112,6 +2113,12 @@ type incidentDetailView struct {
 	// keeps an old incident readable after the raw 72-hour window is pruned.
 	Archive     []probeView
 	ArchiveNote string
+}
+
+type incidentTimelineView struct {
+	Time  string
+	State string
+	Text  string
 }
 
 // corroborationView is one external event that overlapped the incident.
@@ -2216,9 +2223,15 @@ func (s *server) handleIncident(w http.ResponseWriter, r *http.Request) {
 		Confidence: inc.Confidence, Closed: !inc.ClosedAt.IsZero(),
 		Targets: targets,
 	}
+	view.Timeline = append(view.Timeline, incidentTimelineView{
+		Time: view.OpenedAt, State: "open", Text: "Incident opened",
+	})
 	if !inc.ClosedAt.IsZero() {
 		view.ClosedAt = inc.ClosedAt.UTC().Format("2006-01-02 15:04")
 		view.ClosedReason = inc.ClosedReason
+		view.Timeline = append(view.Timeline, incidentTimelineView{
+			Time: view.ClosedAt, State: "closed", Text: "Incident closed",
+		})
 	}
 	for _, a := range attrs {
 		view.Attribution = append(view.Attribution, attributionView{
@@ -2291,6 +2304,9 @@ func (s *server) handleIncident(w http.ResponseWriter, r *http.Request) {
 	view.Annotation = inc.Annotation
 	if !inc.AnnotatedAt.IsZero() {
 		view.AnnotatedAt = inc.AnnotatedAt.UTC().Format("2006-01-02 15:04")
+		view.Timeline = append(view.Timeline, incidentTimelineView{
+			Time: view.AnnotatedAt, State: "annotation", Text: "Operator annotation recorded",
+		})
 	}
 	csrf, _ := s.auth.csrfFrom(r)
 	view.CSRF = csrf

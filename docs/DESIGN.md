@@ -687,6 +687,12 @@ CDN inference comes free from response headers even on failure:
 
 Attribution is the highest-value output of the whole system. "8 sites down" is noise; "17 of 21 Akamai targets down" is an incident report.
 
+**Implemented, public incident timeline:** `/incidents/{id}` renders a short
+chronological timeline from the incident row: opened, closed with reason, and
+operator annotation. It uses no separate status-page model or migration. The
+existing attribution, affected targets, feed corroboration, archived probes,
+and ground-truth annotation remain as supporting detail.
+
 ### 7.4 Confirmation rules
 
 | Class | → DOWN | → recover | Debounce |

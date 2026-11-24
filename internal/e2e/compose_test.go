@@ -576,7 +576,7 @@ targets:
     interval_s: 300
 `
 		agentConfigFile := filepath.Join(t.TempDir(), "agent.yaml")
-		if err := os.WriteFile(agentConfigFile, []byte(agentConfig), 0o600); err != nil {
+		if err := os.WriteFile(agentConfigFile, []byte(agentConfig), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
