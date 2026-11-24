@@ -240,7 +240,27 @@ ENTRYPOINT ["tor", "-f", "/etc/tor/torrc"]
 
 The `torrc` is baked in at build time (`torrc`, copied by `Dockerfile.tor`), and `compose.yaml`'s `tor` service builds that image rather than pulling a third-party proxy. The same Dockerfile is published as `ghcr.io/<owner>/netweather-tor` by the release job, signed with cosign, so a deployment that pulls images can use the signed sidecar instead of building locally. The non-negotiable lines are `ClientOnly 1`, `ExitPolicy reject *:*`, `BridgeRelay 0`, and `PublishServerDescriptor 0`; the SOCKS port carries `IsolateSOCKSAuth` so credentials, when a client presents them, select a circuit, and `MaxCircuitDirtiness 3600` keeps one circuit for comparable measurements. A unit test reads `torrc` and asserts every one of those lines, and another asserts the compose service builds `Dockerfile.tor` and publishes no port.
 
+Every Tor service is behind `profiles: [tor]`. Starting
+`docker compose --profile tor up -d` builds one unpinned image,
+`netweather-tor:local`, and six pinned images,
+`netweather-tor-de/jp/au/sg/cl/mx:local`. No Tor service publishes a host port,
+and every service stays on the `egress` network.
+
+The app enables the unpinned Tor vantage with `NETWEATHER_TOR=true` and
+connects it to `tor:9050`. The six pinned sidecars stay idle until
+`NETWEATHER_TOR_VANTAGES` is set to
+`DE=tor-de:9050,JP=tor-jp:9050,AU=tor-au:9050,SG=tor-sg:9050,CL=tor-cl:9050,MX=tor-mx:9050`.
+A `tor-<cc>` label is trusted only after the app verifies the real exit through
+that proxy.
+
 `netweather doctor` adds a `tor socks (optional)` check when the Tor vantage is enabled: it proves the SOCKS port answers. It does **not** audit the effective exit policy, because the app container cannot read the sidecar's config, and claiming a runtime policy check would imply a control channel the deployment does not have. The policy is guaranteed by the image, which is why the image is built here.
+
+The app's UI token file is a separate startup prerequisite. Manual Compose
+deployments must set `secrets/ui_token` to mode `600` and owner UID/GID
+`65532:65532`; otherwise the container uid cannot read it and the app
+crash-loops. The deploy scripts copy it into a secret volume with those
+permissions. Docker Desktop bind mounts cannot carry Unix ownership, so use a
+volume or secret for the manual Windows path.
 
 ---
 
