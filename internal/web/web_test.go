@@ -2052,6 +2052,9 @@ func TestCoverageTrend(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := body(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("coverage trend status = %d, body=%q", resp.StatusCode, page)
+	}
 
 	if got := strings.Count(page, `data-testid="trend-row"`); got != 2 {
 		t.Fatalf("trend rows = %d, want 2", got)
@@ -2120,7 +2123,7 @@ func TestCoveragePage(t *testing.T) {
 	page := body(t, resp)
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d", resp.StatusCode)
+		t.Fatalf("coverage page status = %d, body=%q", resp.StatusCode, page)
 	}
 	for _, want := range []string{
 		`data-testid="blind-spot"`,
@@ -4588,6 +4591,9 @@ func TestCoveragePanelMarksTheLowCoverageBand(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := body(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("coverage low-band status = %d, body=%q", resp.StatusCode, page)
+	}
 
 	// Only the 2-of-10 sector is in the documented middle band; the 22-of-25
 	// sector clears both the ratio and the absolute floor.
@@ -4843,6 +4849,9 @@ func TestCoveragePanelShowsTheConcentrationBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := body(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("coverage concentration status = %d, body=%q", resp.StatusCode, page)
+	}
 
 	for _, want := range []string{
 		`data-testid="coverage-concentration"`,
