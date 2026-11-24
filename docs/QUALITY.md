@@ -508,7 +508,7 @@ Always `-race -covermode=atomic`. Coverage is uploaded per-PR and diffed, so a P
 | vet | `go vet ./...` | ✅ |
 | lint | `go tool golangci-lint run` (pinned in `go.mod`) | ✅ |
 | modules | `go mod verify` + `go mod tidy -diff` (no uncommitted tidy) | ✅ |
-| test | `devtool test` (`-race`, `-shuffle=on`, `-count=1`) | ✅ |
+| test | `devtool test` (`-race`, `-shuffle=on`, `-count=1` for library packages; normal shuffled/count=1 for `internal/web`) | ✅ |
 | coverage | `devtool cover`: profile + the per-package floors in §7 (the same numbers `internal/devtool/main.go` enforces) | ✅ |
 | ui test (browser) | Playwright + chromium, `-tags=uitest` | ✅ (every push and PR) |
 | fuzz (short) | `go test -run=^$ -fuzz=FuzzScrubStringIsIdempotent -fuzztime=20s` | ✅ |

@@ -105,3 +105,12 @@ func TestLintDockerfilesMissingFile(t *testing.T) {
 		t.Fatal("missing Dockerfile should fail lint")
 	}
 }
+
+func TestRacePackagesExcludesWeb(t *testing.T) {
+	t.Parallel()
+
+	got := racePackages("github.com/Greg-2600/netweather/internal/api\ngithub.com/Greg-2600/netweather/internal/web\ngithub.com/Greg-2600/netweather/internal/webhook")
+	if len(got) != 2 || got[0] != "github.com/Greg-2600/netweather/internal/api" || got[1] != "github.com/Greg-2600/netweather/internal/webhook" {
+		t.Fatalf("race packages = %v", got)
+	}
+}

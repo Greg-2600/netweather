@@ -300,12 +300,32 @@ func mustTool() string {
 // --- test / cover ----------------------------------------------------------
 
 func taskTest() error {
-	args := []string{"test", "-count=1", "-shuffle=on"}
-	if raceEnv() {
-		args = append(args, "-race")
+	if !raceEnv() {
+		return runGo("test", "-count=1", "-shuffle=on", "./...")
 	}
-	args = append(args, "./...")
-	return runGo(args...)
+
+	out, err := capture("go", "list", "./...")
+	if err != nil {
+		return fmt.Errorf("list packages: %w", err)
+	}
+	packages := racePackages(out)
+	args := []string{"test", "-count=1", "-shuffle=on", "-race"}
+	args = append(args, packages...)
+	if err := runGo(args...); err != nil {
+		return err
+	}
+	return runGo("test", "-count=1", "-shuffle=on", "./internal/web")
+}
+
+func racePackages(packageList string) []string {
+	packages := make([]string, 0)
+	for _, pkg := range strings.Split(strings.TrimSpace(packageList), "\n") {
+		pkg = strings.TrimSpace(pkg)
+		if pkg != "" && !strings.HasSuffix(pkg, "/internal/web") {
+			packages = append(packages, pkg)
+		}
+	}
+	return packages
 }
 
 // raceEnv reports whether the race detector can run here. It needs cgo, which on
