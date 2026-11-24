@@ -5,6 +5,11 @@
 # trial from Linux/CI: production-sized fleet, direct + Tor vantages, hardened
 # runtime, a bounded IODA level feed, health gate, and rollback.
 #
+# The --profile tor stack starts one unpinned tor service and six pinned
+# tor-de/jp/au/sg/cl/mx services. The pinned services stay idle until the
+# field-trial overlay sets NETWEATHER_TOR_VANTAGES. The deploy script seeds
+# secrets/ui_token as mode 600/UID 65532:65532 before startup.
+#
 #   ./scripts/deploy_fieldtrial.sh                 # build + deploy
 #   ./scripts/deploy_fieldtrial.sh --dry-run       # print the commands, touch nothing
 #   ./scripts/deploy_fieldtrial.sh --no-build      # reuse the current local images

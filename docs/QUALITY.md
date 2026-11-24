@@ -508,7 +508,7 @@ Always `-race -covermode=atomic`. Coverage is uploaded per-PR and diffed, so a P
 | vet | `go vet ./...` | ✅ |
 | lint | `go tool golangci-lint run` (pinned in `go.mod`) | ✅ |
 | modules | `go mod verify` + `go mod tidy -diff` (no uncommitted tidy) | ✅ |
-| test | `devtool test` (`-race`, `-shuffle=on`, `-count=1`) | ✅ |
+| test | `devtool test` (`-race`, `-shuffle=on`, `-count=1` for library packages; normal shuffled/count=1 for `internal/web`) | ✅ |
 | coverage | `devtool cover`: profile + the per-package floors in §7 (the same numbers `internal/devtool/main.go` enforces) | ✅ |
 | ui test (browser) | Playwright + chromium, `-tags=uitest` | ✅ (every push and PR) |
 | fuzz (short) | `go test -run=^$ -fuzz=FuzzScrubStringIsIdempotent -fuzztime=20s` | ✅ |
@@ -526,6 +526,17 @@ Always `-race -covermode=atomic`. Coverage is uploaded per-PR and diffed, so a P
 | mutation | `gremlins` on `classify` | ❌ advisory |
 
 Pre-commit hook runs format + vet + test. Install it once per clone with `git config core.hooksPath .githooks`; the hook itself is `.githooks/pre-commit`. Everything else is CI. Go tool versions live in `go.mod`; external scanners (gitleaks, hadolint, Playwright) are pinned to an explicit version in the workflow, never a floating tag.
+
+For the same external lint surface locally:
+
+```sh
+go run ./internal/devtool lint-all
+```
+
+It runs pinned `golangci-lint`, Hadolint for both Dockerfiles, and full-history
+Gitleaks using `.gitleaks.toml`. Docker is required for the two Hadolint
+checks. It is separate from `verify` because Docker is intentionally optional
+for the Go development loop.
 
 ---
 

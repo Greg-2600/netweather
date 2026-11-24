@@ -98,7 +98,11 @@ Example, one line, no shell required:
 | Feeds | `INFO` on poll, `WARN` when stale | poll | feed, items, age, duration |
 | Self-health | `WARN` on failure only | check | check, value, threshold |
 | HTTP | `DEBUG` per request on both the API and the UI, `WARN` on 5xx | request | method, route (not full URL), status, bytes, duration, request_id |
-| Startup | `INFO` | twice | Before wiring: version, commit, and the log sinks and level. At listen: config source, listen address, auth mode, vantages, target count, schema version, database path |
+| Startup | `INFO` | twice | Before wiring: version, commit, build date, and the log sinks and level. At listen: config source, listen address, auth mode, vantages, target count, schema version, database path |
+
+The HTTP access recorder defaults to `200` when a handler returns no explicit
+write or status. It records later `WriteHeader` values verbatim, so 4xx and 5xx
+responses are not mistaken for successful requests.
 
 No layer logs the same failure twice. Wrap with `%w`, return, log once at the boundary that decides something.
 

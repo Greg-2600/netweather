@@ -14,7 +14,7 @@ Legend: **Shipped** · **Now** (release hardening) · **Next** (phase 3) ·
 
 **MVP is shipped.** Phases 0-3 are complete (OIDC deferred to Later).
 
-Verified on the current tree (`f0d71a1`):
+Verified on the current project tree:
 
 | Gate | Command | Evidence |
 |---|---|---|
@@ -30,7 +30,7 @@ pacing/ramp, confirmation rules, SQLite storage with retention and rollups,
 baseline/anomaly detection, incidents with attribution, sectors/ASN/country
 views, coverage, corridors, IHI, SSE with replay, the documented v1 API, auth
 and browser hardening, feeds and enrichment (IODA, Radar, Statuspage, AWS, GCP,
-Azure, Atlas, RIS Live), DNS divergence, certificate pins, and the operational
+Azure, Atlas, RIS Live), incident timelines, DNS divergence, certificate pins, and the operational
 CLI (seed, export, doctor, backup, debug bundle). Containers: hardened release
 image, Tor/Tailscale/RIPE/trace profiles, and a two-hour deploy cadence. UI:
 board, world, corridors, coverage, incidents, feeds status, and a FinViz-style
@@ -237,9 +237,36 @@ deployment-scale concern, not a correctness one.
   `target_disabled`) carry the subject; `THREAT_MODEL.md` T6/T7 are rewritten
   with the new controls; a viewer cannot mutate.
 
+### 3.6 Public incident timeline — **Implemented**
+
+**Outcome:** incident detail pages expose a chronological open/closed/annotation
+record without a separate status-page service or schema migration.
+
+- The detail view renders open and close milestones from the existing incident
+  row, plus an operator-annotation milestone when ground truth is recorded.
+- Existing attribution, affected targets, feed corroboration, archived probes,
+  and annotations remain in place below the timeline.
+- Acceptance: open, closed, and annotation branches are covered by incident
+  page tests.
+
 ---
 
-## 4. Later
+## 4. Public status-page polish
+
+| Item | Status |
+|---|---|
+| Incident subscriptions | **Later:** email or webhook opt-in, unsubscribe tokens, and delivery suppression for duplicate updates |
+| Maintenance windows | **Later:** operator-created windows, affected components, and planned/completed states |
+| Historical uptime | **Later:** bounded uptime percentages from retained probe rollups, with missing/unknown explicitly excluded |
+
+OIDC, subscriptions, maintenance windows, and historical uptime are not
+present merely because public incident detail pages exist. Public incident
+timeline records are implemented; the remaining status-page capabilities need
+separate data and delivery boundaries.
+
+---
+
+## 5. Later
 
 | Item | Why later |
 |---|---|
@@ -252,7 +279,7 @@ deployment-scale concern, not a correctness one.
 
 ---
 
-## 5. Not planned
+## 6. Not planned
 
 | Item | Reason |
 |---|---|
@@ -268,7 +295,7 @@ deployment-scale concern, not a correctness one.
 
 ---
 
-## 6. How work is accepted
+## 7. How work is accepted
 
 1. `go run ./internal/devtool verify` is green (format, vet, lint, tests,
    coverage gates, build).

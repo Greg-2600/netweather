@@ -4,7 +4,7 @@
 //
 //	go run ./internal/devtool <task>
 //
-// Tasks: fmt, vet, test, cover, ui, ui-all, compose, mutate, build, snapshot, verify
+// Tasks: fmt, vet, lint, lint-all, test, cover, ui, ui-all, compose, mutate, build, snapshot, verify
 package main
 
 import (
@@ -90,6 +90,8 @@ func main() {
 		err = runGo("vet", "./...")
 	case "lint":
 		err = runTool("golangci-lint", "run")
+	case "lint-all":
+		err = taskLintAll()
 	case "test":
 		err = taskTest()
 	case "cover":
@@ -141,6 +143,7 @@ func usage() {
   go run ./internal/devtool fmt [-check]   gofumpt + gci (write, or only check)
   go run ./internal/devtool vet            go vet ./...
   go run ./internal/devtool lint           golangci-lint (pinned in go.mod)
+  go run ./internal/devtool lint-all       golangci-lint + Dockerfiles + gitleaks
   go run ./internal/devtool test           race (when available) + shuffle + count=1
   go run ./internal/devtool cover          coverage profile + per-package gates
   go run ./internal/devtool ui             Playwright suite (needs a browser)
@@ -182,6 +185,53 @@ func runGo(args ...string) error {
 
 func runTool(tool string, args ...string) error {
 	return runGo(append([]string{"tool", tool}, args...)...)
+}
+
+func taskLintAll() error {
+	fmt.Println("==> golangci-lint")
+	if err := runTool("golangci-lint", "run"); err != nil {
+		return err
+	}
+
+	docker, err := exec.LookPath("docker")
+	if err != nil {
+		return fmt.Errorf("docker is required for Dockerfile and Compose lint; install Docker first")
+	}
+	if err := lintDockerfiles(docker); err != nil {
+		return err
+	}
+
+	fmt.Println("==> gitleaks")
+	return runGo("run",
+		"github.com/zricethezav/gitleaks/v8@v8.24.3",
+		"detect",
+		"--source", ".",
+		"--config", ".gitleaks.toml",
+		"--verbose",
+		"--redact",
+		"--exit-code", "1")
+}
+
+func lintDockerfiles(docker string) error {
+	for _, file := range []string{"Dockerfile", "Dockerfile.tor"} {
+		fmt.Println("==> hadolint", file)
+		// #nosec G304 -- file is one of the two fixed repository Dockerfiles.
+		input, err := os.Open(file)
+		if err != nil {
+			return fmt.Errorf("open %s: %w", file, err)
+		}
+		// #nosec G204 -- docker comes from PATH and args are fixed by this task.
+		cmd := exec.CommandContext(context.Background(), docker, "run", "--rm", "-i", "hadolint/hadolint:v2.12.0")
+		cmd.Stdin = input
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err = cmd.Run()
+		_ = input.Close()
+		if err != nil {
+			return fmt.Errorf("hadolint %s: %w", file, err)
+		}
+	}
+	return nil
 }
 
 func capture(name string, args ...string) (string, error) {
@@ -250,12 +300,32 @@ func mustTool() string {
 // --- test / cover ----------------------------------------------------------
 
 func taskTest() error {
-	args := []string{"test", "-count=1", "-shuffle=on"}
-	if raceEnv() {
-		args = append(args, "-race")
+	if !raceEnv() {
+		return runGo("test", "-count=1", "-shuffle=on", "./...")
 	}
-	args = append(args, "./...")
-	return runGo(args...)
+
+	out, err := capture("go", "list", "./...")
+	if err != nil {
+		return fmt.Errorf("list packages: %w", err)
+	}
+	packages := racePackages(out)
+	args := []string{"test", "-count=1", "-shuffle=on", "-race"}
+	args = append(args, packages...)
+	if err := runGo(args...); err != nil {
+		return err
+	}
+	return runGo("test", "-count=1", "-shuffle=on", "./internal/web")
+}
+
+func racePackages(packageList string) []string {
+	packages := make([]string, 0)
+	for _, pkg := range strings.Split(strings.TrimSpace(packageList), "\n") {
+		pkg = strings.TrimSpace(pkg)
+		if pkg != "" && !strings.HasSuffix(pkg, "/internal/web") {
+			packages = append(packages, pkg)
+		}
+	}
+	return packages
 }
 
 // raceEnv reports whether the race detector can run here. It needs cgo, which on

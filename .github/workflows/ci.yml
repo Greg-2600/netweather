@@ -90,7 +90,7 @@ jobs:
       # Pinned in the workflow rather than go.mod: this is a scanner, not a
       # package the binary builds against (QUALITY.md §8).
       - name: gitleaks (pinned)
-        run: go run github.com/zricethezav/gitleaks/v8@v8.24.3 detect --source . --verbose --redact --exit-code 1
+        run: go run github.com/zricethezav/gitleaks/v8@v8.24.3 detect --source . --config .gitleaks.toml --verbose --redact --exit-code 1
 
   dockerfile:
     runs-on: ubuntu-latest

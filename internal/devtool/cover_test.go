@@ -89,3 +89,28 @@ func TestLdflagsCarryEveryField(t *testing.T) {
 		}
 	}
 }
+
+func TestLintDockerfilesMissingFile(t *testing.T) {
+	dir := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(old) })
+
+	if err := lintDockerfiles("/fixed/docker"); err == nil {
+		t.Fatal("missing Dockerfile should fail lint")
+	}
+}
+
+func TestRacePackagesExcludesWeb(t *testing.T) {
+	t.Parallel()
+
+	got := racePackages("github.com/Greg-2600/netweather/internal/api\ngithub.com/Greg-2600/netweather/internal/web\ngithub.com/Greg-2600/netweather/internal/webhook")
+	if len(got) != 2 || got[0] != "github.com/Greg-2600/netweather/internal/api" || got[1] != "github.com/Greg-2600/netweather/internal/webhook" {
+		t.Fatalf("race packages = %v", got)
+	}
+}

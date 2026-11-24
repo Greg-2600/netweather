@@ -1983,7 +1983,7 @@ func (f *fakeCoverage) Coverage(context.Context, string, time.Time) (store.Cover
 	return f.cov, f.err
 }
 
-func newServerWithCoverage(t *testing.T, token string, m *board.Memory, cov web.Coverage) *httptest.Server {
+func newServerWithCoverage(t *testing.T, m *board.Memory, cov web.Coverage) *httptest.Server {
 	t.Helper()
 
 	h, err := web.New(web.Deps{
@@ -1991,7 +1991,7 @@ func newServerWithCoverage(t *testing.T, token string, m *board.Memory, cov web.
 		Source:    m,
 		Watcher:   m,
 		Coverage:  cov,
-		Token:     token,
+		Token:     "",
 		Version:   "test",
 		StartedAt: time.Now(),
 	})
@@ -2013,7 +2013,7 @@ func (f *fakeCoverageHistory) CoverageHistory(context.Context, string, string, i
 	return f.points, f.err
 }
 
-func newServerWithCoverageTrend(t *testing.T, token string, m *board.Memory, cov web.Coverage, trend web.CoverageHistory) *httptest.Server {
+func newServerWithCoverageTrend(t *testing.T, m *board.Memory, cov web.Coverage, trend web.CoverageHistory) *httptest.Server {
 	t.Helper()
 
 	h, err := web.New(web.Deps{
@@ -2022,7 +2022,7 @@ func newServerWithCoverageTrend(t *testing.T, token string, m *board.Memory, cov
 		Watcher:       m,
 		Coverage:      cov,
 		CoverageTrend: trend,
-		Token:         token,
+		Token:         "",
 		Version:       "test",
 		StartedAt:     time.Now(),
 	})
@@ -2036,8 +2036,6 @@ func newServerWithCoverageTrend(t *testing.T, token string, m *board.Memory, cov
 }
 
 func TestCoverageTrend(t *testing.T) {
-	t.Parallel()
-
 	cov := &fakeCoverage{cov: store.Coverage{
 		Totals: store.CoverageTotals{Total: 100, Measurable: 80},
 	}}
@@ -2046,18 +2044,20 @@ func TestCoverageTrend(t *testing.T) {
 		{Bucket: time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC), Scope: "global", Total: 100, Measurable: 80},
 	}}
 
-	ts := newServerWithCoverageTrend(t, testToken, fixture(), cov, trend)
+	ts := newServerWithCoverageTrend(t, fixture(), cov, trend)
 	client, _ := newClient(t)
-	login(t, ts, client, testToken)
 
 	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
 	if err != nil {
 		t.Fatal(err)
 	}
 	page := body(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("coverage trend status = %d, body=%q", resp.StatusCode, page)
+	}
 
 	if got := strings.Count(page, `data-testid="trend-row"`); got != 2 {
-		t.Fatalf("trend rows = %d, want 2", got)
+		t.Fatalf("trend rows = %d, want 2, body=%q", got, page)
 	}
 	for _, want := range []string{"2026-11-15", "2026-11-16", "100%", "80%", "80/100"} {
 		if !strings.Contains(page, want) {
@@ -2067,13 +2067,10 @@ func TestCoverageTrend(t *testing.T) {
 }
 
 func TestCoverageTrendEmptyAndUnavailable(t *testing.T) {
-	t.Parallel()
-
 	cov := &fakeCoverage{cov: store.Coverage{Totals: store.CoverageTotals{Total: 10, Measurable: 9}}}
 
-	ts := newServerWithCoverageTrend(t, testToken, fixture(), cov, &fakeCoverageHistory{})
+	ts := newServerWithCoverageTrend(t, fixture(), cov, &fakeCoverageHistory{})
 	client, _ := newClient(t)
-	login(t, ts, client, testToken)
 
 	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
 	if err != nil {
@@ -2084,10 +2081,9 @@ func TestCoverageTrendEmptyAndUnavailable(t *testing.T) {
 		t.Error("empty history did not say so")
 	}
 
-	ts2 := newServerWithCoverageTrend(t, testToken, fixture(), cov,
+	ts2 := newServerWithCoverageTrend(t, fixture(), cov,
 		&fakeCoverageHistory{err: errors.New("db down")})
 	client2, _ := newClient(t)
-	login(t, ts2, client2, testToken)
 
 	resp, err = client2.Get(ts2.URL + "/coverage") //nolint:bodyclose // body() closes it
 	if err != nil {
@@ -2103,8 +2099,6 @@ func TestCoverageTrendEmptyAndUnavailable(t *testing.T) {
 }
 
 func TestCoveragePage(t *testing.T) {
-	t.Parallel()
-
 	cov := &fakeCoverage{cov: store.Coverage{
 		Totals: store.CoverageTotals{Total: 100, Measurable: 80, Unmeasurable: 10},
 		Sectors: []store.CoverageBucket{
@@ -2119,9 +2113,8 @@ func TestCoveragePage(t *testing.T) {
 		},
 	}}
 
-	ts := newServerWithCoverage(t, testToken, fixture(), cov)
+	ts := newServerWithCoverage(t, fixture(), cov)
 	client, _ := newClient(t)
-	login(t, ts, client, testToken)
 
 	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
 	if err != nil {
@@ -2130,7 +2123,7 @@ func TestCoveragePage(t *testing.T) {
 	page := body(t, resp)
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d", resp.StatusCode)
+		t.Fatalf("coverage page status = %d, body=%q", resp.StatusCode, page)
 	}
 	for _, want := range []string{
 		`data-testid="blind-spot"`,
@@ -2142,17 +2135,14 @@ func TestCoveragePage(t *testing.T) {
 		`data-testid="stale-row"`,
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("coverage page missing %q", want)
+			t.Errorf("coverage page missing %q, body=%q", want, page)
 		}
 	}
 }
 
 func TestCoveragePageEmptyStates(t *testing.T) {
-	t.Parallel()
-
-	ts := newServerWithCoverage(t, testToken, fixture(), &fakeCoverage{})
+	ts := newServerWithCoverage(t, fixture(), &fakeCoverage{})
 	client, _ := newClient(t)
-	login(t, ts, client, testToken)
 
 	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
 	if err != nil {
@@ -2169,8 +2159,6 @@ func TestCoveragePageEmptyStates(t *testing.T) {
 }
 
 func TestCoveragePageUnavailableWithoutSource(t *testing.T) {
-	t.Parallel()
-
 	ts := newServer(t, testToken, fixture())
 	client, _ := newClient(t)
 	login(t, ts, client, testToken)
@@ -2324,6 +2312,34 @@ func TestIncidentsPage(t *testing.T) {
 	}
 }
 
+func TestIncidentDetailTimelineClosed(t *testing.T) {
+	t.Parallel()
+
+	ts := newServerWithIncidents(t, testToken, fixture(), incidentsFixture())
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/incidents/inc-closed") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	for _, want := range []string{
+		`data-testid="incident-timeline"`,
+		"Incident opened",
+		"Incident closed",
+		"cluster cleared",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("closed incident page missing %q", want)
+		}
+	}
+}
+
 func TestIncidentsPageEmptyState(t *testing.T) {
 	t.Parallel()
 
@@ -2364,6 +2380,8 @@ func TestIncidentDetailPage(t *testing.T) {
 		"83%",
 		"svc-united",
 		"svc-delta",
+		`data-testid="incident-timeline"`,
+		"Incident opened",
 		// A working detail page, not the narrow login card: this is the
 		// wide class the target drawer uses for its evidence tables.
 		`class="card target-card" data-testid="incident-detail"`,
@@ -2502,6 +2520,9 @@ func TestIncidentPageAnnotatesGroundTruth(t *testing.T) {
 	}
 	if !strings.Contains(page, "AWS us-east-1, confirmed") {
 		t.Fatal("annotation text missing after save")
+	}
+	if !strings.Contains(page, "Operator annotation recorded") {
+		t.Fatal("annotation milestone missing from incident timeline")
 	}
 
 	id, text := annotator.last()
@@ -4453,8 +4474,6 @@ func newServerWithAnomalies(t *testing.T, token string, m *board.Memory, anomali
 }
 
 func TestBoardShowsTheCoverageAdvisory(t *testing.T) {
-	t.Parallel()
-
 	at := time.Now().UTC().Add(-30 * time.Minute)
 	ts := newServerWithAnomalies(t, testToken, fixture(), &fakeAnomalies{rows: []store.Anomaly{
 		{
@@ -4482,8 +4501,6 @@ func TestBoardShowsTheCoverageAdvisory(t *testing.T) {
 }
 
 func TestBoardOmitsStaleAndNonCoverageAdvisories(t *testing.T) {
-	t.Parallel()
-
 	now := time.Now().UTC()
 	cases := []struct {
 		name string
@@ -4559,8 +4576,6 @@ func TestLocalVerdictMutesDownTiles(t *testing.T) {
 }
 
 func TestCoveragePanelMarksTheLowCoverageBand(t *testing.T) {
-	t.Parallel()
-
 	cov := &fakeCoverage{cov: store.Coverage{
 		Totals: store.CoverageTotals{Total: 35, Measurable: 24, Unmeasurable: 11},
 		Sectors: []store.CoverageBucket{
@@ -4568,20 +4583,22 @@ func TestCoveragePanelMarksTheLowCoverageBand(t *testing.T) {
 			{Kind: "sector", Value: "cloud", Total: 25, Measurable: 22, Unmeasurable: 3},
 		},
 	}}
-	ts := newServerWithCoverage(t, testToken, fixture(), cov)
+	ts := newServerWithCoverage(t, fixture(), cov)
 	client, _ := newClient(t)
-	login(t, ts, client, testToken)
 
 	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
 	if err != nil {
 		t.Fatal(err)
 	}
 	page := body(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("coverage low-band status = %d, body=%q", resp.StatusCode, page)
+	}
 
 	// Only the 2-of-10 sector is in the documented middle band; the 22-of-25
 	// sector clears both the ratio and the absolute floor.
 	if got := strings.Count(page, `data-testid="low-coverage"`); got != 1 {
-		t.Fatalf("low-coverage markers = %d, want 1:\n%s", got, page)
+		t.Fatalf("low-coverage markers = %d, want 1, body=%q", got, page)
 	}
 	if !strings.Contains(page, `class="low-coverage"`) {
 		t.Error("the low-coverage row does not carry the hatch class")
@@ -4816,8 +4833,6 @@ func TestBoardFleetLineAbsentOrEmpty(t *testing.T) {
 }
 
 func TestCoveragePanelShowsTheConcentrationBlock(t *testing.T) {
-	t.Parallel()
-
 	cov := &fakeCoverage{cov: store.Coverage{
 		Totals: store.CoverageTotals{Total: 35, Measurable: 24, Unmeasurable: 11},
 		Concentration: store.CoverageConcentration{
@@ -4826,15 +4841,17 @@ func TestCoveragePanelShowsTheConcentrationBlock(t *testing.T) {
 			SingleAnchor: 3, ThinSectors: 2,
 		},
 	}}
-	ts := newServerWithCoverage(t, testToken, fixture(), cov)
+	ts := newServerWithCoverage(t, fixture(), cov)
 	client, _ := newClient(t)
-	login(t, ts, client, testToken)
 
 	resp, err := client.Get(ts.URL + "/coverage") //nolint:bodyclose // body() closes it
 	if err != nil {
 		t.Fatal(err)
 	}
 	page := body(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("coverage concentration status = %d, body=%q", resp.StatusCode, page)
+	}
 
 	for _, want := range []string{
 		`data-testid="coverage-concentration"`,
@@ -4847,7 +4864,7 @@ func TestCoveragePanelShowsTheConcentrationBlock(t *testing.T) {
 		`data-testid="coverage-unmeasurable"`, "11 targets are unmeasurable",
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("coverage block missing %q", want)
+			t.Errorf("coverage block missing %q, body=%q", want, page)
 		}
 	}
 }

@@ -858,6 +858,19 @@ func TestAtlasMapFirstHoverAndPin(t *testing.T) {
 	if _, err := h.page.Goto(h.baseURL + "/atlas"); err != nil {
 		t.Fatalf("goto /atlas: %v", err)
 	}
+	if err := h.page.SetViewportSize(1440, 1000); err != nil {
+		t.Fatalf("set atlas screenshot viewport: %v", err)
+	}
+	_, _ = h.page.Evaluate(`() => {
+		document.querySelector('[data-testid="insecure-transport"]')?.remove();
+		document.querySelector('[data-testid="logout"]')?.closest('form')?.remove();
+	}`)
+	if shot, err := h.page.Screenshot(); err == nil {
+		dir := filepath.Join("..", "..", "..", "docs", "screenshots")
+		if err := os.MkdirAll(dir, 0o755); err == nil {
+			_ = os.WriteFile(filepath.Join(dir, "atlas.png"), shot, 0o644)
+		}
+	}
 	if err := expect.Locator(h.page.Locator("h1")).ToHaveText("Atlas"); err != nil {
 		t.Fatalf("heading = %v", err)
 	}
