@@ -109,6 +109,12 @@ Want the full field-trial fleet (1000 real targets + five-continent Tor corrobor
 
 All shots are from the local field-trial deploy — 1000 real targets, no mocked data.
 
+**Atlas — everything, all tabs** — the primary `/atlas` view combines the
+world, US hubs, corridors, board, treemap, coverage, incidents, feeds, IHI,
+and diagnostics on one page:
+
+![netweather atlas](docs/screenshots/atlas.png)
+
 **Health treemap at `/map`** — outages first, largest and reddest longest-standing:
 
 ![netweather health treemap](docs/screenshots/map.png)
