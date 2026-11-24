@@ -363,3 +363,5 @@ netweather synthesizes three earlier experiments. Each contributed one idea; eac
 ## 📄 License
 
 Apache-2.0.
+
+Cite this software using [CITATION.cff](CITATION.cff).
