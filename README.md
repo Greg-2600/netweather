@@ -13,6 +13,7 @@
 [![Single binary](https://img.shields.io/badge/deploy-single%20binary-brightgreen)](#container)
 [![No telemetry](https://img.shields.io/badge/telemetry-none-green)](#safety-posture)
 [![Health map](https://img.shields.io/badge/UI-health%20treemap-orange)](#screenshots)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24503939.svg)](https://doi.org/10.5281/zenodo.24503939)
 
 [Quick start](#quick-start) · [Features](#-features) · [Screenshots](#screenshots) · [Docs](#design-docs) · [Deploy](#deployment)
 
@@ -390,4 +391,4 @@ netweather synthesizes three earlier experiments. Each contributed one idea; eac
 
 Apache-2.0.
 
-Cite this software using [CITATION.cff](CITATION.cff).
+Cite this software using [CITATION.cff](CITATION.cff). DOI: [10.5281/zenodo.24503940](https://doi.org/10.5281/zenodo.24503940).
