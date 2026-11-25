@@ -13,14 +13,14 @@ permissions:
   id-token: write # cosign keyless signing through Fulcio
   attestations: write # buildx provenance attestation
 
-env:
-  IMAGE: ghcr.io/${{ github.repository }}
-
 jobs:
   image:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+
+      - name: normalize the image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
       - name: version metadata
         id: meta
@@ -89,7 +89,7 @@ jobs:
           severity-cutoff: high
 
       - name: upload the scan report
-        if: always()
+        if: always() && steps.scan.outputs.sarif != ''
         uses: actions/upload-artifact@v7
         with:
           name: grype-report
@@ -119,6 +119,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+
+      - name: normalize the image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
       - name: version metadata
         id: meta
@@ -177,6 +180,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+
+      - name: normalize the image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
       - name: version metadata
         id: meta
