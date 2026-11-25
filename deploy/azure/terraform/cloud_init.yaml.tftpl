@@ -41,7 +41,7 @@ write_files:
       done
 
       sed -i "s|ghcr.io/OWNER/netweather:latest|$image|g" "$tmp/deployment.yaml"
-      sed -i "s|netweather.apps.westcountytech.com|$ingress_host|g" "$tmp/ingress.yaml"
+      sed -i "s|netweather.westcountytech.com|$ingress_host|g" "$tmp/ingress.yaml"
       sed -i "s|greg@westcountytech.com|$acme_email|g" "$tmp/traefik-config.yaml"
       kubectl apply -f "$tmp/traefik-config.yaml"
       kubectl apply -f "$tmp"

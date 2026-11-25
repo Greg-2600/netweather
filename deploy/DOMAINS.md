@@ -1,23 +1,22 @@
 # DNS and domain pattern
 
-All public apps live under `apps.westcountytech.com`. One wildcard record covers every current and future app.
+Each public app gets its own A record named after its repo directly under `westcountytech.com`. For example, netweather uses `netweather.westcountytech.com`. There is no wildcard record.
 
 ## GoDaddy records
 
-Create these records at GoDaddy for `westcountytech.com`:
+Create one record at GoDaddy for each app under `westcountytech.com`:
 
 | Type | Name | Value | TTL |
 | --- | --- | --- | --- |
-| A | `*.apps` | VM public IP | 600 |
-| A | `apps` | VM public IP | 600 |
+| A | `netweather` | VM public IP | 600 |
 
-The wildcard record answers `netweather.apps.westcountytech.com` and any future host under `apps.westcountytech.com`. The record for `apps` makes the base name resolve as well.
+Add another row in the same form when you deploy a new app, using the repo name as the record name.
 
 ## New app checklist
 
-1. Give the app an Ingress with a host such as `myapp.apps.westcountytech.com`.
+1. Give the app an Ingress with a host named after its repo, such as `myapp.westcountytech.com`.
 2. Deploy the Ingress. Traefik reads the host and routes traffic.
-3. Leave DNS alone. The wildcard record already covers the new host.
+3. Add an A record for the repo name at GoDaddy. Point it at the VM public IP.
 
 ## HTTPS
 
@@ -27,4 +26,4 @@ Set the ACME email with the `acme_email` Terraform variable. The default is `gre
 
 ## Changing the host
 
-Set the `ingress_host` Terraform variable, or edit the `host` and `tls` values in the Ingress manifest when you apply it by hand. The default is `netweather.apps.westcountytech.com`.
+Set the `ingress_host` Terraform variable, or edit the `host` and `tls` values in the Ingress manifest when you apply it by hand. The default is `netweather.westcountytech.com`.

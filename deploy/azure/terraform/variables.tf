@@ -58,7 +58,7 @@ variable "app_https_port" {
 variable "ingress_host" {
   description = "Host name served by the Traefik Ingress."
   type        = string
-  default     = "netweather.apps.westcountytech.com"
+  default     = "netweather.westcountytech.com"
 }
 
 variable "acme_email" {

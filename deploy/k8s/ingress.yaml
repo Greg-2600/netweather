@@ -12,9 +12,9 @@ metadata:
 spec:
   tls:
     - hosts:
-        - netweather.apps.westcountytech.com
+        - netweather.westcountytech.com
   rules:
-    - host: netweather.apps.westcountytech.com
+    - host: netweather.westcountytech.com
       http:
         paths:
           - path: /

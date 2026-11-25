@@ -34,7 +34,8 @@ schedule, which can stretch the credit further.
 - `deploy/k8s`: namespace, PersistentVolumeClaim, Deployment, Service, the
   Traefik Ingress, and the HelmChartConfig that enables the Let's Encrypt ACME
   resolver.
-- `deploy/DOMAINS.md`: DNS pattern for apps under `apps.westcountytech.com`.
+- `deploy/DOMAINS.md`: DNS pattern for one A record per app under
+  `westcountytech.com`.
 - `.github/workflows/azure_k3s.yml`: CI checks only. It runs Terraform format
   checks, `terraform init -backend=false`, `terraform validate`, and
   kubeconform. It never runs apply and uses no Azure credentials.
@@ -82,7 +83,7 @@ schedule, which can stretch the credit further.
    # auto_shutdown_enabled = true
    # auto_shutdown_time    = "1900"
    # netweather_image      = "ghcr.io/your-user/netweather:latest"
-   # ingress_host          = "netweather.apps.westcountytech.com"
+   # ingress_host          = "netweather.westcountytech.com"
    # acme_email            = "greg@westcountytech.com"
    ```
 
@@ -144,7 +145,7 @@ kubectl apply -f deploy/k8s/service.yaml
 kubectl apply -f deploy/k8s/ingress.yaml
 ```
 
-The Ingress defaults to `netweather.apps.westcountytech.com`. Change the `host`
+The Ingress defaults to `netweather.westcountytech.com`. Change the `host`
 and `tls` entries in `deploy/k8s/ingress.yaml` to use a different name.
 
 To skip the Ingress, do not apply `deploy/k8s/ingress.yaml`. Use port forwarding
