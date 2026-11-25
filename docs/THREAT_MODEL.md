@@ -97,7 +97,7 @@ X9 is listed as an adversary on purpose. Most real incidents in a tool like this
 
 ## 4. Trust boundaries
 
-```
+```text
                        untrusted internet
                               |
              +----------------+----------------+

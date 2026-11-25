@@ -27,3 +27,11 @@ updates:
     groups:
       base-images:
         patterns: ["*"]
+
+  - package-ecosystem: terraform
+    directory: /deploy/azure/terraform
+    schedule:
+      interval: weekly
+    groups:
+      terraform:
+        patterns: ["*"]

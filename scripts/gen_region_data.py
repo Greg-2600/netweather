@@ -66,7 +66,8 @@ ALIASES = {
 
 
 def main() -> None:
-    with urllib.request.urlopen(SOURCE, timeout=60) as response:
+    # The source is a fixed https constant, not user input.
+    with urllib.request.urlopen(SOURCE, timeout=60) as response:  # nosec B310
         data = json.load(response)
 
     mapping: dict[str, str] = {}

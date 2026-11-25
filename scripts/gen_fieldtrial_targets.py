@@ -56,7 +56,8 @@ def country_name(tld: str) -> str:
 
 # ---------------------------------------------------------------- root zone ---
 
-body = open(ROOT_ZONE, encoding="utf-8", errors="replace").read()
+with open(ROOT_ZONE, encoding="utf-8", errors="replace") as handle:
+    body = handle.read()
 lines = []
 for raw in body.split("\n"):
     line = raw.split(";", 1)[0]
@@ -230,7 +231,7 @@ EXTRA_GLUE: list[tuple[str, str, str]] = [
     ("204.61.216.131", "mw", "pch1.nic.mw"),
 ]
 default_glue_ips: set[str] = set()
-for ip, tld, owner in glue:
+for ip, _tld, _owner in glue:
     if len(default_glue_ips) >= 100:
         break
     if ip in default_glue_ips or ip in ("198.41.0.4", "192.58.128.30"):

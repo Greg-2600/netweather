@@ -56,7 +56,7 @@ WAL grows until checkpointed. `wal_autocheckpoint=1000` pages (~4 MB) is the def
 
 ## 3. Entity map
 
-```
+```text
 target ──┬── probe ────────────── probe_archive (incident-pinned)
          ├── target_state         (latest per target+vantage)
          ├── state_change
@@ -143,10 +143,9 @@ CREATE TABLE target_source (
 
 **Implemented in migration `0022`:** `netweather seed` records `seed:builtin` with a SHA-256 of the shipped entry list, `seed --country-anchors` records `seed:root-zone` with a SHA-256 of the fetched zone, and a config load records `config:<path>` with a SHA-256 of the file or, for a directory, every file in a stable order with its relative path. The upsert updates `fetched_at` and `sha256` in place, so a reload shows a changed payload without adding a second row for the same source. The row is written in the same load that upserts the target, and a failed write fails the load rather than leaving a target with no provenance.
 
-
 ### 4.1 Reconciliation on config load
 
-```
+```text
 for each target in config:
     key = (host, port, probe)
     if row exists with key:  UPDATE name/class/sector/tier/interval; keep id, asn, cdn, as_country, as_name, measurability
@@ -159,7 +158,7 @@ A changed `(host, port, probe)` produces a new row by construction. That is inte
 
 **Migration `0010`** added `as_country` and `as_name` to `target`. They are written only by `store.UpdateEnrichment`, never by `UpsertTarget`, so a config reconciliation pass and an enrichment pass cannot erase each other's work.
 
-**Migration `0012`** added `ix_names`, the PeeringDB exchange membership for the target's ASN, joined with `, ` and capped by the client. It follows the same ownership rule as the other enrichment columns.
+**Migration `0012`** added `ix_names`, the PeeringDB exchange membership for the target's ASN, joined with `,` and capped by the client. It follows the same ownership rule as the other enrichment columns.
 
 **Migration `0019`** added `status_url`, the operator's status page for a target (DESIGN.md §10.5). It is config-owned like the name, so `UpsertTarget` writes it; its host is the match key against stored statuspage events.
 
@@ -564,6 +563,7 @@ CREATE TABLE vantage_change (
 
 Maintenance compares consecutive successful `egress-ip` observations and appends one row when the tuple moves; it does not record a failed or missing observation, because an unknown is not evidence of a move. The board reads the newest row, and within 24 hours renders "Your egress changed (AS7922 → AS9009, US → NL). Baselines reset; expect about 24h of reduced anomaly sensitivity." It shows the ASN and country, never the literal address.
 
+```sql
 CREATE TABLE external_event (
     id          INTEGER PRIMARY KEY,
     feed        TEXT NOT NULL,                -- 'ioda','radar'
@@ -588,6 +588,7 @@ CREATE TABLE feed_state (
     consecutive_failures INTEGER NOT NULL DEFAULT 0,
     next_poll_at         INTEGER
 );
+
 ```
 
 `feed_state` is what makes `Radar: stale (2h)` possible instead of a silent blank (`DESIGN.md` §8.7).
@@ -696,7 +697,7 @@ Pinning runs **before** pruning, in the same job, so an incident opened at 03:58
 
 One transaction per dispatcher tick, not one per probe:
 
-```
+```text
 BEGIN IMMEDIATE
   INSERT INTO probe ...            -- batch of rows completed this tick
   UPSERT target_state ...          -- only if state changed or streak advanced

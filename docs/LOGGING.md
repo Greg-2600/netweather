@@ -112,7 +112,7 @@ No layer logs the same failure twice. Wrap with `%w`, return, log once at the bo
 
 Global `debug` is acceptable for a minute. Global `trace` is not. The intended workflow:
 
-```
+```text
 netweather debug enable --target chase.com --level trace --for 10m
 netweather debug enable --target chase.com --level trace --until 2026-11-16T04:00:00Z
 netweather debug status
@@ -208,7 +208,7 @@ The ring is not a log shipper. It holds minutes, not days.
 
 A bug report about a monitor needs the monitor's own state, not a screenshot.
 
-```
+```text
 netweather debug bundle -o netweather-bundle.tar.gz
 ```
 

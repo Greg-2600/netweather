@@ -54,7 +54,7 @@ if (-not $DryRun) {
 # --- rollback point: keep the current image under a known tag ----------------
 $rollback = 'netweather:rollback'
 if (-not $DryRun) {
-    $existing = docker image inspect $ImageName 2>&1
+    docker image inspect $ImageName 2>&1 | Out-Null
     if ($LASTEXITCODE -eq 0) {
         docker tag $ImageName $rollback 2>&1 | Out-Null
         Write-Host "  rollback image tagged $rollback"
@@ -109,7 +109,7 @@ if (-not $healthy) {
     Write-Host 'ERROR: new instance did not become healthy; attempting rollback'
     if (-not $DryRun) {
         docker rm -f $ContainerName 2>&1 | Out-Null
-        $rb = docker image inspect $rollback 2>&1
+        docker image inspect $rollback 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
             docker run -d --name $ContainerName `
                 -p 2600:2600 -v "$DataVolume`:/data" -v "$SecretVolume`:/run/secrets:ro" `
