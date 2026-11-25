@@ -3,6 +3,7 @@ message: If you use this software, please cite it using the metadata from 'CITAT
 type: software
 title: netweather
 version: 1.0.0
+doi: 10.5281/zenodo.24503940
 date-released: '2026-11-24'
 license: Apache-2.0
 repository-code: 'https://github.com/Greg-2600/netweather'
@@ -24,3 +25,10 @@ keywords:
   - network monitoring
   - DNS
   - self-hosted
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.24503940
+    description: This version
+  - type: doi
+    value: 10.5281/zenodo.24503939
+    description: All versions
