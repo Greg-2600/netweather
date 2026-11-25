@@ -1,0 +1,50 @@
+#cloud-config
+package_update: true
+packages:
+  - curl
+  - ca-certificates
+  - openssl
+
+write_files:
+  - path: /usr/local/bin/netweather-bootstrap
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      set -eu
+
+      curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--write-kubeconfig-mode 600" sh -
+      export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
+      for _ in $(seq 1 90); do
+        if kubectl get nodes >/dev/null 2>&1; then
+          break
+        fi
+        sleep 2
+      done
+
+      kubectl create namespace netweather --dry-run=client -o yaml | kubectl apply -f -
+
+      if ! kubectl -n netweather get secret netweather-auth >/dev/null 2>&1; then
+        token="$(openssl rand -hex 24)"
+        kubectl -n netweather create secret generic netweather-auth --from-literal=token="$token"
+      fi
+
+      base="${manifest_base_url}"
+      image="${netweather_image}"
+      ingress_host="${ingress_host}"
+      acme_email="${acme_email}"
+      tmp="$(mktemp -d)"
+      trap 'rm -rf "$tmp"' EXIT
+
+      for file in namespace.yaml pvc.yaml deployment.yaml service.yaml ingress.yaml traefik-config.yaml; do
+        curl -fsSL "$base/$file" -o "$tmp/$file"
+      done
+
+      sed -i "s|ghcr.io/OWNER/netweather:latest|$image|g" "$tmp/deployment.yaml"
+      sed -i "s|netweather.westcountytech.com|$ingress_host|g" "$tmp/ingress.yaml"
+      sed -i "s|greg@westcountytech.com|$acme_email|g" "$tmp/traefik-config.yaml"
+      kubectl apply -f "$tmp/traefik-config.yaml"
+      kubectl apply -f "$tmp"
+
+runcmd:
+  - /usr/local/bin/netweather-bootstrap

@@ -1,0 +1,51 @@
+name: azure k3s
+
+on:
+  pull_request:
+    paths:
+      - "deploy/azure/**"
+      - "deploy/k8s/**"
+      - ".github/workflows/azure_k3s.yml"
+  push:
+    branches: [main]
+    paths:
+      - "deploy/azure/**"
+      - "deploy/k8s/**"
+      - ".github/workflows/azure_k3s.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deploy/azure/terraform
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10.5"
+          terraform_wrapper: false
+
+      - name: format
+        run: terraform fmt -check -recursive
+
+      - name: init
+        run: terraform init -backend=false -input=false
+
+      - name: validate
+        run: terraform validate
+
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: validate Kubernetes manifests
+        run: |
+          docker run --rm -v "$PWD/deploy/k8s:/manifests:ro" \
+            ghcr.io/yannh/kubeconform:v0.6.7 \
+            -strict -ignore-missing-schemas -summary /manifests
