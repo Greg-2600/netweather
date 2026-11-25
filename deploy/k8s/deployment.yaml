@@ -37,6 +37,12 @@ spec:
               value: "0.0.0.0:2600"
             - name: NETWEATHER_DATA
               value: /data
+            # The binary's built-in default is the full 1000-target field-trial
+            # fleet. Set NETWEATHER_CONFIG here to override it.
+            - name: NETWEATHER_TOR
+              value: "true"
+            - name: NETWEATHER_TOR_SOCKS
+              value: "127.0.0.1:9050"
             - name: NETWEATHER_UI_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -50,10 +56,10 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 128Mi
+              memory: 256Mi
             limits:
-              cpu: 500m
-              memory: 512Mi
+              cpu: "1"
+              memory: 1Gi
           readinessProbe:
             httpGet:
               path: /healthz
@@ -76,6 +82,28 @@ spec:
               port: http
             periodSeconds: 5
             failureThreshold: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+        # Tor corroboration sidecar. It shares the pod network namespace, so
+        # the app reaches it on loopback. It publishes no port and stays
+        # client-only through the torrc baked into Dockerfile.tor.
+        - name: tor
+          image: ghcr.io/OWNER/netweather-tor:latest
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

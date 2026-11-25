@@ -18,7 +18,7 @@ Companion documents: [`NETWORKING.md`](NETWORKING.md) (topology and reachability
 | The SQLite database and backups | Contains the target list, egress identity, and a timeline |
 | The container runtime and image | Runs as a non-root process on the operator's host |
 | Dependencies and build pipeline | Published binary consumed by strangers |
-| The optional Tor sidecar | A proxy that must never become a relay |
+| The default Tor sidecar | A proxy that must never become a relay |
 | External feed clients | Outbound fetches to third-party APIs with credentials |
 
 ### Out of scope
@@ -55,7 +55,7 @@ What exists in code today, and therefore what "enforced" currently means:
 | Probe dialer, SSRF rules, port allowlist | **implemented** | `internal/netx`, `dialer_test.go`, `policy_test.go` |
 | Store, migrations, retention, backups | **implemented** | `internal/store`, `docs/SCHEMA.md` |
 | Container image, compose, capabilities, read-only rootfs | **implemented** | `Dockerfile`, `compose.yaml`, `docs/IMAGE.md`, `docs/NETWORKING.md` |
-| Feeds, Tor sidecar, RIPE Atlas profile | **implemented** | `internal/feeds`, `compose.yaml` profiles, `docs/DESIGN.md` §8 |
+| Feeds, Tor sidecar, RIPE Atlas profile | **implemented** | `internal/feeds`, `compose.yaml` default sidecar and pinned profiles, `docs/DESIGN.md` §8 |
 
 The SSRF rules in §5.2 are properties of the running binary: every instrument dials through `internal/netx`, which resolves, checks the address and port against the policy, and only then dials the checked IP (name resolution for the Host/SNI is preserved). The table describes code that exists; where a capability is optional (raw ICMP, traceroute), the degradation is explicit rather than silent.
 

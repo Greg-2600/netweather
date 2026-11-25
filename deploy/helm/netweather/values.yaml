@@ -13,9 +13,33 @@ env:
   NETWEATHER_TOKEN: "change-me"
   NETWEATHER_DATA: /data
 
+# The default install includes the full field-trial target fleet baked into
+# the binary and one unpinned Tor corroboration sidecar. Set enabled: false to
+# run direct only. The repository and tag default to the main image's values,
+# with "-tor" appended to the repository, matching the release workflow.
+tor:
+  enabled: true
+  image:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
 persistence:
   enabled: true
   size: 1Gi
   storageClass: ""
 
-resources: {}
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi

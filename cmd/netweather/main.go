@@ -27,6 +27,7 @@ import (
 	"syscall"
 	"time"
 
+	shipped "github.com/Greg-2600/netweather/config"
 	"github.com/Greg-2600/netweather/internal/agent"
 	"github.com/Greg-2600/netweather/internal/anomaly"
 	"github.com/Greg-2600/netweather/internal/api"
@@ -662,7 +663,7 @@ func serve(lg *logging.Logger) error {
 	// (LOGGING.md §4).
 	configSource := strings.TrimSpace(os.Getenv("NETWEATHER_CONFIG"))
 	if configSource == "" {
-		configSource = "builtin seed"
+		configSource = "builtin fleet"
 	}
 	vantages := []string{"local"}
 	for _, spec := range torSpecs {
@@ -687,27 +688,16 @@ func serve(lg *logging.Logger) error {
 	return nil
 }
 
-// loadTargets prefers NETWEATHER_CONFIG, then the shipped seed list. Each
-// instrument has its own branch; a probe this build does not dispatch fails
-// loudly instead of silently dropping targets.
+// loadTargets prefers NETWEATHER_CONFIG, then the full field-trial fleet
+// embedded in the binary. Each instrument has its own branch; a probe this
+// build does not dispatch fails loudly instead of silently dropping targets.
 func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
-	path := os.Getenv("NETWEATHER_CONFIG")
-	if path == "" {
-		return seedTargets(ctx, st)
-	}
-
-	f, err := config.Load(path)
+	f, source, payloadSHA, err := configuredTargetFile()
 	if err != nil {
 		return nil, err
 	}
-
-	// Provenance for the whole file or directory (THREAT_MODEL.md T35). One
-	// hash for the payload, recorded per target so a poisoned list can be
-	// traced back to the input that produced it.
-	source := "config:" + path
-	payloadSHA, err := configPayloadSHA(path)
-	if err != nil {
-		return nil, fmt.Errorf("config payload hash: %w", err)
+	if f == nil {
+		return nil, nil
 	}
 	loadedAt := time.Now().UTC()
 
@@ -789,6 +779,51 @@ func loadTargets(ctx context.Context, st *store.Store) ([]agent.Target, error) {
 		})
 	}
 	return out, nil
+}
+
+// configuredTargetFile returns the target file and its provenance. With
+// NETWEATHER_CONFIG set it loads that file or directory; with it unset it
+// returns the full field-trial fleet compiled into the binary. NETWEATHER_SEED
+// none still starts with an empty board.
+func configuredTargetFile() (*config.File, string, string, error) {
+	path := strings.TrimSpace(os.Getenv("NETWEATHER_CONFIG"))
+	if path == "" {
+		if os.Getenv("NETWEATHER_SEED") == "none" {
+			return nil, "", "", nil
+		}
+		f, err := shipped.FieldtrialFile()
+		if err != nil {
+			return nil, "", "", fmt.Errorf("embedded target list: %w", err)
+		}
+		return f, "builtin:fleet", payloadSHA(string(shipped.FieldtrialTargets)), nil
+	}
+
+	f, err := config.Load(path)
+	if err != nil {
+		return nil, "", "", err
+	}
+	// Provenance for the whole file or directory (THREAT_MODEL.md T35). One
+	// hash for the payload, recorded per target so a poisoned list can be
+	// traced back to the input that produced it.
+	payloadSHA, err := configPayloadSHA(path)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("config payload hash: %w", err)
+	}
+	return f, "config:" + path, payloadSHA, nil
+}
+
+// configuredFile is the reader shared by the corridor loop and the corridor
+// page. It follows the same default as loadTargets: an explicit config wins,
+// otherwise the embedded fleet is used.
+func configuredFile() (*config.File, error) {
+	path := strings.TrimSpace(os.Getenv("NETWEATHER_CONFIG"))
+	if path == "" {
+		if os.Getenv("NETWEATHER_SEED") == "none" {
+			return &config.File{}, nil
+		}
+		return shipped.FieldtrialFile()
+	}
+	return config.Load(path)
 }
 
 func targetURL(host string, port int, path string) string {
@@ -944,7 +979,7 @@ func applySeedEntries(ctx context.Context, st *store.Store, entries []seed.Entry
 		}
 
 		// A generated HTTP target has no content assertion, so it is probed
-		// for status and headers and a 206 is a success. The shipped seed
+		// for status and headers and a 206 is a success. The built in fleet
 		// entries and the ccTLD anchors both come through here.
 		expect := classify.Expected{}
 		if probe == "http" {
@@ -1781,17 +1816,13 @@ func (f corridorEndpointsFunc) CorridorEndpoints(ctx context.Context) map[string
 	return f(ctx)
 }
 
-// configuredCorridorEndpoints reads the operator's corridor config on each
-// page render, so a reload cannot leave the UI naming stale endpoints. A read
-// failure leaves the page with its labels rather than invented hosts, and is
-// logged instead of shown as a fake measurement.
+// configuredCorridorEndpoints reads the active corridor config on each page
+// render, so a reload cannot leave the UI naming stale endpoints. A read failure
+// leaves the page with its labels rather than invented hosts, and is logged
+// instead of shown as a fake measurement.
 func configuredCorridorEndpoints(lg *logging.Logger) corridorEndpointsFunc {
 	return func(context.Context) map[string][]string {
-		path := strings.TrimSpace(os.Getenv("NETWEATHER_CONFIG"))
-		if path == "" {
-			return nil
-		}
-		f, err := config.Load(path)
+		f, err := configuredFile()
 		if err != nil {
 			if lg != nil {
 				lg.Warn("corridor endpoint config unavailable",
@@ -1807,9 +1838,9 @@ func configuredCorridorEndpoints(lg *logging.Logger) corridorEndpointsFunc {
 	}
 }
 
-// corridorLoop samples the configured corridors every five minutes
-// (DESIGN.md §9). Corridors are configuration-driven: without a `corridors:`
-// section nothing runs, so the feature cannot invent endpoints.
+// corridorLoop samples the active corridors every five minutes (DESIGN.md §9).
+// Corridors come from an explicit config or the embedded fleet; a config without
+// a `corridors:` section runs none, so the feature cannot invent endpoints.
 //
 // A step change opens one event; recovery closes it. Traces are deliberately
 // not automated here: a walk touches ~30 third-party routers and the manual
@@ -1871,11 +1902,7 @@ func formatTraceHops(res probe.TraceResult) string {
 
 func corridorLoop(ctx context.Context, st *store.Store, paused func() bool, lg *logging.Logger, traceStep func(context.Context, string) (string, error)) {
 	provider := func() ([]config.Corridor, error) {
-		path := strings.TrimSpace(os.Getenv("NETWEATHER_CONFIG"))
-		if path == "" {
-			return nil, nil
-		}
-		f, err := config.Load(path)
+		f, err := configuredFile()
 		if err != nil {
 			return nil, err
 		}
@@ -2053,8 +2080,9 @@ const (
 )
 
 // newTorAgent builds the optional corroboration vantage. It returns nil when
-// NETWEATHER_TOR is not "true": Tor is off by default, because it is a
-// different trust domain and a different volume budget.
+// NETWEATHER_TOR is not "true". Tor is off unless the install enables it; the
+// shipped Compose, Kubernetes, and Helm installs do, because it is a different
+// trust domain and a different volume budget.
 // cymruLookup returns an ASN and country resolver for an egress address. The
 // query goes to one well-known resolver over the guarded dialer, so the host's
 // resolver is not part of the measurement.

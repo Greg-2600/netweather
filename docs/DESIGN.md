@@ -1,6 +1,6 @@
 # netweather — Design
 
-> Working codename. Single container, single binary, self-hosted.
+> Working codename. Two containers by default (app plus Tor sidecar), one binary, self hosted.
 > Status: design complete enough to implement. Open questions in §16.
 
 ---
@@ -388,26 +388,23 @@ Hard constraints, all enforced in code:
 
 #### Deployment: don't embed Tor
 
-Point at **any** SOCKS5 endpoint — Tor, an SSH tunnel, a VPN, a corporate proxy. Ship a compose profile with a Tor sidecar:
+Point at **any** SOCKS5 endpoint — Tor, an SSH tunnel, a VPN, a corporate proxy. Ship a default Tor sidecar:
 
 ```yaml
   tor:
-    build:
-      context: .
-      dockerfile: Dockerfile.tor
-    image: netweather-tor:local
-    profiles: ["tor"]
+    image: ghcr.io/<owner>/netweather-tor:<tag>
     restart: unless-stopped
 ```
 
 This keeps the main image small, keeps Tor security updates independent of the release cycle, and lets users reuse a proxy they already run. The sidecar is built from this repository's `Dockerfile.tor` so the client-only `torrc` is baked in rather than mounted: a forgotten mount cannot turn the proxy into an exit relay. An all-in-one image with `tor` + `s6-overlay` is acceptable as an optional variant, but it is not the default.
 
-Every Tor service is behind `profiles: ["tor"]`, so `docker compose up -d`
-does not create it. `docker compose --profile tor up -d` starts seven local
-images: `netweather-tor:local` plus
+The base `tor` service runs by default from the signed
+`ghcr.io/<owner>/netweather-tor:<tag>` image, so `docker compose up -d` creates
+it. The six pinned services are behind `profiles: ["tor"]`;
+`docker compose --profile tor up -d` adds
 `netweather-tor-de/jp/au/sg/cl/mx:local`. None publishes a port. The six pinned
 sidecars stay idle until `NETWEATHER_TOR_VANTAGES` is set to the exact
-service-name list above. A pinned label is trusted only after exit verification
+service name list above. A pinned label is trusted only after exit verification
 through that proxy.
 
 #### Client-only torrc
@@ -1246,10 +1243,10 @@ scripts copy the token into a secret volume with those permissions. Docker
 Desktop bind mounts cannot carry Unix ownership, so manual Windows deploys
 should use a named volume or secret.
 
-- ~20 MB image, ~80 MB RSS at field-trial scale
+- ~20 MB image, ~40 MB RSS at field trial scale
 - Multi-arch: linux/amd64, linux/arm64
 - Egress only; no inbound required except the UI port (2600)
-- **Ships with 14 targets.** `netweather seed` generates sector/country lists for users who want scale
+- **Ships with the full 1000 target field trial fleet embedded in the binary.** `netweather seed` generates sector and country lists for operators who want a custom board
 
 Base image, hardening, capabilities, and supply chain: see [`IMAGE.md`](IMAGE.md). Network topology, MTU, DNS, SSRF reachability, port choice, and access posture: see [`NETWORKING.md`](NETWORKING.md).
 
@@ -1360,7 +1357,7 @@ Phase 0 is the whole thesis in miniature. If phase 0 is noisy, nothing later sav
 **Open:**
 
 1. **Federation.** Tor vantages (§5.7) provide a cheap second path today; true multi-operator federation (a public map) is post-v1 and off by default — the privacy cost is real, and a federated instance leaks its target list to its peers.
-2. **Default seed.** Ship a small curated list, or ship a `seed` command that pulls from public lists? Currently: both — 14 curated targets, plus the generator for operators who want scale.
+2. **Default seed.** Ship a small curated list, or ship a `seed` command that pulls from public lists? Currently: both — the full 1000 target field trial fleet is the default, and the generator remains for operators who want a custom board.
 3. **Corridor endpoints.** With the Atlas profile available, Atlas anchors become the default when it is on; country NS hosts remain the self-contained fallback. Which is authoritative when both exist?
 4. **`DEGRADED` thresholds.** Latency-based degradation needs a per-target EWMA baseline; exact multiplier (3× p50? 2× p95?) needs real data before it is codified.
 5. **Dashboard exposure.** Resolved in `NETWORKING.md` §7.1: bind `0.0.0.0:2600`, require auth, and put it on the tailnet via the optional sidecar profile when it should not be on the LAN at all.

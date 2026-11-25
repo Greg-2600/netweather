@@ -77,9 +77,9 @@ func doctorCommand(args []string, out io.Writer) error {
 		}},
 	}
 
-	// The Tor sidecar is optional, so its check is only added when the vantage
-	// is enabled, and a missing proxy is a warning rather than a startup
-	// failure. The exit policy itself is guaranteed by the baked-in torrc in
+	// The Tor sidecar is enabled by the shipped installs but remains optional
+	// in the binary, so its check is only added when the vantage is enabled, and
+	// a missing proxy is a warning rather than a startup failure. The exit policy itself is guaranteed by the baked-in torrc in
 	// Dockerfile.tor; the app container cannot inspect the sidecar's config,
 	// and claiming to would be the kind of assurance this project avoids.
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("NETWEATHER_TOR")), "true") ||
