@@ -17,7 +17,7 @@ cannot live in a pull-request gate.
    ```
 
    Use `NETWEATHER_SEED=none` if the file is the whole board, so the shipped
-   fourteen targets do not run beside it.
+   full fleet does not run beside it.
 
 2. Record the starting state:
 

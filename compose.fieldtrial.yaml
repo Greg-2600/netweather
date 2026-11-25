@@ -4,9 +4,10 @@
 #
 # The base file supplies the hardened runtime (read-only root, uid 65532,
 # dropped capabilities, healthcheck, restart policy, unprivileged ICMP). This
-# overlay selects the production-sized target file, turns on the Tor
-# corroboration vantage, and points auth at a real 0600 secret (a Docker named
-# volume, because a Windows bind mount cannot carry Unix mode 0600).
+# overlay selects the production-sized target file, adds the six pinned Tor
+# vantages (the base unpinned sidecar is already on), and points auth at a real
+# 0600 secret (a Docker named volume, because a Windows bind mount cannot carry
+# Unix mode 0600).
 services:
   netweather:
     image: netweather:local

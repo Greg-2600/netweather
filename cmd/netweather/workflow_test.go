@@ -222,11 +222,12 @@ func TestTorSidecarIsBakedIn(t *testing.T) {
 	}
 	var compose struct {
 		Services map[string]struct {
-			// build is a mapping for the tor service and the short string form
-			// for the main image, so it cannot be decoded into a struct.
-			Build any    `yaml:"build"`
-			Ports []any  `yaml:"ports"`
-			Image string `yaml:"image"`
+			// build is a mapping for the pinned regional services and the
+			// short string form for the main image.
+			Build    any      `yaml:"build"`
+			Ports    []any    `yaml:"ports"`
+			Image    string   `yaml:"image"`
+			Profiles []string `yaml:"profiles"`
 		} `yaml:"services"`
 	}
 	if err := yaml.Unmarshal(raw, &compose); err != nil {
@@ -236,12 +237,11 @@ func TestTorSidecarIsBakedIn(t *testing.T) {
 	if !ok {
 		t.Fatal("compose has no tor service")
 	}
-	build, ok := tor.Build.(map[string]any)
-	if !ok {
-		t.Fatalf("tor build = %T, want a mapping with dockerfile", tor.Build)
+	if !strings.Contains(tor.Image, "netweather-tor") {
+		t.Fatalf("tor image = %q, want the signed netweather-tor image", tor.Image)
 	}
-	if build["dockerfile"] != "Dockerfile.tor" {
-		t.Fatalf("tor builds with %v, want Dockerfile.tor", build["dockerfile"])
+	if len(tor.Profiles) != 0 {
+		t.Fatalf("tor profiles = %v, want the default install", tor.Profiles)
 	}
 	if len(tor.Ports) != 0 {
 		t.Fatalf("tor publishes %v; the proxy must stay on the egress network", tor.Ports)

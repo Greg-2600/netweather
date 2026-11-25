@@ -131,14 +131,11 @@ services:
       timeout: 5s
       retries: 3
 
-  # Optional: Tor vantage (docs/DESIGN.md §5.7). Built from this repository's
-  # Dockerfile.tor so the client-only torrc is baked in, not mounted.
+  # Default: Tor vantage (docs/DESIGN.md §5.7). The signed image is built from
+  # this repository's Dockerfile.tor, so the client-only torrc is baked in, not
+  # mounted.
   tor:
-    build:
-      context: .
-      dockerfile: Dockerfile.tor
-    image: netweather-tor:local
-    profiles: ["tor"]
+    image: ghcr.io/<owner>/netweather-tor:<tag>
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
@@ -238,15 +235,14 @@ EXPOSE 9050
 ENTRYPOINT ["tor", "-f", "/etc/tor/torrc"]
 ```
 
-The `torrc` is baked in at build time (`torrc`, copied by `Dockerfile.tor`), and `compose.yaml`'s `tor` service builds that image rather than pulling a third-party proxy. The same Dockerfile is published as `ghcr.io/<owner>/netweather-tor` by the release job, signed with cosign, so a deployment that pulls images can use the signed sidecar instead of building locally. The non-negotiable lines are `ClientOnly 1`, `ExitPolicy reject *:*`, `BridgeRelay 0`, and `PublishServerDescriptor 0`; the SOCKS port carries `IsolateSOCKSAuth` so credentials, when a client presents them, select a circuit, and `MaxCircuitDirtiness 3600` keeps one circuit for comparable measurements. A unit test reads `torrc` and asserts every one of those lines, and another asserts the compose service builds `Dockerfile.tor` and publishes no port.
+The `torrc` is baked in at build time (`torrc`, copied by `Dockerfile.tor`). The same Dockerfile is published as `ghcr.io/<owner>/netweather-tor` by the release job, signed with cosign, so the default Compose, Kubernetes, and Helm installs pull the signed sidecar with the same tag as the main image. A local build still uses `Dockerfile.tor`. The non-negotiable lines are `ClientOnly 1`, `ExitPolicy reject *:*`, `BridgeRelay 0`, and `PublishServerDescriptor 0`; the SOCKS port carries `IsolateSOCKSAuth` so credentials, when a client presents them, select a circuit, and `MaxCircuitDirtiness 3600` keeps one circuit for comparable measurements. A unit test reads `torrc` and asserts every one of those lines, and another asserts that Compose uses the signed sidecar image and publishes no port.
 
-Every Tor service is behind `profiles: [tor]`. Starting
-`docker compose --profile tor up -d` builds one unpinned image,
-`netweather-tor:local`, and six pinned images,
-`netweather-tor-de/jp/au/sg/cl/mx:local`. No Tor service publishes a host port,
-and every service stays on the `egress` network.
+The base `tor` service runs by default. The six pinned services are behind
+`profiles: [tor]`; starting `docker compose --profile tor up -d` adds six local
+images, `netweather-tor-de/jp/au/sg/cl/mx:local`. No Tor service publishes a
+host port, and every service stays on the `egress` network.
 
-The app enables the unpinned Tor vantage with `NETWEATHER_TOR=true` and
+The default app enables the unpinned Tor vantage with `NETWEATHER_TOR=true` and
 connects it to `tor:9050`. The six pinned sidecars stay idle until
 `NETWEATHER_TOR_VANTAGES` is set to
 `DE=tor-de:9050,JP=tor-jp:9050,AU=tor-au:9050,SG=tor-sg:9050,CL=tor-cl:9050,MX=tor-mx:9050`.

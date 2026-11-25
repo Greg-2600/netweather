@@ -276,14 +276,14 @@ Safety properties this preserves:
 - `ClientOnly 1` + `ExitPolicy reject *:*` means the bind cannot be turned into a relay. They are baked into the image's `torrc` (not a mount an operator can forget) and pinned by a test. `netweather doctor` proves the SOCKS endpoint answers; it cannot read the sidecar's effective config, so it does not claim to audit the policy.
 - `IsolateSOCKSAuth` works over TCP and does not require the control port. Distinct SOCKS username/password per vantage = distinct circuit, no `SIGNAL NEWNYM`.
 
-Every Tor service is behind `profiles: [tor]`. It does not exist unless the
-Compose stack is started with `--profile tor`. The profile builds seven local
-images: `netweather-tor:local` and `netweather-tor-de/jp/au/sg/cl/mx:local`.
-None publishes a host port, and all remain on `egress`.
+The base `tor` service runs by default from the signed release image
+`ghcr.io/<owner>/netweather-tor:<tag>`. The six pinned services remain behind
+`profiles: [tor]`; starting the stack with `--profile tor` adds them. No Tor
+service publishes a host port, and all remain on `egress`.
 
 The six pinned services start idle until the app receives
 `NETWEATHER_TOR_VANTAGES=DE=tor-de:9050,JP=tor-jp:9050,AU=tor-au:9050,SG=tor-sg:9050,CL=tor-cl:9050,MX=tor-mx:9050`.
-The app enables the unpinned `tor` vantage by setting `NETWEATHER_TOR=true`;
+The default app enables the unpinned `tor` vantage with `NETWEATHER_TOR=true`;
 its SOCKS endpoint is `tor:9050`. A pinned country label is trusted only after
 the app verifies the real exit through the matching proxy.
 

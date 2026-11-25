@@ -144,7 +144,7 @@ var configRedaction = regexp.MustCompile(`(?mi)^(\s*(?:token|ui_token|password|s
 func redactedConfig() []byte {
 	path := strings.TrimSpace(os.Getenv("NETWEATHER_CONFIG"))
 	if path == "" {
-		return []byte("# NETWEATHER_CONFIG is not set; the shipped seed list was used.\n")
+		return []byte("# NETWEATHER_CONFIG is not set; the built in full fleet was used.\n")
 	}
 	raw, err := os.ReadFile(path) // #nosec G304,G703 -- operator-supplied config path.
 	if err != nil {
