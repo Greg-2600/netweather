@@ -4,8 +4,13 @@ output "public_ip" {
 }
 
 output "app_url" {
-  description = "HTTP URL for the netweather Ingress."
-  value       = "http://${azurerm_public_ip.netweather.ip_address}:${var.app_http_port}"
+  description = "HTTPS URL for the netweather Ingress."
+  value       = "https://${var.ingress_host}"
+}
+
+output "public_ip_url" {
+  description = "HTTP URL for the public IP address, useful before DNS is configured."
+  value       = "http://${azurerm_public_ip.netweather.ip_address}"
 }
 
 output "ssh_command" {

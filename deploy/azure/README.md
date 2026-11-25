@@ -31,8 +31,10 @@ schedule, which can stretch the credit further.
 - `deploy/azure/terraform`: provider, resource group, virtual network, subnet,
   network security group, public IP address, Linux VM, optional auto shutdown,
   outputs, and the cloud init template.
-- `deploy/k8s`: namespace, PersistentVolumeClaim, Deployment, Service, and the
-  Traefik Ingress used by k3s.
+- `deploy/k8s`: namespace, PersistentVolumeClaim, Deployment, Service, the
+  Traefik Ingress, and the HelmChartConfig that enables the Let's Encrypt ACME
+  resolver.
+- `deploy/DOMAINS.md`: DNS pattern for apps under `apps.westcountytech.com`.
 - `.github/workflows/azure_k3s.yml`: CI checks only. It runs Terraform format
   checks, `terraform init -backend=false`, `terraform validate`, and
   kubeconform. It never runs apply and uses no Azure credentials.
@@ -80,6 +82,8 @@ schedule, which can stretch the credit further.
    # auto_shutdown_enabled = true
    # auto_shutdown_time    = "1900"
    # netweather_image      = "ghcr.io/your-user/netweather:latest"
+   # ingress_host          = "netweather.apps.westcountytech.com"
+   # acme_email            = "greg@westcountytech.com"
    ```
 
    If Azure rejects a Basic public IP for your subscription or region, set
@@ -96,12 +100,14 @@ schedule, which can stretch the credit further.
    ```
 
 5. Read the outputs. Cloud init needs a few minutes to install k3s and pull the
-   image.
+   image. The public IP is the target for the DNS records described in
+   `deploy/DOMAINS.md`.
 
    ```sh
    terraform output
    terraform output -raw public_ip
    terraform output -raw app_url
+   terraform output -raw public_ip_url
    ```
 
 6. Check the cluster over SSH.
@@ -112,8 +118,10 @@ schedule, which can stretch the credit further.
    sudo k3s kubectl -n netweather get ingress
    ```
 
-7. Open the `app_url` value in a browser. The deployment creates a random UI
-   token in a Kubernetes Secret. Read it with this command on the host.
+7. Create the DNS records from `deploy/DOMAINS.md` if they do not exist, then
+   open the `app_url` value in a browser. The network security group allows
+   ports 80 and 443. The deployment creates a random UI token in a Kubernetes
+   Secret. Read it with this command on the host.
 
    ```sh
    sudo k3s kubectl -n netweather get secret netweather-auth \
@@ -124,6 +132,7 @@ To apply the manifests by hand, use a local cluster context and these commands.
 Replace the image placeholder with your GHCR image.
 
 ```sh
+kubectl apply -f deploy/k8s/traefik-config.yaml
 kubectl apply -f deploy/k8s/namespace.yaml
 kubectl -n netweather create secret generic netweather-auth \
   --from-literal=token="$(openssl rand -hex 24)" \
@@ -134,6 +143,9 @@ sed 's|ghcr.io/OWNER/netweather:latest|ghcr.io/your-user/netweather:latest|' \
 kubectl apply -f deploy/k8s/service.yaml
 kubectl apply -f deploy/k8s/ingress.yaml
 ```
+
+The Ingress defaults to `netweather.apps.westcountytech.com`. Change the `host`
+and `tls` entries in `deploy/k8s/ingress.yaml` to use a different name.
 
 To skip the Ingress, do not apply `deploy/k8s/ingress.yaml`. Use port forwarding
 instead.

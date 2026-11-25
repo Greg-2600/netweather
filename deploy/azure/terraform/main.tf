@@ -52,6 +52,18 @@ resource "azurerm_network_security_group" "netweather" {
     source_address_prefix      = var.app_allowed_cidr
     destination_address_prefix = "*"
   }
+
+  security_rule {
+    name                       = "NetweatherHTTPS"
+    priority                   = 120
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = tostring(var.app_https_port)
+    source_address_prefix      = var.app_allowed_cidr
+    destination_address_prefix = "*"
+  }
 }
 
 resource "azurerm_public_ip" "netweather" {
@@ -113,6 +125,8 @@ resource "azurerm_linux_virtual_machine" "netweather" {
   custom_data = base64encode(templatefile("${path.module}/cloud_init.yaml.tftpl", {
     netweather_image  = var.netweather_image
     manifest_base_url = var.manifest_base_url
+    ingress_host      = var.ingress_host
+    acme_email        = var.acme_email
   }))
 }
 

@@ -48,4 +48,4 @@ jobs:
         run: |
           docker run --rm -v "$PWD/deploy/k8s:/manifests:ro" \
             ghcr.io/yannh/kubeconform:v0.6.7 \
-            -strict -summary /manifests
+            -strict -ignore-missing-schemas -summary /manifests

@@ -6,10 +6,16 @@ metadata:
   labels:
     app.kubernetes.io/name: netweather
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
 spec:
+  tls:
+    - hosts:
+        - netweather.apps.westcountytech.com
   rules:
-    - http:
+    - host: netweather.apps.westcountytech.com
+      http:
         paths:
           - path: /
             pathType: Prefix

@@ -31,14 +31,19 @@ write_files:
 
       base="${manifest_base_url}"
       image="${netweather_image}"
+      ingress_host="${ingress_host}"
+      acme_email="${acme_email}"
       tmp="$(mktemp -d)"
       trap 'rm -rf "$tmp"' EXIT
 
-      for file in namespace.yaml pvc.yaml deployment.yaml service.yaml ingress.yaml; do
+      for file in namespace.yaml pvc.yaml deployment.yaml service.yaml ingress.yaml traefik-config.yaml; do
         curl -fsSL "$base/$file" -o "$tmp/$file"
       done
 
       sed -i "s|ghcr.io/OWNER/netweather:latest|$image|g" "$tmp/deployment.yaml"
+      sed -i "s|netweather.apps.westcountytech.com|$ingress_host|g" "$tmp/ingress.yaml"
+      sed -i "s|greg@westcountytech.com|$acme_email|g" "$tmp/traefik-config.yaml"
+      kubectl apply -f "$tmp/traefik-config.yaml"
       kubectl apply -f "$tmp"
 
 runcmd:

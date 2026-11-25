@@ -38,7 +38,7 @@ variable "ssh_allowed_cidr" {
 }
 
 variable "app_allowed_cidr" {
-  description = "Source allowed to reach the netweather HTTP port."
+  description = "Source allowed to reach the netweather HTTP and HTTPS ports."
   type        = string
   default     = "*"
 }
@@ -47,6 +47,24 @@ variable "app_http_port" {
   description = "Public HTTP port served by the k3s Traefik Ingress."
   type        = number
   default     = 80
+}
+
+variable "app_https_port" {
+  description = "Public HTTPS port served by the k3s Traefik Ingress."
+  type        = number
+  default     = 443
+}
+
+variable "ingress_host" {
+  description = "Host name served by the Traefik Ingress."
+  type        = string
+  default     = "netweather.apps.westcountytech.com"
+}
+
+variable "acme_email" {
+  description = "Email address used for the Let's Encrypt ACME account."
+  type        = string
+  default     = "greg@westcountytech.com"
 }
 
 variable "vnet_cidr" {
