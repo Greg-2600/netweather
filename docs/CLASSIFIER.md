@@ -8,7 +8,7 @@
 
 ## 1. Contract
 
-```
+```text
 classify(target, response) -> (state, confidence, reason)
 ```
 
@@ -25,7 +25,7 @@ The classifier does **not** decide `DOWN` vs `BLOCKED` on its own authority — 
 
 Order is load-bearing. Applying these out of order is the most common way to build a monitor that lies.
 
-```
+```text
 1. Transport failure        -> error class            (§3)
 2. Challenge signature      -> BLOCKED                (§6)
 3. Status in expected set   -> UP / UP_REACHABILITY / DEGRADED   (§5, §7)
@@ -77,7 +77,7 @@ GeoDNS means a CDN target legitimately returns a different edge to each resolver
 
 Compare **each resolver against its own baseline for that target**:
 
-```
+```text
 baseline(resolver, target) = {
     answer_set:   { A/AAAA seen in the last 7d, capped at 32 },
     asn_set:      { origin ASN per answer },
@@ -99,7 +99,7 @@ Signals, ascending by confidence:
 
 The ladder:
 
-```
+```text
 1 strong signal, one resolver                        -> DNS_ANOMALY   (advisory)
 1 strong + 1 medium on the same target               -> TAMPER
 strong signal on the same target from >= 2 vantages,
@@ -528,7 +528,7 @@ input. A recorded file is used where the *wire shape* is the thing under test:
 error classes, and `fixtures_test.go` parses the status line, headers, and body
 into the classifier's input before asserting the documented outcome.
 
-```
+```text
 internal/classify/testdata/fixtures/
   cf-challenge-403.http
   forbidden-403.http

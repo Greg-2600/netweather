@@ -270,7 +270,7 @@ separate data and delivery boundaries.
 
 | Item | Why later |
 |---|---|
-| IPv6 as a first-class probe family | **Implemented:** `family: 4|6` on targets; DNS/DoH/DoT AAAA queries; IPv6 literals allowed for country/network classes; netx already blocks IPv6 special-use ranges |
+| IPv6 as a first-class probe family | **Implemented:** `family: 4\|6` on targets; DNS/DoH/DoT AAAA queries; IPv6 literals allowed for country/network classes; netx already blocks IPv6 special-use ranges |
 | DoT (853) | **Implemented:** `internal/probe/dot.go` (DNS over TLS), port 853 allowlisted |
 | `macvlan` profile | **Implemented:** `compose.macvlan.yaml` override profile |
 | Helm chart / systemd unit | **Implemented:** `deploy/helm/netweather` and `deploy/systemd/netweather.service` |

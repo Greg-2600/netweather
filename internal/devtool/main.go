@@ -32,6 +32,8 @@ const (
 	distDir      = "dist"
 )
 
+const totalCoverageThreshold = 87.0
+
 // coverageThresholds is the enforced per-package coverage floor. docs/QUALITY.md
 // §7 is the readable copy of this table; TestCoverageFloorsMatchQualityDoc fails
 // if the two drift, because a floor that only exists in prose is not a gate.
@@ -354,8 +356,6 @@ func taskCover() error {
 		return err
 	}
 
-	thresholds := coverageThresholds
-
 	sort.Slice(stats, func(i, j int) bool { return stats[i].pkg < stats[j].pkg })
 
 	fmt.Printf("%-58s %6s %6s\n", "package", "cover", "min")
@@ -365,12 +365,7 @@ func taskCover() error {
 			continue
 		}
 		pct := 100 * float64(s.covered) / float64(s.total)
-		min := 70.0
-		for suffix, m := range thresholds {
-			if strings.HasSuffix(s.pkg, suffix) {
-				min = m
-			}
-		}
+		min := coverageFloor(s.pkg)
 		status := "ok"
 		if pct+0.05 < min {
 			status = "FAIL"
@@ -381,14 +376,79 @@ func taskCover() error {
 
 	if total > 0 {
 		overall := 100 * float64(covered) / float64(total)
-		fmt.Printf("%-58s %5.1f%% %5.0f%%\n", "TOTAL (library)", overall, 70.0)
-		if overall < 70 {
-			failures = append(failures, fmt.Sprintf("total library coverage %.1f%% < 70%%", overall))
+		fmt.Printf("%-58s %5.1f%% %5.0f%%\n", "TOTAL (library)", overall, totalCoverageThreshold)
+		if overall+0.05 < totalCoverageThreshold {
+			failures = append(failures, fmt.Sprintf("total library coverage %.1f%% < %.0f%%", overall, totalCoverageThreshold))
 		}
+	}
+
+	if err := writeCoverageSummary(stats, total, covered, failures); err != nil {
+		return err
 	}
 
 	if len(failures) > 0 {
 		return fmt.Errorf("coverage gates failed:\n  %s", strings.Join(failures, "\n  "))
+	}
+	return nil
+}
+
+func coverageFloor(pkg string) float64 {
+	min := 70.0
+	for suffix, m := range coverageThresholds {
+		if strings.HasSuffix(pkg, suffix) {
+			min = m
+		}
+	}
+	return min
+}
+
+// writeCoverageSummary appends the same table to the GitHub Actions job summary
+// when GITHUB_STEP_SUMMARY is set. It is a no op locally.
+func writeCoverageSummary(stats []pkgCoverage, total, covered int, failures []string) error {
+	path := os.Getenv("GITHUB_STEP_SUMMARY")
+	if path == "" {
+		return nil
+	}
+
+	var b strings.Builder
+	b.WriteString("## Coverage\n\n")
+	b.WriteString("| Package | Coverage | Floor | Status |\n")
+	b.WriteString("| --- | ---: | ---: | --- |\n")
+	for _, s := range stats {
+		if s.total == 0 {
+			continue
+		}
+		pct := 100 * float64(s.covered) / float64(s.total)
+		min := coverageFloor(s.pkg)
+		status := "ok"
+		if pct+0.05 < min {
+			status = "FAIL"
+		}
+		fmt.Fprintf(&b, "| `%s` | %.1f%% | %.0f%% | %s |\n", s.pkg, pct, min, status)
+	}
+	if total > 0 {
+		overall := 100 * float64(covered) / float64(total)
+		status := "ok"
+		if overall+0.05 < totalCoverageThreshold {
+			status = "FAIL"
+		}
+		fmt.Fprintf(&b, "| **Total (library)** | **%.1f%%** | **%.0f%%** | **%s** |\n", overall, totalCoverageThreshold, status)
+	}
+	if len(failures) > 0 {
+		b.WriteString("\nCoverage gates failed:\n\n")
+		for _, failure := range failures {
+			fmt.Fprintf(&b, "* %s\n", failure)
+		}
+	}
+
+	// #nosec G304 G703 -- GITHUB_STEP_SUMMARY is a runner provided path.
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("open job summary: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+	if _, err := f.WriteString(b.String()); err != nil {
+		return fmt.Errorf("write job summary: %w", err)
 	}
 	return nil
 }
