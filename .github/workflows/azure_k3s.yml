@@ -1,17 +1,17 @@
-name: aws k3s
+name: azure k3s
 
 on:
   pull_request:
     paths:
-      - "deploy/aws/**"
+      - "deploy/azure/**"
       - "deploy/k8s/**"
-      - ".github/workflows/aws_k3s.yml"
+      - ".github/workflows/azure_k3s.yml"
   push:
     branches: [main]
     paths:
-      - "deploy/aws/**"
+      - "deploy/azure/**"
       - "deploy/k8s/**"
-      - ".github/workflows/aws_k3s.yml"
+      - ".github/workflows/azure_k3s.yml"
 
 permissions:
   contents: read
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: deploy/aws/terraform
+        working-directory: deploy/azure/terraform
     steps:
       - uses: actions/checkout@v7
 
