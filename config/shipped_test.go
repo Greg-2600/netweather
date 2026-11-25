@@ -1,11 +1,15 @@
-package shipped
+package shipped_test
 
-import "testing"
+import (
+	"testing"
+
+	shipped "github.com/Greg-2600/netweather/config"
+)
 
 func TestFieldtrialFileIsTheFullFleet(t *testing.T) {
 	t.Parallel()
 
-	f, err := FieldtrialFile()
+	f, err := shipped.FieldtrialFile()
 	if err != nil {
 		t.Fatalf("FieldtrialFile: %v", err)
 	}
