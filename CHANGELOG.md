@@ -10,6 +10,11 @@ changed between two images without it.
 
 ### Added
 
+- GitHub Actions can deploy a released image tag to the Azure k3s VM through
+  OIDC and `az vm run-command`, with no long-lived Azure credential or Actions
+  secret. The workflow runs on demand with a version input or after a successful
+  `release` workflow, and the `azure-production` environment requires Greg's
+  review. See `docs/SECRETS.md`.
 - Added `devtool lint-all` for local Go, Dockerfile, and full-history secret linting.
 - Incident detail pages now show a chronological timeline with open, closed,
   and operator-annotation milestones. The timeline uses existing incident

@@ -13,6 +13,7 @@ Project name: **netweather** (decided — see `DESIGN.md` §16).
 | [`LOGGING.md`](LOGGING.md) | ✅ | Levels and volume, the decision-record field schema, redaction, sinks, backpressure, the in-memory ring, debug bundle |
 | [`API.md`](API.md) | ✅ | `/api/v1` contract, envelope and error codes, auth, pagination, SSE, implemented vs specified endpoints, CLI contract |
 | [`THREAT_MODEL.md`](THREAT_MODEL.md) | ✅ | Assets, adversaries, trust boundaries, SSRF and exposure threats, supply chain, invariants, residual risk, operator runbook |
+| [`SECRETS.md`](SECRETS.md) | ✅ | Zero-secret GitHub Actions OIDC deploy, Azure identity and VM role scope, UI token rotation, local Terraform state |
 | [`ACCEPTABLE_USE.md`](ACCEPTABLE_USE.md) | ✅ | Wire-level behaviour, hard limits, volume math, target selection, prohibited uses, abuse handling, Tor policy, contribution rules |
 
 ## Reading order
@@ -26,6 +27,7 @@ Project name: **netweather** (decided — see `DESIGN.md` §16).
 7. `NETWORKING.md` and `IMAGE.md` — if you are going to actually run it
 8. `LOGGING.md` and `API.md` — if a target flips, or you are integrating
 9. `QUALITY.md` — if you are going to change it
+10. `SECRETS.md` — before you enable the Azure deploy workflow
 
 ## Core position
 
