@@ -163,7 +163,7 @@ The following are outside the licence and outside the design. Pull requests that
 
 Probe requests carry a `User-Agent` of the form:
 
-```
+```text
 netweather/<version> (+https://github.com/<owner>/netweather; abuse: <contact>)
 ```
 
