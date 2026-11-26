@@ -522,6 +522,7 @@ Always `-race -covermode=atomic`. Coverage is uploaded per-PR and diffed, so a P
 | build | `devtool build` (static, `-trimpath`, version stamped via ldflags) | ✅ |
 | reproducibility | `devtool repro`: two builds of the same revision, identical SHA-256 | ✅ |
 | release | `devtool snapshot`: five platforms + `SHA256SUMS`, tags only | ✅ (tags) |
+| CI image | `image-build` on pull requests (build only, no push); `image-publish` on `main` pushes `ghcr.io/<owner>/netweather:sha-<commit>` and `:main` with `GITHUB_TOKEN` (`docs/IMAGE.md` §6.1) | ✅ (PR build) / publish on `main` |
 | image scan | `grype` on the release image; `hadolint` on both Dockerfiles (`.hadolint.yaml` explains its two ignores) | ✅ |
 | sbom + sign | `syft`, `cosign` | ✅ |
 | integration | fake internet | ✅ |

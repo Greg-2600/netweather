@@ -13,6 +13,7 @@
 | `cgr.dev/chainguard/static` | **Release base.** No shell, no package manager, no libc tooling. CA certs + tzdata only. |
 | `ghcr.io/<owner>/netweather:<version>` | **Release image**, built from `cgr.dev/chainguard/static`. The default a deployment should run. |
 | `ghcr.io/<owner>/netweather:<version>-debug` | **Debug variant**, built from `cgr.dev/chainguard/wolfi-base`: glibc, `apk`, a shell, and network tools for troubleshooting. Same binary, different base and tag; never the default. **Published and signed** by the release job. |
+| `ghcr.io/<owner>/netweather:main` and `:sha-<commit>` | **CI image** from the newest commit on `main`, built by the `image-publish` job in `.github/workflows/ci.yml`. `linux/amd64`, not signed, no SBOM. For the k3s path that needs a fresh build; see §6.1. A user who wants a verified image runs a release tag. |
 | `ghcr.io/<owner>/netweather-tor` | **Tor sidecar.** Built on Alpine, not Wolfi: Chainguard's Wolfi base does not package `tor`. Alpine 3.20 packages it, is small, and keeps the `torrc` baked in and the rebuild cadence ours. **Published and signed** by the release job; `compose.yaml` builds the same Dockerfile locally by default. |
 
 Why Wolfi rather than a pentest distro:
@@ -218,6 +219,27 @@ Cheap for a Go project, and expected of a tool that asks people to run it:
 | Base image currency | Upstream rebuilds, pulled deliberately | **Implemented:** every `FROM` is pinned by digest (`cgr.dev/chainguard/*` for the main image, `alpine` for the Tor sidecar, which Wolfi does not package), and Dependabot opens a weekly digest update. A moving `:latest` tag is a dependency the release cannot reproduce, so `TestDockerfilesPinBaseImages` fails if one returns. |
 
 The README carries the `cosign verify` one-liner, so a user can check the signature instead of trusting a tag. A release that fails to sign does not finish: publishing an unverifiable image is worse than publishing nothing.
+
+### 6.1 CI image from `main`
+
+`.github/workflows/ci.yml` builds the CI image after every blocking gate passes (format, lint, vuln, secrets, Dockerfile lint, build, browser, container smoke, and compose). It uses the same `Dockerfile` and the same `VERSION`, `COMMIT`, and `DATE` build arguments as the release.
+
+| Event | Job | Pushes? | Tags |
+|---|---|---|---|
+| Pull request | `image-build` | No. Build only, so a fork can never publish | none (local `netweather:pr-<number>`) |
+| Push to `main` | `image-publish` | Yes, to `ghcr.io/<owner>/netweather` | `sha-<full commit SHA>` (immutable) and `main` (moving) |
+| `v*` tag | `release.yml` (unchanged) | Yes, multi-arch, signed, SBOM | `<version>`, `latest`, `<version>-debug` |
+
+Tag rules:
+
+- `sha-<commit>` names one commit and is never pointed at another build. Deploy this tag, or better its digest, when you need to know exactly what is running. A re-run of the same commit's job pushes the same tag again with an equivalent build.
+- `main` always moves to the newest successful build on `main`. It suits a test instance that should follow `main`. Do not use it where you need a rollback target.
+- `latest` and `<version>` stay release-only. The CI image never pushes them.
+- The binary inside reports `main-<first 12 characters of the SHA>` from `netweather version`, so a running pod shows which commit it came from.
+
+Permissions: only `image-publish` has `packages: write`, together with `contents: read`, and it logs in with the automatic `GITHUB_TOKEN`. No personal access token or other secret is used. `TestCIImagePublishRules` in `cmd/netweather/workflow_test.go` fails if a pull request job could push, if another job gains `packages`, or if the workflow reads any secret other than `GITHUB_TOKEN`. A concurrency group (`ghcr-main-image`) queues two `main` runs instead of letting them race on the `main` tag.
+
+The published package appears under the repository's **Packages** sidebar. The `org.opencontainers.image.source` label links it to this repository. The CI image is a convenience build, not a release: it is unsigned and single-architecture, so pin its digest and use a release tag for anything you need to verify.
 
 ---
 

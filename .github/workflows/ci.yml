@@ -236,6 +236,117 @@ jobs:
             docker logs --tail 100 "$name" 2>&1 || true
           done
 
+  # Issue #8: the continuous integration image. It is built from the same
+  # Dockerfile as the release, after every blocking gate above has passed.
+  # Pull requests build it and stop, so a fork can never publish. A push to
+  # main publishes it to GHCR with an immutable sha-<commit> tag and a moving
+  # main tag. Version tags stay on release.yml, the signed path (IMAGE.md §6).
+  image-build:
+    if: github.event_name == 'pull_request'
+    needs: [quality, lint, vuln, secrets, dockerfile, build, uitest, container, compose]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The commit time, not the wall clock, so a rebuild of one commit carries
+      # the same DATE.
+      - name: version metadata
+        id: meta
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "version=pr-${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u -d "@$(git log -1 --format=%ct)" +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: build without pushing
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          tags: netweather:pr-${{ github.event.pull_request.number }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ github.sha }}
+            DATE=${{ steps.meta.outputs.date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  image-publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [quality, lint, vuln, secrets, dockerfile, build, uitest, container, compose]
+    runs-on: ubuntu-latest
+    # The only job in this workflow that may write a package, and only on main.
+    permissions:
+      contents: read
+      packages: write
+    # Two quick merges must not race on the moving main tag: the second run
+    # waits for the first instead of cancelling it or pushing over it.
+    concurrency:
+      group: ghcr-main-image
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # GHCR names must be lower case; the owner is Greg-2600.
+      - name: normalize the image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - name: version metadata
+        id: meta
+        run: |
+          echo "version=main-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u -d "@$(git log -1 --format=%ct)" +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: log in to GHCR
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # amd64 only: the Azure k3s VM sizes are x86. The multi-arch build is the
+      # release job's work.
+      - name: build and push
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+            ${{ env.IMAGE }}:main
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ github.sha }}
+            DATE=${{ steps.meta.outputs.date }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: write the image summary
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "## netweather CI image"
+            echo
+            echo "- \`${IMAGE}:sha-${GITHUB_SHA}\`"
+            echo "- \`${IMAGE}:main\`"
+            echo
+            echo "Digest: \`${DIGEST}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # Mutation testing is advisory (QUALITY.md 5.7): it asks whether the
   # classifier's fixture suite would notice a rule being wrong. It is slow and
   # its findings need judgement, so it never blocks a merge.

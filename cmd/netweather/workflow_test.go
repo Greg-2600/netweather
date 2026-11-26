@@ -250,3 +250,124 @@ func TestTorSidecarIsBakedIn(t *testing.T) {
 		t.Fatalf("tor publishes %v; the proxy must stay on the egress network", tor.Ports)
 	}
 }
+
+// TestCIImagePublishRules keeps issue #8 and IMAGE.md §6.1 honest: pull
+// requests build the CI image and never push, only a push to main publishes,
+// only the publishing job can write a package, and GITHUB_TOKEN is the only
+// credential the workflow uses.
+func TestCIImagePublishRules(t *testing.T) {
+	t.Parallel()
+
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml")) // #nosec G304 -- repo file.
+	if err != nil {
+		t.Fatalf("ci.yml: %v", err)
+	}
+
+	type step struct {
+		Uses string         `yaml:"uses"`
+		With map[string]any `yaml:"with"`
+	}
+	var ci struct {
+		Permissions map[string]string `yaml:"permissions"`
+		Jobs        map[string]struct {
+			If          string            `yaml:"if"`
+			Needs       []string          `yaml:"needs"`
+			Permissions map[string]string `yaml:"permissions"`
+			Concurrency struct {
+				Group            string `yaml:"group"`
+				CancelInProgress bool   `yaml:"cancel-in-progress"`
+			} `yaml:"concurrency"`
+			Steps []step `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &ci); err != nil {
+		t.Fatalf("ci.yml: %v", err)
+	}
+
+	if got := ci.Permissions["packages"]; got != "" {
+		t.Errorf("workflow-level packages permission = %q; grant it only on image-publish", got)
+	}
+	for name, job := range ci.Jobs {
+		if name != "image-publish" && job.Permissions["packages"] != "" {
+			t.Errorf("job %s has packages: %s; only image-publish may write", name, job.Permissions["packages"])
+		}
+	}
+
+	buildPush := func(steps []step) step {
+		t.Helper()
+		for _, s := range steps {
+			if strings.Contains(s.Uses, "docker/build-push-action@") {
+				return s
+			}
+		}
+		t.Fatal("no docker/build-push-action step")
+		return step{}
+	}
+	gates := []string{"quality", "lint", "vuln", "secrets", "dockerfile", "build", "uitest", "container", "compose"}
+	needsGates := func(name string, needs []string) {
+		t.Helper()
+		for _, gate := range gates {
+			found := false
+			for _, n := range needs {
+				found = found || n == gate
+			}
+			if !found {
+				t.Errorf("%s does not wait for the %s gate", name, gate)
+			}
+		}
+	}
+
+	pr, ok := ci.Jobs["image-build"]
+	if !ok {
+		t.Fatal("ci.yml has no image-build job")
+	}
+	if !strings.Contains(pr.If, "pull_request") {
+		t.Errorf("image-build if = %q, want pull requests only", pr.If)
+	}
+	needsGates("image-build", pr.Needs)
+	if s := buildPush(pr.Steps); fmt.Sprint(s.With["push"]) != "false" {
+		t.Errorf("image-build push = %v; a pull request must not push", s.With["push"])
+	}
+
+	pub, ok := ci.Jobs["image-publish"]
+	if !ok {
+		t.Fatal("ci.yml has no image-publish job")
+	}
+	if !strings.Contains(pub.If, "github.event_name == 'push'") || !strings.Contains(pub.If, "refs/heads/main") {
+		t.Errorf("image-publish if = %q, want push to main only", pub.If)
+	}
+	needsGates("image-publish", pub.Needs)
+	if pub.Permissions["contents"] != "read" || pub.Permissions["packages"] != "write" || len(pub.Permissions) != 2 {
+		t.Errorf("image-publish permissions = %v, want exactly contents: read and packages: write", pub.Permissions)
+	}
+	if pub.Concurrency.Group == "" || pub.Concurrency.CancelInProgress {
+		t.Errorf("image-publish concurrency = %+v, want a group that queues rather than cancels", pub.Concurrency)
+	}
+	s := buildPush(pub.Steps)
+	if fmt.Sprint(s.With["push"]) != "true" {
+		t.Errorf("image-publish push = %v, want true", s.With["push"])
+	}
+	tags := fmt.Sprint(s.With["tags"])
+	for _, want := range []string{":sha-${{ github.sha }}", ":main"} {
+		if !strings.Contains(tags, want) {
+			t.Errorf("image-publish tags %q are missing %q", tags, want)
+		}
+	}
+	if strings.Contains(tags, ":latest") {
+		t.Error("image-publish pushes :latest; that tag belongs to the signed release")
+	}
+	args := fmt.Sprint(s.With["build-args"])
+	for _, want := range []string{"VERSION=", "COMMIT=", "DATE="} {
+		if !strings.Contains(args, want) {
+			t.Errorf("image-publish build-args are missing %s", want)
+		}
+	}
+
+	if all, token := strings.Count(string(raw), "secrets."), strings.Count(string(raw), "secrets.GITHUB_TOKEN"); all != token {
+		t.Errorf("ci.yml reads %d secrets, %d of them GITHUB_TOKEN; no other credential is allowed", all, token)
+	}
+}
