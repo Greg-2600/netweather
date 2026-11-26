@@ -123,11 +123,31 @@ Want the operator wrapper as well (0600 secret volume, evidence feeds, `/healthz
 
 All shots are from the local field-trial deploy — 1000 real targets, no mocked data.
 
-**Atlas — everything, all tabs** — the primary `/atlas` view combines the
-world, US hubs, corridors, board, treemap, coverage, incidents, feeds, IHI,
-and diagnostics on one page:
+### Atlas — everything, all tabs
 
-![netweather atlas](docs/screenshots/atlas.png)
+`/atlas` is the map-first, all-tabs view: one combined projection plus the same board, treemap, world, hubs, corridors, coverage, incidents, feeds, IHI, and diagnostics data used by the individual pages.
+
+| Atlas hero | Click-to-pin detail |
+|---|---|
+| ![Atlas hero projection with combined country, hub, and corridor markers](docs/screenshots/atlas-hero.jpg) | ![Atlas marker pinned with detail panel](docs/screenshots/atlas-pin.jpg) |
+
+| At a glance + board groups | Health treemap section |
+|---|---|
+| ![Atlas at-a-glance summary and board groups](docs/screenshots/atlas-glance-board.jpg) | ![Atlas health treemap section](docs/screenshots/atlas-treemap.jpg) |
+
+| Countries / world | US hubs |
+|---|---|
+| ![Atlas world country aggregates](docs/screenshots/atlas-world.jpg) | ![Atlas US hubs treemap](docs/screenshots/atlas-hubs.jpg) |
+
+| Corridors | Coverage |
+|---|---|
+| ![Atlas corridors table and path evidence](docs/screenshots/atlas-corridors.jpg) | ![Atlas coverage summary and sector coverage](docs/screenshots/atlas-coverage.jpg) |
+
+| Incidents + feeds | IHI + diagnostics |
+|---|---|
+| ![Atlas incidents and external feeds](docs/screenshots/atlas-incidents-feeds.jpg) | ![Atlas Internet Health Index and diagnostics](docs/screenshots/atlas-ihi-diagnostics.jpg) |
+
+### Other views
 
 **Health treemap at `/map`** — outages first, largest and reddest longest-standing:
 
