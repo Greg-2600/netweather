@@ -1,0 +1,95 @@
+name: deploy azure
+
+# Deploy a released image tag to the existing Azure k3s VM. The only credential
+# is a short-lived GitHub Actions OIDC token exchanged for the netweather-gha
+# managed identity, so no Azure secret is stored in GitHub. The job runs the
+# deploy through az vm run-command; SSH and the Kubernetes API stay closed.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Released image version to deploy, for example 1.0.1
+        required: true
+        type: string
+  workflow_run:
+    workflows: ["release"]
+    types: [completed]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-azure-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy azure production
+    runs-on: ubuntu-latest
+    environment: azure-production
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: resolve version
+        env:
+          RAW_VERSION: >-
+            ${{ github.event_name == 'workflow_dispatch' &&
+            github.event.inputs.version ||
+            github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          raw="${RAW_VERSION#v}"
+          if [[ ! "$raw" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::version must look like 1.0.1 or v1.0.1"
+            exit 1
+          fi
+          printf 'VERSION=%s\n' "$raw" >> "$GITHUB_ENV"
+
+      - name: sign in with OIDC
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: deploy released version
+        run: |
+          set -euo pipefail
+
+          script="$(mktemp)"
+          trap 'rm -f "$script"' EXIT
+          {
+            printf '%s\n' '#!/usr/bin/env bash'
+            printf '%s\n' 'set -euo pipefail'
+            printf 'VERSION=%q\n' "$VERSION"
+            cat <<'REMOTE'
+          sudo k3s kubectl -n netweather set image deployment/netweather \
+            "netweather=ghcr.io/greg-2600/netweather:${VERSION}" \
+            "tor=ghcr.io/greg-2600/netweather-tor:${VERSION}"
+          sudo k3s kubectl -n netweather rollout status deployment/netweather --timeout=180s
+          health="$(curl -fsS --retry 3 --retry-delay 5 --max-time 15 \
+            https://netweather.westcountytech.com/healthz)"
+          printf '%s' "$health" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"'
+          echo "deploy: image ${VERSION} is rolled out"
+          echo "deploy: healthz reports status ok"
+          echo "deploy: OK"
+          REMOTE
+          } > "$script"
+
+          output="$(az vm run-command invoke \
+            --resource-group netweather-rg \
+            --name netweather \
+            --command-id RunShellScript \
+            --scripts "@${script}" \
+            --query 'value[].message' \
+            --output tsv)"
+
+          if ! grep -qx 'deploy: OK' <<<"$output"; then
+            echo "::error::deploy or health check failed on the VM"
+            printf '%s\n' "$output" | grep -E '^(deploy:|.*(error|Error|ERROR|failed|Failed).*)$' || true
+            exit 1
+          fi
+
+          echo "deployed ${VERSION} and the public health check passed"

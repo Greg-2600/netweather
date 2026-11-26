@@ -376,6 +376,7 @@ At the full 1000-target field-trial fleet this is ~586k probes/day and ~1.1 GB/d
 | [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) | Assets, adversaries, trust boundaries, SSRF and exposure threats, supply chain, invariants, residual risk |
 | [`docs/ACCEPTABLE_USE.md`](docs/ACCEPTABLE_USE.md) | Wire-level behavior, hard limits, volume math, target selection, prohibited uses, Tor policy |
 | [`docs/RIPE_ATLAS.md`](docs/RIPE_ATLAS.md) | The optional RIPE Atlas profile: what the daemon is, what RIPE sees, why netweather never reads from it |
+| [`docs/SECRETS.md`](docs/SECRETS.md) | GitHub Actions OIDC to Azure, zero deploy secrets, UI token rotation, local Terraform state |
 | [`ROADMAP.md`](ROADMAP.md) | Where the project is, what's next, what is deliberately not planned, and how work is accepted |
 
 ---
