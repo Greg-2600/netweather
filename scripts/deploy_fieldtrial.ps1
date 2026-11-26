@@ -20,7 +20,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 
-$compose  = @('--profile', 'tor', '-f', 'compose.yaml', '-f', 'compose.fieldtrial.yaml')
+$compose  = @('-f', 'compose.yaml', '-f', 'compose.fieldtrial.yaml')
 $image    = 'netweather:local'
 $rollback = 'netweather:fieldtrial-rollback'
 $secret   = 'nw-fieldtrial-secret'

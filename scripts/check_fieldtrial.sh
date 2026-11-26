@@ -230,7 +230,7 @@ pass() {
         #    back to the board's budget when docker is not reachable from this
         #    shell (e.g. a Git Bash client on Windows). Each pinned exit gets
         #    its own doctor row: tor socks tor-de (optional), etc.
-        doctor="$(docker compose --profile tor -f compose.yaml -f compose.fieldtrial.yaml \
+        doctor="$(docker compose -f compose.yaml -f compose.fieldtrial.yaml \
             exec -T netweather /netweather doctor 2>/dev/null || true)"
         ok_exits="$(printf '%s' "$doctor" | grep -E 'tor socks tor-[a-z]{2} \(optional\).*ok' || true)"
         if [ -n "$ok_exits" ]; then

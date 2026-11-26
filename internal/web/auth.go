@@ -226,8 +226,9 @@ func (a *authenticator) csrfMatches(r *http.Request, formValue string) bool {
 	return subtle.ConstantTimeCompare([]byte(cookie), []byte(formValue)) == 1
 }
 
-// requireSession protects the board and the event stream. It redirects to the
-// login page rather than returning 401, because this is a browser surface.
+// requireSession protects the board and the event stream. The front page draws
+// the login form in place; other pages redirect to the login page rather than
+// returning 401, because this is a browser surface.
 // When the request is authenticated more than sessionRefreshAfter past the last
 // refresh, the cookie is reissued with a fresh idle deadline and the original
 // issue time, so activity extends the idle window but never the 7-day cap.
@@ -239,6 +240,10 @@ func (s *server) requireSession(next http.Handler) http.Handler {
 		}
 		_, claims, ok := s.auth.sessionFrom(r)
 		if !ok {
+			if (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.URL.Path == "/" {
+				s.handleLogin(w, r)
+				return
+			}
 			dest := "/login"
 			// Carry the page the browser asked for, but only a page: a
 			// subresource or the stream has no useful post-login destination,

@@ -109,7 +109,7 @@ Bandwidth is dominated by TLS handshakes, not by bodies:
 | HTTP/TLS probes (~165k × ~6 KB) | ~1.0 GB/day |
 | **Total at full scale** | **~1.1 GB/day ≈ 32 GB/month** |
 
-The default install now runs this full fleet, so roughly 1.1 GB/day is the default volume. A small custom list of 14 targets costs roughly 50 MB/day, dominated by the 30 second reference target and the three criticals; the rest of that list is on the 300 second tier. The fleet number is the honest cost of 1000 independent measurements and is worth knowing before running it on a metered VPS.
+At the shipped 14 targets this is roughly 50 MB/day, dominated by the 30-second reference target and the three criticals; the rest of the list is on the 300-second tier. The fleet number is the honest cost of 1000 independent measurements and is worth knowing before seeding a metered VPS.
 
 Two mitigations are built in:
 
@@ -163,7 +163,7 @@ The following are outside the licence and outside the design. Pull requests that
 
 Probe requests carry a `User-Agent` of the form:
 
-```text
+```
 netweather/<version> (+https://github.com/<owner>/netweather; abuse: <contact>)
 ```
 
@@ -190,26 +190,25 @@ A host owner who asks not to be probed is removed. The project maintains an opt-
 
 ## 8. Tor and other vantages
 
-A Tor vantage is **corroboration**, never the primary measurement. It exists to answer "does this look different from another country?". The default Compose, Kubernetes, and Helm installs enable the unpinned `tor` vantage; pinned `tor-<cc>` sidecars stay idle until `NETWEATHER_TOR_VANTAGES` is set.
+A Tor vantage is **corroboration**, never the primary measurement. It exists to answer "does this look different from another country?". The base Compose app enables the unpinned `tor` vantage; pinned `tor-<cc>` sidecars stay idle until `NETWEATHER_TOR_VANTAGES` is set.
 
 Rules:
 
 - TCP-based instruments only; no ICMP, no traceroute, no NTP. **Implemented:** the Tor agent is built from HTTP/TLS/TCP only, and DNS targets are excluded rather than silently failing.
 - `socks5h` only. `socks5://` is rejected because it resolves the name locally and leaks the query. **Implemented:** `netx.Socks5` uses x/net/proxy, which sends domain names with `ATYP=3`; a test asserts the proxy sees the hostname.
-- Exit-country pinning is required for a country-labelled vantage; an unpinned exit is not a country measurement. **Implemented:** set `NETWEATHER_TOR_EXIT_COUNTRY` for one vantage, or `NETWEATHER_TOR_VANTAGES` to a comma-separated `CC=host:port` list for several. Each code names a separate client-only Tor instance whose torrc pins that exit; the monitor fetches every exit IP through its own SOCKS hop, asks that same Tor process's internal control port for the country from Tor's GeoIP database, uses Cymru only for the ASN, and labels the vantage `tor-<cc>` only when the observed country matches. A mismatch, an unverifiable exit, or a malformed code refuses that one vantage rather than fabricating a country measurement; the other vantages keep running. Without either variable the vantage stays labelled `tor`, which is the shipped default. The field trial pins DE, JP, AU, SG, CL, and MX, giving five continents of corroboration.
+- Exit-country pinning is required for a country-labelled vantage; an unpinned exit is not a country measurement. **Implemented:** set `NETWEATHER_TOR_EXIT_COUNTRY` for one vantage, or `NETWEATHER_TOR_VANTAGES` to a comma-separated `CC=host:port` list for several. Each code names a separate client-only Tor instance whose torrc pins that exit; the monitor fetches every exit IP through its own SOCKS hop, asks that same Tor process's internal control port for the country from Tor's GeoIP database, uses Cymru only for the ASN, and labels the vantage `tor-<cc>` only when the observed country matches. A mismatch, an unverifiable exit, or a malformed code refuses that one vantage rather than fabricating a country measurement; the other vantages keep running. Without either variable the vantage stays labelled `tor`; that is the binary default, while the shipped `compose.yaml` sets the pinned list. The field trial pins DE, JP, AU, SG, CL, and MX, giving five continents of corroboration.
 - Expect 40-70% `BLOCKED`. That is the normal result of using Tor, not a fault to be fixed by evasion.
 - Volume caps are lower than the direct vantage by design (≤25 targets, ≥2s spacing, daily MB budget). **Implemented:** `NETWEATHER_TOR_MAX` (default 25), a 2-second pace between probes, a 10-minute interval floor, and a daily byte budget (`NETWEATHER_TOR_DAILY_MB`, default 50 MB, `0` disables it). Each pinned exit gets its own caps, so one exhausted country does not pause the others; the board shows the summed allowance. The budget is counted on the SOCKS connection itself, so a large body or a retry cannot slip past it; once spent, that agent stops probing until UTC midnight and logs one warning. It is not the operator's kill switch, so `Paused()` stays false.
-- The sidecar must be client-only: `ExitPolicy reject *:*`, `BridgeRelay 0`, `PublishServerDescriptor 0`, and `ClientOnly 1`. **Implemented:** the shipped Tor image is built from this repository's `Dockerfile.tor`, with those four directives baked into `torrc` and pinned by a unit test, so the operator does not have to trust an arbitrary image. `netweather doctor` verifies only what it can, the SOCKS endpoint answering; the app cannot read the sidecar's config, and `socks5h` ensures no name leaks locally.
+- The sidecar must be client-only: `ExitPolicy reject *:*`, `BridgeRelay 0`, `PublishServerDescriptor 0`, and `ClientOnly 1`. **Implemented:** the shipped profile is built from this repository's `Dockerfile.tor`, with those four directives baked into `torrc` and pinned by a unit test, so the operator does not have to trust an arbitrary image. `netweather doctor` verifies only what it can, the SOCKS endpoint answering; the app cannot read the sidecar's config, and `socks5h` ensures no name leaks locally.
 
-The base `tor` sidecar runs by default from the signed
-`ghcr.io/<owner>/netweather-tor:<tag>` image. The six pinned services are
-available through `docker compose --profile tor up -d`; they build
-`netweather-tor-de/jp/au/sg/cl/mx:local`. No sidecar publishes a port. The
-pinned services stay idle until `NETWEATHER_TOR_VANTAGES` names them:
+`docker compose up -d` starts the six pinned
+`netweather-tor-de/jp/au/sg/cl/mx:local` sidecars, and the base file names them
+with `NETWEATHER_TOR_VANTAGES`:
 `DE=tor-de:9050,JP=tor-jp:9050,AU=tor-au:9050,SG=tor-sg:9050,CL=tor-cl:9050,MX=tor-mx:9050`.
-The default unpinned vantage uses `NETWEATHER_TOR=true` and `tor:9050`; country
-labels remain untrusted until the real exit is verified through the matching
-proxy.
+No sidecar publishes a port. The optional `--profile tor` adds the unpinned
+`netweather-tor:local` sidecar for a single `tor` vantage; it stays idle while
+the pinned list is set. Country labels remain untrusted until the real exit is
+verified through the matching proxy.
 
 A user-supplied SOCKS5 endpoint is allowed if the operator owns it or has permission to use it. Scraped lists are not. **Implemented:** `NETWEATHER_TOR_SOCKS` accepts any `host:port`, and the only shipped default is the local loopback sidecar.
 

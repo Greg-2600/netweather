@@ -67,6 +67,6 @@ if ($mode -eq 'Interactive') {
 
 # On Linux/macOS, use cron instead; deploy.sh is the legacy standalone path.
 # Until a POSIX field-trial wrapper exists, run the compose overlay directly:
-#   0 */2 * * * cd /path/to/netweather && docker compose --profile tor \
+#   0 */2 * * * cd /path/to/netweather && docker compose \
 #     -f compose.yaml -f compose.fieldtrial.yaml up -d --build \
 #     >> /var/log/netweather-deploy.log 2>&1

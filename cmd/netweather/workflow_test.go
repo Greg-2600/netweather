@@ -237,11 +237,14 @@ func TestTorSidecarIsBakedIn(t *testing.T) {
 	if !ok {
 		t.Fatal("compose has no tor service")
 	}
-	if !strings.Contains(tor.Image, "netweather-tor") {
-		t.Fatalf("tor image = %q, want the signed netweather-tor image", tor.Image)
+	if tor.Build == nil {
+		t.Fatal("tor does not build Dockerfile.tor")
 	}
-	if len(tor.Profiles) != 0 {
-		t.Fatalf("tor profiles = %v, want the default install", tor.Profiles)
+	if tor.Image != "netweather-tor:local" {
+		t.Fatalf("tor image = %q, want the locally built client-only image", tor.Image)
+	}
+	if len(tor.Profiles) != 1 || tor.Profiles[0] != "tor" {
+		t.Fatalf("tor profiles = %v, want the optional unpinned profile", tor.Profiles)
 	}
 	if len(tor.Ports) != 0 {
 		t.Fatalf("tor publishes %v; the proxy must stay on the egress network", tor.Ports)

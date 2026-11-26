@@ -13,14 +13,14 @@ func env(m map[string]string) func(string) string {
 	return func(k string) string { return m[k] }
 }
 
-func TestConfigDefaultsToLoopback(t *testing.T) {
+func TestConfigDefaultsToAllInterfaces(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := api.FromEnv(env(nil))
+	cfg, err := api.FromEnv(env(map[string]string{"NETWEATHER_UI_ALLOW_PUBLIC": "true"}))
 	if err != nil {
 		t.Fatalf("FromEnv: %v", err)
 	}
-	if cfg.Listen != "127.0.0.1:2600" {
+	if cfg.Listen != "0.0.0.0:2600" {
 		t.Fatalf("Listen = %q", cfg.Listen)
 	}
 	if cfg.AuthMode() != "none" {
