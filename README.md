@@ -14,6 +14,11 @@
 [![No telemetry](https://img.shields.io/badge/telemetry-none-green)](#safety-posture)
 [![Health map](https://img.shields.io/badge/UI-health%20treemap-orange)](#screenshots)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24503939.svg)](https://doi.org/10.5281/zenodo.24503939)
+[![CI](https://github.com/Greg-2600/netweather/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Greg-2600/netweather/actions/workflows/ci.yml)
+[![Lint](https://github.com/Greg-2600/netweather/actions/workflows/lint.yml/badge.svg?branch=main)](https://github.com/Greg-2600/netweather/actions/workflows/lint.yml)
+[![CodeQL](https://github.com/Greg-2600/netweather/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/Greg-2600/netweather/actions/workflows/codeql.yml)
+[![E2E](https://github.com/Greg-2600/netweather/actions/workflows/e2e.yml/badge.svg?branch=main)](https://github.com/Greg-2600/netweather/actions/workflows/e2e.yml)
+[![Azure k3s](https://github.com/Greg-2600/netweather/actions/workflows/azure_k3s.yml/badge.svg?branch=main)](https://github.com/Greg-2600/netweather/actions/workflows/azure_k3s.yml)
 
 [Quick start](#quick-start) · [Features](#-features) · [Screenshots](#screenshots) · [Docs](#design-docs) · [Deploy](#deployment)
 

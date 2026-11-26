@@ -31,6 +31,11 @@ write_files:
 
       base="${manifest_base_url}"
       image="${netweather_image}"
+      # Derive the Tor sidecar from the main image so both use the same tag.
+      case "$image" in
+        *:*) tor_image="$(dirname "$image")/netweather-tor:$(printf '%s' "$image" | sed 's/.*://')" ;;
+        *)   tor_image="$(dirname "$image")/netweather-tor:latest" ;;
+      esac
       ingress_host="${ingress_host}"
       acme_email="${acme_email}"
       tmp="$(mktemp -d)"
@@ -41,6 +46,7 @@ write_files:
       done
 
       sed -i "s|ghcr.io/OWNER/netweather:latest|$image|g" "$tmp/deployment.yaml"
+      sed -i "s|ghcr.io/OWNER/netweather-tor:latest|$tor_image|g" "$tmp/deployment.yaml"
       sed -i "s|netweather.westcountytech.com|$ingress_host|g" "$tmp/ingress.yaml"
       sed -i "s|greg@westcountytech.com|$acme_email|g" "$tmp/traefik-config.yaml"
       kubectl apply -f "$tmp/traefik-config.yaml"

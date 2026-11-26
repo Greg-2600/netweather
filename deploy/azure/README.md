@@ -22,9 +22,19 @@ months under these assumptions:
   transfers.
 
 Check the Azure pricing page for your region before you apply. The default B1s
-size is the low cost option. Standard_B2ats_v2 is an alternative with more
-memory if the app needs it. The auto shutdown option stops the VM on a daily
-schedule, which can stretch the credit further.
+size is the low cost option, but it is not enough for the default Tor plus full
+fleet install; see the memory note below. The auto shutdown option stops the VM
+on a daily schedule, which can stretch the credit further.
+
+## Memory note
+
+The default install runs the full 1000 target fleet plus one Tor sidecar. The
+app alone measured about 35 to 38 MB RSS, but the OS, k3s, the app, and Tor on a
+Standard_B1s (1 GiB) do not leave enough headroom, so expect swapping or OOM
+kills during a soak. Use at least a 4 GiB size such as Standard_B2als_v2 or
+Standard_B2s. If you enable all six pinned Tor exits, use an 8 GiB size such as
+Standard_B2ms. The Terraform default stays Standard_B1s for cost; override
+`vm_size` for any real deployment.
 
 ## Files
 
@@ -47,9 +57,10 @@ schedule, which can stretch the credit further.
   using `az login`, before he runs Terraform.
 - An SSH key pair. The module takes the public key. Keep the private key on your
   machine and out of this repository.
-- A GHCR image built from this repository. The release workflow publishes the
-  netweather container image. The manifest has a placeholder image name, and
-  cloud init replaces it with the `netweather_image` value.
+- GHCR images built from this repository. The release workflow publishes the
+  netweather and netweather-tor images. The manifests have placeholder image
+  names, and cloud init replaces them with the `netweather_image` value and a
+  Tor image that uses the same tag.
 - kubectl if you want to inspect the cluster from your machine.
 
 ## Deploy
@@ -134,7 +145,7 @@ schedule, which can stretch the credit further.
    ```
 
 To apply the manifests by hand, use a local cluster context and these commands.
-Replace the image placeholder with your GHCR image.
+Replace both image placeholders with your GHCR images.
 
 ```sh
 kubectl apply -f deploy/k8s/traefik-config.yaml
@@ -143,7 +154,8 @@ kubectl -n netweather create secret generic netweather-auth \
   --from-literal=token="$(openssl rand -hex 24)" \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f deploy/k8s/pvc.yaml
-sed 's|ghcr.io/OWNER/netweather:latest|ghcr.io/your-user/netweather:latest|' \
+sed -e 's|ghcr.io/OWNER/netweather:latest|ghcr.io/your-user/netweather:latest|' \
+  -e 's|ghcr.io/OWNER/netweather-tor:latest|ghcr.io/your-user/netweather-tor:latest|' \
   deploy/k8s/deployment.yaml | kubectl apply -f -
 kubectl apply -f deploy/k8s/service.yaml
 kubectl apply -f deploy/k8s/ingress.yaml

@@ -4,7 +4,7 @@
 software probe. It is off by default and is a **separate trust domain** from
 the monitor.
 
-```
+```text
 docker compose --profile ripe-atlas up -d
 ```
 

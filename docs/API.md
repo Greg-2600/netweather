@@ -672,7 +672,7 @@ Auth: bearer. Streams observations for a time range. Nothing is buffered: the st
 
 Auth: bearer. Server-sent events. One `snapshot` on connect, then only changes.
 
-```
+```text
 event: snapshot
 data: {"targets":[{"target":"chase.com","name":"Chase","state":"up","state_text":"Up",
                    "glyph":"●","class":"state-up","vantage":"local"}]}

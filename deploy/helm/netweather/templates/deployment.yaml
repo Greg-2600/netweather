@@ -12,6 +12,13 @@ spec:
       labels:
         app: {{ .Release.Name }}
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: netweather
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -23,10 +30,39 @@ spec:
               value: {{ .Values.env.NETWEATHER_TOKEN | quote }}
             - name: NETWEATHER_DATA
               value: {{ .Values.env.NETWEATHER_DATA | quote }}
+            {{- if .Values.tor.enabled }}
+            - name: NETWEATHER_TOR
+              value: "true"
+            - name: NETWEATHER_TOR_SOCKS
+              value: "127.0.0.1:9050"
+            {{- end }}
           volumeMounts:
             - name: data
               mountPath: /data
+            - name: tmp
+              mountPath: /tmp
           resources: {{ toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+        {{- if .Values.tor.enabled }}
+        - name: tor
+          image: "{{ .Values.tor.image.repository | default (printf "%s-tor" .Values.image.repository) }}:{{ .Values.tor.image.tag | default .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.tor.image.pullPolicy }}
+          resources: {{ toYaml .Values.tor.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+        {{- end }}
       volumes:
         - name: data
           {{- if .Values.persistence.enabled }}
@@ -35,3 +71,5 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        - name: tmp
+          emptyDir: {}

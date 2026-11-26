@@ -42,6 +42,9 @@ func TestComposePointsTorAtTheSidecarService(t *testing.T) {
 	if got := svc.Environment["NETWEATHER_TOR_SOCKS"]; got != "tor:9050" {
 		t.Fatalf("NETWEATHER_TOR_SOCKS = %q, want the sidecar service name", got)
 	}
+	if got := svc.Environment["NETWEATHER_TOR"]; got != "true" {
+		t.Fatalf("NETWEATHER_TOR = %q, want the default install to enable Tor", got)
+	}
 }
 
 // TestComposePinsRegionalTorExits pins the default multi-vantage wiring: every

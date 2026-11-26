@@ -3,10 +3,11 @@
 # Deploys the early field trial: production-sized target fleet (1000 targets),
 # direct + Tor vantages, hardened runtime, health gate, and rollback.
 #
-# The --profile tor stack starts one unpinned tor service and six pinned
-# tor-de/jp/au/sg/cl/mx services. The pinned services stay idle until the
-# field-trial overlay sets NETWEATHER_TOR_VANTAGES. The deploy script seeds
-# secrets/ui_token as mode 600/UID 65532:65532 before startup.
+# The default stack starts the unpinned tor sidecar from the signed release
+# image. The --profile tor stack adds the six pinned tor-de/jp/au/sg/cl/mx
+# services, which stay idle until the field-trial overlay sets
+# NETWEATHER_TOR_VANTAGES. The deploy script seeds secrets/ui_token as mode
+# 600/UID 65532:65532 before startup.
 #
 #   .\scripts\deploy_fieldtrial.ps1               # build + deploy
 #   .\scripts\deploy_fieldtrial.ps1 -DryRun       # print the commands, touch nothing
@@ -103,8 +104,6 @@ if (-not $DryRun -and -not $NoBuild) {
 
 # --- images -----------------------------------------------------------------
 if (-not $NoBuild) {
-    Step 'building the Tor client sidecar image'
-    Invoke-Docker @('build', '-f', 'Dockerfile.tor', '-t', 'netweather-tor:local', '.')
     # Each regional vantage is a separate image because its exit pin is baked
     # into torrc. Build them here so a torrc or Dockerfile edit cannot leave an
     # old pinned sidecar running after `up -d`.

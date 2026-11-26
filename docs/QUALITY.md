@@ -159,11 +159,11 @@ Four layers, because they catch different things.
 | Secrets | full-history `gitleaks` | blocking |
 | Dockerfile | `hadolint` on both files | blocking |
 
-The workflows themselves are pinned by `TestWorkflowFilesParse`, which parses every workflow and the Dependabot config with the project's YAML library. That catches a file GitHub would reject; it is not a substitute for `actionlint`, which is not wired in.
+The workflows themselves are checked by `TestWorkflowFilesParse`, which parses every workflow and the Dependabot config with the project's YAML library, and by `actionlint` in the lint workflow.
 
 Decisions the linters cannot express stay review rules:
 
-```
+```text
 - http.Get(...)                         → use the instrument's context-aware client
 - tls.Config{InsecureSkipVerify: true}  → forbidden (gosec also refuses it)
 - os.Getenv("...")                      → runtime settings come from env by design;
@@ -180,7 +180,7 @@ Decisions the linters cannot express stay review rules:
 
 Six layers run by default. Each answers a question the layer below cannot. A seventh, opt-in browser layer (§5.8) proves the UI wiring and is deliberately outside the default loop.
 
-```
+```text
         ┌──────────────────────────────┐
    E2E  │ real endpoints, 6 targets    │  "does it work on the actual internet?"
         ├──────────────────────────────┤
@@ -253,7 +253,7 @@ This is the highest-value harness in the project, because the classifier is only
 
 A single test binary that stands up a complete, deterministic, offline internet:
 
-```
+```text
 testdata/internet/
   scenarios.yaml      # per-host behaviour
   certs/              # test CA + leaf certs
@@ -492,7 +492,7 @@ func TestMain(m *testing.M) {
 | `cmd/netweather` | **30%** (wire-up; the container smoke test owns it) |
 | `internal/devtool` | **15%** (profile parser and ldflags tests) |
 | `internal/version` | **70%** |
-| overall | reported, not gated |
+| overall | **87%** |
 
 The floors live in `internal/devtool/main.go`, which is the thing that enforces them; this table is the readable copy, and the two are checked together when either changes.
 
@@ -509,7 +509,9 @@ Always `-race -covermode=atomic`. Coverage is uploaded per-PR and diffed, so a P
 | lint | `go tool golangci-lint run` (pinned in `go.mod`) | ✅ |
 | modules | `go mod verify` + `go mod tidy -diff` (no uncommitted tidy) | ✅ |
 | test | `devtool test` (`-race`, `-shuffle=on`, `-count=1` for library packages; normal shuffled/count=1 for `internal/web`) | ✅ |
-| coverage | `devtool cover`: profile + the per-package floors in §7 (the same numbers `internal/devtool/main.go` enforces) | ✅ |
+| coverage | `devtool cover`: profile, per package floors, total floor, and the job summary | ✅ |
+| language lint | ruff, bandit, shellcheck, yamllint, actionlint, markdownlint, and PSScriptAnalyzer | ✅ |
+| static analysis | CodeQL for Go, Python, and JavaScript | ✅ |
 | ui test (browser) | Playwright + chromium, `-tags=uitest` | ✅ (every push and PR) |
 | fuzz (short) | `go test -run=^$ -fuzz=FuzzScrubStringIsIdempotent -fuzztime=20s` | ✅ |
 | mutation (advisory) | `devtool mutate`: gremlins on `internal/classify`, `mutation.json` uploaded | advisory; job-level `continue-on-error` |
