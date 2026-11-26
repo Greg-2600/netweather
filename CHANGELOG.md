@@ -166,6 +166,9 @@ changed between two images without it.
 
 ### Changed
 
+- The unauthenticated login page now displays the configured access token in the
+  page body instead of the `NETWEATHER_UI_TOKEN_FILE` hint. Anyone who can load
+  the page can read the token, so treat it as a public value.
 - `/corridors` now shows the operator's readable path label as the corridor
   name, keeps the stable id underneath, and shows the real configured endpoint
   pair in the Path column. Both cells have hover text that separates the

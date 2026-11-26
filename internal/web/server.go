@@ -113,6 +113,7 @@ type loginView struct {
 	NoAuth bool
 	Error  string
 	CSRF   string
+	Token  string
 	// Next is the same-origin page to return to after a successful login. It
 	// is validated by safeNext on the way in and on the way out
 	// (THREAT_MODEL.md T9).
@@ -2045,9 +2046,10 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		view.Insecure = s.insecure(r)
-		view.NoAuth = s.auth.disabled()
-		w.Header().Set("Content-Security-Policy",
+	view.Insecure = s.insecure(r)
+	view.NoAuth = s.auth.disabled()
+	view.Token = s.auth.token
+	w.Header().Set("Content-Security-Policy",
 			"default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 		_ = s.tmpl.ExecuteTemplate(w, "target.html", view)
 		return
