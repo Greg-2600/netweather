@@ -2,6 +2,11 @@ provider "azurerm" {
   features {}
 }
 
+resource "random_password" "k3s_token" {
+  length  = 48
+  special = false
+}
+
 resource "azurerm_resource_group" "netweather" {
   name     = var.resource_group_name
   location = var.location
@@ -21,6 +26,10 @@ resource "azurerm_subnet" "netweather" {
   resource_group_name  = azurerm_resource_group.netweather.name
   virtual_network_name = azurerm_virtual_network.netweather.name
   address_prefixes     = [var.subnet_cidr]
+
+  # Agents have no public IP. Default outbound access lets them reach the
+  # internet without a NAT gateway or load balancer.
+  default_outbound_access_enabled = true
 }
 
 resource "azurerm_network_security_group" "netweather" {
@@ -75,8 +84,8 @@ resource "azurerm_public_ip" "netweather" {
   tags                = var.tags
 }
 
-resource "azurerm_network_interface" "netweather" {
-  name                = "netweather-nic"
+resource "azurerm_network_interface" "server" {
+  name                = "netweather-server-nic"
   location            = azurerm_resource_group.netweather.location
   resource_group_name = azurerm_resource_group.netweather.name
   tags                = var.tags
@@ -84,24 +93,25 @@ resource "azurerm_network_interface" "netweather" {
   ip_configuration {
     name                          = "internal"
     subnet_id                     = azurerm_subnet.netweather.id
-    private_ip_address_allocation = "Dynamic"
+    private_ip_address_allocation = "Static"
+    private_ip_address            = var.server_private_ip
     public_ip_address_id          = azurerm_public_ip.netweather.id
   }
 }
 
-resource "azurerm_network_interface_security_group_association" "netweather" {
-  network_interface_id      = azurerm_network_interface.netweather.id
+resource "azurerm_network_interface_security_group_association" "server" {
+  network_interface_id      = azurerm_network_interface.server.id
   network_security_group_id = azurerm_network_security_group.netweather.id
 }
 
-resource "azurerm_linux_virtual_machine" "netweather" {
+resource "azurerm_linux_virtual_machine" "server" {
   name                            = "netweather"
   location                        = azurerm_resource_group.netweather.location
   resource_group_name             = azurerm_resource_group.netweather.name
-  size                            = var.vm_size
+  size                            = var.server_vm_size
   admin_username                  = var.admin_username
   disable_password_authentication = true
-  network_interface_ids           = [azurerm_network_interface.netweather.id]
+  network_interface_ids           = [azurerm_network_interface.server.id]
   tags                            = var.tags
 
   admin_ssh_key {
@@ -111,14 +121,14 @@ resource "azurerm_linux_virtual_machine" "netweather" {
 
   os_disk {
     caching              = "ReadWrite"
-    storage_account_type = "Standard_LRS"
+    storage_account_type = var.os_disk_storage_account_type
     disk_size_gb         = var.root_disk_size_gb
   }
 
   source_image_reference {
     publisher = "Canonical"
     offer     = "ubuntu-24_04-lts"
-    sku       = "server"
+    sku       = var.server_image_sku
     version   = "latest"
   }
 
@@ -127,13 +137,82 @@ resource "azurerm_linux_virtual_machine" "netweather" {
     manifest_base_url = var.manifest_base_url
     ingress_host      = var.ingress_host
     acme_email        = var.acme_email
+    k3s_token         = random_password.k3s_token.result
+    server_private_ip = var.server_private_ip
+    swap_size_mb      = var.swap_size_mb
   }))
 }
 
-resource "azurerm_dev_test_global_vm_shutdown_schedule" "netweather" {
-  count = var.auto_shutdown_enabled ? 1 : 0
+resource "azurerm_network_interface" "agent" {
+  count = var.agent_count
 
-  virtual_machine_id    = azurerm_linux_virtual_machine.netweather.id
+  name                = "netweather-agent-${count.index + 1}-nic"
+  location            = azurerm_resource_group.netweather.location
+  resource_group_name = azurerm_resource_group.netweather.name
+  tags                = var.tags
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.netweather.id
+    private_ip_address_allocation = "Dynamic"
+  }
+}
+
+resource "azurerm_network_interface_security_group_association" "agent" {
+  count = var.agent_count
+
+  network_interface_id      = azurerm_network_interface.agent[count.index].id
+  network_security_group_id = azurerm_network_security_group.netweather.id
+}
+
+resource "azurerm_linux_virtual_machine" "agent" {
+  count = var.agent_count
+
+  name                            = "netweather-agent-${count.index + 1}"
+  location                        = azurerm_resource_group.netweather.location
+  resource_group_name             = azurerm_resource_group.netweather.name
+  size                            = var.agent_vm_size
+  admin_username                  = var.admin_username
+  disable_password_authentication = true
+  network_interface_ids           = [azurerm_network_interface.agent[count.index].id]
+  tags                            = var.tags
+
+  admin_ssh_key {
+    username   = var.admin_username
+    public_key = var.ssh_public_key
+  }
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = var.os_disk_storage_account_type
+    disk_size_gb         = var.root_disk_size_gb
+  }
+
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "ubuntu-24_04-lts"
+    sku       = var.agent_image_sku
+    version   = "latest"
+  }
+
+  custom_data = base64encode(templatefile("${path.module}/cloud_init_agent.yaml.tftpl", {
+    k3s_token         = random_password.k3s_token.result
+    server_private_ip = var.server_private_ip
+    swap_size_mb      = var.swap_size_mb
+  }))
+}
+
+locals {
+  vm_ids = merge(
+    { server = azurerm_linux_virtual_machine.server.id },
+    { for index, vm in azurerm_linux_virtual_machine.agent : "agent-${index + 1}" => vm.id }
+  )
+}
+
+resource "azurerm_dev_test_global_vm_shutdown_schedule" "netweather" {
+  for_each = var.auto_shutdown_enabled ? local.vm_ids : {}
+
+  virtual_machine_id    = each.value
   location              = azurerm_resource_group.netweather.location
   enabled               = true
   daily_recurrence_time = var.auto_shutdown_time

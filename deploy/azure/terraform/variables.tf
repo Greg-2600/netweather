@@ -1,7 +1,7 @@
 variable "location" {
-  description = "Azure region for the k3s host."
+  description = "Azure region for the k3s hosts."
   type        = string
-  default     = "eastus"
+  default     = "northcentralus"
 }
 
 variable "resource_group_name" {
@@ -10,14 +10,31 @@ variable "resource_group_name" {
   default     = "netweather-rg"
 }
 
-variable "vm_size" {
-  description = "Azure VM size. Standard_B1s is the low cost default. Standard_B2ats_v2 is a larger alternative with more memory."
+variable "server_vm_size" {
+  description = "Azure VM size for the k3s server. Standard_B2ats_v2 is an AMD size covered by the student free allowance."
   type        = string
-  default     = "Standard_B1s"
+  default     = "Standard_B2ats_v2"
+}
+
+variable "agent_vm_size" {
+  description = "Azure VM size for the k3s agent. Standard_B2pts_v2 is an Arm size covered by the student free allowance."
+  type        = string
+  default     = "Standard_B2pts_v2"
+}
+
+variable "agent_count" {
+  description = "Number of k3s agent nodes. Set to 0 for a single server node."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.agent_count >= 0
+    error_message = "agent_count must be zero or greater."
+  }
 }
 
 variable "admin_username" {
-  description = "Linux user created on the VM for SSH access."
+  description = "Linux user created on the VMs for SSH access."
   type        = string
   default     = "azureuser"
 
@@ -79,10 +96,16 @@ variable "subnet_cidr" {
   default     = "10.42.1.0/24"
 }
 
-variable "public_ip_sku" {
-  description = "Public IP SKU. Basic is the low cost choice where the subscription and region still support it. Standard is the fallback for newer subscriptions."
+variable "server_private_ip" {
+  description = "Static private IP address assigned to the k3s server NIC. Agents use this address to join the cluster."
   type        = string
-  default     = "Basic"
+  default     = "10.42.1.4"
+}
+
+variable "public_ip_sku" {
+  description = "Public IP SKU. Standard is required for a static IPv4 address on newer subscriptions."
+  type        = string
+  default     = "Standard"
 
   validation {
     condition     = contains(["Basic", "Standard"], var.public_ip_sku)
@@ -91,13 +114,42 @@ variable "public_ip_sku" {
 }
 
 variable "root_disk_size_gb" {
-  description = "Root disk size in GiB."
+  description = "Root disk size in GiB. The default P6 disk is covered by the student free allowance."
   type        = number
-  default     = 30
+  default     = 64
+}
+
+variable "os_disk_storage_account_type" {
+  description = "Storage account type for the OS disks."
+  type        = string
+  default     = "Premium_LRS"
+
+  validation {
+    condition     = contains(["Premium_LRS", "StandardSSD_LRS", "Standard_LRS"], var.os_disk_storage_account_type)
+    error_message = "os_disk_storage_account_type must be Premium_LRS, StandardSSD_LRS, or Standard_LRS."
+  }
+}
+
+variable "server_image_sku" {
+  description = "Ubuntu 24.04 image SKU for the server. The default server SKU is x86_64."
+  type        = string
+  default     = "server"
+}
+
+variable "agent_image_sku" {
+  description = "Ubuntu 24.04 image SKU for the agents. The default server-arm64 SKU matches the Arm B2pts_v2 size."
+  type        = string
+  default     = "server-arm64"
+}
+
+variable "swap_size_mb" {
+  description = "Swap file size in MiB created on every node. Set to 0 to skip the swap file."
+  type        = number
+  default     = 2048
 }
 
 variable "auto_shutdown_enabled" {
-  description = "Stop the VM on a daily schedule to reduce cost. The default keeps the service running."
+  description = "Stop the VMs on a daily schedule to reduce cost. The default keeps the service running."
   type        = bool
   default     = false
 }
@@ -115,9 +167,9 @@ variable "auto_shutdown_timezone" {
 }
 
 variable "netweather_image" {
-  description = "GHCR image built from this repository, including the tag."
+  description = "GHCR image built from this repository, including the tag. The image is multi arch."
   type        = string
-  default     = "ghcr.io/greg-2600/netweather:latest"
+  default     = "ghcr.io/greg-2600/netweather:1.0.1"
 }
 
 variable "manifest_base_url" {

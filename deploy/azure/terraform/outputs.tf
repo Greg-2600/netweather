@@ -27,3 +27,8 @@ output "resource_group_name" {
   description = "Resource group that holds the deployment."
   value       = azurerm_resource_group.netweather.name
 }
+
+output "agent_private_ips" {
+  description = "Private IP addresses of the k3s agent nodes."
+  value       = azurerm_network_interface.agent[*].private_ip_address
+}

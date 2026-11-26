@@ -12,7 +12,21 @@ write_files:
       #!/bin/sh
       set -eu
 
-      curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--write-kubeconfig-mode 600" sh -
+      swap_size_mb="${swap_size_mb}"
+      if [ "$swap_size_mb" -gt 0 ]; then
+        fallocate -l "${swap_size_mb}M" /swapfile
+        chmod 600 /swapfile
+        mkswap /swapfile
+        swapon /swapfile
+        if ! grep -q '^/swapfile ' /etc/fstab; then
+          printf '/swapfile none swap sw 0 0\n' >> /etc/fstab
+        fi
+        printf 'vm.swappiness=10\n' > /etc/sysctl.d/99-swappiness.conf
+        sysctl -p /etc/sysctl.d/99-swappiness.conf
+      fi
+
+      export K3S_TOKEN='${k3s_token}'
+      curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--write-kubeconfig-mode 600 --node-ip ${server_private_ip}" sh -
       export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
       for _ in $(seq 1 90); do
