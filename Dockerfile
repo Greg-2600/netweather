@@ -3,7 +3,7 @@
 # Build stage: Chainguard's Go image, static binary, version stamped at build.
 # Pinned by digest (THREAT_MODEL.md T61/T63); Dependabot opens a weekly PR with
 # the new digest, and the comment keeps the upstream tag readable.
-FROM cgr.dev/chainguard/go:latest@sha256:97b081e091e2c7df54b30f468969ea2e62d7d1a64fff89346facb564da979300 AS build
+FROM cgr.dev/chainguard/go:latest@sha256:aef3819582d3638863f214540c076b312542c48588b59841290ea74b1743d5ac AS build
 
 WORKDIR /src
 
@@ -29,7 +29,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # tools an operator needs on a remote instance. It is deliberately a second tag,
 # never the default: the release image has no shell. Pinned by digest like the
 # other stages.
-FROM cgr.dev/chainguard/wolfi-base:latest@sha256:6ab86c5e059da41ff1454b6f69ecd7422b94af41969f4e231aa23244e47d4a81 AS debug
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:28c39be5a5e1e9b85081c10740e8495f6518a865b23bc6a486637c4b21e74b43 AS debug
 
 # Wolfi's own repository carries the debugging tools; the base image points at
 # Chainguard's package repo, which does not carry them. `traceroute` is not a
@@ -56,7 +56,7 @@ CMD ["serve"]
 # Runtime: static, no shell, no package manager, no libc beyond what Go needs.
 # Pinned by digest for the same reason as the builder. This stays the last stage
 # so a plain `docker build` produces the release image, not the debug one.
-FROM cgr.dev/chainguard/static:latest@sha256:54b5f14edad6f2554774d499539e837588a501bd5bf22ac6cd97b1068c35d44d
+FROM cgr.dev/chainguard/static:latest@sha256:599c3cd7597b84aa149c4282beecc8c6d4e1cb5c95dc8d982e70cd0a2a9147a2
 
 COPY --from=build /out/netweather /netweather
 COPY --from=build --chown=65532:65532 /out/data /data

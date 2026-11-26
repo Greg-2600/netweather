@@ -63,6 +63,7 @@ Everything builds and tests with one command: **`go run ./internal/devtool verif
 - [🛡️ Safety posture](#️-safety-posture)
 - [📚 Design docs](#design-docs)
 - [🧬 Prior art](#-prior-art)
+- [👥 Contributors](#-contributors)
 - [📄 License](#-license)
 
 ---
@@ -77,7 +78,7 @@ Everything builds and tests with one command: **`go run ./internal/devtool verif
 | 🧭 | **Vantages** | `direct` (your connection) plus optional `socks5` Tor corroboration, including multiple pinned exit countries across continents. Only the primary vantage may declare `DOWN`. |
 | 🔬 | **Honest classification** | `UP` · `UP_REACHABILITY` · `DEGRADED` · `DOWN` · `BLOCKED` · `UNKNOWN` · `CONFIG_ERROR` · `UNMEASURABLE`. The last three never count against health — that is what keeps the board from being permanently on fire. |
 | 🌐 | **External intelligence** | IODA, Cloudflare Radar, the Statuspage family (AWS/GCP/Azure), RIPE RIS Live, Atlas, PeeringDB. All optional; the core works with zero feeds. |
-| 🧪 | **Six test layers** | Unit, classifier fixtures, fake internet, API, browser (Playwright), and container — plus fuzzing, mutation testing, and per-package coverage gates. |
+| 🧪 | **Seven test layers** | Unit, classifier fixtures, fake internet, API, container, real-endpoint E2E, and opt-in browser (Playwright) — plus fuzzing, mutation testing, and per-package coverage gates. |
 | 🔒 | **Hardened by default** | Read-only rootfs, non-root UID 65532, all capabilities dropped, one published port, SSRF guards after DNS *and* redirects, no telemetry. |
 
 > [!TIP]
@@ -391,6 +392,15 @@ netweather synthesizes three earlier experiments. Each contributed one idea; eac
 | **[proxy_scan](https://github.com/Greg-2600/proxy_scan)** | Installed `nmap`/`proxychains`/`tor`, wrote configs, scanned through the proxy | **Transport substitution** — became the `Dialer` interface and Tor vantage model | Scraping public proxy lists is unreliable and ethically dubious; netweather accepts user-supplied SOCKS5 only |
 
 > The through-line: *censor_sensor* asked **"can I reach it?"**, *global_packet_throwing* asked **"can I reach it from over there?"**, *proxy_scan* asked **"can I reach it through something else?"** netweather asks **"what does that mean, and how sure am I?"**
+
+---
+
+## 👥 Contributors
+
+netweather is created and maintained by Gregory Baker, with contributions from Ben Vazquez.
+
+- **Gregory Baker** ([@Greg-2600](https://github.com/Greg-2600)) — creator and maintainer
+- **Ben Vazquez** ([@B-Vazquez](https://github.com/B-Vazquez)) — contributor
 
 ---
 
