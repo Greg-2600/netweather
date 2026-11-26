@@ -1,8 +1,8 @@
 .terraform/
 .terraform.lock.hcl.bak
-*.tfstate
-*.tfstate.*
+*.tfstate*
 *.tfplan
 *.tfvars
+!*.tfvars.example
 crash.log
 crash.*.log
