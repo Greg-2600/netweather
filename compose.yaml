@@ -28,14 +28,16 @@ services:
       # self-check connection; 2048 MB is the documented default and 0 disables
       # it. When spent, probing stops until 00:00 UTC and the board says so.
       # NETWEATHER_DAILY_MB: "2048"
-      # Point this at /config/targets.yaml once you have one; otherwise the
-      # shipped seed list is used.
+      # The built-in default is the full 1000-target field-trial fleet
+      # (config/fieldtrial-targets.yaml). Point NETWEATHER_CONFIG at another
+      # file or a directory to replace it.
       # NETWEATHER_CONFIG: /config/targets.yaml
       #
-      # The app enables this unpinned Tor vantage at startup:
-      # NETWEATHER_TOR=true. The deployment sets it explicitly. The sidecars
-      # below exist only under --profile tor and fail loudly if their service
-      # is missing. Their SOCKS endpoints must match the same service names.
+      # The default install turns on the unpinned Tor corroboration vantage
+      # against the sidecar service below. Set NETWEATHER_TOR to false to run
+      # direct only; the pinned regional sidecars remain opt-in under the tor
+      # profile.
+      NETWEATHER_TOR: "true"
       NETWEATHER_TOR_SOCKS: tor:9050
       # Daily volume budget for the tor vantage. Counted on the SOCKS
       # connection; 0 disables it.
@@ -52,6 +54,9 @@ services:
       # list. Its rows are IP-routing corroboration, not voice/SMS health.
       # Radar also needs a token; it is skipped with a warning without one.
       # NETWEATHER_RADAR_TOKEN: /run/secrets/radar_token is not supported; use env or a secret-aware wrapper.
+
+    depends_on:
+      - tor
 
     read_only: true
     tmpfs: [/tmp]
@@ -72,28 +77,23 @@ services:
       retries: 3
       start_period: 10s
 
-  # Optional Tor vantages. The sidecars are client-only and the monitor never
-  # embeds Tor. Start with: docker compose --profile tor up -d
+  # Tor corroboration is part of the default install. The sidecar is
+  # client-only (the monitor never embeds Tor) and publishes no port.
   #
-  # `tor` is the original unpinned proxy for a single `NETWEATHER_TOR` vantage.
-  # The `tor-<cc>` services below each build their own client-only image with a
-  # pinned exit country, then `NETWEATHER_TOR_VANTAGES` names the SOCKS
-  # endpoints. A country label is only trusted after the monitor checks the
-  # real exit through that proxy (docs/ACCEPTABLE_USE.md §8).
+  # `tor` is the unpinned proxy for the single `NETWEATHER_TOR` vantage above.
+  # The release workflow builds and signs ghcr.io/<owner>/netweather-tor from
+  # Dockerfile.tor, and both images use the same NETWEATHER_TAG.
+  #
+  # The `tor-<cc>` services below are opt-in under the tor profile. Each builds
+  # its own client-only image with a pinned exit country, then
+  # `NETWEATHER_TOR_VANTAGES` names the SOCKS endpoints. A country label is only
+  # trusted after the monitor checks the real exit through that proxy
+  # (docs/ACCEPTABLE_USE.md §8).
   # Field-trial list:
   # DE=tor-de:9050,JP=tor-jp:9050,AU=tor-au:9050,
   # SG=tor-sg:9050,CL=tor-cl:9050,MX=tor-mx:9050
   tor:
-    # Built from this repository's Dockerfile.tor, not a third-party image: the
-    # client-only torrc is baked in, so an operator cannot turn the proxy into
-    # an exit node by forgetting a mount (docs/IMAGE.md 7). The release job also
-    # publishes and signs ghcr.io/<owner>/netweather-tor; replace the two build
-    # lines with that image (pinned by digest) if you pull rather than build.
-    build:
-      context: .
-      dockerfile: Dockerfile.tor
-    image: netweather-tor:local
-    profiles: [tor]
+    image: ghcr.io/${NETWEATHER_OWNER:-greg-2600}/netweather-tor:${NETWEATHER_TAG:-latest}
     networks: [egress]
     restart: unless-stopped
     read_only: true
@@ -101,11 +101,11 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
 
-  # One pinned exit per continent. Each service is a separate Tor client with
-  # its own DataDirectory inside the container, so its circuit selection cannot
-  # leak into another vantage. These five countries were chosen because they
-  # had reachable exits at field-trial time; the monitor skips any exit that
-  # cannot be verified rather than labeling it by intention.
+  # Six pinned exits across five continents. Each service is a separate Tor
+  # client with its own DataDirectory inside the container, so its circuit
+  # selection cannot leak into another vantage. These countries were chosen
+  # because they had reachable exits at field-trial time; the monitor skips any
+  # exit that cannot be verified rather than labeling it by intention.
   tor-de:
     build:
       context: .

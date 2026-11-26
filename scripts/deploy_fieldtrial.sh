@@ -5,10 +5,11 @@
 # trial from Linux/CI: production-sized fleet, direct + Tor vantages, hardened
 # runtime, a bounded IODA level feed, health gate, and rollback.
 #
-# The --profile tor stack starts one unpinned tor service and six pinned
-# tor-de/jp/au/sg/cl/mx services. The pinned services stay idle until the
-# field-trial overlay sets NETWEATHER_TOR_VANTAGES. The deploy script seeds
-# secrets/ui_token as mode 600/UID 65532:65532 before startup.
+# The default stack starts the unpinned tor sidecar from the signed release
+# image. The --profile tor stack adds the six pinned tor-de/jp/au/sg/cl/mx
+# services, which stay idle until the field-trial overlay sets
+# NETWEATHER_TOR_VANTAGES. The deploy script seeds secrets/ui_token as mode
+# 600/UID 65532:65532 before startup.
 #
 #   ./scripts/deploy_fieldtrial.sh                 # build + deploy
 #   ./scripts/deploy_fieldtrial.sh --dry-run       # print the commands, touch nothing
@@ -70,8 +71,6 @@ fi
 
 # --- images -----------------------------------------------------------------
 if [ "$NO_BUILD" = "0" ]; then
-    step "building the Tor client sidecar image"
-    run docker build -f Dockerfile.tor -t netweather-tor:local .
     # Each exit pin is baked into its own image, so rebuild all six or `up -d`
     # may keep running a sidecar built before a torrc edit.
     for cc in DE JP AU SG CL MX; do

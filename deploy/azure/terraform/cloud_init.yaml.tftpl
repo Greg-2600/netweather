@@ -12,7 +12,21 @@ write_files:
       #!/bin/sh
       set -eu
 
-      curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--write-kubeconfig-mode 600" sh -
+      swap_size_mb="${swap_size_mb}"
+      if [ "$swap_size_mb" -gt 0 ]; then
+        fallocate -l "${swap_size_mb}M" /swapfile
+        chmod 600 /swapfile
+        mkswap /swapfile
+        swapon /swapfile
+        if ! grep -q '^/swapfile ' /etc/fstab; then
+          printf '/swapfile none swap sw 0 0\n' >> /etc/fstab
+        fi
+        printf 'vm.swappiness=10\n' > /etc/sysctl.d/99-swappiness.conf
+        sysctl -p /etc/sysctl.d/99-swappiness.conf
+      fi
+
+      export K3S_TOKEN='${k3s_token}'
+      curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--write-kubeconfig-mode 600 --node-ip ${server_private_ip} --cluster-cidr ${k3s_cluster_cidr} --service-cidr ${k3s_service_cidr}" sh -
       export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
       for _ in $(seq 1 90); do
@@ -31,6 +45,11 @@ write_files:
 
       base="${manifest_base_url}"
       image="${netweather_image}"
+      # Derive the Tor sidecar from the main image so both use the same tag.
+      case "$image" in
+        *:*) tor_image="$(dirname "$image")/netweather-tor:$(printf '%s' "$image" | sed 's/.*://')" ;;
+        *)   tor_image="$(dirname "$image")/netweather-tor:latest" ;;
+      esac
       ingress_host="${ingress_host}"
       acme_email="${acme_email}"
       tmp="$(mktemp -d)"
@@ -41,10 +60,14 @@ write_files:
       done
 
       sed -i "s|ghcr.io/OWNER/netweather:latest|$image|g" "$tmp/deployment.yaml"
+      sed -i "s|ghcr.io/OWNER/netweather-tor:latest|$tor_image|g" "$tmp/deployment.yaml"
       sed -i "s|netweather.westcountytech.com|$ingress_host|g" "$tmp/ingress.yaml"
       sed -i "s|greg@westcountytech.com|$acme_email|g" "$tmp/traefik-config.yaml"
       kubectl apply -f "$tmp/traefik-config.yaml"
       kubectl apply -f "$tmp"
+      %{ if app_on_agent }
+      kubectl -n netweather patch deployment netweather --type merge -p '{"spec":{"template":{"spec":{"nodeSelector":{"kubernetes.io/arch":"${app_node_arch}"}}}}}'
+      %{ endif }
 
 runcmd:
   - /usr/local/bin/netweather-bootstrap

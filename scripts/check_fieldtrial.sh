@@ -13,7 +13,7 @@
 
 set -uo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 BASE_URL="${BASE_URL:-http://localhost:2600}"
 EXPECTED_TARGETS="${EXPECTED_TARGETS:-1000}"

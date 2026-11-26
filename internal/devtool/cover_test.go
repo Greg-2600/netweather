@@ -114,3 +114,32 @@ func TestRacePackagesExcludesWeb(t *testing.T) {
 		t.Fatalf("race packages = %v", got)
 	}
 }
+
+func TestWriteCoverageSummary(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "summary.md")
+	t.Setenv("GITHUB_STEP_SUMMARY", path)
+
+	stats := []pkgCoverage{{
+		pkg:     "github.com/Greg-2600/netweather/internal/api",
+		total:   10,
+		covered: 9,
+	}}
+	if err := writeCoverageSummary(stats, 10, 9, nil); err != nil {
+		t.Fatalf("writeCoverageSummary: %v", err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"## Coverage",
+		"internal/api",
+		"90.0%",
+		"Total (library)",
+	} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("summary missing %q:\n%s", want, raw)
+		}
+	}
+}

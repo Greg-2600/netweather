@@ -2020,3 +2020,30 @@ corridors:
 		t.Fatalf("endpoints = %+v, want the configured hosts", got)
 	}
 }
+
+func TestLoadTargetsDefaultsToTheFullFleet(t *testing.T) {
+	t.Setenv("NETWEATHER_CONFIG", "")
+	t.Setenv("NETWEATHER_SEED", "")
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "fleet.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	got, err := loadTargets(ctx, st)
+	if err != nil {
+		t.Fatalf("loadTargets: %v", err)
+	}
+	if len(got) != 1000 {
+		t.Fatalf("targets = %d, want the full 1000-target fleet", len(got))
+	}
+	sources, err := st.TargetSources(ctx, got[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sources) != 1 || sources[0].Source != "builtin:fleet" {
+		t.Fatalf("sources = %+v, want one builtin:fleet row", sources)
+	}
+}

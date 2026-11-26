@@ -18,7 +18,7 @@ Verified on the current project tree:
 
 | Gate | Command | Evidence |
 |---|---|---|
-| Format, vet, lint, unit + integration, coverage gates, build | `go run ./internal/devtool verify` | `verify: ok`, library total 86.4% |
+| Format, vet, lint, unit + integration, coverage gates, build | `go run ./internal/devtool verify` | `verify: ok`, library total 87.4–87.5% |
 | Real image + Docker network plane | `go run ./internal/devtool compose` | `ok … 110.7s` |
 | Browser UI | `go test -tags=uitest ./internal/web/uitest` | `ok 7.9s` |
 | Real internet, real instruments | `NETWEATHER_E2E=1 go test -tags=e2e ./internal/e2e -run TestRealEndpoints` | PASS 1.58s, 6/6 endpoints |
@@ -270,7 +270,7 @@ separate data and delivery boundaries.
 
 | Item | Why later |
 |---|---|
-| IPv6 as a first-class probe family | **Implemented:** `family: 4|6` on targets; DNS/DoH/DoT AAAA queries; IPv6 literals allowed for country/network classes; netx already blocks IPv6 special-use ranges |
+| IPv6 as a first-class probe family | **Implemented:** `family: 4\|6` on targets; DNS/DoH/DoT AAAA queries; IPv6 literals allowed for country/network classes; netx already blocks IPv6 special-use ranges |
 | DoT (853) | **Implemented:** `internal/probe/dot.go` (DNS over TLS), port 853 allowlisted |
 | `macvlan` profile | **Implemented:** `compose.macvlan.yaml` override profile |
 | Helm chart / systemd unit | **Implemented:** `deploy/helm/netweather` and `deploy/systemd/netweather.service` |

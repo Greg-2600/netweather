@@ -1,6 +1,6 @@
 # netweather — Design
 
-> Working codename. Single container, single binary, self-hosted.
+> Working codename. Two containers by default (app plus Tor sidecar), one binary, self hosted.
 > Status: design complete enough to implement. Open questions in §16.
 
 ---
@@ -209,7 +209,7 @@ This powers the coverage panel (§10.6) and the attribution engine (§7.3).
 
 For HTTP targets, four stages run in order, recording which stage failed. Cheap, and it converts "red square" into a diagnosis. Other target classes use a subset of these — see §5.1.
 
-```
+```text
 DNS ──► TCP ──► TLS ──► HTTP ──► semantic
  │       │       │        │
  │       │       │        └─ status, headers, body marker
@@ -388,26 +388,23 @@ Hard constraints, all enforced in code:
 
 #### Deployment: don't embed Tor
 
-Point at **any** SOCKS5 endpoint — Tor, an SSH tunnel, a VPN, a corporate proxy. Ship a compose profile with a Tor sidecar:
+Point at **any** SOCKS5 endpoint — Tor, an SSH tunnel, a VPN, a corporate proxy. Ship a default Tor sidecar:
 
 ```yaml
   tor:
-    build:
-      context: .
-      dockerfile: Dockerfile.tor
-    image: netweather-tor:local
-    profiles: ["tor"]
+    image: ghcr.io/<owner>/netweather-tor:<tag>
     restart: unless-stopped
 ```
 
 This keeps the main image small, keeps Tor security updates independent of the release cycle, and lets users reuse a proxy they already run. The sidecar is built from this repository's `Dockerfile.tor` so the client-only `torrc` is baked in rather than mounted: a forgotten mount cannot turn the proxy into an exit relay. An all-in-one image with `tor` + `s6-overlay` is acceptable as an optional variant, but it is not the default.
 
-Every Tor service is behind `profiles: ["tor"]`, so `docker compose up -d`
-does not create it. `docker compose --profile tor up -d` starts seven local
-images: `netweather-tor:local` plus
+The base `tor` service runs by default from the signed
+`ghcr.io/<owner>/netweather-tor:<tag>` image, so `docker compose up -d` creates
+it. The six pinned services are behind `profiles: ["tor"]`;
+`docker compose --profile tor up -d` adds
 `netweather-tor-de/jp/au/sg/cl/mx:local`. None publishes a port. The six pinned
 sidecars stay idle until `NETWEATHER_TOR_VANTAGES` is set to the exact
-service-name list above. A pinned label is trusted only after exit verification
+service name list above. A pinned label is trusted only after exit verification
 through that proxy.
 
 #### Client-only torrc
@@ -472,7 +469,7 @@ Hard floor: **30s per host, enforced in code, not configurable below.**
 
 Anchors sit at 120s rather than 60s on purpose. National shutdowns and cable cuts are measured in hours; halving the anchor cadence doubles the largest single block of traffic (~584 targets in the expanded fleet) to buy a detection latency improvement nobody can use. At 120s the original 750-target fleet landed near 5 probes/s; the expanded 1000-target fleet lands near 6.8 probes/s, the rate used in the egress estimate in `docs/ACCEPTABLE_USE.md` §4.
 
-```
+```text
 20  @ 30s   = 0.67/s
 80  @ 120s  = 0.67/s
 320 @ 450s  = 0.71/s      # tier 2 midpoint
@@ -483,7 +480,7 @@ Anchors sit at 120s rather than 60s on purpose. National shutdowns and cable cut
 
 The checked-in 1000-target fleet resolves to a slightly different mix:
 
-```
+```text
  10 @ 600s  = 0.02/s      # references
 693 @ 120s  = 5.78/s      # country/network anchors + critical services
 297 @ 300s  = 0.99/s      # bulk services
@@ -518,7 +515,7 @@ The floor is applied **after** jitter, as a final clamp.
 
 `netweather doctor` prints, and `/metrics` exports:
 
-```
+```text
 targets: 1000 (service 406, country 459, network 125, reference 10)
 effective rate: 6.8 probes/s
 blocked share: 0.2%   unmeasurable: 0
@@ -537,7 +534,7 @@ Two problems, both solved at `t=0`.
 
 **No burst.** 1000 targets due at the same instant is a 1000-probe spike: it saturates the pool, blows a minute of egress budget, and is the single most scan-like thing this tool ever does. Initial scheduling is spread uniformly across the first interval:
 
-```
+```text
 first_run(t) = now + rand(0, 0.95 * interval(t))
 ```
 
@@ -563,14 +560,14 @@ All correlation runs in **5-minute rolling windows** with **30-second buckets**,
 
 ### 7.1 LOCAL verdict ("is it me?")
 
-```
+```text
 fail_groups = { g in reference_groups : g.state in (DOWN, UNKNOWN) }
 if |fail_groups| >= 2 of |reference_groups| >= 3  ->  LOCAL
 ```
 
 Secondary heuristic, used when reference targets are themselves flaky:
 
-```
+```text
 if failures in one 30s bucket span >= 5 sectors AND >= 10 ASNs  ->  LOCAL_SUSPECT
 ```
 
@@ -586,7 +583,7 @@ Third signal - the one that makes this precise: **vantage comparison.** If the p
 
 Per scope — `global`, `sector`, `country`, `asn`:
 
-```
+```text
 judgeable  = enabled - unmeasurable        # structural: what this scope can ever see
 measurable = up + degraded + down          # current: a real observation exists now
 health     = (up + degraded) / measurable
@@ -616,7 +613,7 @@ A collapse in coverage is itself an event: if `coverage` for a scope falls below
 
 Baseline: same **hour-of-week**, rolling 28 weeks (28 samples, one per week at that hour), robust statistics. **Implemented:** the lookback is `7 * baseline.Window` days for exactly that reason: a 28-day lookback held about four points per bucket, below the 21-sample floor, so the detector could never leave `LEARNING`.
 
-```
+```text
 trigger when:  health < median - 3 * 1.4826 * MAD
          and:  absolute drop >= 2 percentage points of scope size
          for:  2 consecutive 5-minute buckets
@@ -671,7 +668,7 @@ The calendar is advisory, not authoritative: an operator who never touches it ge
 
 When an anomaly fires, cluster the failing targets by each candidate dimension and pick the best explanation.
 
-```
+```text
 candidates = group failures by: cdn | asn | prefix_24 | country | sector | stage
 score(g)   = (failing_in_g / total_in_g) * log(1 + failing_in_g)
 winner     = argmax(score) where failing >= 3 AND share >= 0.60
@@ -822,7 +819,7 @@ socket pins the subscribe frame, ping/pong, event mapping, and reconnect.
 
 One adapter covers a huge number of companies:
 
-```
+```text
 https://<slug>.statuspage.io/api/v2/summary.json
 https://status.<company>.com/api/v2/summary.json
 ```
@@ -873,7 +870,7 @@ There is no live API for cable health. Infer it.
 
 Ten corridors, each a pair of in-region endpoints:
 
-```
+```text
 NYC↔LON  LON↔SIN  SIN↔TYO  LAX↔SYD  MRS↔BOM
 MIA↔SAO  FRA↔NYC  SYD↔SIN  JNB↔LON  SFO↔TYO
 ```
@@ -907,7 +904,7 @@ Results attach to the incident. They are never stored as a time series.
 
 Detect a **step change**, not an absolute value:
 
-```
+```text
 baseline = rolling median over 6h
 alert when |rtt - baseline| > 3σ  OR  loss jumps from ~0 to >= 5%
 and it persists 2 consecutive samples
@@ -925,14 +922,13 @@ Endpoints: prefer RIPE Atlas anchors (stable, distributed). Fallback: country an
 
 ## 10. UI
 
-
 Server-rendered pages plus a drawer. The board, map, world, hubs, corridors, coverage, incidents, feeds, IHI, diagnostics, and the combined `/atlas` all read the store; SSE plus a small `EventSource` script applies one state snapshot on connect and then deltas to the board. No JS framework, no build step. Served on `:2600` - port and bind rationale in `NETWORKING.md` §7.1. HTMX is optional and has not earned its place yet: the board needs one stream and no partial swaps.
 
 The same state is exposed machine-readably under `/api/v1`; the contract, envelope, error codes, and stability tiers are in [`API.md`](API.md). The UI is a client of the store, not of its own API - but the two must never disagree about a state, so both read the same rows.
 
 ### 10.1 Overview
 
-```
+```text
 ┌──────────────────────────────────────────────────────────────┐
 │ ● Internet healthy        Health 98.7%  (normal 97.9–99.2%)  │
 │   last cycle 12s ago · 1000 targets · 0 unmeasurable          │
@@ -970,6 +966,7 @@ The wall of favicons. Grouping is a toggle: **sector (default)** · state · CDN
 - **Comfortable**: 96px tiles, name + 24h sparkline. Paginated by group, never all at once.
 
 **Implemented:** both densities exist as a toggle (`/?density=comfortable`). Compact is the default; comfortable widens the grid and enlarges the tile, name, and icon. Every toggle link preserves the other view state (grouping lens, focus mode, country and region filters, density), so switching one control cannot silently reset another. An unknown density falls back to compact rather than returning an error. Comfortable density also draws a 24-hour availability shape per tile, from one batch rollup query for the visible set rather than one query per target; a target with no history, a failed query, or a deployment without the batch reader simply omits the shape instead of fabricating one. It is decorative and hidden from assistive technology, because the state text already carries the meaning. Comfortable density pages each group: the first page renders 60 tiles, and a group with more says how many are behind it with "Show more" and "Show all" links. The page sizes travel in `?show=<group>:<n>,…`, so any group can be paged independently and every link preserves the other view controls; a malformed value falls back to the first page rather than returning an error, and compact never pages because it is the lens designed to fit.
+
 - Healthy groups collapsed by default. Problems expanded.
 - The feed-health strip shows each external feed as `ok`, `stale`, `failing`, or `never`; a stale or never-succeeded feed adds a banner, because a dead corroboration source must be visible on the board, not only in the API (P5).
 - Focus mode: hide everything not `DOWN`/`DEGRADED`. **Implemented:** `/?focus=problems` keeps only those two states, and `TAMPER` is deliberately not part of it: `TAMPER` is a global verdict and a drawer signal, not a tile state (`internal/state` has no tamper state), so a focus mode that named it would hide nothing extra. The summary counts still describe the whole fleet, so the page does not claim the hidden targets are healthy.
@@ -1109,7 +1106,7 @@ Click any tile:
 
 The blind-spot report. Required, not optional:
 
-```
+```text
 ASNs: 204    Countries: 249
 Top-ASN share: 3.5% (DoD)          ✓
 Top-10 share:  12.7%               ✓
@@ -1166,7 +1163,6 @@ Rules:
 - The component timestamp is when its evidence was read, except the corridor component, which carries the newest sample so a dead sampler drops it as stale. The TTL is one hour.
 - **Deliberately not included: cert-issuer changes.** They are detected, pinned, and shown in the drawer, but they are stored as pins rather than as a dated signal series, so counting them over a window would be inventing a history the database does not keep. The tamper component measures DNS divergence only, and this paragraph is the reason.
 - The component weights live in `internal/ihi` and sum to 1; a change there changes the documented table too.
-
 
 ## 12. Storage and retention
 
@@ -1246,10 +1242,10 @@ scripts copy the token into a secret volume with those permissions. Docker
 Desktop bind mounts cannot carry Unix ownership, so manual Windows deploys
 should use a named volume or secret.
 
-- ~20 MB image, ~80 MB RSS at field-trial scale
+- ~20 MB image, ~40 MB RSS at field trial scale
 - Multi-arch: linux/amd64, linux/arm64
 - Egress only; no inbound required except the UI port (2600)
-- **Ships with 14 targets.** `netweather seed` generates sector/country lists for users who want scale
+- **Ships with the full 1000 target field trial fleet embedded in the binary.** `netweather seed` generates sector and country lists for operators who want a custom board
 
 Base image, hardening, capabilities, and supply chain: see [`IMAGE.md`](IMAGE.md). Network topology, MTU, DNS, SSRF reachability, port choice, and access posture: see [`NETWORKING.md`](NETWORKING.md).
 
@@ -1257,7 +1253,7 @@ Base image, hardening, capabilities, and supply chain: see [`IMAGE.md`](IMAGE.md
 
 `NETWEATHER_CONFIG` may point at a single YAML file or at a directory. The directory form is for a large list: the sector is the path, so adding a sector means adding a file, not repeating a tag on every line.
 
-```
+```text
 config/
   netweather.yaml          # optional: version, extra targets, corridors
   sites/
@@ -1360,7 +1356,7 @@ Phase 0 is the whole thesis in miniature. If phase 0 is noisy, nothing later sav
 **Open:**
 
 1. **Federation.** Tor vantages (§5.7) provide a cheap second path today; true multi-operator federation (a public map) is post-v1 and off by default — the privacy cost is real, and a federated instance leaks its target list to its peers.
-2. **Default seed.** Ship a small curated list, or ship a `seed` command that pulls from public lists? Currently: both — 14 curated targets, plus the generator for operators who want scale.
+2. **Default seed.** Ship a small curated list, or ship a `seed` command that pulls from public lists? Currently: both — the full 1000 target field trial fleet is the default, and the generator remains for operators who want a custom board.
 3. **Corridor endpoints.** With the Atlas profile available, Atlas anchors become the default when it is on; country NS hosts remain the self-contained fallback. Which is authoritative when both exist?
 4. **`DEGRADED` thresholds.** Latency-based degradation needs a per-target EWMA baseline; exact multiplier (3× p50? 2× p95?) needs real data before it is codified.
 5. **Dashboard exposure.** Resolved in `NETWORKING.md` §7.1: bind `0.0.0.0:2600`, require auth, and put it on the tailnet via the optional sidecar profile when it should not be on the LAN at all.
