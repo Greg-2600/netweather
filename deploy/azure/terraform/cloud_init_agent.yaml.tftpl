@@ -1,0 +1,45 @@
+#cloud-config
+package_update: true
+packages:
+  - curl
+  - ca-certificates
+
+write_files:
+  - path: /usr/local/bin/netweather-agent-bootstrap
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      set -eu
+
+      swap_size_mb="${swap_size_mb}"
+      if [ "$swap_size_mb" -gt 0 ]; then
+        fallocate -l "${swap_size_mb}M" /swapfile
+        chmod 600 /swapfile
+        mkswap /swapfile
+        swapon /swapfile
+        if ! grep -q '^/swapfile ' /etc/fstab; then
+          printf '/swapfile none swap sw 0 0\n' >> /etc/fstab
+        fi
+        printf 'vm.swappiness=10\n' > /etc/sysctl.d/99-swappiness.conf
+        sysctl -p /etc/sysctl.d/99-swappiness.conf
+      fi
+
+      export K3S_URL="https://${server_private_ip}:6443"
+      export K3S_TOKEN='${k3s_token}'
+
+      # Retry until the server is reachable, then retry the agent install until
+      # it succeeds.
+      for _ in $(seq 1 180); do
+        if curl -kfsS "$K3S_URL/ping" >/dev/null 2>&1; then
+          if curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="agent" sh -; then
+            exit 0
+          fi
+        fi
+        sleep 5
+      done
+
+      echo "k3s agent could not join $K3S_URL" >&2
+      exit 1
+
+runcmd:
+  - /usr/local/bin/netweather-agent-bootstrap
