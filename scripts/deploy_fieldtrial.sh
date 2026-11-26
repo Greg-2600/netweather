@@ -27,7 +27,7 @@ SECRET="nw-fieldtrial-secret"
 TOKEN_FILE="secrets/ui_token"
 BASE_URL="http://localhost:2600"
 
-COMPOSE_ARGS=(--profile tor -f compose.yaml -f compose.fieldtrial.yaml)
+COMPOSE_ARGS=(-f compose.yaml -f compose.fieldtrial.yaml)
 DRY_RUN=0
 NO_BUILD=0
 for arg in "$@"; do

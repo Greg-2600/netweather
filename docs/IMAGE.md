@@ -240,16 +240,14 @@ ENTRYPOINT ["tor", "-f", "/etc/tor/torrc"]
 
 The `torrc` is baked in at build time (`torrc`, copied by `Dockerfile.tor`), and `compose.yaml`'s `tor` service builds that image rather than pulling a third-party proxy. The same Dockerfile is published as `ghcr.io/<owner>/netweather-tor` by the release job, signed with cosign, so a deployment that pulls images can use the signed sidecar instead of building locally. The non-negotiable lines are `ClientOnly 1`, `ExitPolicy reject *:*`, `BridgeRelay 0`, and `PublishServerDescriptor 0`; the SOCKS port carries `IsolateSOCKSAuth` so credentials, when a client presents them, select a circuit, and `MaxCircuitDirtiness 3600` keeps one circuit for comparable measurements. A unit test reads `torrc` and asserts every one of those lines, and another asserts the compose service builds `Dockerfile.tor` and publishes no port.
 
-Every Tor service is behind `profiles: [tor]`. Starting
-`docker compose --profile tor up -d` builds one unpinned image,
-`netweather-tor:local`, and six pinned images,
-`netweather-tor-de/jp/au/sg/cl/mx:local`. No Tor service publishes a host port,
-and every service stays on the `egress` network.
+A plain `docker compose up -d` builds the six pinned images,
+`netweather-tor-de/jp/au/sg/cl/mx:local`. The optional `--profile tor` also
+builds the unpinned `netweather-tor:local`. No Tor service publishes a host
+port, and every service stays on the `egress` network.
 
-The app enables the unpinned Tor vantage with `NETWEATHER_TOR=true` and
-connects it to `tor:9050`. The six pinned sidecars stay idle until
-`NETWEATHER_TOR_VANTAGES` is set to
-`DE=tor-de:9050,JP=tor-jp:9050,AU=tor-au:9050,SG=tor-sg:9050,CL=tor-cl:9050,MX=tor-mx:9050`.
+The app enables Tor with `NETWEATHER_TOR=true` and `NETWEATHER_TOR_VANTAGES` set
+to `DE=tor-de:9050,JP=tor-jp:9050,AU=tor-au:9050,SG=tor-sg:9050,CL=tor-cl:9050,MX=tor-mx:9050`.
+The optional unpinned sidecar at `tor:9050` stays idle while that list is set.
 A `tor-<cc>` label is trusted only after the app verifies the real exit through
 that proxy.
 

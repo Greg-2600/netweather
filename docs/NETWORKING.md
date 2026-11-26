@@ -185,7 +185,7 @@ The guardrail moves from the address to the credential:
 - Non-loopback listen + `ui.auth: none` → **refuse to start**, unless `ui.allow_public: true` is also set. Two deliberate flags, so it cannot happen by accident.
 - Auth is a token file or a single operator account, compared in constant time, with login rate-limited per IP. No token in the query string — it ends up in logs and `Referer` headers.
 - Compose's `secrets/ui_token` bind mount must be mode `600` and owned by UID/GID `65532:65532` (the release container uid). A wrong owner or mode causes the app to crash-loop before serving traffic. The deploy scripts copy the token into a secret volume with those permissions; manual and host-mounted deploys must do the same. Docker Desktop bind mounts cannot carry Unix ownership, so prefer a Docker secret/volume for manual Windows deploys.
-- Cookies are `HttpOnly` + `SameSite=Lax`, and `Secure` whenever the effective scheme is HTTPS (proxy TLS or `X-Forwarded-Proto: https`). Plaintext deployments get the cookie *without* `Secure` - a browser will not send a `Secure` cookie over HTTP, so setting it unconditionally would simply break login - plus a persistent "insecure transport" badge on every page; a TLS-terminating proxy suppresses it with `X-Forwarded-Proto: https`, believed only from `NETWEATHER_TRUSTED_PROXIES` (§7.3), and startup logs `event=plaintext_transport` once. Every state-changing route requires the auth cookie; there is no "read-only so it's safe" mode, because the dashboard exposes mutations (pause/resume, incident annotation, sign-out, on-demand traceroute), and the API shares the same token for trace and target disable. A `?next=` destination is accepted only as a same-origin path: an absolute URL, a protocol-relative `//host`, a backslash, or a control character falls back to the board (`THREAT_MODEL.md` T9).
+- Cookies are `HttpOnly` + `SameSite=Lax`, and `Secure` whenever the effective scheme is HTTPS (proxy TLS or `X-Forwarded-Proto: https`). Plaintext deployments get the cookie *without* `Secure` - a browser will not send a `Secure` cookie over HTTP, so setting it unconditionally would simply break login - and startup logs `event=plaintext_transport` once. Every state-changing route requires the auth cookie; there is no "read-only so it's safe" mode, because the dashboard exposes mutations (pause/resume, incident annotation, sign-out, on-demand traceroute), and the API shares the same token for trace and target disable. A `?next=` destination is accepted only as a same-origin path: an absolute URL, a protocol-relative `//host`, a backslash, or a control character falls back to the board (`THREAT_MODEL.md` T9).
 - **There is no TLS in the binary.** A bearer token over plaintext HTTP is only as private as the network it crosses. On a LAN you trust, that is acceptable. On anything else, terminate TLS at a proxy (§7.3) or put the whole thing on the tailnet (§7.2).
 - `X-Forwarded-For` is trusted only when the immediate peer is inside `NETWEATHER_TRUSTED_PROXIES` (§7.3). With no configured proxies the header is ignored and the peer address is used.
 
@@ -276,16 +276,16 @@ Safety properties this preserves:
 - `ClientOnly 1` + `ExitPolicy reject *:*` means the bind cannot be turned into a relay. They are baked into the image's `torrc` (not a mount an operator can forget) and pinned by a test. `netweather doctor` proves the SOCKS endpoint answers; it cannot read the sidecar's effective config, so it does not claim to audit the policy.
 - `IsolateSOCKSAuth` works over TCP and does not require the control port. Distinct SOCKS username/password per vantage = distinct circuit, no `SIGNAL NEWNYM`.
 
-Every Tor service is behind `profiles: [tor]`. It does not exist unless the
-Compose stack is started with `--profile tor`. The profile builds seven local
-images: `netweather-tor:local` and `netweather-tor-de/jp/au/sg/cl/mx:local`.
-None publishes a host port, and all remain on `egress`.
+A plain `docker compose up -d` builds the six pinned images
+`netweather-tor-de/jp/au/sg/cl/mx:local`. The optional `--profile tor` also
+builds the unpinned `netweather-tor:local`. None publishes a host port, and all
+remain on `egress`.
 
-The six pinned services start idle until the app receives
-`NETWEATHER_TOR_VANTAGES=DE=tor-de:9050,JP=tor-jp:9050,AU=tor-au:9050,SG=tor-sg:9050,CL=tor-cl:9050,MX=tor-mx:9050`.
-The app enables the unpinned `tor` vantage by setting `NETWEATHER_TOR=true`;
-its SOCKS endpoint is `tor:9050`. A pinned country label is trusted only after
-the app verifies the real exit through the matching proxy.
+The base file sets both `NETWEATHER_TOR=true` and
+`NETWEATHER_TOR_VANTAGES=DE=tor-de:9050,JP=tor-jp:9050,AU=tor-au:9050,SG=tor-sg:9050,CL=tor-cl:9050,MX=tor-mx:9050`,
+so the monitor probes through the six pinned exits. The optional unpinned
+`tor:9050` sidecar stays idle while that list is set. A pinned country label is
+trusted only after the app verifies the real exit through the matching proxy.
 
 For a country-labelled vantage, one Tor process cannot be steered per stream: `ExitNodes {cc}` is a process-wide setting. The field trial therefore runs six separate client-only sidecars (`tor-de`, `tor-jp`, `tor-au`, `tor-sg`, `tor-cl`, `tor-mx`), each with its own baked torrc and DataDirectory. `NETWEATHER_TOR_VANTAGES` maps each code to that sidecar's SOCKS endpoint. The monitor fetches the exit IP through that hop, then asks the same Tor process's internal control port (`GETINFO ip-to-country/<ip>`) where that address is. Tor's own GeoIP database is authoritative for the label; Cymru still supplies the ASN but its registrar country can disagree with the relay location. The control port stays on `egress` and is never published. One exit with no healthy circuits is skipped; the other continents keep probing.
 

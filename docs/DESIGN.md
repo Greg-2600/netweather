@@ -402,13 +402,12 @@ Point at **any** SOCKS5 endpoint — Tor, an SSH tunnel, a VPN, a corporate prox
 
 This keeps the main image small, keeps Tor security updates independent of the release cycle, and lets users reuse a proxy they already run. The sidecar is built from this repository's `Dockerfile.tor` so the client-only `torrc` is baked in rather than mounted: a forgotten mount cannot turn the proxy into an exit relay. An all-in-one image with `tor` + `s6-overlay` is acceptable as an optional variant, but it is not the default.
 
-Every Tor service is behind `profiles: ["tor"]`, so `docker compose up -d`
-does not create it. `docker compose --profile tor up -d` starts seven local
-images: `netweather-tor:local` plus
-`netweather-tor-de/jp/au/sg/cl/mx:local`. None publishes a port. The six pinned
-sidecars stay idle until `NETWEATHER_TOR_VANTAGES` is set to the exact
-service-name list above. A pinned label is trusted only after exit verification
-through that proxy.
+`docker compose up -d` starts the six pinned
+`netweather-tor-de/jp/au/sg/cl/mx:local` sidecars, and the base file sets
+`NETWEATHER_TOR_VANTAGES` to the exact service-name list above. None publishes
+a port. The optional `--profile tor` adds the unpinned `netweather-tor:local`;
+it stays idle while the pinned list is set. A pinned label is trusted only after
+exit verification through that proxy.
 
 #### Client-only torrc
 

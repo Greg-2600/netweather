@@ -67,8 +67,12 @@ schedule, which can stretch the credit further.
    cd deploy/azure/terraform
    ```
 
-3. Create a local `terraform.tfvars`. This file is ignored by git. Replace the
-   key and CIDR values with your own.
+3. Copy the tracked template to a local `terraform.tfvars`, which git ignores,
+   and replace the key and CIDR values with your own.
+
+   ```sh
+   cp terraform.tfvars.example terraform.tfvars
+   ```
 
    ```hcl
    ssh_public_key   = "ssh-ed25519 AAAA... your-key-comment"

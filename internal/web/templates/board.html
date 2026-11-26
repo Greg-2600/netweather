@@ -2,10 +2,6 @@
 <p class="banner warn" data-testid="no-auth" role="status">
   This instance has no authentication: anyone who can reach it can read the board and act on it. Set a UI token or keep it on a private network (`docs/NETWORKING.md` 7.1).
 </p>
-{{end}}{{if .Insecure}}
-<p class="banner warn" data-testid="insecure-transport" role="status">
-  Insecure transport: this page is served over plaintext HTTP, so the token and the dashboard cross the network in clear text. Put the instance behind a TLS-terminating proxy or on a private network (`docs/NETWORKING.md` 7.1).
-</p>
 {{end}}{{end}}
 
 <!doctype html>

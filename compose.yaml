@@ -28,14 +28,19 @@ services:
       # self-check connection; 2048 MB is the documented default and 0 disables
       # it. When spent, probing stops until 00:00 UTC and the board says so.
       # NETWEATHER_DAILY_MB: "2048"
-      # Point this at /config/targets.yaml once you have one; otherwise the
-      # shipped seed list is used.
-      # NETWEATHER_CONFIG: /config/targets.yaml
+      # Full 1000-target field-trial fleet by default. Point this at
+      # /config/targets.yaml for a smaller list; unset it for the 14 shipped
+      # seed targets.
+      NETWEATHER_CONFIG: /config/fieldtrial-targets.yaml
       #
-      # The app enables this unpinned Tor vantage at startup:
-      # NETWEATHER_TOR=true. The deployment sets it explicitly. The sidecars
-      # below exist only under --profile tor and fail loudly if their service
-      # is missing. Their SOCKS endpoints must match the same service names.
+      # Six pinned Tor sidecars run by default and NETWEATHER_TOR_VANTAGES
+      # names their SOCKS endpoints. Each country is verified through its own
+      # proxy before the label is trusted (docs/ACCEPTABLE_USE.md §8).
+      NETWEATHER_TOR: "true"
+      NETWEATHER_TOR_VANTAGES: "DE=tor-de:9050,JP=tor-jp:9050,AU=tor-au:9050,SG=tor-sg:9050,CL=tor-cl:9050,MX=tor-mx:9050"
+      # Fallback for the optional unpinned `tor` profile; inert while
+      # NETWEATHER_TOR_VANTAGES is set. The client fails loudly when the
+      # sidecar is missing.
       NETWEATHER_TOR_SOCKS: tor:9050
       # Daily volume budget for the tor vantage. Counted on the SOCKS
       # connection; 0 disables it.
@@ -52,6 +57,14 @@ services:
       # list. Its rows are IP-routing corroboration, not voice/SMS health.
       # Radar also needs a token; it is skipped with a warning without one.
       # NETWEATHER_RADAR_TOKEN: /run/secrets/radar_token is not supported; use env or a secret-aware wrapper.
+
+    depends_on:
+      - tor-de
+      - tor-jp
+      - tor-au
+      - tor-sg
+      - tor-cl
+      - tor-mx
 
     read_only: true
     tmpfs: [/tmp]
@@ -72,17 +85,14 @@ services:
       retries: 3
       start_period: 10s
 
-  # Optional Tor vantages. The sidecars are client-only and the monitor never
-  # embeds Tor. Start with: docker compose --profile tor up -d
+  # Tor vantages. The sidecars are client-only and the monitor never embeds
+  # Tor. The six pinned `tor-<cc>` services run by default; a plain
+  # `docker compose up -d` starts them with the monitor.
   #
-  # `tor` is the original unpinned proxy for a single `NETWEATHER_TOR` vantage.
-  # The `tor-<cc>` services below each build their own client-only image with a
-  # pinned exit country, then `NETWEATHER_TOR_VANTAGES` names the SOCKS
-  # endpoints. A country label is only trusted after the monitor checks the
-  # real exit through that proxy (docs/ACCEPTABLE_USE.md §8).
-  # Field-trial list:
-  # DE=tor-de:9050,JP=tor-jp:9050,AU=tor-au:9050,
-  # SG=tor-sg:9050,CL=tor-cl:9050,MX=tor-mx:9050
+  # `tor` is the original unpinned proxy for a single `NETWEATHER_TOR`
+  # vantage and stays optional (--profile tor). The `tor-<cc>` services below
+  # each build their own client-only image with a pinned exit country, and
+  # `NETWEATHER_TOR_VANTAGES` names their SOCKS endpoints in the base file.
   tor:
     # Built from this repository's Dockerfile.tor, not a third-party image: the
     # client-only torrc is baked in, so an operator cannot turn the proxy into
@@ -113,7 +123,6 @@ services:
       args:
         TOR_EXIT_COUNTRY: DE
     image: netweather-tor-de:local
-    profiles: [tor]
     networks: [egress]
     restart: unless-stopped
     read_only: true
@@ -128,7 +137,6 @@ services:
       args:
         TOR_EXIT_COUNTRY: JP
     image: netweather-tor-jp:local
-    profiles: [tor]
     networks: [egress]
     restart: unless-stopped
     read_only: true
@@ -143,7 +151,6 @@ services:
       args:
         TOR_EXIT_COUNTRY: AU
     image: netweather-tor-au:local
-    profiles: [tor]
     networks: [egress]
     restart: unless-stopped
     read_only: true
@@ -158,7 +165,6 @@ services:
       args:
         TOR_EXIT_COUNTRY: SG
     image: netweather-tor-sg:local
-    profiles: [tor]
     networks: [egress]
     restart: unless-stopped
     read_only: true
@@ -173,7 +179,6 @@ services:
       args:
         TOR_EXIT_COUNTRY: CL
     image: netweather-tor-cl:local
-    profiles: [tor]
     networks: [egress]
     restart: unless-stopped
     read_only: true
@@ -188,7 +193,6 @@ services:
       args:
         TOR_EXIT_COUNTRY: MX
     image: netweather-tor-mx:local
-    profiles: [tor]
     networks: [egress]
     restart: unless-stopped
     read_only: true

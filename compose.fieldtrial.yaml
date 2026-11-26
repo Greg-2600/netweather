@@ -1,11 +1,11 @@
-# Early field-trial overlay for compose.yaml.
+# Field-trial overlay for compose.yaml.
 #
-#   docker compose --profile tor -f compose.yaml -f compose.fieldtrial.yaml up -d --build
+#   docker compose -f compose.yaml -f compose.fieldtrial.yaml up -d --build
 #
 # The base file supplies the hardened runtime (read-only root, uid 65532,
-# dropped capabilities, healthcheck, restart policy, unprivileged ICMP). This
-# overlay selects the production-sized target file, turns on the Tor
-# corroboration vantage, and points auth at a real 0600 secret (a Docker named
+# dropped capabilities, healthcheck, restart policy, unprivileged ICMP), the
+# 1000-target fleet, and the six pinned Tor vantages. This overlay sets the
+# bounded evidence feeds and points auth at a real 0600 secret (a Docker named
 # volume, because a Windows bind mount cannot carry Unix mode 0600).
 services:
   netweather:

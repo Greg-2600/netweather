@@ -36,7 +36,7 @@ netweather answers these, in this order:
 
 **Status: phases 0–3 implemented** (OIDC deferred to *Later*). The binary probes configured targets over HTTP, TLS, TCP, DNS, DoH, DoT, QUIC (UDP/443 reachability), NTP, and ICMP on a tiered scheduler; classifies each result; writes to SQLite; and serves a store-backed board with live SSE updates, the versioned API, and a hardened container image.
 
-Incidents with chronological detail timelines, baseline anomalies, coverage, self-checks, exports, feeds (IODA, Radar, Statuspage, AWS, GCP, Azure, Atlas, RIPE RIS Live), ASN/CDN/PeeringDB enrichment, certificate issuer pinning, per-resolver DNS divergence, provider status mapping, idempotent actions, on-demand traceroute, the world view, configuration-driven corridors with captured traces, the Internet Health Index, SSE replay, a Feeds status page, a FinViz-style **treemap health map**, and a map-first **`/atlas` view with everything, all tabs** are all implemented. Tor (single or multi-continent pinned exits) and Tailscale are compose profiles; traceroute and RIPE's software probe have their own opt-in overlays. Remote vantage agents (`netweather agent`) run the same instruments on a remote host and report to `/api/v1/vantages/{id}/reports`.
+Incidents with chronological detail timelines, baseline anomalies, coverage, self-checks, exports, feeds (IODA, Radar, Statuspage, AWS, GCP, Azure, Atlas, RIPE RIS Live), ASN/CDN/PeeringDB enrichment, certificate issuer pinning, per-resolver DNS divergence, provider status mapping, idempotent actions, on-demand traceroute, the world view, configuration-driven corridors with captured traces, the Internet Health Index, SSE replay, a Feeds status page, a FinViz-style **treemap health map**, and a map-first **`/atlas` view with everything, all tabs** are all implemented. Tor vantages (six pinned exits) are on by default in compose; Tailscale is a compose profile; traceroute and RIPE's software probe have their own opt-in overlays. Remote vantage agents (`netweather agent`) run the same instruments on a remote host and report to `/api/v1/vantages/{id}/reports`.
 
 > [!NOTE]
 > **Known limits, stated rather than hidden:** QUIC is UDP/443 reachability, not a full handshake; the DF-bit PMTU probe is Linux-only; IPv6 measurement runs under host networking only; RIS Live is a polling adapter (WebSocket is post-MVP); IODA shows stored events, not a live per-country score. `NETWEATHER_SEED=none` starts with an empty board.
@@ -97,9 +97,9 @@ scripts copy the token into a volume owned by UID 65532 instead. A manual
 Compose deploy must prepare the file or secret volume before startup; otherwise
 the app crash-loops with a token-file permission error.
 
-Open <http://localhost:2600> and log in with the token you just created. That's it — 14 shipped targets, roughly 50 MB/day.
+Open <http://localhost:2600> and log in with the token you just created. That's it — the full 1000-target field-trial fleet with six pinned Tor exits across five continents, each with its own 50 MB/day cap.
 
-Want the full field-trial fleet (1000 real targets + five-continent Tor corroboration)?
+Want the operator wrapper as well (0600 secret volume, evidence feeds, `/healthz` gate, image rollback)?
 
 ```powershell
 .\scripts\deploy_fieldtrial.ps1               # Windows: build + deploy
@@ -173,32 +173,30 @@ The early field-trial fleet is pre-generated at [`config/fieldtrial-targets.yaml
 
 ## 📦 Container
 
-Single container, read-only rootfs, non-root, no shell in the release image. Outbound for probes; **inbound only on 2600** for the dashboard.
+One monitor container plus six client-only Tor sidecars, each read-only, non-root, and shell-free in the release images. Outbound for probes; **inbound only on 2600** for the dashboard.
 
-Built from [`Dockerfile`](Dockerfile) (Chainguard Go builder → static runtime, ~25 MB, no shell) and orchestrated by [`compose.yaml`](compose.yaml). It binds `./data:/data` and `./config:/config:ro`, publishes only `2600`, runs read-only with `cap_drop: ALL`, and enables unprivileged ICMP via `ping_group_range`.
+The monitor is built from [`Dockerfile`](Dockerfile) (Chainguard Go builder → static runtime, ~25 MB, no shell) and orchestrated by [`compose.yaml`](compose.yaml). It binds `./data:/data` and `./config:/config:ro`, publishes only `2600`, runs read-only with `cap_drop: ALL`, and enables unprivileged ICMP via `ping_group_range`. The six pinned Tor sidecars start with it by default.
 
-Everything optional is a **compose profile**, so the default file publishes one port and grants zero capabilities:
+Everything else optional is a **compose profile**:
 
 | Profile | Purpose |
 |---|---|
-| `tor` | Corroboration vantage (with client-only `torrc`) |
+| `tor` | Optional single unpinned Tor sidecar; the six pinned exits are on by default |
 | `tailscale` | Tailnet access without publishing a port |
 | `ripe-atlas` | RIPE's own probe, separate trust domain |
 | `compose.trace.yaml` | On-demand traceroute overlay (`CAP_NET_RAW`) |
 | `compose.ipv6.yaml` | IPv6 measurement under host networking |
 
-The base app is configured to start the unpinned `tor` corroboration vantage
-against `tor:9050`. The `tor` profile starts seven local sidecars built from
-`Dockerfile.tor`: `netweather-tor:local` plus the pinned
-`netweather-tor-de/jp/au/sg/cl/mx:local` images. None publish ports; they remain
-on the `egress` network and are isolated from the UI network.
-
-The six pinned sidecars stay idle until `NETWEATHER_TOR_VANTAGES` is set.
-The field-trial overlay uses
-`DE=tor-de:9050,JP=tor-jp:9050,AU=tor-au:9050,SG=tor-sg:9050,CL=tor-cl:9050,MX=tor-mx:9050`.
-Start it with `docker compose --profile tor -f compose.yaml -f compose.fieldtrial.yaml up -d`.
-A country label is added only after the app verifies the real exit through that
+A plain `docker compose up -d` starts the six pinned `tor-de/jp/au/sg/cl/mx`
+sidecars built from `Dockerfile.tor`, and `NETWEATHER_TOR_VANTAGES` in
+`compose.yaml` points the monitor at their SOCKS endpoints. None publish ports;
+they remain on the `egress` network and are isolated from the UI network. A
+country label is added only after the app verifies the real exit through that
 proxy. The sidecars do not turn an instance into an exit relay.
+
+The optional `tor` profile adds the original unpinned `netweather-tor:local`
+sidecar for a single `tor` vantage; it stays idle while
+`NETWEATHER_TOR_VANTAGES` is set.
 
 **Port 2600** — 2600 Hz, phreaking, *2600: The Hacker Quarterly*; unassigned by IANA and above 1024 so the non-root UID can bind it without `NET_BIND_SERVICE`. Full rationale in [`docs/NETWORKING.md`](docs/NETWORKING.md) §7.1.
 
@@ -219,7 +217,7 @@ Container networking is not an afterthought here: Docker's bridge defaults, embe
 
 ## ⚙️ Configuration
 
-Targets come from `NETWEATHER_CONFIG=/config/targets.yaml` (see [`config/targets.example.yaml`](config/targets.example.yaml)), or fourteen shipped defaults when unset. The same variable may point at a **directory** laid out as `netweather.yaml`, `sites/<sector>/*.txt`, `overrides/*.yaml`, and `corridors.yaml`; a sector is the file's path, so a large list needs no per-line tagging. `NETWEATHER_SEED=none` starts with an empty board. State lives in `NETWEATHER_DATA` (default `./data`). Config validation is strict: an unknown field, a blocked port, or an interval under 30s refuses to start.
+The shipped `compose.yaml` sets `NETWEATHER_CONFIG=/config/fieldtrial-targets.yaml` (1000 targets); a bare binary with the variable unset uses fourteen shipped defaults. Point `NETWEATHER_CONFIG` at your own file (see [`config/targets.example.yaml`](config/targets.example.yaml)), or at a **directory** laid out as `netweather.yaml`, `sites/<sector>/*.txt`, `overrides/*.yaml`, and `corridors.yaml`; a sector is the file's path, so a large list needs no per-line tagging. `NETWEATHER_SEED=none` starts with an empty board. State lives in `NETWEATHER_DATA` (default `./data`). Config validation is strict: an unknown field, a blocked port, or an interval under 30s refuses to start.
 
 Every environment variable the binary reads, including the ones that exist for a mirror or a test:
 
@@ -312,7 +310,7 @@ docker compose exec netweather /netweather debug enable --target chase.com --lev
 
 ## 🚢 Deployment
 
-The field trial deploys through `compose.yaml` + `compose.fieldtrial.yaml`: the production-sized target file, direct plus six pinned Tor vantages (DE, JP, AU, SG, CL, MX — five continents), hardened runtime, an external secret volume at `0600`/uid `65532`, a `/healthz` gate, and image-tag rollback. Each Tor exit is a separate client-only sidecar with its own verified country, probe subset, and budget; a failed exit is skipped without stopping the others. Both wrappers seed the secret, tag a rollback image, recreate the stack, wait for health, and roll back if unhealthy.
+`compose.yaml` alone now deploys the production-sized target file and the six pinned Tor vantages (DE, JP, AU, SG, CL, MX — five continents). The field-trial wrappers layer `compose.fieldtrial.yaml` on top for an external secret volume at `0600`/uid `65532`, bounded evidence feeds, a `/healthz` gate, and image-tag rollback. Each Tor exit is a separate client-only sidecar with its own verified country, probe subset, and budget; a failed exit is skipped without stopping the others. Both wrappers seed the secret, tag a rollback image, recreate the stack, wait for health, and roll back if unhealthy.
 
 ```powershell
 .\scripts\deploy_fieldtrial.ps1               # Windows
@@ -347,7 +345,7 @@ This tool sends periodic requests to third-party sites. That is dual-use, so the
 - Inbound: `2600` only, and a non-loopback bind requires auth
 - Private ranges blocked after DNS resolution **and** after every redirect
 - Traceroute: on-demand or anomaly-triggered, ≤10 runs/hour
-- Tor: the base Compose app enables the unpinned `tor` vantage at startup; pinned `tor-<cc>` vantages remain idle until `NETWEATHER_TOR_VANTAGES` is set. ≤25 targets and ≥2s spacing per exit, daily bandwidth budget per exit
+- Tor vantages: on by default in compose (six pinned exits, ≤25 targets and ≥2s spacing per exit, 50 MB/day budget per exit); the binary itself leaves Tor off unless enabled
 - **No telemetry, ever**
 
 At the full 1000-target field-trial fleet this is ~586k probes/day and ~1.1 GB/day, dominated by TLS handshakes. Details and arithmetic: [`docs/ACCEPTABLE_USE.md`](docs/ACCEPTABLE_USE.md) §4.

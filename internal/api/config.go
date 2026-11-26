@@ -27,7 +27,7 @@ type Config struct {
 // FromEnv reads NETWEATHER_UI_* variables. The token file wins over the inline
 // variable, because a file can be a secret mount and an env var cannot.
 func FromEnv(getenv func(string) string) (Config, error) {
-	c := Config{Listen: "127.0.0.1:2600"}
+	c := Config{Listen: "0.0.0.0:2600"}
 
 	if v := strings.TrimSpace(getenv("NETWEATHER_UI_LISTEN")); v != "" {
 		c.Listen = v
