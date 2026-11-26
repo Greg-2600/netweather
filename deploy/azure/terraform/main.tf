@@ -161,6 +161,9 @@ resource "azurerm_linux_virtual_machine" "server" {
 resource "azurerm_network_interface" "agent" {
   count = var.agent_count
 
+  # Dynamic agent IPs must not grab the address reserved for the static server NIC.
+  depends_on = [azurerm_network_interface.server]
+
   name                = "netweather-agent-${count.index + 1}-nic"
   location            = azurerm_resource_group.netweather.location
   resource_group_name = azurerm_resource_group.netweather.name
