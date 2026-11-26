@@ -614,6 +614,9 @@ func TestBoardRequiresLogin(t *testing.T) {
 	if !strings.Contains(page, `data-testid="login-token"`) {
 		t.Fatalf("front page did not draw the token field:\n%s", page)
 	}
+	if !strings.Contains(page, `data-testid="login-token-value">`+testToken+`<`) {
+		t.Fatalf("front page did not show the token value:\n%s", page)
+	}
 	if !strings.Contains(page, `name="next" value="/"`) {
 		t.Fatalf("login form did not return to the board:\n%s", page)
 	}

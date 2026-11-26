@@ -424,7 +424,7 @@ It also fails on any `console.error` or uncaught page error, with one documented
 
 | Test id | Element |
 |---|---|
-| `login-token`, `login-submit`, `login-error` | login form |
+| `login-token`, `login-submit`, `login-error`, `login-token-value` | login form and displayed token |
 | `board` | grid container |
 | `tile` | one target tile (`data-target`, `data-state`) |
 | `count-<state>` | summary chip |
