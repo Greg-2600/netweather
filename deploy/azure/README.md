@@ -18,7 +18,14 @@ The default server size is Standard_B2ats_v2, an AMD size with 2 vCPUs and
 these sizes, so running one server and one agent stays inside the free compute
 allowance when the VMs share the month. The server is the only node with a
 public IP address. The agent has no public IP address and joins the cluster over
-the private subnet by connecting to the server at `https://10.42.1.4:6443`.
+the private subnet by connecting to the server at `https://10.240.1.4:6443`.
+
+Terraform uses `10.240.0.0/16` for the virtual network and `10.240.1.0/24` for
+the subnet. The node network must not overlap the k3s pod network
+(`10.42.0.0/16`) or the k3s service network (`10.43.0.0/16`). If those ranges
+overlap, the pod route on an agent can capture traffic for the server address,
+and the agent will lose its connection to the API server. Keep `vnet_cidr`,
+`subnet_cidr`, `k3s_cluster_cidr`, and `k3s_service_cidr` on separate ranges.
 
 Both nodes use a 64 GiB Premium SSD, which is the P6 disk size. The P6 Premium
 SSD allowance is included in the free disk allowance, so the disks are not a
@@ -115,6 +122,11 @@ the free student sizes for cost.
    # agent_vm_size         = "Standard_B2pts_v2"
    # agent_count           = 1
    # app_allowed_cidr      = "203.0.113.0/24"
+   # vnet_cidr             = "10.240.0.0/16"
+   # subnet_cidr           = "10.240.1.0/24"
+   # server_private_ip     = "10.240.1.4"
+   # k3s_cluster_cidr      = "10.42.0.0/16"
+   # k3s_service_cidr      = "10.43.0.0/16"
    # public_ip_sku         = "Standard"
    # root_disk_size_gb     = 64
    # swap_size_mb          = 2048

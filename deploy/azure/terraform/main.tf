@@ -19,6 +19,19 @@ resource "azurerm_virtual_network" "netweather" {
   resource_group_name = azurerm_resource_group.netweather.name
   address_space       = [var.vnet_cidr]
   tags                = var.tags
+
+  lifecycle {
+    precondition {
+      condition = (
+        split(".", var.vnet_cidr)[0] != split(".", var.k3s_cluster_cidr)[0] ||
+        split(".", var.vnet_cidr)[1] != split(".", var.k3s_cluster_cidr)[1]
+        ) && (
+        split(".", var.vnet_cidr)[0] != split(".", var.k3s_service_cidr)[0] ||
+        split(".", var.vnet_cidr)[1] != split(".", var.k3s_service_cidr)[1]
+      )
+      error_message = "vnet_cidr must not overlap k3s_cluster_cidr or k3s_service_cidr. Change vnet_cidr, subnet_cidr, or the k3s CIDRs so the node network stays clear of the pod and service networks."
+    }
+  }
 }
 
 resource "azurerm_subnet" "netweather" {
@@ -139,6 +152,8 @@ resource "azurerm_linux_virtual_machine" "server" {
     acme_email        = var.acme_email
     k3s_token         = random_password.k3s_token.result
     server_private_ip = var.server_private_ip
+    k3s_cluster_cidr  = var.k3s_cluster_cidr
+    k3s_service_cidr  = var.k3s_service_cidr
     swap_size_mb      = var.swap_size_mb
   }))
 }

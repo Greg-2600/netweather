@@ -85,21 +85,33 @@ variable "acme_email" {
 }
 
 variable "vnet_cidr" {
-  description = "CIDR block for the virtual network created for this deployment."
+  description = "CIDR block for the virtual network created for this deployment. It must not overlap k3s_cluster_cidr or k3s_service_cidr."
+  type        = string
+  default     = "10.240.0.0/16"
+}
+
+variable "subnet_cidr" {
+  description = "CIDR block for the single subnet. It must be inside vnet_cidr and must not overlap k3s_cluster_cidr or k3s_service_cidr."
+  type        = string
+  default     = "10.240.1.0/24"
+}
+
+variable "server_private_ip" {
+  description = "Static private IP address assigned to the k3s server NIC. Agents use this address to join the cluster. It must be inside subnet_cidr and clear of the k3s pod and service CIDRs."
+  type        = string
+  default     = "10.240.1.4"
+}
+
+variable "k3s_cluster_cidr" {
+  description = "CIDR block used for k3s pod addresses. It must not overlap vnet_cidr or subnet_cidr."
   type        = string
   default     = "10.42.0.0/16"
 }
 
-variable "subnet_cidr" {
-  description = "CIDR block for the single subnet."
+variable "k3s_service_cidr" {
+  description = "CIDR block used for k3s service addresses. It must not overlap vnet_cidr or subnet_cidr."
   type        = string
-  default     = "10.42.1.0/24"
-}
-
-variable "server_private_ip" {
-  description = "Static private IP address assigned to the k3s server NIC. Agents use this address to join the cluster."
-  type        = string
-  default     = "10.42.1.4"
+  default     = "10.43.0.0/16"
 }
 
 variable "public_ip_sku" {

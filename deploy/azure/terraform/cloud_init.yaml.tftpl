@@ -26,7 +26,7 @@ write_files:
       fi
 
       export K3S_TOKEN='${k3s_token}'
-      curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--write-kubeconfig-mode 600 --node-ip ${server_private_ip}" sh -
+      curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--write-kubeconfig-mode 600 --node-ip ${server_private_ip} --cluster-cidr ${k3s_cluster_cidr} --service-cidr ${k3s_service_cidr}" sh -
       export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
       for _ in $(seq 1 90); do
