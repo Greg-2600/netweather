@@ -63,6 +63,7 @@ Everything builds and tests with one command: **`go run ./internal/devtool verif
 - [🛡️ Safety posture](#️-safety-posture)
 - [📚 Design docs](#design-docs)
 - [🧬 Prior art](#-prior-art)
+- [👥 Contributors](#-contributors)
 - [📄 License](#-license)
 
 ---
@@ -391,6 +392,15 @@ netweather synthesizes three earlier experiments. Each contributed one idea; eac
 | **[proxy_scan](https://github.com/Greg-2600/proxy_scan)** | Installed `nmap`/`proxychains`/`tor`, wrote configs, scanned through the proxy | **Transport substitution** — became the `Dialer` interface and Tor vantage model | Scraping public proxy lists is unreliable and ethically dubious; netweather accepts user-supplied SOCKS5 only |
 
 > The through-line: *censor_sensor* asked **"can I reach it?"**, *global_packet_throwing* asked **"can I reach it from over there?"**, *proxy_scan* asked **"can I reach it through something else?"** netweather asks **"what does that mean, and how sure am I?"**
+
+---
+
+## 👥 Contributors
+
+netweather is created and maintained by Gregory Baker, with contributions from Ben Vazquez.
+
+- **Gregory Baker** ([@Greg-2600](https://github.com/Greg-2600)) — creator and maintainer
+- **Ben Vazquez** ([@B-Vazquez](https://github.com/B-Vazquez)) — contributor
 
 ---
 
