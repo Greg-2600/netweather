@@ -24,7 +24,7 @@ The isolation argument is the one that matters most. Inside a bridge network, a 
 
 Keep egress, UI, and the Tor sidecar on separate networks. They have different trust levels.
 
-```
+```text
                     ┌─────────────────────────────────────┐
    host :2600 ──────┤ ui       (published, 0.0.0.0)       │
                     │   └── netweather:2600                │
@@ -236,7 +236,7 @@ If you do use namespace sharing, be aware that the app cannot detect it from ins
 
 A trace from a container shows an extra hop, and often only an extra hop:
 
-```
+```text
  1  172.17.0.1     0.08 ms   ← Docker bridge gateway (the host)
  2  192.168.1.1    1.1 ms    ← your router
  3  * * *

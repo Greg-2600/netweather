@@ -700,6 +700,7 @@ type fakePins struct {
 	advisory  string
 	leafMoved bool
 	err       error
+	leafErr   error
 	issuers   []string
 	leaves    []string
 }
@@ -715,7 +716,7 @@ func (f *fakePins) ObserveLeaf(_ context.Context, _, fingerprint string, _ time.
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.leaves = append(f.leaves, fingerprint)
-	return f.leafMoved, f.err
+	return f.leafMoved, f.leafErr
 }
 
 func TestCertificatePinFlagsANewIssuer(t *testing.T) {
