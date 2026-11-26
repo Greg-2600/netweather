@@ -18,7 +18,7 @@ Verified on the current project tree:
 
 | Gate | Command | Evidence |
 |---|---|---|
-| Format, vet, lint, unit + integration, coverage gates, build | `go run ./internal/devtool verify` | `verify: ok`, library total 86.4% |
+| Format, vet, lint, unit + integration, coverage gates, build | `go run ./internal/devtool verify` | `verify: ok`, library total 87.4–87.5% |
 | Real image + Docker network plane | `go run ./internal/devtool compose` | `ok … 110.7s` |
 | Browser UI | `go test -tags=uitest ./internal/web/uitest` | `ok 7.9s` |
 | Real internet, real instruments | `NETWEATHER_E2E=1 go test -tags=e2e ./internal/e2e -run TestRealEndpoints` | PASS 1.58s, 6/6 endpoints |
