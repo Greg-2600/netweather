@@ -63,7 +63,10 @@ that cloud init creates at `/swapfile`. Both cloud init templates create the
 swap file and set `vm.swappiness=10` before installing k3s. Expect some swapping
 during a soak. If you need more headroom, raise `server_vm_size` or
 `agent_vm_size`, or add agents with `agent_count`. The Terraform defaults stay on
-the free student sizes for cost.
+the free student sizes for cost. The app pod is pinned to the agent node with a
+node selector, so the server only runs the k3s control plane and Traefik. Keep
+`app_node_arch` set to `arm64` to match the default Arm agent, or set it to an
+empty string to leave the pod free to schedule on any node.
 
 ## Files
 

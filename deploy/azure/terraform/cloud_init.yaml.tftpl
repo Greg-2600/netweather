@@ -65,6 +65,9 @@ write_files:
       sed -i "s|greg@westcountytech.com|$acme_email|g" "$tmp/traefik-config.yaml"
       kubectl apply -f "$tmp/traefik-config.yaml"
       kubectl apply -f "$tmp"
+      %{ if app_on_agent }
+      kubectl -n netweather patch deployment netweather --type merge -p '{"spec":{"template":{"spec":{"nodeSelector":{"kubernetes.io/arch":"${app_node_arch}"}}}}}'
+      %{ endif }
 
 runcmd:
   - /usr/local/bin/netweather-bootstrap

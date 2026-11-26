@@ -155,6 +155,8 @@ resource "azurerm_linux_virtual_machine" "server" {
     k3s_cluster_cidr  = var.k3s_cluster_cidr
     k3s_service_cidr  = var.k3s_service_cidr
     swap_size_mb      = var.swap_size_mb
+    app_node_arch     = var.app_node_arch
+    app_on_agent      = var.app_node_arch != "" && var.agent_count > 0
   }))
 }
 

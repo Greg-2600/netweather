@@ -33,6 +33,12 @@ variable "agent_count" {
   }
 }
 
+variable "app_node_arch" {
+  description = "CPU architecture used in the netweather nodeSelector. The default arm64 matches the Arm agent. Set to an empty string to omit the nodeSelector."
+  type        = string
+  default     = "arm64"
+}
+
 variable "admin_username" {
   description = "Linux user created on the VMs for SSH access."
   type        = string
