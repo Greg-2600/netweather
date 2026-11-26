@@ -59,14 +59,14 @@ jobs:
           sbom: true
 
       - name: generate an SBOM for the signed attestation
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
           format: spdx-json
           output-file: netweather-sbom.spdx.json
           artifact-name: netweather-sbom.spdx.json
 
-      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
 
       - name: sign the image
         run: cosign sign --yes "${IMAGE}@${{ steps.build.outputs.digest }}"
@@ -82,7 +82,7 @@ jobs:
       - name: scan the image (advisory)
         id: scan
         continue-on-error: true
-        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
         with:
           image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
           fail-build: false
@@ -158,7 +158,7 @@ jobs:
           provenance: mode=max
           sbom: true
 
-      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
 
       - name: sign the debug image
         run: cosign sign --yes "${IMAGE}@${{ steps.build.outputs.digest }}"
@@ -213,7 +213,7 @@ jobs:
           provenance: mode=max
           sbom: true
 
-      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
 
       - name: sign the sidecar
         run: cosign sign --yes "${IMAGE}-tor@${{ steps.build.outputs.digest }}"

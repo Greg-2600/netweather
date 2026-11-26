@@ -66,6 +66,7 @@ func TestFromEnvRejectsBadValues(t *testing.T) {
 	tests := []map[string]string{
 		{"NETWEATHER_LOG_LEVEL": "loud"},
 		{"NETWEATHER_LOG_MAX_MB": "many"},
+		{"NETWEATHER_LOG_KEEP": "many"},
 		{"NETWEATHER_LOG_KEEP": "-1"},
 		{"NETWEATHER_LOG_RING": "lots"},
 	}
