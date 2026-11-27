@@ -71,7 +71,7 @@
       </div>
       <div class="atlas-stat-rail" aria-label="Current state summary">
         {{range .Board.Counts}}
-        <div class="atlas-stat {{.Class}}" data-testid="atlas-stat-{{.State}}">
+        <div class="atlas-stat {{.Class}}" data-live-count-state="{{.State}}" data-testid="atlas-stat-{{.State}}">
           <span class="glyph" aria-hidden="true">{{.Glyph}}</span>
           <b>{{.Count}}</b>
           <span>{{.Label}}</span>
@@ -182,7 +182,7 @@
       <h2 id="atlas-glance-title">At a glance</h2>
       <div class="summary" aria-label="State summary">
         {{range .Board.Counts}}
-        <span class="chip {{.Class}}" data-atlas-count-state="{{.State}}" data-testid="atlas-count-{{.State}}">
+        <span class="chip {{.Class}}" data-live-count-state="{{.State}}" data-testid="atlas-count-{{.State}}">
           <span class="glyph" aria-hidden="true">{{.Glyph}}</span>
           <span class="label">{{.Label}}</span><b>{{.Count}}</b>
         </span>
@@ -425,6 +425,31 @@
           {{end}}
         </tbody>
       </table>
+      {{if .Corridors.Rows}}
+      <div class="corridor-history" data-testid="atlas-corridor-history">
+        <p class="muted small">
+          24-hour latency history, downsampled to 24 points from five-minute
+          observations. Bar height is RTT; the marker row compares each point
+          with that corridor's own six-hour baseline.
+        </p>
+        {{range .Corridors.Rows}}
+        {{if .Spark}}
+        <article class="corridor-history-row" data-testid="atlas-corridor-history-row"
+                 data-corridor="{{.ID}}">
+          <header>
+            <strong>{{.Name}}</strong>
+            <span class="mono">{{.RTT}} · baseline {{.Baseline}} · loss {{.Loss}}</span>
+            {{if .LossBar}}<span class="loss-bar mono" aria-hidden="true">{{.LossBar}}</span>{{end}}
+          </header>
+          <div class="corridor-graph" data-testid="atlas-corridor-graph" role="img"
+               aria-label="24-hour RTT history for {{.Name}}"
+               data-spark="{{.Spark}}" data-band="{{.Band}}"></div>
+          <p class="muted small">Last sample {{.SampledAt}} · ▁ lower RTT, █ higher RTT · · inside band, ▲ above, ▼ below</p>
+        </article>
+        {{end}}
+        {{end}}
+      </div>
+      {{end}}
       {{if .Corridors.SeriesNote}}<p class="muted small">{{.Corridors.SeriesNote}}</p>{{end}}
       {{else}}
       <p class="muted" data-testid="atlas-no-corridors">{{.Corridors.Note}}</p>
@@ -616,7 +641,7 @@
   </dialog>
 
   <script src="/static/map.js" defer></script>
+  <script src="/static/app.js" defer></script>
   <script src="/static/atlas.js" defer></script>
-  <script src="/static/atlas-live.js" defer></script>
 </body>
 </html>

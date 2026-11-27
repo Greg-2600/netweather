@@ -73,7 +73,7 @@ Everything builds and tests with one command: **`go run ./internal/devtool verif
 | | Capability | What it gives you |
 |:--:|---|---|
 | 🗺️ | **Health treemap** | `/map` clusters long-running outages → recent outages → blocked → degraded → no data → healthy, packed most-urgent first. Area grows with severity × duration; hover cards explain *why* a tile has its status. |
-| 🌍 | **Atlas** | `/` (and `/atlas`) is the only application page: a combined country/hub/corridor map first, then every view below, including the target board and in-page detail panels. It has live SSE updates, a global filter, click-to-pin markers, and same-origin scripts only. This page is unrelated to the optional RIPE Atlas feed. |
+| 🌍 | **Atlas** | `/` (and `/atlas`) is the only application page: a combined country/hub/corridor map first, then every view below, including the target board and in-page detail panels. It has incremental SSE updates (no page reloads), a global filter, click-to-pin markers, a 24-hour corridor latency graph, and same-origin scripts only. This page is unrelated to the optional RIPE Atlas feed. |
 | 🏙️ | **US hubs** | `/hubs` maps real airport and city-portal targets with the same health treemap as `/map`: city blocks, one box per endpoint, worst first. City/state come from a name convention — no schema change. |
 | 🧭 | **Vantages** | `direct` (your connection) plus optional `socks5` Tor corroboration, including multiple pinned exit countries across continents. Only the primary vantage may declare `DOWN`. |
 | 🔬 | **Honest classification** | `UP` · `UP_REACHABILITY` · `DEGRADED` · `DOWN` · `BLOCKED` · `UNKNOWN` · `CONFIG_ERROR` · `UNMEASURABLE`. The last three never count against health — that is what keeps the board from being permanently on fire. |
@@ -125,7 +125,7 @@ All shots are from the local field-trial deploy — 1000 real targets, no mocked
 
 ### Atlas — the whole application
 
-`/` (and `/atlas`) is the map-first single page: one combined projection plus the same board, treemap, world, hubs, corridors, coverage, incidents, feeds, IHI, and diagnostics data. It adds live SSE updates, a global filter, and in-page target and incident detail panels; old tab URLs redirect browsers here.
+`/` (and `/atlas`) is the map-first single page: one combined projection plus the same board, treemap, world, hubs, corridors, coverage, incidents, feeds, IHI, and diagnostics data. It adds incremental live updates, a global filter, a 24-hour corridor latency history graph, and in-page target and incident detail panels; old tab URLs redirect browsers here.
 
 | Atlas hero | Click-to-pin detail |
 |---|---|

@@ -435,6 +435,7 @@ It also fails on any `console.error` or uncaught page error, with one documented
 | `atlas-map-country`, `atlas-map-hub`, `atlas-map-corridor`, `atlas-map-line` | markers and links sharing the hero projection |
 | `atlas-group`, `atlas-coverage`, `atlas-incident`, `atlas-feed`, `atlas-ihi`, `atlas-diagnostics` | the detail sections that must stay on one page |
 | `atlas-live`, `atlas-search`, `atlas-detail`, `atlas-detail-close` | live pulse, global filter, and in-page detail dialog |
+| `atlas-corridor-history`, `atlas-corridor-graph` | 24-hour corridor RTT history and baseline markers |
 
 Renaming a test id is a deliberate act; changing a class is not. That asymmetry is the point.
 

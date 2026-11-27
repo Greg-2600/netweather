@@ -38,11 +38,20 @@ func newAtlasServer(t *testing.T, m *board.Memory) *httptest.Server {
 		CorridorID: "nyc-lon", TS: started.Add(time.Hour),
 		RTTMS: 83, Loss: 0, OK: true,
 	}
+	series := []store.CorridorSample{
+		{CorridorID: "nyc-lon", TS: started.Add(-5 * time.Hour), RTTMS: 120, Loss: 0, OK: true},
+		{CorridorID: "nyc-lon", TS: started.Add(-4 * time.Hour), RTTMS: 104, Loss: 0, OK: true},
+		{CorridorID: "nyc-lon", TS: started.Add(-3 * time.Hour), RTTMS: 132, Loss: 1, OK: true},
+		{CorridorID: "nyc-lon", TS: started.Add(-2 * time.Hour), RTTMS: 96, Loss: 0, OK: true},
+		{CorridorID: "nyc-lon", TS: started.Add(-time.Hour), RTTMS: 108, Loss: 0, OK: true},
+		latest,
+	}
 	corridors := &fakeCorridorStatus{
 		statuses: []store.CorridorStatus{
 			{Corridor: store.Corridor{ID: "nyc-lon", From: "NYC", To: "LON"}, Latest: &latest},
 			{Corridor: store.Corridor{ID: "lon-sin", From: "LON", To: "SIN"}},
 		},
+		series: map[string][]store.CorridorSample{"nyc-lon": series},
 		endpoints: map[string][]string{
 			"nyc-lon": {"www.nytimes.com:443", "www.bbc.co.uk:443"},
 			"lon-sin": {"www.bbc.co.uk:443", "www.straitstimes.com:443"},
@@ -119,6 +128,9 @@ func TestAtlasCombinesEveryViewMapFirst(t *testing.T) {
 		`data-testid="treemap"`,
 		`data-testid="atlas-hub-treemap"`,
 		`data-testid="corridor-row"`,
+		`data-testid="atlas-corridor-history"`,
+		`data-testid="atlas-corridor-graph"`,
+		`data-live-count-state="down"`,
 		`data-testid="atlas-coverage"`,
 		`data-testid="atlas-incident"`,
 		`data-testid="atlas-feed"`,
@@ -141,6 +153,9 @@ func TestAtlasCombinesEveryViewMapFirst(t *testing.T) {
 	if got := strings.Count(page, `data-testid="corridor-row"`); got != 2 {
 		t.Errorf("atlas corridor rows = %d, want 2", got)
 	}
+	if got := strings.Count(page, `data-testid="atlas-corridor-graph"`); got != 1 {
+		t.Errorf("atlas corridor history graphs = %d, want 1", got)
+	}
 	// With no health builder, the board omits the IHI chip. The atlas must not
 	// invent one from the /ihi "not configured" note.
 	if strings.Contains(page, `data-testid="atlas-ihi-chip"`) {
@@ -159,7 +174,7 @@ func TestAtlasCombinesEveryViewMapFirst(t *testing.T) {
 			t.Errorf("atlas page contains %q; assets must stay same-origin and script-free of inline code", unwanted)
 		}
 	}
-	for _, asset := range []string{`<script src="/static/map.js" defer></script>`, `<script src="/static/atlas.js" defer></script>`, `<script src="/static/atlas-live.js" defer></script>`} {
+	for _, asset := range []string{`<script src="/static/map.js" defer></script>`, `<script src="/static/app.js" defer></script>`, `<script src="/static/atlas.js" defer></script>`} {
 		if !strings.Contains(page, asset) {
 			t.Errorf("atlas page missing %q", asset)
 		}

@@ -149,3 +149,53 @@
     }
   });
 })();
+
+// Corridor history is rendered from the server's 24-point RTT shape and
+// baseline markers. No extra fetch, no inline script, and no page reload.
+(() => {
+  "use strict";
+
+  const heights = { "▁": 12.5, "▂": 25, "▃": 37.5, "▄": 50,
+    "▅": 62.5, "▆": 75, "▇": 87.5, "█": 100 };
+
+  for (const graph of document.querySelectorAll('[data-testid="atlas-corridor-graph"]')) {
+    const spark = graph.dataset.spark || "";
+    const band = graph.dataset.band || "";
+    if (!spark) continue;
+
+    const bars = document.createElement("div");
+    bars.className = "corridor-bars";
+    for (const ch of Array.from(spark)) {
+      const bar = document.createElement("span");
+      bar.className = "corridor-bar";
+      bar.style.height = (heights[ch] || 0) + "%";
+      bars.appendChild(bar);
+    }
+
+    const marks = document.createElement("div");
+    marks.className = "corridor-band";
+    for (const ch of Array.from(band)) {
+      const mark = document.createElement("span");
+      mark.textContent = ch;
+      if (ch === "▲") mark.className = "above";
+      else if (ch === "▼") mark.className = "below";
+      marks.appendChild(mark);
+    }
+    graph.replaceChildren(bars, marks);
+  }
+
+  const conn = document.querySelector('[data-testid="connection"]');
+  const pill = document.querySelector('[data-testid="atlas-live"]');
+  if (conn && pill && typeof MutationObserver === "function") {
+    const sync = () => {
+      const state = conn.dataset.state || "connecting";
+      pill.dataset.state = state;
+      pill.textContent = state === "live" ? "LIVE"
+        : state === "retrying" ? "RECONNECTING" : "CONNECTING";
+    };
+    new MutationObserver(sync).observe(conn, {
+      attributes: true, childList: true, characterData: true, subtree: true,
+    });
+    sync();
+  }
+})();
