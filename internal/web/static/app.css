@@ -1404,6 +1404,32 @@ tr.small-coverage { color: var(--muted); }
 .atlas-logs > div { margin-bottom: 0.2rem; }
 .atlas-links { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .atlas-treemap { height: 60vh; min-height: 420px; }
+
+.corridor-history { display: grid; gap: 0.75rem; margin-top: 1.25rem; }
+.corridor-history-row {
+  padding: 0.75rem; border: 1px solid var(--line); border-radius: 8px;
+  background: #0b1119;
+}
+.corridor-history-row header {
+  display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; align-items: baseline;
+}
+.corridor-history-row header strong { font-size: 0.95rem; }
+.loss-bar { color: var(--muted); letter-spacing: 0.05em; }
+.corridor-graph { display: grid; gap: 0.25rem; margin-top: 0.6rem; }
+.corridor-bars {
+  display: flex; align-items: flex-end; gap: 2px; height: 5rem;
+  border-bottom: 1px solid var(--line);
+}
+.corridor-bar {
+  flex: 1 1 0; min-width: 2px; border-radius: 2px 2px 0 0;
+  background: linear-gradient(180deg, #4ea1ff, #1c4a78);
+}
+.corridor-bar:hover { filter: brightness(1.35); }
+.corridor-band { display: flex; gap: 2px; font: 10px/1.2 ui-monospace, monospace; color: var(--muted); }
+.corridor-band span { flex: 1 1 0; min-width: 2px; text-align: center; }
+.corridor-band .above { color: var(--down); }
+.corridor-band .below { color: var(--unknown); }
+
 .atlas-embedded-board { margin-top: 1.5rem; }
 .atlas-embedded-board .board { margin-top: 0.5rem; }
 

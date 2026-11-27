@@ -171,6 +171,9 @@ changed between two images without it.
 
 ### Changed
 
+- Atlas live updates no longer reload the whole page: state and snapshot events
+  patch tiles and counts in place, so filters, dialogs, and scroll position stay
+  put. Corridors now include a 24-hour RTT history graph with baseline markers.
 - The unauthenticated login page now displays the configured access token in the
   page body instead of the `NETWEATHER_UI_TOKEN_FILE` hint. Anyone who can load
   the page can read the token, so treat it as a public value.

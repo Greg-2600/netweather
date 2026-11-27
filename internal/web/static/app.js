@@ -22,11 +22,12 @@
       const s = el.dataset.state;
       counts.set(s, (counts.get(s) || 0) + 1);
     }
-    document.querySelectorAll("[data-count-state]").forEach((chip) => {
-      const n = counts.get(chip.dataset.countState) || 0;
+    document.querySelectorAll("[data-count-state], [data-live-count-state]").forEach((chip) => {
+      const key = chip.dataset.countState || chip.dataset.liveCountState;
+      const n = counts.get(key) || 0;
       const b = chip.querySelector("b");
       if (b) b.textContent = String(n);
-      chip.hidden = n === 0;
+      if (chip.hasAttribute("data-count-state")) chip.hidden = n === 0;
     });
   }
 

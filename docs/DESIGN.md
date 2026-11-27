@@ -1087,9 +1087,12 @@ request. Clicking a marker or corridor line pins that same server-rendered text
 into one detail panel via `/static/atlas.js`; the panel's link opens the full
 view. Target and incident links are fetched from their existing same-origin
 routes and injected as inert markup into an in-page dialog, so no second page
-is shown to the operator. `/static/atlas-live.js` subscribes to the existing
-`/events` stream and refreshes the server-rendered page after a debounce. The
-global filter hides matching rows client-side without changing server state.
+is shown to the operator. `/static/app.js` subscribes to the existing `/events`
+stream and patches tile state, glyphs, and counts in place; the page is not
+reloaded, so scroll position, filters, and open dialogs survive a state change.
+`/static/atlas.js` mirrors the connection chip into the live pill and renders the
+corridor history graph from the server's 24-point RTT shape and baseline markers.
+The global filter hides matching rows client-side without changing server state.
 The page uses three same-origin script tags, no inline script, no external
 reference, and the bounded projection CSP:
 `default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`.
