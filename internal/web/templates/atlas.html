@@ -182,7 +182,7 @@
       <h2 id="atlas-glance-title">At a glance</h2>
       <div class="summary" aria-label="State summary">
         {{range .Board.Counts}}
-        <span class="chip {{.Class}}" data-count-state="{{.State}}" data-testid="atlas-count-{{.State}}">
+        <span class="chip {{.Class}}" data-atlas-count-state="{{.State}}" data-testid="atlas-count-{{.State}}">
           <span class="glyph" aria-hidden="true">{{.Glyph}}</span>
           <span class="label">{{.Label}}</span><b>{{.Count}}</b>
         </span>

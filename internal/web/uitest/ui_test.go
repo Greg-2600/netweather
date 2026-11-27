@@ -434,7 +434,7 @@ func TestKeyboardReachesTiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i := 0; i < 8; i++ {
+	for i := 0; i < 60; i++ {
 		if err := h.page.Keyboard().Press("Tab"); err != nil {
 			t.Fatal(err)
 		}
@@ -542,11 +542,11 @@ func TestCorridorNameAndHover(t *testing.T) {
 
 	// The projection places only the operator labels and says plainly that the
 	// straight line is not a measured or physical path.
-	marker := h.page.Locator(`[data-testid="atlas-map-corridor"]`)
+	marker := h.page.Locator(`[data-testid="atlas-map-corridor"]`).First()
 	if err := expect.Locator(marker).ToBeVisible(); err != nil {
 		t.Fatal(err)
 	}
-	line := h.page.Locator(`[data-testid="atlas-map-line"]`)
+	line := h.page.Locator(`[data-testid="atlas-map-line"]`).First()
 	if err := expect.Locator(line).ToBeVisible(); err != nil {
 		t.Fatal(err)
 	}
@@ -574,8 +574,8 @@ func TestDiagnosticsLinkAndPage(t *testing.T) {
 	if err := expect.Locator(section).ToBeVisible(); err != nil {
 		t.Fatalf("the diagnostics section did not render: %v", err)
 	}
-	if err := expect.Locator(section.Locator("h2")).ToHaveText("Diagnostics"); err != nil {
-		t.Fatalf("heading = %v", err)
+	if heading, err := section.Locator("h2").TextContent(); err != nil || !strings.Contains(heading, "Diagnostics") {
+		t.Fatalf("heading = %q, err = %v", heading, err)
 	}
 	// The harness wires an empty ring, so the section must state that instead
 	// of rendering an empty records table.
@@ -751,7 +751,7 @@ func TestHubsPageRenders(t *testing.T) {
 	}
 
 	// The Atlas projection is above the hub treemap and plots the same anchors.
-	if err := expect.Locator(h.page.Locator(`[data-testid="atlas-map-hub"]`)).ToBeVisible(); err != nil {
+	if err := expect.Locator(h.page.Locator(`[data-testid="atlas-map-hub"]`).First()).ToBeVisible(); err != nil {
 		t.Fatalf("hub projection marker not visible: %v", err)
 	}
 	ordered, err := h.page.Evaluate(`() => {

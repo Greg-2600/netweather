@@ -32,7 +32,31 @@
       connection.textContent = "Reconnecting…";
     }
   };
-  for (const type of ["state", "snapshot", "incident", "log"]) {
+  for (const type of ["state", "snapshot", "incident"]) {
     stream.addEventListener(type, refresh);
   }
+
+  // WARN and above are advisory and transient: keep the newest three without
+  // reloading the page, matching the board's log strip.
+  const logBox = document.createElement("div");
+  logBox.className = "log-notice";
+  logBox.dataset.testid = "log-notice";
+  logBox.setAttribute("role", "status");
+  logBox.setAttribute("aria-live", "polite");
+  document.body.appendChild(logBox);
+  stream.addEventListener("log", (ev) => {
+    let d;
+    try {
+      d = JSON.parse(ev.data);
+    } catch {
+      return;
+    }
+    const line = document.createElement("p");
+    line.className = "log-line level-" + String(d.level || "").toLowerCase();
+    line.dataset.testid = "log-line";
+    line.textContent = `${d.time} ${d.level} ${d.message}`;
+    logBox.appendChild(line);
+    while (logBox.children.length > 3) logBox.firstElementChild.remove();
+    setTimeout(() => line.remove(), 20000);
+  });
 })();
