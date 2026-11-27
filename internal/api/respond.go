@@ -1,7 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 )
 
@@ -82,4 +85,37 @@ func writeError(w http.ResponseWriter, r *http.Request, status int, code, detail
 		Message:   detail,
 		RequestID: requestIDFrom(r),
 	}})
+}
+
+// maxActionBody caps a JSON action body (docs/API.md §8). It is deliberately
+// small: an action carries a selector and a value, not bulk data.
+const maxActionBody = 8 << 10
+
+// errBodyTooLarge is returned when a request body exceeds the handler's cap.
+// Handlers map it to payload_too_large rather than a generic parse error.
+var errBodyTooLarge = errors.New("request body too large")
+
+// decodeJSONBody reads at most limit bytes, then decodes exactly one JSON
+// object with unknown fields rejected. Reading first (rather than decoding a
+// stream) makes the cap apply even when the JSON value ends before the limit
+// and the rest of the body is whitespace or garbage.
+func decodeJSONBody(w http.ResponseWriter, r *http.Request, limit int64, dst any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return errBodyTooLarge
+		}
+		return err
+	}
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dst); err != nil {
+		return err
+	}
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("body must contain a single JSON object")
+	}
+	return nil
 }

@@ -859,6 +859,11 @@ func (s *server) handleVantageReport(w http.ResponseWriter, r *http.Request, van
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeError(w, r, http.StatusRequestEntityTooLarge, CodePayloadTooLarge, "request body is too large")
+			return
+		}
 		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "the request body could not be read")
 		return
 	}
@@ -1327,9 +1332,11 @@ func (s *server) handleIncidentAnnotation(w http.ResponseWriter, r *http.Request
 	}
 
 	var req annotationRequest
-	dec := json.NewDecoder(io.LimitReader(r.Body, 8<<10))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&req); err != nil {
+	if err := decodeJSONBody(w, r, maxActionBody, &req); err != nil {
+		if errors.Is(err, errBodyTooLarge) {
+			writeError(w, r, http.StatusRequestEntityTooLarge, CodePayloadTooLarge, "request body is too large")
+			return
+		}
 		writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "invalid JSON body: "+err.Error())
 		return
 	}
@@ -2461,9 +2468,11 @@ func (s *server) handleDebugScopes(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var req debugScopeRequest
-		dec := json.NewDecoder(io.LimitReader(r.Body, 8<<10))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&req); err != nil {
+		if err := decodeJSONBody(w, r, maxActionBody, &req); err != nil {
+			if errors.Is(err, errBodyTooLarge) {
+				writeError(w, r, http.StatusRequestEntityTooLarge, CodePayloadTooLarge, "request body is too large")
+				return
+			}
 			writeError(w, r, http.StatusBadRequest, CodeInvalidArgument, "invalid JSON body: "+err.Error())
 			return
 		}
