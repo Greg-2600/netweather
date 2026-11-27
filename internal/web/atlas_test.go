@@ -147,10 +147,10 @@ func TestAtlasCombinesEveryViewMapFirst(t *testing.T) {
 		t.Error("atlas added an IHI chip without a health builder; board omits it")
 	}
 
-	// Same-origin assets only: two external scripts and no inline script,
+	// Same-origin assets only: three external scripts and no inline script,
 	// external references, or stylesheet import.
-	if got := strings.Count(page, "<script"); got != 2 {
-		t.Errorf("script tags = %d, want 2 same-origin files", got)
+	if got := strings.Count(page, "<script"); got != 3 {
+		t.Errorf("script tags = %d, want 3 same-origin files", got)
 	}
 	for _, unwanted := range []string{
 		`<script>`, `src="http`, `href="http`, "@import", `onclick=`, `onload=`,
@@ -159,7 +159,7 @@ func TestAtlasCombinesEveryViewMapFirst(t *testing.T) {
 			t.Errorf("atlas page contains %q; assets must stay same-origin and script-free of inline code", unwanted)
 		}
 	}
-	for _, asset := range []string{`<script src="/static/map.js" defer></script>`, `<script src="/static/atlas.js" defer></script>`} {
+	for _, asset := range []string{`<script src="/static/map.js" defer></script>`, `<script src="/static/atlas.js" defer></script>`, `<script src="/static/atlas-live.js" defer></script>`} {
 		if !strings.Contains(page, asset) {
 			t.Errorf("atlas page missing %q", asset)
 		}
@@ -252,5 +252,61 @@ func TestAtlasStatesMissingOptionalProviders(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Errorf("atlas missing note %q", want)
 		}
+	}
+}
+
+func TestAtlasIsTheRootAndBrowsersLeaveLegacyPages(t *testing.T) {
+	t.Parallel()
+
+	ts := newAtlasServer(t, atlasFixture())
+	client, jar := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(page, `data-testid="atlas"`) {
+		t.Fatalf("root is not the atlas: status=%d", resp.StatusCode)
+	}
+	for _, want := range []string{
+		`data-testid="atlas-live"`,
+		`data-testid="atlas-search"`,
+		`data-testid="atlas-detail"`,
+		`data-testid="board"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("root atlas missing %q", want)
+		}
+	}
+
+	anon := noRedirectClient(jar)
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/map", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+	redir, err := anon.Do(req) //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = body(t, redir)
+	if redir.StatusCode != http.StatusSeeOther || redir.Header.Get("Location") != "/" {
+		t.Errorf("browser /map status=%d location=%q, want 303 /", redir.StatusCode, redir.Header.Get("Location"))
+	}
+
+	req, err = http.NewRequest(http.MethodGet, ts.URL+"/map", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Accept", "application/json")
+	legacy, err := anon.Do(req) //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = body(t, legacy)
+	if legacy.StatusCode != http.StatusOK {
+		t.Errorf("non-browser /map status=%d, want 200", legacy.StatusCode)
 	}
 }

@@ -41,7 +41,7 @@ netweather answers these, in this order:
 
 **Status: phases 0–3 implemented** (OIDC deferred to *Later*). The binary probes configured targets over HTTP, TLS, TCP, DNS, DoH, DoT, QUIC (UDP/443 reachability), NTP, and ICMP on a tiered scheduler; classifies each result; writes to SQLite; and serves a store-backed board with live SSE updates, the versioned API, and a hardened container image.
 
-Incidents with chronological detail timelines, baseline anomalies, coverage, self-checks, exports, feeds (IODA, Radar, Statuspage, AWS, GCP, Azure, Atlas, RIPE RIS Live), ASN/CDN/PeeringDB enrichment, certificate issuer pinning, per-resolver DNS divergence, provider status mapping, idempotent actions, on-demand traceroute, the world view, configuration-driven corridors with captured traces, the Internet Health Index, SSE replay, a Feeds status page, a FinViz-style **treemap health map**, and a map-first **`/atlas` view with everything, all tabs** are all implemented. Tor vantages (six pinned exits) are on by default in compose; Tailscale is a compose profile; traceroute and RIPE's software probe have their own opt-in overlays. Remote vantage agents (`netweather agent`) run the same instruments on a remote host and report to `/api/v1/vantages/{id}/reports`.
+Incidents with chronological detail timelines, baseline anomalies, coverage, self-checks, exports, feeds (IODA, Radar, Statuspage, AWS, GCP, Azure, Atlas, RIPE RIS Live), ASN/CDN/PeeringDB enrichment, certificate issuer pinning, per-resolver DNS divergence, provider status mapping, idempotent actions, on-demand traceroute, the world view, configuration-driven corridors with captured traces, the Internet Health Index, SSE replay, a Feeds status page, a FinViz-style **treemap health map**, and a map-first **Atlas at `/` (also `/atlas`) with everything on one page** are all implemented. Legacy tab URLs now redirect browsers to Atlas. Tor vantages (six pinned exits) are on by default in compose; Tailscale is a compose profile; traceroute and RIPE's software probe have their own opt-in overlays. Remote vantage agents (`netweather agent`) run the same instruments on a remote host and report to `/api/v1/vantages/{id}/reports`.
 
 > [!NOTE]
 > **Known limits, stated rather than hidden:** QUIC is UDP/443 reachability, not a full handshake; the DF-bit PMTU probe is Linux-only; IPv6 measurement runs under host networking only; RIS Live is a polling adapter (WebSocket is post-MVP); IODA shows stored events, not a live per-country score. `NETWEATHER_SEED=none` starts with an empty board.
@@ -73,7 +73,7 @@ Everything builds and tests with one command: **`go run ./internal/devtool verif
 | | Capability | What it gives you |
 |:--:|---|---|
 | 🗺️ | **Health treemap** | `/map` clusters long-running outages → recent outages → blocked → degraded → no data → healthy, packed most-urgent first. Area grows with severity × duration; hover cards explain *why* a tile has its status. |
-| 🌍 | **Atlas** | `/atlas` puts a combined country/hub/corridor map first, then every tab's data below. It reuses the same server-side builders as the individual pages, with CSS hover cards and click-to-pin details; no external scripts, inline scripts, or runtime fetches. This page is unrelated to the optional RIPE Atlas feed. |
+| 🌍 | **Atlas** | `/` (and `/atlas`) is the only application page: a combined country/hub/corridor map first, then every view below, including the target board and in-page detail panels. It has live SSE updates, a global filter, click-to-pin markers, and same-origin scripts only. This page is unrelated to the optional RIPE Atlas feed. |
 | 🏙️ | **US hubs** | `/hubs` maps real airport and city-portal targets with the same health treemap as `/map`: city blocks, one box per endpoint, worst first. City/state come from a name convention — no schema change. |
 | 🧭 | **Vantages** | `direct` (your connection) plus optional `socks5` Tor corroboration, including multiple pinned exit countries across continents. Only the primary vantage may declare `DOWN`. |
 | 🔬 | **Honest classification** | `UP` · `UP_REACHABILITY` · `DEGRADED` · `DOWN` · `BLOCKED` · `UNKNOWN` · `CONFIG_ERROR` · `UNMEASURABLE`. The last three never count against health — that is what keeps the board from being permanently on fire. |
@@ -123,9 +123,9 @@ Want the operator wrapper as well (0600 secret volume, evidence feeds, `/healthz
 
 All shots are from the local field-trial deploy — 1000 real targets, no mocked data.
 
-### Atlas — everything, all tabs
+### Atlas — the whole application
 
-`/atlas` is the map-first, all-tabs view: one combined projection plus the same board, treemap, world, hubs, corridors, coverage, incidents, feeds, IHI, and diagnostics data used by the individual pages.
+`/` (and `/atlas`) is the map-first single page: one combined projection plus the same board, treemap, world, hubs, corridors, coverage, incidents, feeds, IHI, and diagnostics data. It adds live SSE updates, a global filter, and in-page target and incident detail panels; old tab URLs redirect browsers here.
 
 | Atlas hero | Click-to-pin detail |
 |---|---|

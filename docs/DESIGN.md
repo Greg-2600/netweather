@@ -1058,14 +1058,16 @@ there is no script, third-party map service, or runtime data fetch.
 
 ### 10.4a Atlas (all tabs, map first)
 
-`/atlas` is the combined reading surface: **"Everything, all tabs"** on one
-page. It is not a second data source. Each existing handler now calls a shared
-builder (`buildBoardView`, `buildMapData`, `buildWorldData`, `buildHubsData`,
-`buildCorridorsData`, `buildCoverageData`, `buildIncidentsData`,
-`buildFeedsData`, `buildIHIView`, `buildDiagnosticsView`); `/atlas` calls those
-same builders, so its counts, states, notes, and drill-down links cannot drift
-from the pages they summarise. The board lens defaults to sector; the atlas has
-its own nav links back to every full view.
+`/` (and `/atlas`) is the single reading surface: **"Everything, all tabs"** on
+one page. It is not a second data source. `buildAtlasView` calls the same shared
+builders as the individual views (`buildBoardView`, `buildMapData`,
+`buildWorldData`, `buildHubsData`, `buildCorridorsData`, `buildCoverageData`,
+`buildIncidentsData`, `buildFeedsData`, `buildIHIView`, `buildDiagnosticsView`),
+so counts, states, notes, and drill-down links cannot drift. The board lens
+defaults to sector and honours the same query parameters as the old board.
+Browsers requesting `/map`, `/world`, `/hubs`, `/corridors`, `/coverage`,
+`/incidents`, `/feeds`, `/ihi`, `/diagnostics`, or `/board` get a 303 to `/`;
+non-browser clients keep those routes for compatibility.
 
 The hero is the largest element: one equirectangular silhouette carries country
 circles, US hub-label diamonds, and corridor-label markers plus the configured
@@ -1083,10 +1085,13 @@ Hover and focus cards are CSS-only: the server renders the explanation into
 `title`, `aria-label`, and `data-*` attributes, so hovering a marker costs no
 request. Clicking a marker or corridor line pins that same server-rendered text
 into one detail panel via `/static/atlas.js`; the panel's link opens the full
-view. The script is same-origin, contains no fetch, and builds no per-marker
-DOM. The page uses two same-origin script tags (`/static/map.js` for the
-treemap cards and `/static/atlas.js` for pinning), no inline script, no external
-reference, and the same bounded CSP as the other projection pages:
+view. Target and incident links are fetched from their existing same-origin
+routes and injected as inert markup into an in-page dialog, so no second page
+is shown to the operator. `/static/atlas-live.js` subscribes to the existing
+`/events` stream and refreshes the server-rendered page after a debounce. The
+global filter hides matching rows client-side without changing server state.
+The page uses three same-origin script tags, no inline script, no external
+reference, and the bounded projection CSP:
 `default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`.
 
 ### 10.5 Target drawer

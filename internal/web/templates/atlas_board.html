@@ -1,0 +1,202 @@
+{{define "board-body"}}
+  {{if .Paused}}
+  <p class="banner paused" data-testid="paused-banner" role="status">
+    Probing is paused. No outbound requests are being made.
+  </p>
+  {{end}}
+
+  {{if eq .Verdict.Verdict "STALE"}}
+  <p class="banner" data-testid="stale-banner" role="status">
+    The monitor is not probing: {{.Verdict.Detail}}. The tiles show the last measurements.
+  </p>
+  {{end}}
+
+  <main>
+    {{if .Fleet.OK}}
+    <p class="fleet" data-testid="fleet-health">
+      Health <b class="mono">{{.Fleet.Health}}</b>
+      {{if .Fleet.Band}}
+      <span class="muted small">(normal <span data-testid="fleet-band">{{.Fleet.Band}}</span>{{if .Fleet.Widened}}, widened for low coverage{{end}})</span>
+      {{else}}
+      <span class="muted small" data-testid="fleet-learning">{{.Fleet.Note}}</span>
+      {{end}}
+      <span class="muted small" data-testid="fleet-detail">{{.Fleet.Detail}}</span>
+    </p>
+    {{else if .Fleet.Note}}
+    <p class="muted small" data-testid="fleet-note">{{.Fleet.Note}}</p>
+    {{end}}
+
+    {{if .ColdStartNote}}
+    <p class="banner" data-testid="cold-start" role="status">{{.ColdStartNote}}</p>
+    {{end}}
+
+    <section class="summary" aria-label="State summary">
+      {{range .Counts}}
+      <span class="chip {{.Class}}" data-count-state="{{.State}}" data-testid="count-{{.State}}">
+        <span class="glyph" aria-hidden="true">{{.Glyph}}</span>
+        <span class="label">{{.Label}}</span>
+        <b>{{.Count}}</b>
+      </span>
+      {{end}}
+      <a class="chip focus" href="{{if .Focus}}/{{else}}/?focus=problems{{end}}"
+         data-testid="focus-toggle">
+        {{if .Focus}}Show all{{else}}Focus problems{{end}}
+      </a>
+    </section>
+
+    <nav class="grouping" aria-label="Group targets by" data-testid="group-toggle">
+      <span class="muted small">Group by</span>
+      {{range .GroupOptions}}
+      <a class="group-link{{if .Active}} active{{end}}" href="{{.Href}}"
+         data-testid="group-{{.Key}}" data-group="{{.Key}}"
+         {{if .Active}}aria-current="true"{{end}}>{{.Label}}</a>
+      {{end}}
+    </nav>
+
+    <nav class="grouping" aria-label="Tile density" data-testid="density-toggle">
+      <span class="muted small">Density</span>
+      {{range .DensityOptions}}
+      <a class="group-link{{if .Active}} active{{end}}" href="{{.Href}}"
+         data-testid="density-{{.Key}}" data-density="{{.Key}}"
+         {{if .Active}}aria-current="true"{{end}}>{{.Label}}</a>
+      {{end}}
+    </nav>
+
+    {{if .Country}}
+    <p class="filter-note" data-testid="country-filter">
+      Country filter: <b class="mono">{{.Country}}</b>
+      <a href="{{.CountryOff}}" data-testid="clear-country">clear</a>
+    </p>
+    {{end}}
+
+    {{if .Region}}
+    <p class="filter-note" data-testid="region-filter">
+      Region filter: <b class="mono">{{.Region}}</b>
+      <a href="{{.RegionOff}}" data-testid="clear-region">clear</a>
+    </p>
+    {{end}}
+
+    {{if .Feeds}}
+    <p class="feeds" aria-label="Feed health" data-testid="feed-health">
+      {{range .Feeds}}
+      <span class="feed{{if .Stale}} stale{{end}}" data-testid="feed"
+            data-feed="{{.Name}}" data-status="{{.Status}}"
+            title="{{.Detail}}">{{.Name}}: {{.Status}}{{if .Age}} ({{.Age}}){{end}}</span>
+      {{end}}
+    </p>
+    {{else if .FeedNote}}
+    <p class="muted small" data-testid="feed-note">{{.FeedNote}}</p>
+    {{end}}
+    {{if .FeedWarning}}
+    <p class="banner" data-testid="feed-warning" role="status">
+      An external feed is stale or failing; corroboration may be missing.
+    </p>
+    {{end}}
+
+    {{if .BudgetNote}}
+    <p class="banner" data-testid="budget-banner" role="status">{{.BudgetNote}}</p>
+    {{end}}
+
+    {{if .TorBudget}}
+    <p class="muted small" data-testid="tor-budget">{{.TorBudget}}</p>
+    {{end}}
+
+    {{if .VantageNote}}
+    <p class="banner" data-testid="vantage-change" role="status">{{.VantageNote}}</p>
+    {{end}}
+
+    {{if .ConfigNote}}
+    <p class="banner warn" data-testid="config-reload" role="status">{{.ConfigNote}}</p>
+    {{end}}
+
+    {{if .CoverageNote}}
+    <p class="banner" data-testid="coverage-advisory" role="status">{{.CoverageNote}}</p>
+    {{end}}
+
+    {{if .DNSObservations}}
+    <details class="dns-strip" data-testid="dns-strip">
+      <summary>{{len .DNSObservations}} DNS divergence observation(s)</summary>
+      <ul>
+        {{range .DNSObservations}}
+        <li data-testid="dns-observation">
+          <span class="mono">{{.At}}</span>
+          <b>{{.Host}}</b> — {{.Verdict}} ({{.Confidence}})
+          <span class="muted small">{{.Detail}}</span>
+        </li>
+        {{end}}
+      </ul>
+      <p class="muted small">
+        Each resolver is compared only against its own history. A single
+        resolver disagreeing is advisory; it never changes a tile's state.
+      </p>
+    </details>
+    {{else if .DNSNote}}
+    <p class="muted small" data-testid="dns-note">{{.DNSNote}}</p>
+    {{end}}
+
+    {{if .Incidents}}
+    <section class="happening" aria-label="Open incidents" data-testid="whats-happening">
+      <h2 class="section-title">What's happening</h2>
+      <ul>
+        {{range .Incidents}}
+        <li data-testid="happening-incident">
+          <a href="/incidents/{{.ID}}">{{.Headline}}</a>
+          <span class="muted small">{{.Scope}} · opened {{.OpenedAt}} UTC</span>
+        </li>
+        {{end}}
+      </ul>
+    </section>
+    {{else if .HappeningNote}}
+    <p class="muted small" data-testid="happening-note">{{.HappeningNote}}</p>
+    {{end}}
+
+    <section class="board density-{{.Density}}" aria-label="Target status"
+             data-testid="board" data-density="{{.Density}}">
+      {{if not .Groups}}
+      <p class="empty" data-testid="empty-board">
+        {{if .Focus}}No target is down or degraded.{{else}}No targets yet. Add a target file or use the shipped defaults.{{end}}
+      </p>
+      {{end}}
+      {{range .Groups}}
+      <details class="sector{{if .Muted}} muted-group{{end}}" data-testid="sector" data-sector="{{.Name}}" {{if not .Healthy}}open{{end}}>
+        <summary class="sector-title {{.WorstCls}}">
+          <span class="glyph" aria-hidden="true">{{.Glyph}}</span>
+          <span class="sector-name">{{.Label}}</span>
+          <span class="sector-count">{{.Count}}</span>
+          <span class="sector-worst">{{.Worst}}</span>
+        </summary>
+        <div class="tiles">
+          {{range .Targets}}
+          <a class="tile {{.Class}}{{if .Local}} local-path{{end}}"
+             href="/targets/{{.ID}}"
+             data-testid="tile"
+             data-target="{{.Host}}"
+             data-state="{{.State}}"
+             aria-label="{{.Aria}}">
+            <img class="favicon" src="{{.Icon}}" alt="" aria-hidden="true" loading="lazy" width="32" height="32">
+            <span class="name">{{.Name}}</span>
+            <span class="host">{{.Host}}</span>
+            {{if .Spark}}<span class="tile-spark mono" data-testid="tile-spark"
+                  title="24-hour availability shape" aria-hidden="true">{{.Spark}}</span>{{end}}
+            <span class="state"><span class="glyph" aria-hidden="true">{{.Glyph}}</span> <span class="state-text">{{.Text}}</span>{{if .Local}} <span class="local-path-label" data-testid="local-path">your connection</span>{{end}}</span>
+            {{if .Badge}}<span class="badge" title="{{.BadgeTitle}}" data-testid="tile-badge">{{.Badge}}</span>{{end}}
+          </a>
+          {{end}}
+        </div>
+        {{if .Hidden}}
+        <p class="muted small group-more" data-testid="group-more">
+          {{.Hidden}} more not shown.
+          <a href="{{.MoreHref}}" data-testid="group-more-link">Show more</a>
+          <a href="{{.AllHref}}" data-testid="group-all-link">Show all</a>
+        </p>
+        {{end}}
+      </details>
+      {{end}}
+    </section>
+  </main>
+
+  <p class="conn" data-testid="connection" data-state="connecting" aria-live="polite">Connecting…</p>
+  <p class="muted small footer-nav" data-testid="diagnostics-link">
+    <a href="#atlas-diagnostics">Diagnostics</a> - log ring, backpressure, and active debug scopes.
+  </p>
+{{end}}

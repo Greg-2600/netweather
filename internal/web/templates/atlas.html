@@ -9,19 +9,44 @@
 </head>
 <body>
   {{template "insecure" .}}
-  <header class="bar">
+  <header class="bar atlas-bar">
     <a class="brand" href="/">netweather</a>
-    <a class="nav current" href="/atlas">Atlas</a>
-    <a class="nav" href="/">Board</a>
-    <a class="nav" href="/map">Map</a>
-    <a class="nav" href="/world">World</a>
-    <a class="nav" href="/hubs">Hubs</a>
-    <a class="nav" href="/corridors">Corridors</a>
-    <a class="nav" href="/coverage">Coverage</a>
-    <a class="nav" href="/incidents">Incidents</a>
-    <a class="nav" href="/feeds">Feeds</a>
-    <a class="nav" href="/ihi">IHI</a>
-    <a class="nav" href="/diagnostics">Diagnostics</a>
+    <span class="atlas-brand-tag">ATLAS</span>
+    <nav class="atlas-jump" aria-label="Atlas sections">
+      <a href="#atlas-projection">Signal map</a>
+      <a href="#atlas-glance">Pulse</a>
+      <a href="#atlas-board">Groups</a>
+      <a href="#atlas-map">Targets</a>
+      <a href="#atlas-world">Countries</a>
+      <a href="#atlas-corridors">Corridors</a>
+      <a href="#atlas-incidents">Incidents</a>
+      <a href="#atlas-diagnostics">Diagnostics</a>
+    </nav>
+    <span class="live-pill" data-testid="atlas-live" data-state="connecting">CONNECTING</span>
+    <label class="atlas-search">
+      <span class="sr-only">Filter Atlas</span>
+      <input type="search" id="atlas-filter" data-testid="atlas-search"
+             placeholder="Filter groups, countries, targets, feeds…" autocomplete="off">
+    </label>
+    {{if .Board.Verdict.Verdict}}
+    <span class="verdict verdict-{{.Board.Verdict.Verdict}}" data-testid="verdict"
+          data-verdict="{{.Board.Verdict.Verdict}}" title="{{.Board.Verdict.Detail}}">{{.Board.Verdict.Verdict}}</span>
+    {{end}}
+    {{if .Board.Health.OK}}
+    <a class="nav ihi-chip" href="#atlas-ihi" data-testid="ihi-chip" data-score="{{.Board.Health.Score}}"
+       title="Internet Health Index: {{.Board.Health.Score}} of 100">IHI {{.Board.Health.Score}}</a>
+    {{else if .Board.Health.Note}}
+    <a class="nav ihi-chip" href="#atlas-ihi" data-testid="ihi-chip" title="{{.Board.Health.Note}}">IHI -</a>
+    {{end}}
+    <span class="muted small" data-testid="version">{{.Version}}</span>
+    {{if .Board.Control}}
+    <form method="post" action="{{if .Board.Paused}}/resume{{else}}/pause{{end}}">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button type="submit" class="link" data-testid="probe-toggle">
+        {{if .Board.Paused}}Resume probing{{else}}Pause probing{{end}}
+      </button>
+    </form>
+    {{end}}
     {{if .CSRF}}
     <div class="controls">
       <form method="post" action="/logout">
@@ -33,9 +58,33 @@
   </header>
 
   <main data-testid="atlas">
-    <div class="atlas-title">
-      <h1>Atlas</h1>
-      <p class="atlas-subtitle" data-testid="atlas-subtitle">Everything, all tabs</p>
+    <div class="atlas-hero">
+      <div class="atlas-hero-copy">
+        <p class="eyebrow">LIVE INTERNET WEATHER · ONE VIEW</p>
+        <h1>Atlas</h1>
+        <p class="atlas-subtitle" data-testid="atlas-subtitle">Everything, all tabs</p>
+        <p class="atlas-lede">
+          A single, honest read of the network: what is down, where it is, why
+          the classifier says so, and what corroborating evidence arrived.
+          Every marker is a label from the same store, never a location claim.
+        </p>
+      </div>
+      <div class="atlas-stat-rail" aria-label="Current state summary">
+        {{range .Board.Counts}}
+        <div class="atlas-stat {{.Class}}" data-testid="atlas-stat-{{.State}}">
+          <span class="glyph" aria-hidden="true">{{.Glyph}}</span>
+          <b>{{.Count}}</b>
+          <span>{{.Label}}</span>
+        </div>
+        {{end}}
+        {{if .Board.Verdict.Verdict}}
+        <div class="atlas-stat verdict-stat verdict-{{.Board.Verdict.Verdict}}"
+             data-testid="atlas-verdict-stat">{{.Board.Verdict.Verdict}}</div>
+        {{end}}
+        {{if .IHI.Health.OK}}
+        <div class="atlas-stat ihi-stat">IHI {{.IHI.Health.Score}}</div>
+        {{end}}
+      </div>
     </div>
 
     <section class="atlas-projection" data-testid="atlas-projection"
@@ -133,7 +182,7 @@
       <h2 id="atlas-glance-title">At a glance</h2>
       <div class="summary" aria-label="State summary">
         {{range .Board.Counts}}
-        <span class="chip {{.Class}}" data-count-state="{{.State}}" data-testid="atlas-count-{{.State}}">
+        <span class="chip {{.Class}}" data-atlas-count-state="{{.State}}" data-testid="atlas-count-{{.State}}">
           <span class="glyph" aria-hidden="true">{{.Glyph}}</span>
           <span class="label">{{.Label}}</span><b>{{.Count}}</b>
         </span>
@@ -143,10 +192,10 @@
               title="{{.Board.Verdict.Detail}}">{{.Board.Verdict.Verdict}}</span>
         {{end}}
         {{if .IHI.Health.OK}}
-        <a class="nav ihi-chip" href="/ihi" data-testid="atlas-ihi-chip"
+        <a class="nav ihi-chip" href="#atlas-ihi" data-testid="atlas-ihi-chip"
            data-score="{{.IHI.Health.Score}}">IHI {{.IHI.Health.Score}}</a>
         {{else if .IHI.Health.Note}}
-        <a class="nav ihi-chip" href="/ihi" data-testid="atlas-ihi-chip"
+        <a class="nav ihi-chip" href="#atlas-ihi" data-testid="atlas-ihi-chip"
            title="{{.IHI.Health.Note}}">IHI -</a>
         {{end}}
       </div>
@@ -185,7 +234,7 @@
         <span class="muted small">Group by</span>
         {{range .Board.GroupOptions}}
         <a class="group-link{{if .Active}} active{{end}}" href="{{.Href}}"
-           data-testid="atlas-group-{{.Key}}" data-group="{{.Key}}"
+           data-testid="atlas-group-{{.Key}}" data-atlas-group="{{.Key}}"
            {{if .Active}}aria-current="true"{{end}}>{{.Label}}</a>
         {{end}}
       </nav>
@@ -194,7 +243,7 @@
         <thead><tr><th>Group</th><th>Targets</th><th>Worst</th><th>Link</th></tr></thead>
         <tbody>
           {{range .Board.Groups}}
-          <tr data-testid="atlas-group" data-sector="{{.Name}}" data-state="{{.WorstCls}}">
+          <tr data-testid="atlas-group" data-atlas-sector="{{.Name}}" data-state="{{.WorstCls}}">
             <td><span class="glyph {{.WorstCls}}" aria-hidden="true">{{.Glyph}}</span> {{.Label}}</td>
             <td class="mono">{{.Count}}</td>
             <td class="{{.WorstCls}}">{{.Worst}}</td>
@@ -211,7 +260,7 @@
     </section>
 
     <section class="atlas-section" data-testid="atlas-map" aria-labelledby="atlas-map-title">
-      <h2 id="atlas-map-title">Health treemap <span class="muted small">— <a href="/map">open map</a></span></h2>
+      <h2 id="atlas-map-title">Health treemap <span class="muted small">— <a href="#atlas-map">treemap</a></span></h2>
       <p class="muted small">
         Clustered by health: outages first, then blocked, degraded and healthy.
         Box area is severity × time in state. Hover a box for the target, the raw
@@ -283,7 +332,7 @@
     </section>
 
     <section class="atlas-section" data-testid="atlas-world" aria-labelledby="atlas-world-title">
-      <h2 id="atlas-world-title">Countries <span class="muted small">— <a href="/world">open world</a></span></h2>
+      <h2 id="atlas-world-title">Countries <span class="muted small">— <a href="#atlas-world">countries</a></span></h2>
       {{if .World.Countries}}
       <div class="world-grid" data-testid="atlas-country-grid">
         {{range .World.Countries}}
@@ -310,7 +359,7 @@
     </section>
 
     <section class="atlas-section" data-testid="atlas-hubs" aria-labelledby="atlas-hubs-title">
-      <h2 id="atlas-hubs-title">US hubs <span class="muted small">— <a href="/hubs">open hubs</a></span></h2>
+      <h2 id="atlas-hubs-title">US hubs <span class="muted small">— <a href="#atlas-hubs">hubs</a></span></h2>
       <p class="muted small">
         City and state come from the existing <code>City, ST hub — site</code>
         name convention, not a schema column. Every marker is a label anchor,
@@ -350,7 +399,7 @@
 
     <section class="atlas-section" id="atlas-corridors" data-testid="atlas-corridors"
              aria-labelledby="atlas-corridors-title">
-      <h2 id="atlas-corridors-title">Corridors <span class="muted small">— <a href="/corridors">open corridors</a></span></h2>
+      <h2 id="atlas-corridors-title">Corridors <span class="muted small">— <a href="#atlas-corridors">corridors</a></span></h2>
       <p class="muted small">
         A corridor is evidence about a configured path label pair, never a target
         state. Labels are operator conventions, not measured locations or a
@@ -383,7 +432,7 @@
     </section>
 
     <section class="atlas-section" data-testid="atlas-coverage" aria-labelledby="atlas-coverage-title">
-      <h2 id="atlas-coverage-title">Coverage <span class="muted small">— <a href="/coverage">open coverage</a></span></h2>
+      <h2 id="atlas-coverage-title">Coverage <span class="muted small">— <a href="#atlas-coverage">coverage</a></span></h2>
       {{if .CoverageNote}}
       <p class="muted" data-testid="atlas-coverage-note">{{.CoverageNote}}</p>
       {{else}}
@@ -425,7 +474,7 @@
     </section>
 
     <section class="atlas-section" data-testid="atlas-incidents" aria-labelledby="atlas-incidents-title">
-      <h2 id="atlas-incidents-title">Incidents <span class="muted small">— <a href="/incidents">open incidents</a></span></h2>
+      <h2 id="atlas-incidents-title">Incidents <span class="muted small">— <a href="#atlas-incidents">incidents</a></span></h2>
       {{if .IncidentsNote}}
       <p class="muted" data-testid="atlas-incidents-note">{{.IncidentsNote}}</p>
       {{else if .Incidents.Incidents}}
@@ -449,7 +498,7 @@
     </section>
 
     <section class="atlas-section" data-testid="atlas-feeds" aria-labelledby="atlas-feeds-title">
-      <h2 id="atlas-feeds-title">Feeds <span class="muted small">— <a href="/feeds">open feeds</a></span></h2>
+      <h2 id="atlas-feeds-title">Feeds <span class="muted small">— <a href="#atlas-feeds">feeds</a></span></h2>
       {{if .FeedsNote}}
       <p class="muted" data-testid="atlas-feeds-note">{{.FeedsNote}}</p>
       {{else}}
@@ -483,7 +532,7 @@
     </section>
 
     <section class="atlas-section" data-testid="atlas-ihi" aria-labelledby="atlas-ihi-title">
-      <h2 id="atlas-ihi-title">Internet Health Index <span class="muted small">— <a href="/ihi">open IHI</a></span></h2>
+      <h2 id="atlas-ihi-title">Internet Health Index <span class="muted small">— <a href="#atlas-ihi">IHI</a></span></h2>
       {{if .IHI.Note}}
       <p class="muted" data-testid="atlas-ihi-note">{{.IHI.Note}}</p>
       {{else}}
@@ -509,7 +558,7 @@
     </section>
 
     <section class="atlas-section" data-testid="atlas-diagnostics" aria-labelledby="atlas-diagnostics-title">
-      <h2 id="atlas-diagnostics-title">Diagnostics <span class="muted small">— <a href="/diagnostics">open diagnostics</a></span></h2>
+      <h2 id="atlas-diagnostics-title">Diagnostics <span class="muted small">— <a href="#atlas-diagnostics">diagnostics</a></span></h2>
       {{if .Diagnostics.Note}}
       <p class="muted">{{.Diagnostics.Note}}</p>
       {{else}}
@@ -532,22 +581,42 @@
     </section>
 
     <section class="atlas-section" aria-labelledby="atlas-links-title">
-      <h2 id="atlas-links-title">Every tab, on its own page</h2>
-      <nav class="atlas-links" aria-label="All views">
-        <a class="nav" href="/">Board</a>
-        <a class="nav" href="/map">Map</a>
-        <a class="nav" href="/world">World</a>
-        <a class="nav" href="/hubs">Hubs</a>
-        <a class="nav" href="/corridors">Corridors</a>
-        <a class="nav" href="/coverage">Coverage</a>
-        <a class="nav" href="/incidents">Incidents</a>
-        <a class="nav" href="/feeds">Feeds</a>
-        <a class="nav" href="/ihi">IHI</a>
-        <a class="nav" href="/diagnostics">Diagnostics</a>
+      <h2 id="atlas-links-title">One page, every signal</h2>
+      <p class="muted small">
+        Atlas is the whole application. The target board, detail panels, and
+        every diagnostic live here; old tab URLs now return to this page.
+      </p>
+      <nav class="atlas-links" aria-label="Jump to a section">
+        <a class="nav" href="#atlas-projection">Signal map</a>
+        <a class="nav" href="#atlas-board">Groups</a>
+        <a class="nav" href="#atlas-map">Health treemap</a>
+        <a class="nav" href="#atlas-world">Countries</a>
+        <a class="nav" href="#atlas-hubs">Hubs</a>
+        <a class="nav" href="#atlas-corridors">Corridors</a>
+        <a class="nav" href="#atlas-coverage">Coverage</a>
+        <a class="nav" href="#atlas-incidents">Incidents</a>
+        <a class="nav" href="#atlas-feeds">Feeds</a>
+        <a class="nav" href="#atlas-ihi">IHI</a>
+        <a class="nav" href="#atlas-diagnostics">Diagnostics</a>
       </nav>
     </section>
   </main>
+
+  <section class="atlas-embedded-board" aria-labelledby="atlas-embedded-board-title">
+    <h2 id="atlas-embedded-board-title" class="sr-only">Target board</h2>
+    {{template "board-body" .Board}}
+  </section>
+
+  <dialog class="atlas-detail" data-testid="atlas-detail" aria-label="Detail panel">
+    <div class="atlas-detail-bar">
+      <strong>Detail</strong>
+      <button type="button" class="link" data-testid="atlas-detail-close">Close</button>
+    </div>
+    <div class="atlas-detail-body" data-testid="atlas-detail-body"></div>
+  </dialog>
+
   <script src="/static/map.js" defer></script>
   <script src="/static/atlas.js" defer></script>
+  <script src="/static/atlas-live.js" defer></script>
 </body>
 </html>
