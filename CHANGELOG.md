@@ -10,6 +10,11 @@ changed between two images without it.
 
 ### Added
 
+- Atlas is now the single application page at `/` (and `/atlas`): a redesigned
+  map-first command view with a live SSE pulse, a global filter, click-to-pin
+  markers, richer state cards, and in-page target and incident detail panels.
+  Browsers requesting the old tab URLs are redirected to `/`; non-browser
+  clients keep those routes for compatibility.
 - GitHub Actions can deploy a released image tag to the Azure k3s VM through
   OIDC and `az vm run-command`, with no long-lived Azure credential or Actions
   secret. The workflow runs on demand with a version input or after a successful

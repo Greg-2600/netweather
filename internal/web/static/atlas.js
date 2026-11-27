@@ -76,3 +76,76 @@
 
   unpin.addEventListener("click", () => clear());
 })();
+
+// Atlas-wide search and in-page detail panels. Detail HTML is fetched from the
+// existing same-origin routes and injected as inert markup; scripts and remote
+// references are never executed from the fetched document.
+(() => {
+  "use strict";
+
+  const input = document.querySelector('[data-testid="atlas-search"]');
+  if (input) {
+    const filtered = () => Array.from(document.querySelectorAll(
+      '[data-testid="atlas-group"], [data-testid="atlas-country"],' +
+      '[data-testid="map-tile"], [data-testid="atlas-feed"],' +
+      '[data-testid="corridor-row"], [data-testid="atlas-incident"],' +
+      '[data-testid="tile"]'
+    ));
+    const apply = () => {
+      const q = input.value.trim().toLowerCase();
+      for (const el of filtered()) {
+        const match = !q || (el.textContent || "").toLowerCase().includes(q);
+        el.dataset.filtered = match ? "visible" : "hidden";
+      }
+    };
+    input.addEventListener("input", apply);
+    document.addEventListener("keydown", (ev) => {
+      const tag = document.activeElement ? document.activeElement.tagName : "";
+      if (ev.key === "/" && !/^(INPUT|TEXTAREA|SELECT)$/.test(tag)) {
+        ev.preventDefault();
+        input.focus();
+      }
+    });
+  }
+
+  const dialog = document.querySelector('[data-testid="atlas-detail"]');
+  const body = dialog && dialog.querySelector('[data-testid="atlas-detail-body"]');
+  const close = dialog && dialog.querySelector('[data-testid="atlas-detail-close"]');
+  if (!dialog || !body || !close) return;
+
+  const hide = () => {
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.removeAttribute("open");
+  };
+  close.addEventListener("click", hide);
+  dialog.addEventListener("click", (ev) => {
+    if (ev.target === dialog) hide();
+  });
+
+  document.addEventListener("click", async (ev) => {
+    const link = ev.target instanceof Element
+      ? ev.target.closest('a[href^="/targets/"], a[href^="/incidents/"]')
+      : null;
+    if (!link || ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey) return;
+    const url = new URL(link.getAttribute("href"), location.origin);
+    if (url.origin !== location.origin) return;
+    ev.preventDefault();
+    try {
+      const res = await fetch(url.pathname + url.search, { credentials: "same-origin" });
+      if (!res.ok) {
+        location.assign(url.pathname + url.search);
+        return;
+      }
+      const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+      const main = doc.querySelector("main");
+      const nodes = main
+        ? Array.from(main.childNodes).map((n) => document.importNode(n, true))
+        : [document.createTextNode("No detail is available for this item.")];
+      body.replaceChildren(...nodes);
+      if (typeof dialog.showModal === "function") dialog.showModal();
+      else dialog.setAttribute("open", "");
+    } catch (err) {
+      location.assign(url.pathname + url.search);
+    }
+  });
+})();

@@ -82,22 +82,38 @@ func New(deps Deps) (http.Handler, error) {
 	mux.HandleFunc("/logout", s.requireSession(http.HandlerFunc(s.handleLogout)).ServeHTTP)
 	mux.Handle("/static/", http.FileServer(http.FS(staticFS)))
 	mux.Handle("/events", s.requireSession(http.HandlerFunc(s.handleEvents)))
+	legacyPage := func(next http.Handler) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			// Browsers get the single Atlas page. Non-browser clients keep the
+			// old route for compatibility with existing probes and tests.
+			if strings.Contains(strings.ToLower(r.Header.Get("Accept")), "text/html") {
+				http.Redirect(w, r, "/", http.StatusSeeOther)
+				return
+			}
+			next.ServeHTTP(w, r)
+		}
+	}
 	mux.HandleFunc("/targets/", s.requireSession(http.HandlerFunc(s.handleTarget)).ServeHTTP)
-	mux.HandleFunc("/incidents", s.requireSession(http.HandlerFunc(s.handleIncidents)).ServeHTTP)
+	mux.HandleFunc("/incidents", legacyPage(s.requireSession(http.HandlerFunc(s.handleIncidents))))
 	mux.HandleFunc("/incidents/", s.requireSession(http.HandlerFunc(s.handleIncident)).ServeHTTP)
-	mux.HandleFunc("/coverage", s.requireSession(http.HandlerFunc(s.handleCoverage)).ServeHTTP)
-	mux.HandleFunc("/world", s.requireSession(http.HandlerFunc(s.handleWorld)).ServeHTTP)
-	mux.HandleFunc("/hubs", s.requireSession(http.HandlerFunc(s.handleHubs)).ServeHTTP)
-	mux.HandleFunc("/corridors", s.requireSession(http.HandlerFunc(s.handleCorridors)).ServeHTTP)
-	mux.HandleFunc("/feeds", s.requireSession(http.HandlerFunc(s.handleFeeds)).ServeHTTP)
-	mux.HandleFunc("/map", s.requireSession(http.HandlerFunc(s.handleMap)).ServeHTTP)
-	mux.HandleFunc("/atlas", s.requireSession(http.HandlerFunc(s.handleAtlas)).ServeHTTP)
-	mux.HandleFunc("/ihi", s.requireSession(http.HandlerFunc(s.handleIHI)).ServeHTTP)
-	mux.HandleFunc("/diagnostics", s.requireSession(http.HandlerFunc(s.handleDiagnostics)).ServeHTTP)
+	legacy := map[string]http.HandlerFunc{
+		"/coverage":    s.requireSession(http.HandlerFunc(s.handleCoverage)).ServeHTTP,
+		"/world":       s.requireSession(http.HandlerFunc(s.handleWorld)).ServeHTTP,
+		"/hubs":        s.requireSession(http.HandlerFunc(s.handleHubs)).ServeHTTP,
+		"/corridors":   s.requireSession(http.HandlerFunc(s.handleCorridors)).ServeHTTP,
+		"/feeds":       s.requireSession(http.HandlerFunc(s.handleFeeds)).ServeHTTP,
+		"/map":         s.requireSession(http.HandlerFunc(s.handleMap)).ServeHTTP,
+		"/ihi":         s.requireSession(http.HandlerFunc(s.handleIHI)).ServeHTTP,
+		"/diagnostics": s.requireSession(http.HandlerFunc(s.handleDiagnostics)).ServeHTTP,
+		"/board":       s.requireSession(http.HandlerFunc(s.handleBoard)).ServeHTTP,
+	}
+	for path, handler := range legacy {
+		mux.HandleFunc(path, legacyPage(http.HandlerFunc(handler)))
+	}
 	mux.HandleFunc("/icon/", s.requireSession(http.HandlerFunc(s.handleIcon)).ServeHTTP)
 	mux.HandleFunc("/pause", s.requireSession(http.HandlerFunc(s.handlePause)).ServeHTTP)
 	mux.HandleFunc("/resume", s.requireSession(http.HandlerFunc(s.handleResume)).ServeHTTP)
-	mux.Handle("/", s.requireSession(http.HandlerFunc(s.handleBoard)))
+	mux.Handle("/", s.requireSession(http.HandlerFunc(s.handleAtlas)))
 	return withRequestID(withAccessLog(deps.Logger, withSecurityHeaders(mux))), nil
 }
 

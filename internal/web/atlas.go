@@ -3,6 +3,9 @@ package web
 import (
 	"context"
 	"net/http"
+	"strings"
+
+	"github.com/Greg-2600/netweather/internal/region"
 )
 
 // atlasView is the read model for /atlas: every existing page's data in one
@@ -39,10 +42,10 @@ type atlasView struct {
 // buildAtlasView assembles the combined page from the shared builders. A hard
 // failure is only possible for the board snapshot, which every section needs;
 // optional providers degrade to an explicit note instead of an empty panel.
-func (s *server) buildAtlasView(ctx context.Context) (atlasView, error) {
+func (s *server) buildAtlasView(ctx context.Context, params boardParams) (atlasView, error) {
 	view := atlasView{Version: s.deps.Version}
 
-	boardData, err := s.buildBoardView(ctx, boardParams{Group: normaliseGroupMode("")})
+	boardData, err := s.buildBoardView(ctx, params)
 	if err != nil {
 		return atlasView{}, err
 	}
@@ -120,7 +123,20 @@ func (s *server) handleAtlas(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	view, err := s.buildAtlasView(r.Context())
+	q := r.URL.Query()
+	focus := false
+	switch q.Get("focus") {
+	case "problems", "problem":
+		focus = true
+	}
+	view, err := s.buildAtlasView(r.Context(), boardParams{
+		Group:   normaliseGroupMode(q.Get("group")),
+		Focus:   focus,
+		Country: strings.ToUpper(strings.TrimSpace(q.Get("country"))),
+		Region:  region.Normalise(q.Get("region")),
+		Density: normaliseDensity(q.Get("density")),
+		Show:    parseShow(q.Get("show")),
+	})
 	if err != nil {
 		s.deps.Logger.Error("atlas snapshot failed",
 			"event", "atlas_failed", "component", "http",
@@ -133,6 +149,10 @@ func (s *server) handleAtlas(w http.ResponseWriter, r *http.Request) {
 	view.CSRF = csrf
 	view.Insecure = s.insecure(r)
 	view.NoAuth = s.auth.disabled()
+	view.Board.CSRF = csrf
+	view.Board.Insecure = view.Insecure
+	view.Board.NoAuth = view.NoAuth
+	view.Board.Version = view.Version
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	_ = s.tmpl.ExecuteTemplate(w, "atlas.html", view)

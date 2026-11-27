@@ -4304,7 +4304,7 @@ func TestBoardShowsIHIChip(t *testing.T) {
 	if !strings.Contains(page, `data-testid="ihi-chip"`) || !strings.Contains(page, "IHI 82") {
 		t.Fatalf("board chip missing:\n%s", page)
 	}
-	if !strings.Contains(page, `href="/ihi"`) {
+	if !strings.Contains(page, `href="#atlas-ihi"`) {
 		t.Error("the chip does not link to the components")
 	}
 

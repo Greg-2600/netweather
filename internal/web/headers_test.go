@@ -76,8 +76,12 @@ func TestCSPCoversEveryBrowserResponse(t *testing.T) {
 			t.Fatal(err)
 		}
 		_ = body(t, resp)
-		if got := resp.Header.Get("Content-Security-Policy"); got != want {
-			t.Errorf("%s CSP = %q, want %q", path, got, want)
+		wantPath := want
+		if path == "/" {
+			wantPath = "default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+		}
+		if got := resp.Header.Get("Content-Security-Policy"); got != wantPath {
+			t.Errorf("%s CSP = %q, want %q", path, got, wantPath)
 		}
 	}
 
