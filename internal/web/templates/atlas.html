@@ -234,7 +234,7 @@
         <span class="muted small">Group by</span>
         {{range .Board.GroupOptions}}
         <a class="group-link{{if .Active}} active{{end}}" href="{{.Href}}"
-           data-testid="atlas-group-{{.Key}}" data-group="{{.Key}}"
+           data-testid="atlas-group-{{.Key}}" data-atlas-group="{{.Key}}"
            {{if .Active}}aria-current="true"{{end}}>{{.Label}}</a>
         {{end}}
       </nav>
