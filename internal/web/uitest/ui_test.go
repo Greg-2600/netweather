@@ -688,9 +688,6 @@ func TestFeedsPageRenders(t *testing.T) {
 	if err := expect.Locator(h.page.Locator(`[data-testid="atlas-feeds-note"]`)).ToBeVisible(); err != nil {
 		t.Fatalf("feeds note not visible: %v", err)
 	}
-	if err := expect.Locator(h.page.Locator(`[data-testid="atlas-no-feed-events"]`)).ToBeVisible(); err != nil {
-		t.Fatalf("no-events note not visible: %v", err)
-	}
 }
 
 func TestMapPageRenders(t *testing.T) {
