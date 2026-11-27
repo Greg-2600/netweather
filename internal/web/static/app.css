@@ -1428,6 +1428,9 @@ tr.small-coverage { color: var(--muted); }
   .atlas-hero { grid-template-columns: 1fr; align-items: start; }
   .atlas-search input { width: 100%; }
 }
+html:has(main[data-testid="atlas"]),
+body:has(main[data-testid="atlas"]) { overflow-x: clip; max-width: 100%; }
+
 @media (max-width: 600px) {
   .atlas-hover { width: 220px; font-size: 10px; }
   .atlas-projection .projection-frame { aspect-ratio: 3 / 2; }
@@ -1435,4 +1438,6 @@ tr.small-coverage { color: var(--muted); }
   .atlas-search { flex: 1 1 100%; }
   .atlas-stat { padding: 0.4rem; }
   .atlas-hero, .atlas-section { padding-left: 0.6rem; padding-right: 0.6rem; }
+  .atlas-section { overflow-x: auto; }
+  .atlas-section table.probes { max-width: 100%; }
 }
