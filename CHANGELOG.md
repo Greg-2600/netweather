@@ -20,6 +20,12 @@ changed between two images without it.
   secret. The workflow runs on demand with a version input or after a successful
   `release` workflow, and the `azure-production` environment requires Greg's
   review. See `docs/SECRETS.md`.
+- CI publishes a container image to GHCR on every push to `main`, tagged
+  `sha-<commit>` (immutable) and `main` (moving), after every blocking gate
+  passes. Pull requests build the image without pushing. The publish job alone
+  gets `packages: write` and uses only `GITHUB_TOKEN`; tagged releases stay
+  on the signed `release.yml` path. Tag rules are in `docs/IMAGE.md` §6.1
+  (#8).
 - Added `devtool lint-all` for local Go, Dockerfile, and full-history secret linting.
 - Incident detail pages now show a chronological timeline with open, closed,
   and operator-annotation milestones. The timeline uses existing incident

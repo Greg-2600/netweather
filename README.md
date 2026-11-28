@@ -237,6 +237,8 @@ sidecar for a single `tor` vantage; it stays idle while
 >   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 > ```
 
+Every push to `main` also publishes an unsigned CI image, `ghcr.io/greg-2600/netweather:sha-<commit>` (immutable) and `:main` (moving), for the k3s deployment path. Pull requests build it but never push. Tag rules are in [`docs/IMAGE.md`](docs/IMAGE.md) §6.1. Use a signed release tag when you need to verify what you run.
+
 Container networking is not an afterthought here: Docker's bridge defaults, embedded DNS, and MTU will all silently produce fake outages if unhandled. [`docs/NETWORKING.md`](docs/NETWORKING.md) covers the topology, the PMTU check, the SSRF reachability map, and Tailscale/reverse-proxy access.
 
 ---
