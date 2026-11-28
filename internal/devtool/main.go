@@ -344,6 +344,9 @@ type pkgCoverage struct {
 
 func taskCover() error {
 	profile := filepath.Join(os.TempDir(), coverageFile)
+	if err := os.Remove(profile); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove stale coverage profile: %w", err)
+	}
 	err := runGo("test", "-count=1", "-covermode=atomic", "-coverprofile="+profile, "./...")
 	if err != nil {
 		return fmt.Errorf("tests failed; coverage is meaningless: %w", err)
