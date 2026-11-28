@@ -2151,12 +2151,20 @@ type incidentRow struct {
 	ClosedReason string
 }
 
+type maintenanceRow struct {
+	Window     string
+	Components string
+	Reason     string
+	State      string
+}
+
 type incidentListView struct {
 	// Insecure marks a plaintext browser connection so the page can say so
 	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
-	Insecure  bool
-	NoAuth    bool
-	Incidents []incidentRow
+	Insecure           bool
+	NoAuth             bool
+	Incidents          []incidentRow
+	MaintenanceWindows []maintenanceRow
 }
 
 type attributionView struct {
@@ -2238,6 +2246,28 @@ func (s *server) buildIncidentsData(ctx context.Context) (incidentListView, erro
 			row.ClosedReason = inc.ClosedReason
 		}
 		view.Incidents = append(view.Incidents, row)
+	}
+
+	// Planned work is context, not a second detector. A failed read is surfaced
+	// rather than showing an incident list that looks complete without it.
+	if s.deps.Maintenance != nil {
+		windows, err := s.deps.Maintenance.MaintenanceWindows(ctx, 8)
+		if err != nil {
+			return incidentListView{}, err
+		}
+		for _, w := range windows {
+			row := maintenanceRow{
+				Window: w.StartsAt.UTC().Format("2006-01-02 15:04") + " – " +
+					w.EndsAt.UTC().Format("2006-01-02 15:04"),
+				Components: w.Components,
+				Reason:     w.Reason,
+				State:      "planned",
+			}
+			if !w.CompletedAt.IsZero() {
+				row.State = "completed"
+			}
+			view.MaintenanceWindows = append(view.MaintenanceWindows, row)
+		}
 	}
 	return view, nil
 }

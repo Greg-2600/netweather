@@ -483,6 +483,12 @@ func TestStoreErrorsAfterClose(t *testing.T) {
 		{"LastProbeAt", func() error { _, err := s.LastProbeAt(ctx, "local"); return err }},
 		{"LatestSelfChecks", func() error { _, err := s.LatestSelfChecks(ctx); return err }},
 		{"LatestVantageChange", func() error { _, _, err := s.LatestVantageChange(ctx); return err }},
+		{"CreateMaintenanceWindow", func() error {
+			_, err := s.CreateMaintenanceWindow(ctx, "dns", "work", now, now.Add(time.Hour))
+			return err
+		}},
+		{"CompleteMaintenanceWindow", func() error { return s.CompleteMaintenanceWindow(ctx, 1, now) }},
+		{"MaintenanceWindows", func() error { _, err := s.MaintenanceWindows(ctx, 10); return err }},
 		{"MarkAtypicalDay", func() error {
 			_, err := s.MarkAtypicalDay(ctx, "2026-11-17", "", "", "calendar", now)
 			return err

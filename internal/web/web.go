@@ -41,6 +41,9 @@ type Deps struct {
 	// Annotator records the operator's ground truth on an incident. Nil hides
 	// the annotation form rather than showing a form that cannot save.
 	Annotator IncidentAnnotator
+	// Maintenance supplies declared windows so planned work is visible beside
+	// real incidents. Nil omits the section rather than implying none exists.
+	Maintenance MaintenanceWindowReader
 	// Feeds supplies feed health for the board's staleness strip. Nil means the
 	// strip is omitted rather than shown as healthy.
 	Feeds FeedHealth
@@ -131,6 +134,13 @@ type Deps struct {
 	SecureCookies  bool
 	Version        string
 	StartedAt      time.Time
+}
+
+// MaintenanceWindowReader supplies operator-declared windows. The incidents
+// page shows them as context so planned work is not read as an outage
+// (ROADMAP.md §4).
+type MaintenanceWindowReader interface {
+	MaintenanceWindows(ctx context.Context, limit int) ([]store.MaintenanceWindow, error)
 }
 
 // Coverage supplies the blind-spot panel. Nil means the page says so rather
