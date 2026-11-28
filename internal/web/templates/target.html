@@ -44,6 +44,28 @@
       <p class="muted" data-testid="no-strip">{{.StripNote}}</p>
       {{end}}
 
+      <h2 class="section-title">Historical uptime</h2>
+      {{if .Uptime}}
+      <table class="probes" data-testid="target-uptime">
+        <thead><tr><th>Window</th><th>Uptime</th><th>Judged observations</th></tr></thead>
+        <tbody>
+          {{range .Uptime}}
+          <tr data-testid="uptime-row" data-window="{{.Label}}"{{if .Known}} data-uptime="{{.Percent}}"{{end}}>
+            <td>{{.Label}}</td>
+            <td>{{if .Known}}{{.Percent}}{{else}}no judged observations{{end}}</td>
+            <td>{{.Judged}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      <p class="muted small">Share of judged observations that were up or degraded,
+        from retained rollups. Missing buckets, unknown observations, and
+        bot-wall (blocked) observations are excluded rather than counted as
+        uptime or downtime.</p>
+      {{else}}
+      <p class="muted" data-testid="no-uptime">{{.UptimeNote}}</p>
+      {{end}}
+
       <h2 class="section-title">State changes</h2>
       {{if .Changes}}
       <table class="probes" data-testid="state-changes">
