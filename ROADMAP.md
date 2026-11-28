@@ -257,12 +257,12 @@ record without a separate status-page service or schema migration.
 |---|---|
 | Incident subscriptions | **Later:** email or webhook opt-in, unsubscribe tokens, and delivery suppression for duplicate updates |
 | Maintenance windows | **Later:** operator-created windows, affected components, and planned/completed states |
-| Historical uptime | **Later:** bounded uptime percentages from retained probe rollups, with missing/unknown explicitly excluded |
+| Historical uptime | **Implemented:** bounded 24h/7d/30d percentages on the target drawer from retained rollups; missing, unknown, and blocked observations are excluded |
 
-OIDC, subscriptions, maintenance windows, and historical uptime are not
-present merely because public incident detail pages exist. Public incident
-timeline records are implemented; the remaining status-page capabilities need
-separate data and delivery boundaries.
+OIDC, subscriptions, and maintenance windows are not present merely because
+public incident detail pages exist. Public incident timeline records and
+bounded historical uptime are implemented; the remaining status-page
+capabilities need separate data and delivery boundaries.
 
 ---
 

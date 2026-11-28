@@ -24,6 +24,10 @@ changed between two images without it.
 - Incident detail pages now show a chronological timeline with open, closed,
   and operator-annotation milestones. The timeline uses existing incident
   records and adds no storage or dependency.
+- The target drawer now shows bounded historical uptime for 24 hours, 7 days,
+  and 30 days from the retained rollups. Missing, unknown, and blocked
+  observations are excluded from the percentage, and a window with no judged
+  observations says so rather than inventing a number.
 - The UI font now uses a larger native sans-serif stack with improved
   text rendering; no font download or runtime asset is added.
 - Startup logs include the build date, and HTTP access logs record a default

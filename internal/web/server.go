@@ -1537,6 +1537,54 @@ func toStrip(points []store.Rollup) []stripCell {
 	return out
 }
 
+// uptimeWindow aggregates one retained-rollup window. Uptime is the share of
+// judged observations that were up or degraded. Unknown and blocked
+// observations, and buckets that do not exist, are excluded from both sides:
+// none of them is evidence that a target was available or unavailable.
+func uptimeWindow(label string, points []store.Rollup) uptimeWindowView {
+	var up, judged int
+	for _, p := range points {
+		up += p.Up + p.Degraded
+		judged += p.Up + p.Degraded + p.Down
+	}
+	window := uptimeWindowView{Label: label, Judged: judged}
+	if judged > 0 {
+		window.Known = true
+		window.Percent = fmt.Sprintf("%.1f%%", 100*float64(up)/float64(judged))
+	}
+	return window
+}
+
+// buildTargetUptime reads the three bounded windows the drawer can defend from
+// the retention policy: hourly rollups for 24 hours and 7 days, daily rollups
+// for 30 days. A failed read is a missing panel, not a missing target.
+func (s *server) buildTargetUptime(ctx context.Context, targetID, vantage string, now time.Time) ([]uptimeWindowView, string) {
+	if s.deps.Series == nil {
+		return nil, "Historical uptime is not configured on this instance."
+	}
+	windows := []struct {
+		label      string
+		resolution string
+		span       time.Duration
+	}{
+		{"24h", "1h", 24 * time.Hour},
+		{"7d", "1h", 7 * 24 * time.Hour},
+		{"30d", "1d", 30 * 24 * time.Hour},
+	}
+	out := make([]uptimeWindowView, 0, len(windows))
+	for _, w := range windows {
+		points, err := s.deps.Series.Series(ctx, targetID, vantage, w.resolution, now.Add(-w.span), now)
+		if err != nil {
+			s.deps.Logger.Warn("uptime series failed",
+				"event", "uptime_series_failed", "component", "http",
+				"target_id", targetID, "window", w.label, "error", err)
+			return nil, "Historical uptime is temporarily unavailable."
+		}
+		out = append(out, uptimeWindow(w.label, points))
+	}
+	return out, ""
+}
+
 type metaRow struct {
 	Label string
 	Value string
@@ -1617,13 +1665,18 @@ func asnLabel(asn int) string {
 type targetView struct {
 	// Insecure marks a plaintext browser connection so the page can say so
 	// (NETWORKING.md 7.1, THREAT_MODEL.md T8).
-	Insecure   bool
-	NoAuth     bool
-	Tile       tileView
-	Probes     []probeView
-	History    bool
-	Strip      []stripCell
-	StripNote  string
+	Insecure  bool
+	NoAuth    bool
+	Tile      tileView
+	Probes    []probeView
+	History   bool
+	Strip     []stripCell
+	StripNote string
+	// Uptime is the bounded 24h/7d/30d history from retained rollups. Unknown,
+	// blocked, and missing observations are excluded from the denominator
+	// because they are not availability signals.
+	Uptime     []uptimeWindowView
+	UptimeNote string
 	Meta       []metaRow
 	Changes    []changeRow
 	ChangeNote string
@@ -1748,6 +1801,16 @@ type stripCell struct {
 	Char  string
 	Class string
 	Title string
+}
+
+// uptimeWindowView is one bounded uptime percentage. Judged is the number of
+// observations that were actually a health signal; a window with none states
+// that rather than showing a fabricated 100% or 0%.
+type uptimeWindowView struct {
+	Label   string
+	Percent string
+	Judged  int
+	Known   bool
 }
 
 type probeView struct {
@@ -1897,10 +1960,10 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		now := time.Now().UTC()
 		if s.deps.Series == nil {
 			view.StripNote = "24-hour history is not configured on this instance."
 		} else {
-			now := time.Now().UTC()
 			points, err := s.deps.Series.Series(r.Context(), t.ID, vantage, "1h",
 				now.Add(-24*time.Hour), now)
 			switch {
@@ -1914,6 +1977,7 @@ func (s *server) handleTarget(w http.ResponseWriter, r *http.Request) {
 				view.Strip = toStrip(points)
 			}
 		}
+		view.Uptime, view.UptimeNote = s.buildTargetUptime(r.Context(), t.ID, vantage, now)
 
 		view.Meta = []metaRow{
 			{"Class", displayOr(t.Class, "unknown")},
