@@ -132,6 +132,15 @@ type IncidentAnnotator interface {
 	AnnotateIncident(ctx context.Context, id, annotation string, at time.Time) error
 }
 
+// MaintenanceWindows is the read/write side of operator-declared maintenance.
+// Nil disables the routes rather than showing an empty list that a reader
+// could not actually confirm (ROADMAP.md §4).
+type MaintenanceWindows interface {
+	CreateMaintenanceWindow(ctx context.Context, components, reason string, startsAt, endsAt time.Time) (int64, error)
+	CompleteMaintenanceWindow(ctx context.Context, id int64, at time.Time) error
+	MaintenanceWindows(ctx context.Context, limit int) ([]store.MaintenanceWindow, error)
+}
+
 // ScopeReader is the read side for scope health and coverage.
 type ScopeReader interface {
 	ScopeStates(ctx context.Context, vantageID, scope, value string) (map[state.State]int, int, error)
@@ -240,6 +249,8 @@ type Deps struct {
 	Verdict VerdictSource
 	// Annotator records the operator's ground truth. Nil disables the route.
 	Annotator IncidentAnnotator
+	// Maintenance reads and records planned work. Nil disables the routes.
+	Maintenance MaintenanceWindows
 	// Scopes reads scope health/coverage. Nil disables the route.
 	Scopes ScopeReader
 	// Anomalies reads detector output. Nil disables the route.
@@ -382,6 +393,8 @@ func New(cfg Config, deps Deps) (http.Handler, error) {
 	apiMux.HandleFunc("/api/v1/debug/scopes/", s.handleDebugScopeByID)
 	apiMux.HandleFunc("/api/v1/incidents", onlyGET(s.handleIncidents))
 	apiMux.HandleFunc("/api/v1/incidents/", s.handleIncidentSubtree)
+	apiMux.HandleFunc("/api/v1/maintenance", s.handleMaintenanceCollection)
+	apiMux.HandleFunc("/api/v1/maintenance/", s.handleMaintenanceSubtree)
 	apiMux.HandleFunc("/", s.handleNotFound)
 
 	// 60 requests/minute sustained, 20 burst (docs/API.md §8).
@@ -511,6 +524,7 @@ func (s *server) capabilitiesFor() []string {
 	add(d.Probes != nil, "series")
 	add(d.Incidents != nil, "incidents")
 	add(d.Annotator != nil, "annotations")
+	add(d.Maintenance != nil, "maintenance_windows")
 	add(d.Scopes != nil, "scopes")
 	add(d.Anomalies != nil, "anomalies")
 	add(d.Coverage != nil, "coverage")

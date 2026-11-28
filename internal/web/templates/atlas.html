@@ -520,6 +520,23 @@
       {{else}}
       <p class="muted" data-testid="atlas-no-incidents">No incidents are recorded.</p>
       {{end}}
+      {{if .Incidents.MaintenanceWindows}}
+      <h3>Planned maintenance</h3>
+      <p class="muted">Declared work is context, not an outage verdict.</p>
+      <table class="probes" data-testid="atlas-maintenance-list">
+        <thead><tr><th>Window (UTC)</th><th>Components</th><th>Reason</th><th>State</th></tr></thead>
+        <tbody>
+          {{range .Incidents.MaintenanceWindows}}
+          <tr data-testid="atlas-maintenance-row">
+            <td class="mono">{{.Window}}</td>
+            <td class="mono">{{.Components}}</td>
+            <td>{{.Reason}}</td>
+            <td>{{.State}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{end}}
     </section>
 
     <section class="atlas-section" data-testid="atlas-feeds" aria-labelledby="atlas-feeds-title">

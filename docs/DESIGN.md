@@ -1190,6 +1190,7 @@ Every probe and rollup row carries `vantage_id`, and rollups are keyed `(target_
 | Daily rollups | 1y | ~21 MB |
 | Scope samples (the hour-of-week baseline) | 28 weeks | ~190 MB |
 | Incidents | forever | small |
+| Maintenance windows | forever | small (operator-written) |
 | Anomalies, external events, egress moves | 90d | small |
 | Self-checks | 30d | small |
 | Atypical days (baseline calendar) | forever | one row per day per scope |
@@ -1330,6 +1331,7 @@ Config changes apply without a restart. The path is polled every 30 seconds rath
 | Max redirects | per target, 0-20, default 5 (`expect.max_redirects`); exhaustion returns the last 3xx rather than an error |
 | Max body read | 32 KB |
 | Daily egress budget | 2 GB default, hard stop with a banner - the backstop for every rate above. **Implemented:** `NETWEATHER_DAILY_MB` wraps the direct dialer's connections, suspends the agent at the limit until UTC midnight, and shows the banner |
+| Maintenance windows | components ≤200 characters, reason ≤500, window ≤30 days, list ≤200 rows; an operator's declaration is context only and never suppresses detection |
 | Default bind | `0.0.0.0:2600`. Non-loopback listen requires auth; `ui.auth: none` + non-loopback refuses to start unless `ui.allow_public: true` is also set (`NETWORKING.md` §7.1) |
 | Container runtime | `/var/run/docker.sock` is never mounted; host networking is never the default |
 | Telemetry | none, ever |

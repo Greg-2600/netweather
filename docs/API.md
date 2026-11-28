@@ -26,6 +26,8 @@ Honesty first, because a spec that implies more than the binary does is worse th
 | `GET /api/v1/control`, `POST /api/v1/pause`, `POST /api/v1/resume` | **implemented** - the probe kill switch |
 | `GET /api/v1/targets/{id}/probes` | **implemented** - recent raw observations for one target |
 | `GET /api/v1/incidents`, `GET /api/v1/incidents/{id}` | **implemented** - the incident log and ranked attribution |
+| `GET /api/v1/maintenance`, `POST /api/v1/maintenance` | **implemented** - operator-declared maintenance windows (§6.8.2) |
+| `POST /api/v1/maintenance/{id}/complete` | **implemented** - mark a declared window complete (§6.8.2) |
 | `GET /api/v1/corridors` | **implemented** - configured path pairs with their newest sample and open step change |
 | `GET /api/v1/ihi` | **implemented** - the Internet Health Index with its components and what was dropped (`DESIGN.md` §11) |
 | `GET /metrics` | **implemented** - aggregate Prometheus text; off unless `NETWEATHER_METRICS=true`; bearer auth when a token is set |
@@ -204,7 +206,7 @@ Auth: bearer.
     "auth": "bearer",
     "schema_version": 23,
     "egress": {"used_bytes": 1048576, "limit_bytes": 2147483648, "exhausted": false},
-    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "annotations", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace", "corridors", "ihi", "target_control"],
+    "capabilities": ["health", "meta", "logs", "board", "targets", "control", "probes", "series", "incidents", "annotations", "maintenance_windows", "scopes", "anomalies", "coverage", "selfcheck", "export", "events", "feeds", "debug", "coverage_history", "trace", "corridors", "ihi", "target_control"],
     "ring": {"records": 128, "capacity": 2000}
   },
   "meta": {"request_id": "9f2c1a7b4e8d0356"}
@@ -405,6 +407,38 @@ Auth: bearer. `Content-Type: application/json`. Records what actually happened. 
 - `404` for an unknown id. The write is never silently discarded.
 - `415` unless the body is JSON; `400` on unknown fields or malformed JSON.
 - The UI's incident page posts the same value through a CSRF-checked form.
+
+### 6.8.2 Maintenance windows — stable
+
+Auth: bearer. An operator declares planned work so a quiet or failing component
+can be read in context, not as a surprise outage. A window is evidence for the
+reader, never a second detector and never a suppression of incidents.
+
+`GET /api/v1/maintenance?limit=50` (1-200) returns newest-first windows,
+planned and completed together. An empty list means "none declared"; `503`
+means the store is not wired or cannot answer.
+
+```json
+{
+  "data": [
+    {"id": 1, "components": "dns, cdn=akamai", "reason": "core switch upgrade",
+     "starts_at": "2026-11-28T10:00:00Z", "ends_at": "2026-11-28T12:00:00Z",
+     "state": "planned"}
+  ],
+  "meta": {"request_id": "…", "count": 1, "limit": 50}
+}
+```
+
+`POST /api/v1/maintenance` takes the same fields as a JSON body with RFC3339
+timestamps. `components` and `reason` are required after trimming, at most 200
+and 500 characters; `ends_at` must be after `starts_at` and within 30 days.
+Unknown fields, a non-JSON body, and an out-of-range window are rejected.
+
+`POST /api/v1/maintenance/{id}/complete` marks the window complete with the
+server's current UTC time. Completion is idempotent; an unknown id is `404`.
+Both actions are logged with `maintenance_window_created` /
+`maintenance_window_completed` events. The incidents page shows the same rows
+with their derived `planned`/`completed` state.
 
 ### 6.9 `GET /api/v1/targets` — stable
 
@@ -894,7 +928,7 @@ Concurrent streams are capped at 64 total and 8 per peer address (`THREAT_MODEL.
 
 ### 7.3 Actions (POST)
 
-All action endpoints are **implemented**: the debug scopes in §6.19, the traceroute in §6.21, and the incident annotation in §6.8.1.
+All action endpoints are **implemented**: the debug scopes in §6.19, the traceroute in §6.21, the incident annotation in §6.8.1, and the maintenance-window actions in §6.8.2.
 
 `Idempotency-Key` is honored on every mutating request: a repeated key with the same method and path replays the original response (status, headers, body) with `Idempotent-Replayed: true`, instead of acting twice. This matters for `pause` behind a retrying proxy and for a client that retries a scope creation after a timeout.
 

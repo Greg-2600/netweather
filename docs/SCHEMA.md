@@ -437,6 +437,21 @@ CREATE INDEX corridor_event_recent ON corridor_event(corridor_id, started_at DES
 
 A corridor removed from the config is disabled, never deleted: its samples and events are history, and a later re-add should not start from nothing. **Migration `0018`** added `corridor_event.trace`, the one traceroute captured when the event opened; it is empty when the walk could not start, never "the path was short".
 
+**Migration `0026` — operator maintenance windows:**
+
+```sql
+CREATE TABLE maintenance_window (
+    id           INTEGER PRIMARY KEY,
+    components   TEXT NOT NULL,               -- comma-separated names, operator-supplied
+    reason       TEXT NOT NULL,
+    starts_at    INTEGER NOT NULL,            -- Unix seconds, UTC
+    ends_at      INTEGER NOT NULL,
+    completed_at INTEGER                      -- NULL while planned
+);
+```
+
+A row is a declaration, never a detector verdict: the incidents page shows the window as context so planned work is not read as an outage. State is derived from `completed_at` rather than a separate column that could disagree with it. Completing an already-completed window is a no-op; an unknown id is an error, never a silent discard. The API caps components at 200 characters, reason at 500, the window at 30 days, and any list at 200 rows; the store enforces the list cap independently. These rows stay with the incident log and are not pruned.
+
 ---
 
 ## 8. DNS and certificates

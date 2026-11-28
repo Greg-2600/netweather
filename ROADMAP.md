@@ -256,13 +256,13 @@ record without a separate status-page service or schema migration.
 | Item | Status |
 |---|---|
 | Incident subscriptions | **Later:** email or webhook opt-in, unsubscribe tokens, and delivery suppression for duplicate updates |
-| Maintenance windows | **Later:** operator-created windows, affected components, and planned/completed states |
+| Maintenance windows | **Implemented:** operator-created windows with affected components and planned/completed states, declared through `POST /api/v1/maintenance` and shown on the incidents page as context rather than a detector verdict (migration `0026`) |
 | Historical uptime | **Implemented:** bounded 24h/7d/30d percentages on the target drawer from retained rollups; missing, unknown, and blocked observations are excluded |
 
-OIDC, subscriptions, and maintenance windows are not present merely because
-public incident detail pages exist. Public incident timeline records and
-bounded historical uptime are implemented; the remaining status-page
-capabilities need separate data and delivery boundaries.
+OIDC and subscriptions are not present merely because public incident detail
+pages exist. Public incident timeline records, bounded historical uptime, and
+operator-declared maintenance windows are implemented; the remaining
+status-page capabilities need separate data and delivery boundaries.
 
 ---
 

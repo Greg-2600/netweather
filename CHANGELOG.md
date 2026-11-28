@@ -10,6 +10,13 @@ changed between two images without it.
 
 ### Added
 
+- Operators can declare maintenance windows through `POST /api/v1/maintenance`
+  and see them, with affected components and planned/completed state, on the
+  incidents page alongside real incidents. A window is context only: it never
+  suppresses detection or changes a verdict. The API also lists windows
+  (`GET /api/v1/maintenance`) and marks them complete
+  (`POST /api/v1/maintenance/{id}/complete`). Migration `0026` adds one small
+  table; no dependency, secret, or outbound call was added.
 - Atlas is now the single application page at `/` (and `/atlas`): a redesigned
   map-first command view with a live SSE pulse, a global filter, click-to-pin
   markers, richer state cards, and in-page target and incident detail panels.
