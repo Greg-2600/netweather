@@ -69,12 +69,19 @@ func (f *fakeHistory) RecentProbes(context.Context, string, string, int) ([]stor
 }
 
 type fakeSeries struct {
-	points []store.Rollup
-	err    error
+	points       []store.Rollup
+	byResolution map[string][]store.Rollup
+	err          error
 }
 
-func (f *fakeSeries) Series(context.Context, string, string, string, time.Time, time.Time) ([]store.Rollup, error) {
-	return f.points, f.err
+func (f *fakeSeries) Series(_ context.Context, _, _, resolution string, _, _ time.Time) ([]store.Rollup, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	if points, ok := f.byResolution[resolution]; ok {
+		return points, nil
+	}
+	return f.points, nil
 }
 
 type fakeChanges struct {
@@ -432,6 +439,74 @@ func TestTargetDetailStripEmptyAndUnavailable(t *testing.T) {
 	}
 	if !strings.Contains(page, "temporarily unavailable") {
 		t.Error("series failure was not reported")
+	}
+}
+
+func TestTargetDetailShowsHistoricalUptime(t *testing.T) {
+	t.Parallel()
+
+	series := &fakeSeries{byResolution: map[string][]store.Rollup{
+		"1h": {{
+			Bucket: time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC),
+			N:      18, Up: 8, Degraded: 1, Down: 1, Unknown: 5, Blocked: 3,
+		}},
+		"1d": {{
+			Bucket: time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC),
+			N:      10, Up: 1, Down: 1, Unknown: 8,
+		}},
+	}}
+
+	ts := newServerWithSeries(t, testToken, fixture(), series)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if !strings.Contains(page, `data-testid="target-uptime"`) {
+		t.Fatalf("uptime table missing:\n%s", page)
+	}
+	if got := strings.Count(page, `data-uptime="90.0%"`); got != 2 {
+		t.Errorf("24h/7d uptime rows = %d, want 2", got)
+	}
+	for _, want := range []string{
+		`data-window="24h" data-uptime="90.0%"`,
+		`data-window="7d" data-uptime="90.0%"`,
+		`data-window="30d" data-uptime="50.0%"`,
+		"Missing buckets, unknown observations, and",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("uptime missing %q", want)
+		}
+	}
+}
+
+func TestTargetDetailUptimeWithoutJudgedObservations(t *testing.T) {
+	t.Parallel()
+
+	series := &fakeSeries{points: []store.Rollup{{
+		Bucket: time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC),
+		N:      10, Unknown: 5, Blocked: 5,
+	}}}
+
+	ts := newServerWithSeries(t, testToken, fixture(), series)
+	client, _ := newClient(t)
+	login(t, ts, client, testToken)
+
+	resp, err := client.Get(ts.URL + "/targets/2") //nolint:bodyclose // body() closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := body(t, resp)
+
+	if got := strings.Count(page, "no judged observations"); got != 3 {
+		t.Errorf("empty uptime rows = %d, want 3", got)
+	}
+	if strings.Contains(page, `data-uptime=`) {
+		t.Error("a window with only unknown/blocked observations invented an uptime")
 	}
 }
 
