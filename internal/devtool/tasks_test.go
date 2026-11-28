@@ -13,8 +13,9 @@ import (
 
 // TestMain doubles as a tiny, scriptable stand-in for the external tools the
 // task runner shells out to. A test copies the test binary into a temp dir as
-// "go" and "docker", prepends that dir to PATH, and then the child process
-// lands here instead of running the test suite. Nothing leaves the machine.
+// "go" and "docker" and points PATH at that dir alone, so the child process
+// lands here instead of running the test suite or a host-installed tool.
+// Nothing leaves the machine.
 func TestMain(m *testing.M) {
 	if os.Getenv("NETWEATHER_FAKE_TOOL") == "1" {
 		os.Exit(fakeToolMain(os.Args))
@@ -172,7 +173,7 @@ func installFakeTools(t *testing.T) string {
 	logPath := filepath.Join(dir, "calls.jsonl")
 	t.Setenv("NETWEATHER_FAKE_TOOL", "1")
 	t.Setenv("NETWEATHER_FAKE_LOG", logPath)
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("PATH", dir)
 	t.Setenv("SOURCE_DATE_EPOCH", "1700000000")
 	return logPath
 }
